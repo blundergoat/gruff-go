@@ -1,0 +1,6 @@
+gruff-go analysis
+schema: gruff-go.analysis.v0.1
+files: 1 scanned, 0 skipped
+findings:
+  [medium] complex.go:4 complexity-cyclomatic: function cyclomatic complexity is 22, above threshold 20
+exit: 1

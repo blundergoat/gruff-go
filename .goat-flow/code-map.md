@@ -3,6 +3,9 @@
 ## Repository Root
 
 - `README.md` = Minimal project title only.
+- `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`.
+- `.gruff.yaml` = Standalone dogfood scanner config for this repository; mirrors current default-enabled rules and keeps expansion rules disabled.
+- `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `package.json` = npm package metadata; declares `@blundergoat/goat-flow` and the placeholder failing `npm test` script.
 - `package-lock.json` = npm lockfile for GOAT Flow and transitive dependencies.
 - `CLAUDE.md` = Claude Code hot-path instructions for this target project.
@@ -68,6 +71,19 @@
 
 - `.github/git-commit-instructions.md` = Project-specific commit guidance for agents.
 
-## Application Source
+## Go Application Surface
 
-- No source tree, Go module, Go files, application JavaScript, tests, CI config, deployment config, or database assets exist in the current checkout.
+- `cmd/gruff-go/main.go` = Thin executable entrypoint that exits with the CLI package's Main function.
+- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, and `list-rules`.
+- `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, and configured ignore patterns.
+- `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
+- `internal/config/` = Strict gruff config discovery/parsing for `.gruff.yaml`, `.gruff.yml`, and `.gruff.json`, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
+- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, finding ordering, the built-in default rule pack, and default-disabled opt-in expansion rules.
+- `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
+- `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.
+- `internal/diff/` = Git diff changed-line parsing and finding filtering.
+- `internal/pathfilter/` = Shared relative path glob validation and matching.
+- `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, and exit semantics.
+- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, and rule-list rendering.
+- `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring.
+- No CI config, deployment config, dashboard, database assets, trend storage, external linter ingestion, or package publication surface exists yet.

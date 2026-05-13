@@ -1,0 +1,166 @@
+package analysis
+
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/blundergoat/gruff-go/internal/baseline"
+	"github.com/blundergoat/gruff-go/internal/diff"
+	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/parser"
+	"github.com/blundergoat/gruff-go/internal/rule"
+	"github.com/blundergoat/gruff-go/internal/source"
+)
+
+type Options struct {
+	Paths        []string
+	Format       string
+	FailOn       finding.Severity
+	Registry     rule.Registry
+	IgnorePaths  []string
+	BaselinePath string
+	DiffBase     string
+}
+
+func Run(options Options) (Report, error) {
+	root, err := os.Getwd()
+	if err != nil {
+		return Report{}, err
+	}
+	options = normalizeOptions(options)
+
+	discovery, err := source.Discover(source.Options{
+		Root:           root,
+		Paths:          options.Paths,
+		IgnorePatterns: options.IgnorePaths,
+	})
+	if err != nil {
+		return Report{}, err
+	}
+
+	units, parseDiagnostics := parser.Parse(discovery.Files)
+	diagnostics := diagnosticsFromDiscovery(discovery.Missing)
+	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
+	registry := options.Registry
+	findings := registry.Analyze(units, rule.Context{Root: root})
+	findings, baselineSummary, diagnostics := applyBaseline(findings, diagnostics, options.BaselinePath)
+	findings, diffSummary, diagnostics := applyDiff(root, options.Paths, findings, diagnostics, options.DiffBase)
+
+	displayRoot := filepath.ToSlash(root)
+	return NewReport(displayRoot, inputsOrDefault(options.Paths), options.Format, options.FailOn, scannedPaths(discovery.Files), skippedPaths(discovery.Skipped), discovery.Missing, diagnostics, findings, registry.Definitions(), baselineSummary, diffSummary), nil
+}
+
+func normalizeOptions(options Options) Options {
+	if options.FailOn == "" {
+		options.FailOn = finding.SeverityMedium
+	}
+	if options.Format == "" {
+		options.Format = "text"
+	}
+	return options
+}
+
+func diagnosticsFromDiscovery(paths []string) []Diagnostic {
+	diagnostics := []Diagnostic{}
+	for _, missing := range paths {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:    "discovery",
+			Message:  "path does not exist",
+			File:     missing,
+			Severity: finding.SeverityHigh,
+		})
+	}
+	return diagnostics
+}
+
+func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
+	diagnostics := []Diagnostic{}
+	for _, item := range parseDiagnostics {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:    "parse",
+			Message:  item.Message,
+			File:     item.File,
+			Location: parserLocation(item),
+			Severity: finding.SeverityHigh,
+		})
+	}
+	return diagnostics
+}
+
+func applyBaseline(findings []finding.Finding, diagnostics []Diagnostic, baselinePath string) ([]finding.Finding, BaselineSummary, []Diagnostic) {
+	baselineSummary := BaselineSummary{}
+	if baselinePath == "" {
+		return findings, baselineSummary, diagnostics
+	}
+	baselineSummary.Applied = true
+	baselineSummary.Path = filepath.ToSlash(baselinePath)
+	file, err := baseline.Load(baselinePath)
+	if err != nil {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:    "baseline",
+			Message:  err.Error(),
+			File:     filepath.ToSlash(baselinePath),
+			Severity: finding.SeverityHigh,
+		})
+		return findings, baselineSummary, diagnostics
+	}
+	result := baseline.Apply(findings, file)
+	baselineSummary.Entries = result.Entries
+	baselineSummary.SuppressedFindings = result.SuppressedFindings
+	baselineSummary.StaleEntries = result.StaleEntries
+	return result.Findings, baselineSummary, diagnostics
+}
+
+func applyDiff(root string, paths []string, findings []finding.Finding, diagnostics []Diagnostic, diffBase string) ([]finding.Finding, DiffSummary, []Diagnostic) {
+	diffSummary := DiffSummary{}
+	if diffBase == "" {
+		return findings, diffSummary, diagnostics
+	}
+	diffSummary.Enabled = true
+	diffSummary.Base = diffBase
+	changed, err := diff.FromGit(root, diffBase, paths)
+	if err != nil {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:    "diff",
+			Message:  err.Error(),
+			Severity: finding.SeverityHigh,
+		})
+		return findings, diffSummary, diagnostics
+	}
+	result := diff.Filter(findings, changed)
+	diffSummary.ChangedFiles = changed.ChangedFiles
+	diffSummary.FilteredFindings = result.FilteredFindings
+	diffSummary.Caveat = "diff mode is changed-line scoped and is not full-project proof for project-level rules"
+	return result.Findings, diffSummary, diagnostics
+}
+
+func scannedPaths(files []source.File) []string {
+	scanned := make([]string, 0, len(files))
+	for _, file := range files {
+		scanned = append(scanned, file.Path)
+	}
+	return scanned
+}
+
+func skippedPaths(items []source.SkippedPath) []SkippedPath {
+	skipped := make([]SkippedPath, 0, len(items))
+	for _, item := range items {
+		skipped = append(skipped, SkippedPath{Path: item.Path, Reason: item.Reason})
+	}
+	return skipped
+}
+
+func inputsOrDefault(paths []string) []string {
+	inputs := paths
+	if len(inputs) == 0 {
+		inputs = []string{"."}
+	}
+	return inputs
+}
+
+func parserLocation(item parser.Diagnostic) *finding.Location {
+	if item.Line == 0 && item.Column == 0 {
+		return nil
+	}
+	return &finding.Location{Line: item.Line, Column: item.Column}
+}

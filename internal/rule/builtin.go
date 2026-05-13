@@ -1,0 +1,303 @@
+package rule
+
+import (
+	"fmt"
+	"go/ast"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/parser"
+	"github.com/blundergoat/gruff-go/internal/pathfilter"
+	"github.com/blundergoat/gruff-go/internal/source"
+)
+
+const (
+	fileLengthThreshold     = 400
+	functionLengthThreshold = 80
+	cyclomaticThreshold     = 20
+)
+
+var secretPattern = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{20,}`)
+
+type FileLengthRule struct {
+	MaxLines int
+}
+
+func (r FileLengthRule) maxLines() int {
+	if r.MaxLines <= 0 {
+		return fileLengthThreshold
+	}
+	return r.MaxLines
+}
+
+func (r FileLengthRule) Definition() Definition {
+	maxLines := r.maxLines()
+	return Definition{
+		ID:             "size-file-length",
+		Title:          "File length",
+		Description:    "Flags Go files that exceed the default line-count threshold.",
+		Pillar:         finding.PillarSize,
+		Severity:       finding.SeverityMedium,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
+		Remediation:    "Split the file by responsibility or move focused behavior into smaller files.",
+	}
+}
+
+func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	maxLines := r.maxLines()
+	if unit.File.Type != source.FileTypeGo || unit.LineCount <= maxLines {
+		return nil
+	}
+	return []finding.Finding{{
+		Message: fmt.Sprintf("file has %d lines, above threshold %d", unit.LineCount, maxLines),
+		File:    unit.File.Path,
+		Location: &finding.Location{
+			Line: maxLines + 1,
+		},
+		Metadata: map[string]any{"lines": unit.LineCount, "threshold": maxLines},
+	}}
+}
+
+type FunctionLengthRule struct {
+	MaxLines int
+}
+
+func (r FunctionLengthRule) maxLines() int {
+	if r.MaxLines <= 0 {
+		return functionLengthThreshold
+	}
+	return r.MaxLines
+}
+
+func (r FunctionLengthRule) Definition() Definition {
+	maxLines := r.maxLines()
+	return Definition{
+		ID:             "size-function-length",
+		Title:          "Function length",
+		Description:    "Flags Go functions that exceed the default line-count threshold.",
+		Pillar:         finding.PillarSize,
+		Severity:       finding.SeverityMedium,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
+		Remediation:    "Extract cohesive helper functions or split independent branches.",
+	}
+}
+
+func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	if unit.File.Type != source.FileTypeGo {
+		return nil
+	}
+	maxLines := r.maxLines()
+	findings := []finding.Finding{}
+	for _, fn := range unit.Functions {
+		length := fn.EndLine - fn.Line + 1
+		if length <= maxLines {
+			continue
+		}
+		findings = append(findings, finding.Finding{
+			Message:  fmt.Sprintf("function has %d lines, above threshold %d", length, maxLines),
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: fn.Line, EndLine: fn.EndLine},
+			Symbol:   fn.Name,
+			Metadata: map[string]any{"lines": length, "threshold": maxLines},
+		})
+	}
+	return findings
+}
+
+type CyclomaticComplexityRule struct {
+	MaxComplexity int
+}
+
+func (r CyclomaticComplexityRule) maxComplexity() int {
+	if r.MaxComplexity <= 0 {
+		return cyclomaticThreshold
+	}
+	return r.MaxComplexity
+}
+
+func (r CyclomaticComplexityRule) Definition() Definition {
+	maxComplexity := r.maxComplexity()
+	return Definition{
+		ID:             "complexity-cyclomatic",
+		Title:          "Cyclomatic complexity",
+		Description:    "Flags Go functions whose branch count exceeds the default cyclomatic threshold.",
+		Pillar:         finding.PillarComplexity,
+		Severity:       finding.SeverityMedium,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+		Thresholds:     map[string]float64{"maxComplexity": float64(maxComplexity)},
+		Remediation:    "Split independent decisions or move branches into named helpers.",
+	}
+}
+
+func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil {
+		return nil
+	}
+	maxComplexity := r.maxComplexity()
+	findings := []finding.Finding{}
+	for _, decl := range unit.AST.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		complexity := cyclomaticComplexity(fn)
+		if complexity <= maxComplexity {
+			continue
+		}
+		start := unit.FileSet.Position(fn.Pos())
+		end := unit.FileSet.Position(fn.End())
+		findings = append(findings, finding.Finding{
+			Message:  fmt.Sprintf("function cyclomatic complexity is %d, above threshold %d", complexity, maxComplexity),
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
+			Symbol:   functionName(fn),
+			Metadata: map[string]any{"complexity": complexity, "threshold": maxComplexity},
+		})
+	}
+	return findings
+}
+
+type PackageCommentRule struct{}
+
+func (PackageCommentRule) Definition() Definition {
+	return Definition{
+		ID:             "documentation-package-comment",
+		Title:          "Package comment",
+		Description:    "Flags Go packages that do not have a package-level comment in any file.",
+		Pillar:         finding.PillarDocumentation,
+		Severity:       finding.SeverityLow,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+		Remediation:    "Add a package comment that explains the package responsibility.",
+	}
+}
+
+func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+	type packageState struct {
+		name    string
+		file    string
+		hasDoc  bool
+		hasCode bool
+	}
+	packages := map[string]packageState{}
+	for _, unit := range units {
+		if unit.AST == nil {
+			continue
+		}
+		key := filepath.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
+		state := packages[key]
+		if state.file == "" || unit.File.Path < state.file {
+			state.file = unit.File.Path
+		}
+		state.name = unit.AST.Name.Name
+		state.hasCode = true
+		if unit.AST.Doc != nil {
+			state.hasDoc = true
+		}
+		packages[key] = state
+	}
+	findings := []finding.Finding{}
+	for _, state := range packages {
+		if !state.hasCode || state.hasDoc {
+			continue
+		}
+		findings = append(findings, finding.Finding{
+			Message:  fmt.Sprintf("package %s has no package comment", state.name),
+			File:     state.file,
+			Location: &finding.Location{Line: 1},
+			Metadata: map[string]any{"package": state.name},
+		})
+	}
+	return findings
+}
+
+type SensitiveDataRule struct {
+	PreviewAllowlist []string
+}
+
+func (SensitiveDataRule) Definition() Definition {
+	return Definition{
+		ID:             "sensitive-data-secret-pattern",
+		Title:          "Secret-like literal",
+		Description:    "Flags high-risk secret-like key/value assignments in Go and text/config files.",
+		Pillar:         finding.PillarSensitiveData,
+		Severity:       finding.SeverityHigh,
+		Confidence:     finding.ConfidenceMedium,
+		DefaultEnabled: true,
+		Remediation:    "Move secrets to a secret manager or environment-specific runtime configuration.",
+	}
+}
+
+func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	findings := []finding.Finding{}
+	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		match := secretPattern.FindString(line)
+		if match == "" {
+			continue
+		}
+		metadata := map[string]any{}
+		if len(r.PreviewAllowlist) == 0 || pathfilter.MatchesAny(r.PreviewAllowlist, unit.File.Path) {
+			metadata["preview"] = redact(match)
+		}
+		findings = append(findings, finding.Finding{
+			Message:  "secret-like assignment detected",
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: lineNumber + 1},
+			Metadata: metadata,
+		})
+	}
+	return findings
+}
+
+func cyclomaticComplexity(fn *ast.FuncDecl) int {
+	complexity := 1
+	ast.Inspect(fn.Body, func(node ast.Node) bool {
+		switch current := node.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
+			complexity++
+		case *ast.CaseClause:
+			if len(current.List) > 0 {
+				complexity++
+			}
+		case *ast.CommClause:
+			complexity++
+		case *ast.BinaryExpr:
+			if current.Op.String() == "&&" || current.Op.String() == "||" {
+				complexity++
+			}
+		}
+		return true
+	})
+	return complexity
+}
+
+func functionName(fn *ast.FuncDecl) string {
+	name := fn.Name.Name
+	if fn.Recv != nil && len(fn.Recv.List) > 0 {
+		switch expr := fn.Recv.List[0].Type.(type) {
+		case *ast.Ident:
+			return expr.Name + "." + name
+		case *ast.StarExpr:
+			if ident, ok := expr.X.(*ast.Ident); ok {
+				return ident.Name + "." + name
+			}
+		}
+	}
+	return name
+}
+
+func redact(value string) string {
+	if len(value) <= 12 {
+		return "[redacted]"
+	}
+	return value[:6] + "..." + value[len(value)-4:]
+}

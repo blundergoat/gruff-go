@@ -17,15 +17,51 @@ Evidence:
 
 The package exposes a `test` script, so script detection can look successful. Treating it as a valid health gate will create false failures or instruction files that claim this repo has a working test command.
 
-## Footgun: Repository name implies Go, but no Go source exists
+## Footgun: Scanner CLI exists, but published operational integration is still narrow
 
 **Status:** active | **Created:** 2026-05-13 | **Evidence:** ACTUAL_MEASURED
 
 hallucination-risk: high
 
 Evidence:
+- `internal/cli/cli.go` (search: `gruff-go analyse [--format text|json|summary-json|sarif|github]`)
+- `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff.yaml", ".gruff.yml", ".gruff.json"}`)
+- Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed five default-enabled rules, four opt-in rules, and exited 0.
+
+The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, and a small opt-in expansion pack, but README usage, CI wiring, dashboard, trend storage, broad calibrated rule families, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
+
+## Resolved Entries
+
+## Footgun: Go metadata exists, but no Go packages exist
+
+**Status:** resolved | **Created:** 2026-05-13 | **Evidence:** ACTUAL_MEASURED
+
+hallucination-risk: high
+
+Evidence:
 - `README.md` (search: `# gruff-go`)
 - `package.json` (search: `"name": "gruff-go"`)
-- Command measured 2026-05-13: `rg --files -g '*.go' -g 'go.mod'` returned no matches.
+- `go.mod` (search: `module github.com/blundergoat/gruff-go`)
+- `Makefile` (search: `GO_PACKAGES := $(shell go list ./... 2>/dev/null)`)
+- Command measured 2026-05-13: `rg --files -g '*.go'` returned no matches.
+- Command measured 2026-05-13: `go list ./...` printed `go: warning: "./..." matched no packages` and exited 0.
+- Command measured 2026-05-13: `make check` printed `no Go packages` three times and exited 0.
 
-The repo name can make agents assume a Go module, `go test`, or a `cmd/`/`internal/` layout. Current files show only a bootstrap README plus npm metadata for GOAT Flow, so Go-specific commands and architecture claims are unsupported until source files are added.
+The repo name plus `go.mod` can make agents assume a working Go application, test suite, or conventional runtime layout. Current files prove only module metadata and placeholder Makefile behavior, so Go-specific behavior claims are unsupported until source files are added.
+
+Resolved 2026-05-13 by M02 adding `cmd/gruff-go/` and `internal/` packages.
+
+## Footgun: Scanner foundation exists, but no built-in rules exist yet
+
+**Status:** resolved | **Created:** 2026-05-13 | **Evidence:** ACTUAL_MEASURED
+
+hallucination-risk: high
+
+Evidence:
+- Historical implementation detail: the M02 default registry was empty before M03.
+- Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` printed `"rules": []` and exited 0.
+- Command measured 2026-05-13: `go run ./cmd/gruff-go analyse --format json .` printed `"findingsCount": 0` and exited 0.
+
+The CLI can discover files, parse Go, emit diagnostics, and render deterministic reports, but it does not yet enforce code-quality rules. Do not claim quality scanning coverage until M03 adds default-enabled rules and fixtures.
+
+Resolved 2026-05-13 by M03 adding five default-enabled MVP rules and scoring.

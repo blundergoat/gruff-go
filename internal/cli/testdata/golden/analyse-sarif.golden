@@ -1,0 +1,246 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "gruff-go",
+          "semanticVersion": "0.1.0-dev",
+          "rules": [
+            {
+              "id": "complexity-cyclomatic",
+              "name": "Cyclomatic complexity",
+              "shortDescription": {
+                "text": "Cyclomatic complexity"
+              },
+              "fullDescription": {
+                "text": "Flags Go functions whose branch count exceeds the default cyclomatic threshold."
+              },
+              "help": {
+                "text": "Split independent decisions or move branches into named helpers."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "confidence": "high"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "documentation-package-comment",
+              "name": "Package comment",
+              "shortDescription": {
+                "text": "Package comment"
+              },
+              "fullDescription": {
+                "text": "Flags Go packages that do not have a package-level comment in any file."
+              },
+              "help": {
+                "text": "Add a package comment that explains the package responsibility."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "confidence": "high"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming-package-underscore",
+              "name": "Package name contains underscore",
+              "shortDescription": {
+                "text": "Package name contains underscore"
+              },
+              "fullDescription": {
+                "text": "Flags Go package names that use underscores instead of short lowercase words."
+              },
+              "help": {
+                "text": "Rename the package to a short lowercase name without underscores."
+              },
+              "properties": {
+                "pillar": "naming",
+                "confidence": "high",
+                "tags": [
+                  "go-style",
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security-shell-command",
+              "name": "Shell command execution",
+              "shortDescription": {
+                "text": "Shell command execution"
+              },
+              "fullDescription": {
+                "text": "Flags exec.Command calls that invoke a shell interpreter with command strings."
+              },
+              "help": {
+                "text": "Call the target executable directly and pass arguments without shell interpretation."
+              },
+              "properties": {
+                "pillar": "security",
+                "secondaryPillars": [
+                  "sensitive-data"
+                ],
+                "confidence": "medium",
+                "tags": [
+                  "opt-in",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "sensitive-data-secret-pattern",
+              "name": "Secret-like literal",
+              "shortDescription": {
+                "text": "Secret-like literal"
+              },
+              "fullDescription": {
+                "text": "Flags high-risk secret-like key/value assignments in Go and text/config files."
+              },
+              "help": {
+                "text": "Move secrets to a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "confidence": "medium"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "size-file-length",
+              "name": "File length",
+              "shortDescription": {
+                "text": "File length"
+              },
+              "fullDescription": {
+                "text": "Flags Go files that exceed the default line-count threshold."
+              },
+              "help": {
+                "text": "Split the file by responsibility or move focused behavior into smaller files."
+              },
+              "properties": {
+                "pillar": "size",
+                "confidence": "high"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "size-function-length",
+              "name": "Function length",
+              "shortDescription": {
+                "text": "Function length"
+              },
+              "fullDescription": {
+                "text": "Flags Go functions that exceed the default line-count threshold."
+              },
+              "help": {
+                "text": "Extract cohesive helper functions or split independent branches."
+              },
+              "properties": {
+                "pillar": "size",
+                "confidence": "high"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "test-quality-skipped-test",
+              "name": "Skipped test",
+              "shortDescription": {
+                "text": "Skipped test"
+              },
+              "fullDescription": {
+                "text": "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow."
+              },
+              "help": {
+                "text": "Remove the skip or document and track the condition outside the test body."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in",
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "waste-empty-block",
+              "name": "Empty control-flow block",
+              "shortDescription": {
+                "text": "Empty control-flow block"
+              },
+              "fullDescription": {
+                "text": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code."
+              },
+              "help": {
+                "text": "Remove the empty block or add the intended implementation."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "complexity-cyclomatic",
+          "level": "warning",
+          "message": {
+            "text": "function cyclomatic complexity is 22, above threshold 20"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "complex.go"
+                },
+                "region": {
+                  "startLine": 4,
+                  "endLine": 26
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primary": "65a81e218138615e"
+          },
+          "properties": {
+            "confidence": "high",
+            "fingerprint": "65a81e218138615e",
+            "pillar": "complexity",
+            "severity": "medium",
+            "symbol": "risky"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+::warning file=complex.go,line=4,endLine=26,title=complexity-cyclomatic::function cyclomatic complexity is 22, above threshold 20

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "gruff-go.analysis.v0.1",
+  "tool": {
+    "name": "gruff-go",
+    "version": "0.1.0-dev"
+  },
+  "run": {
+    "workingDirectory": "<WORKDIR>",
+    "inputs": [
+      "complex.go"
+    ],
+    "format": "summary-json",
+    "failOn": "medium"
+  },
+  "summary": {
+    "filesScanned": 1,
+    "filesSkipped": 0,
+    "diagnosticsCount": 0,
+    "findingsCount": 0,
+    "countsBySeverity": {
+      "critical": 0,
+      "high": 0,
+      "info": 0,
+      "low": 0,
+      "medium": 0
+    },
+    "countsByPillar": {},
+    "exitCode": 0,
+    "parserMode": "parser-only",
+    "typeLoadingEnabled": false
+  },
+  "baseline": {
+    "applied": true,
+    "path": "baseline.json",
+    "entries": 1,
+    "suppressedFindings": 1,
+    "staleEntries": 0
+  },
+  "diff": {
+    "enabled": false,
+    "changedFiles": [],
+    "filteredFindings": 0
+  },
+  "displayFilter": {
+    "applied": false,
+    "includeRules": [],
+    "excludeRules": [],
+    "includePillars": [],
+    "excludePillars": [],
+    "hiddenFindings": 0
+  },
+  "score": {
+    "composite": 100,
+    "grade": "A",
+    "pillars": {},
+    "topOffenders": []
+  },
+  "diagnostics": []
+}
