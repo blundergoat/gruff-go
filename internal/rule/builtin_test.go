@@ -20,6 +20,7 @@ func TestDefaultsListRules(t *testing.T) {
 	}
 	want := []string{
 		"complexity-cyclomatic",
+		"dead-code-empty-block",
 		"documentation-package-comment",
 		"naming-package-underscore",
 		"security-shell-command",
@@ -27,7 +28,6 @@ func TestDefaultsListRules(t *testing.T) {
 		"size-file-length",
 		"size-function-length",
 		"test-quality-skipped-test",
-		"waste-empty-block",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("rules = %#v, want %#v", got, want)
@@ -49,10 +49,10 @@ func TestDefaultsListRules(t *testing.T) {
 		}
 	}
 	for _, id := range []string{
+		"dead-code-empty-block",
 		"naming-package-underscore",
 		"security-shell-command",
 		"test-quality-skipped-test",
-		"waste-empty-block",
 	} {
 		if enabled[id] {
 			t.Fatalf("rule %s should be default disabled", id)
@@ -273,14 +273,14 @@ func empty(a bool) {
 	}
 
 	enabledRegistry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"waste-empty-block": true},
+		Enabled: map[string]bool{"dead-code-empty-block": true},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	findings := enabledRegistry.Analyze([]parser.Unit{unit}, Context{})
-	if len(findings) != 1 || findings[0].RuleID != "waste-empty-block" {
-		t.Fatalf("enabled findings = %#v, want waste-empty-block", findings)
+	if len(findings) != 1 || findings[0].RuleID != "dead-code-empty-block" {
+		t.Fatalf("enabled findings = %#v, want dead-code-empty-block", findings)
 	}
 }
 

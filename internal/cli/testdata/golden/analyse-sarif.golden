@@ -29,6 +29,29 @@
               }
             },
             {
+              "id": "dead-code-empty-block",
+              "name": "Empty control-flow block",
+              "shortDescription": {
+                "text": "Empty control-flow block"
+              },
+              "fullDescription": {
+                "text": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code."
+              },
+              "help": {
+                "text": "Remove the empty block or add the intended implementation."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "documentation-package-comment",
               "name": "Package comment",
               "shortDescription": {
@@ -177,29 +200,6 @@
                 "tags": [
                   "opt-in",
                   "tests"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
-              "id": "waste-empty-block",
-              "name": "Empty control-flow block",
-              "shortDescription": {
-                "text": "Empty control-flow block"
-              },
-              "fullDescription": {
-                "text": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code."
-              },
-              "help": {
-                "text": "Remove the empty block or add the intended implementation."
-              },
-              "properties": {
-                "pillar": "dead-code",
-                "confidence": "medium",
-                "tags": [
-                  "opt-in"
                 ]
               },
               "defaultConfiguration": {

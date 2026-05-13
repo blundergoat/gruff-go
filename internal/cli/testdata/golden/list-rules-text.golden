@@ -1,4 +1,5 @@
 complexity-cyclomatic	complexity	medium	Cyclomatic complexity
+dead-code-empty-block	dead-code	low	Empty control-flow block
 documentation-package-comment	documentation	low	Package comment
 naming-package-underscore	naming	low	Package name contains underscore
 security-shell-command	security	medium	Shell command execution
@@ -6,4 +7,3 @@ sensitive-data-secret-pattern	sensitive-data	high	Secret-like literal
 size-file-length	size	medium	File length
 size-function-length	size	medium	Function length
 test-quality-skipped-test	test-quality	low	Skipped test
-waste-empty-block	dead-code	low	Empty control-flow block

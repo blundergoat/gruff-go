@@ -41,5 +41,5 @@ rules:
     enabled: false
   test-quality.skipped-test:
     enabled: false
-  waste.empty-block:
+  dead-code.empty-block:
     enabled: false

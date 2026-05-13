@@ -65,7 +65,7 @@ type EmptyBlockRule struct{}
 
 func (EmptyBlockRule) Definition() Definition {
 	return Definition{
-		ID:             "waste-empty-block",
+		ID:             "dead-code-empty-block",
 		Title:          "Empty control-flow block",
 		Description:    "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code.",
 		Pillar:         finding.PillarDeadCode,

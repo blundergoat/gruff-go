@@ -48,7 +48,7 @@ allowlists:
     - 'testdata/**'
 selection:
   rules:
-    - waste.empty-block
+    - dead-code.empty-block
   excludeRules:
     - size.file-length
 rules:
@@ -63,8 +63,8 @@ rules:
 		t.Fatal(err)
 	}
 	options := cfg.RuleOptions()
-	if !options.Enabled["waste-empty-block"] || options.Enabled["size-file-length"] || options.Enabled["size-function-length"] {
-		t.Fatalf("enabled map = %#v, want selected waste and excluded size rules", options.Enabled)
+	if !options.Enabled["dead-code-empty-block"] || options.Enabled["size-file-length"] || options.Enabled["size-function-length"] {
+		t.Fatalf("enabled map = %#v, want selected dead-code rule and excluded size rules", options.Enabled)
 	}
 	if options.Thresholds["complexity-cyclomatic"]["maxComplexity"] != 100 {
 		t.Fatalf("thresholds = %#v, want singular threshold mapped", options.Thresholds)
