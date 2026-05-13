@@ -94,7 +94,7 @@ rules:
     enabled: true
   complexity.nesting-depth:
     enabled: true
-  documentation.exported-symbol-comment:
+  docs.exported-symbol-comment:
     enabled: true
 `)
 	t.Chdir(root)

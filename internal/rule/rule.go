@@ -73,15 +73,15 @@ func Defaults() Registry {
 
 func DefaultsConfigured(config Config) (Registry, error) {
 	registry, err := NewRegistry([]UnitRule{
-		FileLengthRule{MaxLines: intThreshold(config, "size-file-length", "maxLines", fileLengthThreshold)},
-		FunctionLengthRule{MaxLines: intThreshold(config, "size-function-length", "maxLines", functionLengthThreshold)},
-		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity-cyclomatic", "maxComplexity", cyclomaticThreshold)},
+		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
+		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
+		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
 		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
 		EmptyBlockRule{},
 		ShellCommandRule{},
 		SkippedTestRule{},
-		ParameterCountRule{MaxParameters: intThreshold(config, "size-parameter-count", "maxParameters", parameterCountThreshold)},
-		NestingDepthRule{MaxDepth: intThreshold(config, "complexity-nesting-depth", "maxDepth", nestingDepthThreshold)},
+		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
+		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
 		ExportedSymbolCommentRule{},
 	}, []ProjectRule{
 		PackageCommentRule{},

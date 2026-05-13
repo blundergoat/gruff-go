@@ -35,7 +35,7 @@ func (r FileLengthRule) maxLines() int {
 func (r FileLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
-		ID:             "size-file-length",
+		ID:             "size.file-length",
 		Title:          "File length",
 		Description:    "Flags Go files that exceed the default line-count threshold.",
 		Pillar:         finding.PillarSize,
@@ -76,7 +76,7 @@ func (r FunctionLengthRule) maxLines() int {
 func (r FunctionLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
-		ID:             "size-function-length",
+		ID:             "size.function-length",
 		Title:          "Function length",
 		Description:    "Flags Go functions that exceed the default line-count threshold.",
 		Pillar:         finding.PillarSize,
@@ -124,7 +124,7 @@ func (r CyclomaticComplexityRule) maxComplexity() int {
 func (r CyclomaticComplexityRule) Definition() Definition {
 	maxComplexity := r.maxComplexity()
 	return Definition{
-		ID:             "complexity-cyclomatic",
+		ID:             "complexity.cyclomatic",
 		Title:          "Cyclomatic complexity",
 		Description:    "Flags Go functions whose branch count exceeds the default cyclomatic threshold.",
 		Pillar:         finding.PillarComplexity,
@@ -168,7 +168,7 @@ type PackageCommentRule struct{}
 
 func (PackageCommentRule) Definition() Definition {
 	return Definition{
-		ID:             "documentation-package-comment",
+		ID:             "docs.package-comment",
 		Title:          "Package comment",
 		Description:    "Flags Go packages that do not have a package-level comment in any file.",
 		Pillar:         finding.PillarDocumentation,
@@ -224,7 +224,7 @@ type SensitiveDataRule struct {
 
 func (SensitiveDataRule) Definition() Definition {
 	return Definition{
-		ID:             "sensitive-data-secret-pattern",
+		ID:             "sensitive-data.secret-pattern",
 		Title:          "Secret-like literal",
 		Description:    "Flags high-risk secret-like key/value assignments in Go and text/config files.",
 		Pillar:         finding.PillarSensitiveData,

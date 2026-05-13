@@ -8,13 +8,13 @@ import (
 
 func TestApplySuppressesExactFingerprintMatches(t *testing.T) {
 	item := finding.Finding{
-		RuleID:   "size-file-length",
+		RuleID:   "size.file-length",
 		Message:  "test finding",
 		File:     "main.go",
 		Location: &finding.Location{Line: 10},
 	}.WithFingerprint()
 	other := finding.Finding{
-		RuleID:   "size-file-length",
+		RuleID:   "size.file-length",
 		Message:  "other finding",
 		File:     "main.go",
 		Location: &finding.Location{Line: 11},
@@ -34,7 +34,7 @@ func TestApplyReportsStaleEntries(t *testing.T) {
 	file := File{
 		SchemaVersion: SchemaVersion,
 		Findings: []Entry{{
-			RuleID:      "size-file-length",
+			RuleID:      "size.file-length",
 			File:        "missing.go",
 			Fingerprint: "abc123",
 		}},

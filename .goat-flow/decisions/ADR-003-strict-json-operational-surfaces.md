@@ -15,7 +15,7 @@ Evidence from this session:
 - `internal/config` uses `encoding/json` for JSON plus a small strict YAML subset for `.gruff.yaml`/`.gruff.yml`, with unknown-field rejection and validation for unknown rules, thresholds, path ignores, abbreviations, pillars, and preview allowlists.
 - `internal/baseline` stores exact rule ID, file, and fingerprint entries under schema `gruff-go.baseline.v0.1`.
 - A temporary git smoke generated a baseline with 1 finding, then re-ran analysis with 0 findings, exit code 0, and 1 suppressed finding.
-- The same smoke confirmed SARIF output includes version 2.1.0 and the `complexity-cyclomatic` rule ID.
+- The same smoke confirmed SARIF output includes version 2.1.0 and the `complexity.cyclomatic` rule ID.
 
 ## Decision
 

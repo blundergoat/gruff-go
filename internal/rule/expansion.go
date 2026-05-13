@@ -15,7 +15,7 @@ type PackageNameUnderscoreRule struct{}
 
 func (PackageNameUnderscoreRule) Definition() Definition {
 	return Definition{
-		ID:             "naming-package-underscore",
+		ID:             "naming.package-underscore",
 		Title:          "Package name contains underscore",
 		Description:    "Flags Go package names that use underscores instead of short lowercase words.",
 		Pillar:         finding.PillarNaming,
@@ -65,7 +65,7 @@ type EmptyBlockRule struct{}
 
 func (EmptyBlockRule) Definition() Definition {
 	return Definition{
-		ID:             "dead-code-empty-block",
+		ID:             "dead-code.empty-block",
 		Title:          "Empty control-flow block",
 		Description:    "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code.",
 		Pillar:         finding.PillarDeadCode,
@@ -102,7 +102,7 @@ type ShellCommandRule struct{}
 
 func (ShellCommandRule) Definition() Definition {
 	return Definition{
-		ID:               "security-shell-command",
+		ID:               "security.shell-command",
 		Title:            "Shell command execution",
 		Description:      "Flags exec.Command calls that invoke a shell interpreter with command strings.",
 		Pillar:           finding.PillarSecurity,
@@ -140,7 +140,7 @@ type SkippedTestRule struct{}
 
 func (SkippedTestRule) Definition() Definition {
 	return Definition{
-		ID:             "test-quality-skipped-test",
+		ID:             "test-quality.skipped-test",
 		Title:          "Skipped test",
 		Description:    "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.",
 		Pillar:         finding.PillarTestQuality,

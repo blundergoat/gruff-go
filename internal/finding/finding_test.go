@@ -4,7 +4,7 @@ import "testing"
 
 func TestFingerprintIsStableAndIdentityBased(t *testing.T) {
 	finding := Finding{
-		RuleID:     "size-file-length",
+		RuleID:     "size.file-length",
 		Message:    "file is too long",
 		File:       "internal/foo/foo.go",
 		Location:   &Location{Line: 10, Column: 1},

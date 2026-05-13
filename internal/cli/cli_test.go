@@ -79,7 +79,7 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	if code := Main([]string{"list-rules", "--format", "json"}, &listOut, &listErr); code != 0 {
 		t.Fatalf("list-rules exit = %d, stderr = %s", code, listErr.String())
 	}
-	if !strings.Contains(listOut.String(), `"id": "size-file-length"`) {
+	if !strings.Contains(listOut.String(), `"id": "size.file-length"`) {
 		t.Fatalf("list-rules output = %s", listOut.String())
 	}
 
@@ -138,7 +138,7 @@ func risky(a bool) {
 		t.Fatalf("findings = %#v, want one", parsed.Findings)
 	}
 	finding := parsed.Findings[0]
-	if finding.RuleID != "complexity-cyclomatic" || finding.Fingerprint == "" || finding.Remediation == "" {
+	if finding.RuleID != "complexity.cyclomatic" || finding.Fingerprint == "" || finding.Remediation == "" {
 		t.Fatalf("finding = %#v, want complete complexity finding", finding)
 	}
 	if parsed.Score.Composite >= 100 || parsed.Score.Grade == "" || len(parsed.Score.Pillars) != 1 {
@@ -151,7 +151,7 @@ func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, "config.json", `{
 		"rules": {
-			"complexity-cyclomatic": {
+			"complexity.cyclomatic": {
 				"thresholds": {"maxComplexity": 100}
 			}
 		}
@@ -227,7 +227,7 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	t.Chdir(root)
 
 	var out, errOut bytes.Buffer
-	if code := Main([]string{"analyse", "--format", "json", "--exclude-rules", "complexity-cyclomatic", "complex.go"}, &out, &errOut); code != 1 {
+	if code := Main([]string{"analyse", "--format", "json", "--exclude-rules", "complexity.cyclomatic", "complex.go"}, &out, &errOut); code != 1 {
 		t.Fatalf("exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
 	var parsed analysis.Report

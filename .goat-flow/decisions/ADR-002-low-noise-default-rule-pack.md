@@ -12,7 +12,7 @@ The scanner needed a default rule pack that catches concrete quality problems wi
 
 Evidence from this session:
 
-- The initial dogfood scan after M04 reported one `size-function-length` finding in `internal/analysis/runner.go`.
+- The initial dogfood scan after M04 reported one `size.function-length` finding in `internal/analysis/runner.go`.
 - Refactoring `Run` into helper functions removed the finding without changing thresholds or adding config suppression.
 - The follow-up dogfood scan reported 41 files scanned, 0 findings, exit code 0, and score 100/A.
 

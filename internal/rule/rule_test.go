@@ -9,15 +9,15 @@ import (
 )
 
 func TestDefinitionValidationRejectsBadIDs(t *testing.T) {
-	definition := validDefinition("bad.id")
+	definition := validDefinition("bad_id")
 	if err := definition.Validate(); err == nil {
 		t.Fatal("expected invalid id error")
 	}
 }
 
 func TestRegistryRejectsDuplicateIDs(t *testing.T) {
-	ruleA := fakeUnitRule{id: "size-file-length"}
-	ruleB := fakeUnitRule{id: "size-file-length"}
+	ruleA := fakeUnitRule{id: "size.file-length"}
+	ruleB := fakeUnitRule{id: "size.file-length"}
 	if _, err := NewRegistry([]UnitRule{ruleA, ruleB}, nil); err == nil {
 		t.Fatal("expected duplicate rule error")
 	}
@@ -25,8 +25,8 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 
 func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	unit := parser.Unit{File: source.File{Path: "b.go", Type: source.FileTypeGo}}
-	unitRule := fakeUnitRule{id: "size-file-length"}
-	projectRule := fakeProjectRule{id: "design-project-shape"}
+	unitRule := fakeUnitRule{id: "size.file-length"}
+	projectRule := fakeProjectRule{id: "design.project-shape"}
 
 	registry, err := NewRegistry([]UnitRule{unitRule}, []ProjectRule{projectRule})
 	if err != nil {
@@ -34,7 +34,7 @@ func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	}
 
 	definitions := registry.Definitions()
-	if len(definitions) != 2 || definitions[0].ID != "design-project-shape" || definitions[1].ID != "size-file-length" {
+	if len(definitions) != 2 || definitions[0].ID != "design.project-shape" || definitions[1].ID != "size.file-length" {
 		t.Fatalf("definitions = %#v, want sorted definitions", definitions)
 	}
 

@@ -1,52 +1,42 @@
 # Glossary
 
+Last reviewed 2026-05-14.
+
 ## gruff-go
 
-The target project checkout. It now contains a parser-only Go CLI scanner foundation plus GOAT Flow and agent setup files.
+Go CLI quality scanner in module `github.com/blundergoat/gruff-go`. The runtime entrypoint is `cmd/gruff-go/main.go`; parser-only discovery, config loading, rules, analysis, scoring, baselines, diff filtering, and report rendering live under `internal/`.
 
-## GOAT Flow
+## Parser-Only Scanner
 
-The local agent workflow framework installed from `@blundergoat/goat-flow`. It provides Claude skills, audit commands, safety references, and `.goat-flow/` project-memory directories.
+The v0.1 analysis model uses standard-library source discovery and `go/parser` without `golang.org/x/tools/go/packages`. Type-aware rules are deferred until there is evidence that the extra dependency and runtime cost are worth it.
 
-## Agent-Owned Surfaces
+## Gruff Config
 
-Files that one agent setup owns without widening scope. Claude owns `CLAUDE.md`, `.claude/skills/`, `.claude/settings.json`, and `.claude/hooks/`; Codex owns `AGENTS.md`, `.codex/config.toml`, `.codex/hooks.json`, and `.codex/hooks/`.
+Analysis config loaded explicitly by `--config` or discovered as `.gruff.yaml`, `.gruff.yml`, then `.gruff.json`. The root `.gruff.yaml` is this repository's dogfood config. It uses the gruff-family shape `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, `selection`, and `rules.<id>`. Rule IDs are canonical dotted names, while legacy hyphen-only and old `documentation.*` aliases are still accepted for config compatibility.
 
-## Shared Agent Skills
+## Rule ID
 
-The `.agents/skills/` directory installed for Codex and Gemini GOAT Flow skills. Skill files are copied verbatim from GOAT Flow and should not be customized with project-specific content.
+Stable public identifier for one rule. gruff-go now emits dotted gruff-family IDs such as `size.file-length`, `docs.package-comment`, and `sensitive-data.secret-pattern`; old config aliases such as `size-file-length` and `documentation.package-comment` canonicalize to the dotted form.
 
-## Learning Loop
+## Accepted Abbreviation
 
-The durable shared project-memory directories under `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/`.
-
-## Harness Audit
-
-The GOAT Flow setup audit mode invoked with `--harness`. It checks structural setup concerns beyond the base agent audit, including context, constraints, verification, recovery, and feedback-loop surfaces.
-
-## Bootstrap Repository
-
-A repository state where setup/configuration and project metadata may exist, but runtime source, tests, CI, deployment files, and domain behavior have not been added yet.
-
-## Parser-Only MVP
-
-The v0.1 loading direction chosen in M01 and implemented in M02. It uses standard-library source discovery and `go/parser` without `golang.org/x/tools/go/packages`; type-aware rules are deferred until a future milestone has evidence they are needed.
-
-## Diagnostic
-
-A run-level problem, such as a missing input path or parse error. Diagnostics force analysis exit code `2`.
+An initialism accepted by naming rules through `allowlists.acceptedAbbreviations`. gruff-go currently validates these as uppercase values such as `ID`, `HTTP`, and `AST`, unlike newer implementations that normalize lowercase values.
 
 ## Finding
 
 A rule-produced quality result with rule ID, severity, confidence, pillar, location metadata, remediation, and a stable fingerprint.
 
-## Gruff Config
+## Fingerprint
 
-The analysis config loaded explicitly by `--config` or discovered as `.gruff.yaml`, `.gruff.yml`, then `.gruff.json`. The root `.gruff.yaml` is this repository's standalone dogfood config and should reflect intentional scanner policy, not hide current findings. Config validation rejects unknown top-level keys, unknown rule IDs, unknown threshold names, invalid path ignore patterns, invalid pillars, and invalid sensitive-data preview allowlist patterns before a scan runs.
+Stable 16-character hash derived from a finding's identity fields. Baselines and downstream tooling can key on it together with rule ID and file path.
 
 ## Baseline
 
 A JSON file with schema `gruff-go.baseline.v0.1` that stores rule ID, file, and fingerprint entries. Applying a baseline suppresses only exact matches and reports stale entries.
+
+## Diagnostic
+
+A run-level problem such as a missing input path, read error, parse error, config error, baseline error, or diff error. Diagnostics force analysis exit code `2`.
 
 ## Diff Mode
 
@@ -58,4 +48,16 @@ The Static Analysis Results Interchange Format. `gruff-go` emits SARIF 2.1.0 fro
 
 ## Opt-In Rule
 
-A rule listed by `list-rules` with `defaultEnabled: false`. It can be enabled through strict JSON config, but default scans skip it so experimental or context-sensitive signals do not change baseline dogfood behavior.
+A rule listed by `list-rules` with `defaultEnabled: false`. It can be enabled through strict config, but default scans skip it so experimental or context-sensitive signals do not change baseline dogfood behavior.
+
+## GOAT Flow
+
+Local agent workflow framework installed from `@blundergoat/goat-flow`. It provides Claude/Codex skills, audit commands, safety references, and `.goat-flow/` project-memory directories.
+
+## Agent-Owned Surfaces
+
+Files one agent setup owns without widening scope. Claude owns `CLAUDE.md` and `.claude/**`; Codex owns `AGENTS.md`, `.codex/config.toml`, `.codex/hooks.json`, and `.codex/hooks/**`.
+
+## Learning Loop
+
+Durable shared project-memory directories under `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/`.

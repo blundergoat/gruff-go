@@ -264,7 +264,6 @@ func (cfg Config) Normalized() Config {
 	if len(cfg.Selection.ExcludeRules) > 0 {
 		cfg.ExcludeRules = cfg.Selection.ExcludeRules
 	}
-	cfg.Rules = normalizeRuleIDs(cfg.Rules)
 	cfg.Select = sortedCopy(cfg.Select)
 	cfg.ExcludeRules = sortedCopy(cfg.ExcludeRules)
 	cfg.IgnorePaths = sortedCopy(cfg.IgnorePaths)
@@ -279,24 +278,26 @@ func sortedCopy(values []string) []string {
 	return out
 }
 
-func normalizeRuleIDs(rules map[string]RuleConfig) map[string]RuleConfig {
-	if len(rules) == 0 {
-		return rules
-	}
-	out := make(map[string]RuleConfig, len(rules))
-	for id, value := range rules {
-		out[strings.ReplaceAll(id, ".", "-")] = value
-	}
-	return out
-}
-
 func canonicalRuleID(id string, definitions map[string]rule.Definition) (string, bool) {
 	if _, ok := definitions[id]; ok {
 		return id, true
 	}
-	dotted := strings.ReplaceAll(id, ".", "-")
-	if _, ok := definitions[dotted]; ok {
-		return dotted, true
+	if strings.HasPrefix(id, "documentation.") {
+		candidate := "docs." + strings.TrimPrefix(id, "documentation.")
+		if _, ok := definitions[candidate]; ok {
+			return candidate, true
+		}
+	}
+	if strings.HasPrefix(id, "documentation-") {
+		candidate := "docs." + strings.TrimPrefix(id, "documentation-")
+		if _, ok := definitions[candidate]; ok {
+			return candidate, true
+		}
+	}
+	for definitionID := range definitions {
+		if strings.ReplaceAll(definitionID, ".", "-") == id {
+			return definitionID, true
+		}
 	}
 	return "", false
 }

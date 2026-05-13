@@ -21,7 +21,7 @@ rules:
     enabled: true
     threshold: 20
     severity: warning
-  documentation.package-comment:
+  docs.package-comment:
     enabled: true
     severity: notice
   sensitive-data.secret-pattern:

@@ -9,7 +9,7 @@
           "semanticVersion": "0.1.0-dev",
           "rules": [
             {
-              "id": "complexity-cyclomatic",
+              "id": "complexity.cyclomatic",
               "name": "Cyclomatic complexity",
               "shortDescription": {
                 "text": "Cyclomatic complexity"
@@ -29,7 +29,7 @@
               }
             },
             {
-              "id": "complexity-nesting-depth",
+              "id": "complexity.nesting-depth",
               "name": "Nesting depth",
               "shortDescription": {
                 "text": "Nesting depth"
@@ -52,7 +52,7 @@
               }
             },
             {
-              "id": "dead-code-empty-block",
+              "id": "dead-code.empty-block",
               "name": "Empty control-flow block",
               "shortDescription": {
                 "text": "Empty control-flow block"
@@ -75,7 +75,7 @@
               }
             },
             {
-              "id": "documentation-exported-symbol-comment",
+              "id": "docs.exported-symbol-comment",
               "name": "Exported symbol comment",
               "shortDescription": {
                 "text": "Exported symbol comment"
@@ -98,7 +98,7 @@
               }
             },
             {
-              "id": "documentation-package-comment",
+              "id": "docs.package-comment",
               "name": "Package comment",
               "shortDescription": {
                 "text": "Package comment"
@@ -118,7 +118,7 @@
               }
             },
             {
-              "id": "naming-package-underscore",
+              "id": "naming.package-underscore",
               "name": "Package name contains underscore",
               "shortDescription": {
                 "text": "Package name contains underscore"
@@ -142,7 +142,7 @@
               }
             },
             {
-              "id": "security-shell-command",
+              "id": "security.shell-command",
               "name": "Shell command execution",
               "shortDescription": {
                 "text": "Shell command execution"
@@ -169,7 +169,7 @@
               }
             },
             {
-              "id": "sensitive-data-secret-pattern",
+              "id": "sensitive-data.secret-pattern",
               "name": "Secret-like literal",
               "shortDescription": {
                 "text": "Secret-like literal"
@@ -189,7 +189,7 @@
               }
             },
             {
-              "id": "size-file-length",
+              "id": "size.file-length",
               "name": "File length",
               "shortDescription": {
                 "text": "File length"
@@ -209,7 +209,7 @@
               }
             },
             {
-              "id": "size-function-length",
+              "id": "size.function-length",
               "name": "Function length",
               "shortDescription": {
                 "text": "Function length"
@@ -229,7 +229,7 @@
               }
             },
             {
-              "id": "size-parameter-count",
+              "id": "size.parameter-count",
               "name": "Parameter count",
               "shortDescription": {
                 "text": "Parameter count"
@@ -252,7 +252,7 @@
               }
             },
             {
-              "id": "test-quality-skipped-test",
+              "id": "test-quality.skipped-test",
               "name": "Skipped test",
               "shortDescription": {
                 "text": "Skipped test"
@@ -280,7 +280,7 @@
       },
       "results": [
         {
-          "ruleId": "complexity-cyclomatic",
+          "ruleId": "complexity.cyclomatic",
           "level": "warning",
           "message": {
             "text": "function cyclomatic complexity is 22, above threshold 20"
@@ -299,11 +299,11 @@
             }
           ],
           "partialFingerprints": {
-            "primary": "65a81e218138615e"
+            "primary": "eb7055e051158304"
           },
           "properties": {
             "confidence": "high",
-            "fingerprint": "65a81e218138615e",
+            "fingerprint": "eb7055e051158304",
             "pillar": "complexity",
             "severity": "medium",
             "symbol": "risky"

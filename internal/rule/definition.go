@@ -9,7 +9,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-var ruleIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`)
+var ruleIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$`)
 
 type Definition struct {
 	ID               string             `json:"id"`

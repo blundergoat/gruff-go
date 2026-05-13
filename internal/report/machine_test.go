@@ -13,7 +13,7 @@ import (
 
 func TestMachineReportFormats(t *testing.T) {
 	item := finding.Finding{
-		RuleID:      "size-file-length",
+		RuleID:      "size.file-length",
 		Message:     "too long",
 		File:        "main.go",
 		Location:    &finding.Location{Line: 12},
@@ -32,7 +32,7 @@ func TestMachineReportFormats(t *testing.T) {
 	if err := json.Unmarshal(sarif.Bytes(), &parsed); err != nil {
 		t.Fatalf("invalid sarif json: %v\n%s", err, sarif.String())
 	}
-	if parsed["version"] != "2.1.0" || !strings.Contains(sarif.String(), `"ruleId": "size-file-length"`) {
+	if parsed["version"] != "2.1.0" || !strings.Contains(sarif.String(), `"ruleId": "size.file-length"`) {
 		t.Fatalf("sarif output = %s", sarif.String())
 	}
 
@@ -48,7 +48,7 @@ func TestMachineReportFormats(t *testing.T) {
 	if err := WriteGitHub(&github, report); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(github.String(), "::warning file=main.go,line=12,title=size-file-length::too long") {
+	if !strings.Contains(github.String(), "::warning file=main.go,line=12,title=size.file-length::too long") {
 		t.Fatalf("github output = %s", github.String())
 	}
 }

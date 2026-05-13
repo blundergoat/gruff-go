@@ -31,8 +31,8 @@ func (Builder) Many(a, b, c, d, e int) {}
 		t.Fatalf("threshold-6 findings = %#v, want none", below)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "size-parameter-count") {
-		t.Fatalf("default scan = %#v, want size-parameter-count disabled", findings)
+	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "size.parameter-count") {
+		t.Fatalf("default scan = %#v, want size.parameter-count disabled", findings)
 	}
 }
 
@@ -98,8 +98,8 @@ func Outer() {
 		t.Fatalf("func-lit findings = %#v, want outer counted independently of literal", findings)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{deep}, Context{})); containsRuleID(findings, "complexity-nesting-depth") {
-		t.Fatalf("default scan = %#v, want complexity-nesting-depth disabled", findings)
+	if findings := (Defaults().Analyze([]parser.Unit{deep}, Context{})); containsRuleID(findings, "complexity.nesting-depth") {
+		t.Fatalf("default scan = %#v, want complexity.nesting-depth disabled", findings)
 	}
 }
 
@@ -167,8 +167,8 @@ func ExportedTestHelper() {}
 		t.Fatalf("test-file findings = %#v, want none", findings)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "documentation-exported-symbol-comment") {
-		t.Fatalf("default scan = %#v, want documentation-exported-symbol-comment disabled", findings)
+	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "docs.exported-symbol-comment") {
+		t.Fatalf("default scan = %#v, want docs.exported-symbol-comment disabled", findings)
 	}
 }
 

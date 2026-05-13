@@ -1,12 +1,12 @@
-complexity-cyclomatic	complexity	medium	Cyclomatic complexity
-complexity-nesting-depth	complexity	medium	Nesting depth
-dead-code-empty-block	dead-code	low	Empty control-flow block
-documentation-exported-symbol-comment	documentation	low	Exported symbol comment
-documentation-package-comment	documentation	low	Package comment
-naming-package-underscore	naming	low	Package name contains underscore
-security-shell-command	security	medium	Shell command execution
-sensitive-data-secret-pattern	sensitive-data	high	Secret-like literal
-size-file-length	size	medium	File length
-size-function-length	size	medium	Function length
-size-parameter-count	size	low	Parameter count
-test-quality-skipped-test	test-quality	low	Skipped test
+complexity.cyclomatic	complexity	medium	Cyclomatic complexity
+complexity.nesting-depth	complexity	medium	Nesting depth
+dead-code.empty-block	dead-code	low	Empty control-flow block
+docs.exported-symbol-comment	documentation	low	Exported symbol comment
+docs.package-comment	documentation	low	Package comment
+naming.package-underscore	naming	low	Package name contains underscore
+security.shell-command	security	medium	Shell command execution
+sensitive-data.secret-pattern	sensitive-data	high	Secret-like literal
+size.file-length	size	medium	File length
+size.function-length	size	medium	Function length
+size.parameter-count	size	low	Parameter count
+test-quality.skipped-test	test-quality	low	Skipped test

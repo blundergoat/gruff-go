@@ -29,7 +29,7 @@ func (r ParameterCountRule) maxParameters() int {
 func (r ParameterCountRule) Definition() Definition {
 	max := r.maxParameters()
 	return Definition{
-		ID:             "size-parameter-count",
+		ID:             "size.parameter-count",
 		Title:          "Parameter count",
 		Description:    "Flags functions and methods whose parameter list exceeds the configured maximum, excluding the method receiver.",
 		Pillar:         finding.PillarSize,
@@ -99,7 +99,7 @@ func (r NestingDepthRule) maxDepth() int {
 func (r NestingDepthRule) Definition() Definition {
 	max := r.maxDepth()
 	return Definition{
-		ID:             "complexity-nesting-depth",
+		ID:             "complexity.nesting-depth",
 		Title:          "Nesting depth",
 		Description:    "Flags functions whose maximum control-flow nesting depth exceeds the configured threshold. Function literals reset the count.",
 		Pillar:         finding.PillarComplexity,
@@ -215,7 +215,7 @@ type ExportedSymbolCommentRule struct{}
 
 func (ExportedSymbolCommentRule) Definition() Definition {
 	return Definition{
-		ID:             "documentation-exported-symbol-comment",
+		ID:             "docs.exported-symbol-comment",
 		Title:          "Exported symbol comment",
 		Description:    "Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.",
 		Pillar:         finding.PillarDocumentation,

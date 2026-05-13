@@ -19,18 +19,18 @@ func TestDefaultsListRules(t *testing.T) {
 		enabled[definition.ID] = definition.DefaultEnabled
 	}
 	want := []string{
-		"complexity-cyclomatic",
-		"complexity-nesting-depth",
-		"dead-code-empty-block",
-		"documentation-exported-symbol-comment",
-		"documentation-package-comment",
-		"naming-package-underscore",
-		"security-shell-command",
-		"sensitive-data-secret-pattern",
-		"size-file-length",
-		"size-function-length",
-		"size-parameter-count",
-		"test-quality-skipped-test",
+		"complexity.cyclomatic",
+		"complexity.nesting-depth",
+		"dead-code.empty-block",
+		"docs.exported-symbol-comment",
+		"docs.package-comment",
+		"naming.package-underscore",
+		"security.shell-command",
+		"sensitive-data.secret-pattern",
+		"size.file-length",
+		"size.function-length",
+		"size.parameter-count",
+		"test-quality.skipped-test",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("rules = %#v, want %#v", got, want)
@@ -41,24 +41,24 @@ func TestDefaultsListRules(t *testing.T) {
 		}
 	}
 	for _, id := range []string{
-		"complexity-cyclomatic",
-		"documentation-package-comment",
-		"sensitive-data-secret-pattern",
-		"size-file-length",
-		"size-function-length",
+		"complexity.cyclomatic",
+		"docs.package-comment",
+		"sensitive-data.secret-pattern",
+		"size.file-length",
+		"size.function-length",
 	} {
 		if !enabled[id] {
 			t.Fatalf("rule %s should be default enabled", id)
 		}
 	}
 	for _, id := range []string{
-		"complexity-nesting-depth",
-		"dead-code-empty-block",
-		"documentation-exported-symbol-comment",
-		"naming-package-underscore",
-		"security-shell-command",
-		"size-parameter-count",
-		"test-quality-skipped-test",
+		"complexity.nesting-depth",
+		"dead-code.empty-block",
+		"docs.exported-symbol-comment",
+		"naming.package-underscore",
+		"security.shell-command",
+		"size.parameter-count",
+		"test-quality.skipped-test",
 	} {
 		if enabled[id] {
 			t.Fatalf("rule %s should be default disabled", id)
@@ -279,14 +279,14 @@ func empty(a bool) {
 	}
 
 	enabledRegistry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"dead-code-empty-block": true},
+		Enabled: map[string]bool{"dead-code.empty-block": true},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	findings := enabledRegistry.Analyze([]parser.Unit{unit}, Context{})
-	if len(findings) != 1 || findings[0].RuleID != "dead-code-empty-block" {
-		t.Fatalf("enabled findings = %#v, want dead-code-empty-block", findings)
+	if len(findings) != 1 || findings[0].RuleID != "dead-code.empty-block" {
+		t.Fatalf("enabled findings = %#v, want dead-code.empty-block", findings)
 	}
 }
 

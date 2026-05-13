@@ -74,7 +74,7 @@ type findingRule struct{}
 
 func (findingRule) Definition() rule.Definition {
 	return rule.Definition{
-		ID:             "size-file-length",
+		ID:             "size.file-length",
 		Title:          "File length",
 		Pillar:         finding.PillarSize,
 		Severity:       finding.SeverityMedium,
