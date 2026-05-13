@@ -1,0 +1,45 @@
+### AI Agent Local Config ###
+.claude/settings.local.json
+.claude/projects/
+.claude/worktrees/
+.codex/config.local.toml
+.codex/*.local.toml
+/commit.md
+/release.md
+
+### OS / Editor ###
+.DS_Store
+Thumbs.db
+.cursor/
+.grok/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+### Environment / Secrets ###
+.env
+.env.*
+!.env.example
+
+### Go ###
+/bin/
+*.out
+coverage.out
+coverage.html
+go.work
+go.work.sum
+
+### Node / Tooling ###
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+### Build / Runtime ###
+/build/
+/dist/
+/output/
+*.cache
+*.log
