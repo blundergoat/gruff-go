@@ -20,13 +20,16 @@ func TestDefaultsListRules(t *testing.T) {
 	}
 	want := []string{
 		"complexity-cyclomatic",
+		"complexity-nesting-depth",
 		"dead-code-empty-block",
+		"documentation-exported-symbol-comment",
 		"documentation-package-comment",
 		"naming-package-underscore",
 		"security-shell-command",
 		"sensitive-data-secret-pattern",
 		"size-file-length",
 		"size-function-length",
+		"size-parameter-count",
 		"test-quality-skipped-test",
 	}
 	if len(got) != len(want) {
@@ -49,9 +52,12 @@ func TestDefaultsListRules(t *testing.T) {
 		}
 	}
 	for _, id := range []string{
+		"complexity-nesting-depth",
 		"dead-code-empty-block",
+		"documentation-exported-symbol-comment",
 		"naming-package-underscore",
 		"security-shell-command",
+		"size-parameter-count",
 		"test-quality-skipped-test",
 	} {
 		if enabled[id] {

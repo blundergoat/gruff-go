@@ -85,6 +85,50 @@ func TestGoldenBaselineSuppression(t *testing.T) {
 	assertGolden(t, "baseline-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+func TestGoldenOptInExpansionRules(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "expansion.go", expansionFixture())
+	writeFile(t, root, ".gruff.yaml", `
+rules:
+  size.parameter-count:
+    enabled: true
+  complexity.nesting-depth:
+    enabled: true
+  documentation.exported-symbol-comment:
+    enabled: true
+`)
+	t.Chdir(root)
+
+	stdout, stderr, code := runGoldenCLI("analyse", "--format", "summary-json", "expansion.go")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1\nstderr:\n%s\nstdout:\n%s", code, stderr, stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	assertGolden(t, "analyse-opt-in-expansion.golden", normalizeGoldenOutput(root, stdout))
+}
+
+func expansionFixture() string {
+	return `// Package sample is a test package.
+package sample
+
+func Wide(a, b, c, d, e, f int) {
+	if a > 0 {
+		if b > 0 {
+			if c > 0 {
+				if d > 0 {
+					if e > 0 {
+						_ = f
+					}
+				}
+			}
+		}
+	}
+}
+`
+}
+
 func TestGoldenDiffMode(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is required for diff-mode golden coverage")

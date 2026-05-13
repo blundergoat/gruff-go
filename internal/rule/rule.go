@@ -80,6 +80,9 @@ func DefaultsConfigured(config Config) (Registry, error) {
 		EmptyBlockRule{},
 		ShellCommandRule{},
 		SkippedTestRule{},
+		ParameterCountRule{MaxParameters: intThreshold(config, "size-parameter-count", "maxParameters", parameterCountThreshold)},
+		NestingDepthRule{MaxDepth: intThreshold(config, "complexity-nesting-depth", "maxDepth", nestingDepthThreshold)},
+		ExportedSymbolCommentRule{},
 	}, []ProjectRule{
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},

@@ -77,6 +77,42 @@ rules:
 	}
 }
 
+func TestParseAcceptsExpansionRuleConfig(t *testing.T) {
+	cfg, err := ParseFile(".gruff.yaml", []byte(`
+rules:
+  size.parameter-count:
+    enabled: true
+    threshold: 8
+    severity: warning
+  complexity.nesting-depth:
+    enabled: true
+    thresholds:
+      maxDepth: 6
+  documentation.exported-symbol-comment:
+    enabled: true
+    severity: error
+`), rule.Defaults().Definitions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := cfg.RuleOptions()
+	if !options.Enabled["size-parameter-count"] || !options.Enabled["complexity-nesting-depth"] || !options.Enabled["documentation-exported-symbol-comment"] {
+		t.Fatalf("enabled map = %#v, want all three M06 rules enabled", options.Enabled)
+	}
+	if options.Thresholds["size-parameter-count"]["maxParameters"] != 8 {
+		t.Fatalf("thresholds = %#v, want size-parameter-count maxParameters=8", options.Thresholds)
+	}
+	if options.Thresholds["complexity-nesting-depth"]["maxDepth"] != 6 {
+		t.Fatalf("thresholds = %#v, want complexity-nesting-depth maxDepth=6", options.Thresholds)
+	}
+	if options.Severities["size-parameter-count"] != "medium" {
+		t.Fatalf("severities = %#v, want warning alias mapped to medium for size-parameter-count", options.Severities)
+	}
+	if options.Severities["documentation-exported-symbol-comment"] != "high" {
+		t.Fatalf("severities = %#v, want error alias mapped to high for documentation-exported-symbol-comment", options.Severities)
+	}
+}
+
 func TestParseRejectsInvalidConfig(t *testing.T) {
 	tests := []struct {
 		name string
@@ -90,6 +126,8 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "invalid threshold", json: `{"rules": {"size-file-length": {"thresholds": {"maxLines": 0}}}}`, want: "must be positive"},
 		{name: "invalid ignore", json: `{"ignorePaths": ["../outside"]}`, want: "must stay inside"},
 		{name: "invalid abbreviation", json: `{"acceptedAbbreviations": ["id"]}`, want: "must be uppercase"},
+		{name: "unknown threshold on parameter-count", json: `{"rules": {"size-parameter-count": {"thresholds": {"maxArgs": 3}}}}`, want: "unknown threshold"},
+		{name: "invalid threshold on nesting-depth", json: `{"rules": {"complexity-nesting-depth": {"thresholds": {"maxDepth": 0}}}}`, want: "must be positive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

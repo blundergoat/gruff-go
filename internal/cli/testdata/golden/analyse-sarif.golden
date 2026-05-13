@@ -29,6 +29,29 @@
               }
             },
             {
+              "id": "complexity-nesting-depth",
+              "name": "Nesting depth",
+              "shortDescription": {
+                "text": "Nesting depth"
+              },
+              "fullDescription": {
+                "text": "Flags functions whose maximum control-flow nesting depth exceeds the configured threshold. Function literals reset the count."
+              },
+              "help": {
+                "text": "Extract nested branches into named helpers or return early on guard conditions."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "confidence": "high",
+                "tags": [
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "dead-code-empty-block",
               "name": "Empty control-flow block",
               "shortDescription": {
@@ -42,6 +65,29 @@
               },
               "properties": {
                 "pillar": "dead-code",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "documentation-exported-symbol-comment",
+              "name": "Exported symbol comment",
+              "shortDescription": {
+                "text": "Exported symbol comment"
+              },
+              "fullDescription": {
+                "text": "Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment."
+              },
+              "help": {
+                "text": "Add a Go-style doc comment that begins with the symbol name."
+              },
+              "properties": {
+                "pillar": "documentation",
                 "confidence": "medium",
                 "tags": [
                   "opt-in"
@@ -180,6 +226,29 @@
               },
               "defaultConfiguration": {
                 "level": "warning"
+              }
+            },
+            {
+              "id": "size-parameter-count",
+              "name": "Parameter count",
+              "shortDescription": {
+                "text": "Parameter count"
+              },
+              "fullDescription": {
+                "text": "Flags functions and methods whose parameter list exceeds the configured maximum, excluding the method receiver."
+              },
+              "help": {
+                "text": "Group related parameters into a struct, accept an options type, or split the function."
+              },
+              "properties": {
+                "pillar": "size",
+                "confidence": "high",
+                "tags": [
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
               }
             },
             {
