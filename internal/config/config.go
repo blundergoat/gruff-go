@@ -184,6 +184,7 @@ func (cfg Config) RuleOptions() rule.Config {
 		Enabled:                       map[string]bool{},
 		Thresholds:                    map[string]map[string]float64{},
 		Severities:                    map[string]finding.Severity{},
+		Options:                       map[string]map[string]any{},
 		SensitiveDataPreviewAllowlist: cfg.SensitiveData.PreviewAllowlist,
 	}
 	cfg = cfg.Normalized()
@@ -224,6 +225,9 @@ func (cfg Config) RuleOptions() rule.Config {
 		if ruleConfig.Severity != "" {
 			severity, _ := parseConfigSeverity(ruleConfig.Severity)
 			options.Severities[canonical] = severity
+		}
+		if len(ruleConfig.Options) > 0 {
+			options.Options[canonical] = ruleConfig.Options
 		}
 	}
 	for _, id := range cfg.ExcludeRules {

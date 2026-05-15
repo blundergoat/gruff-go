@@ -118,6 +118,30 @@
               }
             },
             {
+              "id": "naming.identifier-quality",
+              "name": "Identifier quality",
+              "shortDescription": {
+                "text": "Identifier quality"
+              },
+              "fullDescription": {
+                "text": "Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review."
+              },
+              "help": {
+                "text": "Rename the identifier to something that names its role, or remove it if it is no longer needed."
+              },
+              "properties": {
+                "pillar": "naming",
+                "confidence": "medium",
+                "tags": [
+                  "naming",
+                  "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "naming.package-underscore",
               "name": "Package name contains underscore",
               "shortDescription": {
@@ -166,6 +190,102 @@
               },
               "defaultConfiguration": {
                 "level": "warning"
+              }
+            },
+            {
+              "id": "sensitive-data.aws-access-key",
+              "name": "AWS access key id",
+              "shortDescription": {
+                "text": "AWS access key id"
+              },
+              "fullDescription": {
+                "text": "Flags AWS access key identifiers (AKIA...) embedded in source or text files."
+              },
+              "help": {
+                "text": "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "confidence": "high",
+                "tags": [
+                  "opt-in",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.connection-string",
+              "name": "Connection string with embedded password",
+              "shortDescription": {
+                "text": "Connection string with embedded password"
+              },
+              "fullDescription": {
+                "text": "Flags database/queue connection URLs that embed a username and password in the URI."
+              },
+              "help": {
+                "text": "Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.jwt-token",
+              "name": "JWT token literal",
+              "shortDescription": {
+                "text": "JWT token literal"
+              },
+              "fullDescription": {
+                "text": "Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files."
+              },
+              "help": {
+                "text": "Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.private-key",
+              "name": "Embedded private key",
+              "shortDescription": {
+                "text": "Embedded private key"
+              },
+              "fullDescription": {
+                "text": "Flags PEM-encoded private keys embedded directly in source or text files."
+              },
+              "help": {
+                "text": "Remove the key and load it from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "confidence": "high",
+                "tags": [
+                  "opt-in",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
               }
             },
             {
@@ -245,6 +365,54 @@
                 "confidence": "high",
                 "tags": [
                   "opt-in"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.empty-test",
+              "name": "Empty test",
+              "shortDescription": {
+                "text": "Empty test"
+              },
+              "fullDescription": {
+                "text": "Flags Go test functions whose body contains no executable statements."
+              },
+              "help": {
+                "text": "Add an assertion that exercises the behaviour the test name claims, or remove the empty test."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "confidence": "high",
+                "tags": [
+                  "opt-in",
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.no-failure-path",
+              "name": "Test cannot fail",
+              "shortDescription": {
+                "text": "Test cannot fail"
+              },
+              "fullDescription": {
+                "text": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.)."
+              },
+              "help": {
+                "text": "Add an assertion or document why the test cannot fail."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "confidence": "medium",
+                "tags": [
+                  "opt-in",
+                  "tests"
                 ]
               },
               "defaultConfiguration": {

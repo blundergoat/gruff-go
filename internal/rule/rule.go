@@ -17,6 +17,7 @@ type Config struct {
 	Enabled                       map[string]bool
 	Thresholds                    map[string]map[string]float64
 	Severities                    map[string]finding.Severity
+	Options                       map[string]map[string]any
 	SensitiveDataPreviewAllowlist []string
 }
 
@@ -83,6 +84,13 @@ func DefaultsConfigured(config Config) (Registry, error) {
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
 		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
 		ExportedSymbolCommentRule{},
+		PrivateKeyRule{},
+		AWSAccessKeyRule{},
+		JWTTokenRule{},
+		ConnectionStringRule{},
+		IdentifierQualityRule{PlaceholderNames: stringSliceOption(config, "naming.identifier-quality", "placeholderNames")},
+		EmptyTestRule{},
+		NoFailurePathTestRule{},
 	}, []ProjectRule{
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
@@ -235,6 +243,28 @@ func locationColumn(f finding.Finding) int {
 		return 0
 	}
 	return f.Location.Column
+}
+
+func stringSliceOption(config Config, ruleID, key string) []string {
+	options, ok := config.Options[ruleID]
+	if !ok {
+		return nil
+	}
+	value, ok := options[key]
+	if !ok {
+		return nil
+	}
+	raw, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if str, ok := item.(string); ok && str != "" {
+			out = append(out, str)
+		}
+	}
+	return out
 }
 
 func intThreshold(config Config, ruleID string, name string, fallback int) int {
