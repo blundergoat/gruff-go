@@ -40,7 +40,7 @@ func TestMachineReportFormats(t *testing.T) {
 	if err := WriteSummaryJSON(&summary, report); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.String(), `"findingsCount": 1`) || strings.Contains(summary.String(), `"findings":`) {
+	if !strings.Contains(summary.String(), `"findingsCount": 1`) || strings.Contains(summary.String(), `"findings": [`) {
 		t.Fatalf("summary output = %s", summary.String())
 	}
 

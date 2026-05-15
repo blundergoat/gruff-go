@@ -28,6 +28,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runBaseline(args[1:], stdout, stderr)
 	case "list-rules":
 		return runListRules(args[1:], stdout, stderr)
+	case "dashboard":
+		return runDashboard(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return 0
@@ -41,7 +43,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, or github")
+	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
 	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
@@ -51,11 +53,17 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
+	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
+	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 	if !supportedAnalysisFormat(*format) {
 		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
+		return 2
+	}
+	if !supportedEditorLink(*editorLink) {
+		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return 2
 	}
 	failOn, err := finding.ParseSeverity(*minSeverity)
@@ -87,14 +95,14 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)
-	if err := writeAnalysisReport(stdout, *format, analysisReport); err != nil {
+	if err := writeAnalysisReport(stdout, *format, analysisReport, report.HTMLOptions{EditorLink: *editorLink, Interactive: *reportInteractive}); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	return analysisReport.Summary.ExitCode
 }
 
-func writeAnalysisReport(writer io.Writer, format string, analysisReport analysis.Report) error {
+func writeAnalysisReport(writer io.Writer, format string, analysisReport analysis.Report, htmlOpts report.HTMLOptions) error {
 	switch format {
 	case "json":
 		return report.WriteJSON(writer, analysisReport)
@@ -104,6 +112,8 @@ func writeAnalysisReport(writer io.Writer, format string, analysisReport analysi
 		return report.WriteSARIF(writer, analysisReport)
 	case "github":
 		return report.WriteGitHub(writer, analysisReport)
+	case "html":
+		return report.WriteHTML(writer, analysisReport, htmlOpts)
 	default:
 		return report.WriteText(writer, analysisReport)
 	}
@@ -194,9 +204,10 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 
 func usage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage:")
-	fmt.Fprintln(writer, "  gruff-go analyse [--format text|json|summary-json|sarif|github] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]")
+	fmt.Fprintln(writer, "  gruff-go analyse [--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]")
 	fmt.Fprintln(writer, "  gruff-go baseline --out path [--config path|--no-config] [path ...]")
 	fmt.Fprintln(writer, "  gruff-go list-rules [--format text|json] [--config path|--no-config]")
+	fmt.Fprintln(writer, "  gruff-go dashboard [--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]")
 }
 
 func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, error) {
@@ -222,7 +233,16 @@ func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []stri
 
 func supportedAnalysisFormat(format string) bool {
 	switch format {
-	case "text", "json", "summary-json", "sarif", "github":
+	case "text", "json", "summary-json", "sarif", "github", "html":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportedEditorLink(value string) bool {
+	switch value {
+	case "none", "vscode", "phpstorm":
 		return true
 	default:
 		return false

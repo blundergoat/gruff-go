@@ -52,7 +52,15 @@
     "composite": 100,
     "grade": "A",
     "pillars": {},
-    "topOffenders": []
+    "pillarDetails": [],
+    "topOffenders": [],
+    "complexityDistribution": {
+      "1-5": 0,
+      "11-15": 0,
+      "16-20": 0,
+      "21+": 0,
+      "6-10": 0
+    }
   },
   "diagnostics": []
 }
