@@ -16,11 +16,27 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+const toolVersion = "0.1.0-dev"
+
 func Main(args []string, stdout, stderr io.Writer) int {
+	args, ansiPref := extractAnsiFlags(args)
+	args, quiet := extractQuiet(args)
+	if quiet {
+		stdout = io.Discard
+	}
+	stdoutStyle := ansiStyler{enabled: ansiEnabled(stdout, ansiPref)}
+	stderrStyle := ansiStyler{enabled: ansiEnabled(stderr, ansiPref)}
+
 	if len(args) == 0 {
-		usage(stderr)
+		usage(stderr, stderrStyle)
 		return 2
 	}
+
+	if isVersionFlag(args[0]) {
+		fmt.Fprintf(stdout, "gruff-go %s\n", toolVersion)
+		return 0
+	}
+
 	switch args[0] {
 	case "analyse", "analyze":
 		return runAnalyse(args[1:], stdout, stderr)
@@ -28,14 +44,72 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runBaseline(args[1:], stdout, stderr)
 	case "list-rules":
 		return runListRules(args[1:], stdout, stderr)
+	case "summary":
+		return runSummary(args[1:], stdout, stderr)
+	case "report":
+		return runReport(args[1:], stdout, stderr)
 	case "dashboard":
 		return runDashboard(args[1:], stdout, stderr)
+	case "list":
+		usage(stdout, stdoutStyle)
+		return 0
 	case "help", "-h", "--help":
-		usage(stdout)
+		if len(args) > 1 {
+			return helpForCommand(args[1], stdout, stderr, stdoutStyle, stderrStyle)
+		}
+		usage(stdout, stdoutStyle)
 		return 0
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
-		usage(stderr)
+		usage(stderr, stderrStyle)
+		return 2
+	}
+}
+
+// extractQuiet removes -q / --quiet from args and returns the result plus a
+// boolean indicating whether quiet mode was requested. The flag can appear at
+// any position.
+func extractQuiet(args []string) ([]string, bool) {
+	out := make([]string, 0, len(args))
+	quiet := false
+	for _, arg := range args {
+		switch arg {
+		case "-q", "--quiet":
+			quiet = true
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out, quiet
+}
+
+func isVersionFlag(arg string) bool {
+	return arg == "-V" || arg == "--version"
+}
+
+func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrStyle ansiStyler) int {
+	switch name {
+	case "analyse", "analyze":
+		fmt.Fprintf(stdout, "  %s [--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]\n", stdoutStyle.green("gruff-go analyse"))
+		return 0
+	case "baseline":
+		fmt.Fprintf(stdout, "  %s --out path [--config path|--no-config] [path ...]\n", stdoutStyle.green("gruff-go baseline"))
+		return 0
+	case "list-rules":
+		fmt.Fprintf(stdout, "  %s [--format text|json] [--config path|--no-config]\n", stdoutStyle.green("gruff-go list-rules"))
+		return 0
+	case "summary":
+		fmt.Fprintf(stdout, "  %s [--format text|json] [--top N] [--config path|--no-config] [--include-ignored] [path ...]\n", stdoutStyle.green("gruff-go summary"))
+		return 0
+	case "report":
+		fmt.Fprintf(stdout, "  %s [--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]\n", stdoutStyle.green("gruff-go report"))
+		return 0
+	case "dashboard":
+		fmt.Fprintf(stdout, "  %s [--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]\n", stdoutStyle.green("gruff-go dashboard"))
+		return 0
+	default:
+		fmt.Fprintf(stderr, "unknown command %q\n", name)
+		usage(stderr, stderrStyle)
 		return 2
 	}
 }
@@ -202,12 +276,68 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func usage(writer io.Writer) {
-	fmt.Fprintln(writer, "Usage:")
-	fmt.Fprintln(writer, "  gruff-go analyse [--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]")
-	fmt.Fprintln(writer, "  gruff-go baseline --out path [--config path|--no-config] [path ...]")
-	fmt.Fprintln(writer, "  gruff-go list-rules [--format text|json] [--config path|--no-config]")
-	fmt.Fprintln(writer, "  gruff-go dashboard [--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]")
+func usage(writer io.Writer, style ansiStyler) {
+	fmt.Fprintf(writer, "%s %s\n\n", style.bold("gruff-go"), toolVersion)
+	fmt.Fprintln(writer, style.yellow("Usage:"))
+	fmt.Fprintln(writer, "  gruff-go [--version] [-q|--quiet] [--ansi|--no-ansi] <command> [options] [arguments]")
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, style.yellow("Available commands:"))
+	for _, cmd := range commandList {
+		fmt.Fprintf(writer, "  %s  %s\n", padCommandName(style.green(cmd.name), cmd.name), cmd.description)
+	}
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, style.yellow("Global options:"))
+	for _, opt := range globalOptions {
+		fmt.Fprintf(writer, "  %s  %s\n", padOptionName(style.green(opt.flag), opt.flag), opt.description)
+	}
+	fmt.Fprintln(writer)
+	fmt.Fprintf(writer, "Run %s for the per-command flag list.\n", style.green("\"gruff-go help <command>\""))
+}
+
+type commandDescription struct {
+	name        string
+	description string
+}
+
+type optionDescription struct {
+	flag        string
+	description string
+}
+
+var commandList = []commandDescription{
+	{"analyse", "Run the rule registry over the supplied paths and emit a report."},
+	{"baseline", "Write a JSON baseline of current findings for use with --baseline."},
+	{"dashboard", "Serve the local gruff-go dashboard."},
+	{"help", "Display help for a command, or the command list if none is given."},
+	{"list", "List the available commands."},
+	{"list-rules", "List gruff rule metadata."},
+	{"report", "Render a gruff report to stdout or a file."},
+	{"summary", "Print a compact digest of a scan: score, per-pillar counts, top rules and offenders."},
+}
+
+var globalOptions = []optionDescription{
+	{"-h, --help", "Display help. Use \"gruff-go help <command>\" for command-specific help."},
+	{"-V, --version", "Display the gruff-go version."},
+	{"-q, --quiet", "Only errors are displayed; non-error output is suppressed."},
+	{"    --ansi", "Force ANSI colour output."},
+	{"    --no-ansi", "Disable ANSI colour output."},
+}
+
+const commandNameWidth = 10
+const optionFlagWidth = 13
+
+func padCommandName(coloured, plain string) string {
+	if width := commandNameWidth - len(plain); width > 0 {
+		return coloured + strings.Repeat(" ", width)
+	}
+	return coloured
+}
+
+func padOptionName(coloured, plain string) string {
+	if width := optionFlagWidth - len(plain); width > 0 {
+		return coloured + strings.Repeat(" ", width)
+	}
+	return coloured
 }
 
 func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, error) {
