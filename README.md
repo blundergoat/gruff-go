@@ -62,11 +62,25 @@ gruff-go analyse --baseline gruff-baseline.json .
 | Command | Purpose |
 |---------|---------|
 | `analyse` | Run the rule registry over the supplied paths and emit a report in the chosen format. The main command. |
+| `summary` | Print a compact digest of a scan — composite score, per-pillar counts, top rules, top file offenders. |
+| `report` | Convenience wrapper around `analyse` for static HTML or JSON reports written to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a JSON baseline so subsequent runs can suppress them. |
 | `list-rules` | Print rule metadata (id, pillar, default severity, threshold defaults) as text or JSON. |
+| `list` | List the available commands (same output as `--help`). |
 | `dashboard` | Serve a local interactive dashboard (default `127.0.0.1:8765`) that re-runs scans on demand from a browser. |
+| `help` | Display help for the given command, or the command list when no command is named. |
 
-`gruff-go --help` prints the full flag list.
+`gruff-go --help` prints the full flag list. Run `gruff-go help <command>` for per-command flags.
+
+## Global flags
+
+| Flag | Purpose |
+|------|---------|
+| `-h`, `--help` | Display help. Use `gruff-go help <command>` for command-specific help. |
+| `-V`, `--version` | Display the gruff-go version. |
+| `-q`, `--quiet` | Only errors are displayed; non-error stdout output is suppressed. |
+| `--ansi` | Force ANSI colour output (auto-detected when omitted). |
+| `--no-ansi` | Disable ANSI colour output. Honours `NO_COLOR` and `TERM=dumb`. |
 
 ## Output formats
 
