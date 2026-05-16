@@ -280,7 +280,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 
 Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call — `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
 
-The rule walks the function body looking for any selector call ending in one of those names. It does not currently model helper-function indirection, so a test whose only assertion lives in a separate helper will be flagged. When that happens, either inline the assertion or document the convention in the helper's name (a future iteration may grow option-driven helper allowlists).
+The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It does not currently model helper-function indirection, so a test whose only assertion lives in a separate helper will be flagged. When that happens, either inline the assertion or document the convention in the helper's name (a future iteration may grow option-driven helper allowlists).
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
 

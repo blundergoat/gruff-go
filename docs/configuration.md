@@ -94,17 +94,17 @@ allowlists:
 
 ### `selection`
 
-Four lists that filter which findings appear in the report **without** changing how rules execute. The display filter is also reachable through the CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars`; the CLI values win when both are set.
+Four lists that change which rules execute. `rules` and `pillars` create an allowlist when non-empty; `excludeRules` and `excludePillars` remove rules after that allowlist is applied. Because unselected rules do not run, config selection changes findings, score, and exit code.
 
 ```yaml
 selection:
-  rules: []                          # allowlist
-  excludeRules: ["docs.package-comment"]
-  pillars: ["security", "complexity"]
-  excludePillars: ["modernisation"]
+  rules: []                           # run only these rule IDs when non-empty
+  excludeRules: ["docs.package-comment"] # disable these rule IDs
+  pillars: ["security", "complexity"] # run only these pillars when non-empty
+  excludePillars: ["modernisation"]   # disable these pillars
 ```
 
-The report records the active filter in `displayFilter` so downstream consumers can detect that the scan was filtered. Score and exit code use the full unfiltered finding set; only the rendered list of findings is hidden.
+The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.
 
 ### `rules.<rule-id>`
 

@@ -110,10 +110,19 @@ func TestNoFailurePathRuleFlagsAssertionlessTests(t *testing.T) {
 
 import "testing"
 
+type customErr struct{}
+
+func (customErr) Error() string { return "nope" }
+
 func TestNoAssertion(t *testing.T) {
 	t.Log("running")
 	value := 1 + 1
 	_ = value
+}
+
+func TestOnlyErrorString(t *testing.T) {
+	err := customErr{}
+	_ = err.Error()
 }
 
 func TestWithFatal(t *testing.T) {
@@ -126,12 +135,24 @@ func TestWithError(t *testing.T) {
 	t.Error("nope")
 }
 
+func BenchmarkWithFatal(b *testing.B) {
+	b.Fatal("broken")
+}
+
+func FuzzWithFatal(f *testing.F) {
+	f.Fatal("broken")
+}
+
 func TestEmpty(t *testing.T) {
 }
 `)
 	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
-	if len(findings) != 1 || findings[0].Symbol != "TestNoAssertion" {
-		t.Fatalf("expected single finding for TestNoAssertion; got %#v", findings)
+	got := map[string]bool{}
+	for _, finding := range findings {
+		got[finding.Symbol] = true
+	}
+	if len(got) != 2 || !got["TestNoAssertion"] || !got["TestOnlyErrorString"] {
+		t.Fatalf("expected findings for assertionless tests; got %#v", findings)
 	}
 }
 
