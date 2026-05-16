@@ -45,7 +45,8 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 				SemanticVersion: report.Tool.Version,
 				Rules:           sarifRules(report.Rules),
 			}},
-			Results: sarifResults(report.Findings),
+			Results:    sarifResults(report.Findings, report.Rules),
+			Properties: sarifRunPropertiesFromReport(report),
 		}},
 	}
 	return WriteJSON(writer, payload)
@@ -71,8 +72,9 @@ type sarifLog struct {
 }
 
 type sarifRun struct {
-	Tool    sarifTool     `json:"tool"`
-	Results []sarifResult `json:"results"`
+	Tool       sarifTool          `json:"tool"`
+	Results    []sarifResult      `json:"results"`
+	Properties sarifRunProperties `json:"properties"`
 }
 
 type sarifTool struct {
@@ -102,8 +104,12 @@ type sarifDefaultConfiguration struct {
 type sarifRuleProperty struct {
 	Pillar           finding.Pillar     `json:"pillar"`
 	SecondaryPillars []finding.Pillar   `json:"secondaryPillars,omitempty"`
+	DefaultSeverity  finding.Severity   `json:"defaultSeverity"`
 	Confidence       finding.Confidence `json:"confidence"`
+	DefaultEnabled   bool               `json:"defaultEnabled"`
 	Tags             []string           `json:"tags,omitempty"`
+	Thresholds       map[string]float64 `json:"thresholds,omitempty"`
+	Options          map[string]any     `json:"options,omitempty"`
 }
 
 type sarifText struct {
@@ -112,11 +118,18 @@ type sarifText struct {
 
 type sarifResult struct {
 	RuleID              string            `json:"ruleId"`
+	RuleIndex           *int              `json:"ruleIndex,omitempty"`
 	Level               string            `json:"level"`
 	Message             sarifText         `json:"message"`
 	Locations           []sarifLocation   `json:"locations"`
 	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
 	Properties          map[string]any    `json:"properties"`
+}
+
+type sarifRunProperties struct {
+	GruffSchemaVersion string `json:"gruffSchemaVersion"`
+	Score              int    `json:"score"`
+	Grade              string `json:"grade"`
 }
 
 type sarifLocation struct {
@@ -125,7 +138,7 @@ type sarifLocation struct {
 
 type sarifPhysicalLocation struct {
 	ArtifactLocation sarifArtifactLocation `json:"artifactLocation"`
-	Region           sarifRegion           `json:"region,omitempty"`
+	Region           *sarifRegion          `json:"region,omitempty"`
 }
 
 type sarifArtifactLocation struct {
@@ -153,15 +166,23 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 			Properties: sarifRuleProperty{
 				Pillar:           definition.Pillar,
 				SecondaryPillars: definition.SecondaryPillars,
+				DefaultSeverity:  definition.Severity,
 				Confidence:       definition.Confidence,
+				DefaultEnabled:   definition.DefaultEnabled,
 				Tags:             definition.Tags,
+				Thresholds:       definition.Thresholds,
+				Options:          definition.Options,
 			},
 		})
 	}
 	return out
 }
 
-func sarifResults(findings []finding.Finding) []sarifResult {
+func sarifResults(findings []finding.Finding, definitions []rule.Definition) []sarifResult {
+	ruleIndices := map[string]int{}
+	for index, definition := range definitions {
+		ruleIndices[definition.ID] = index
+	}
 	out := make([]sarifResult, 0, len(findings))
 	for _, item := range findings {
 		result := sarifResult{
@@ -170,11 +191,11 @@ func sarifResults(findings []finding.Finding) []sarifResult {
 			Message: sarifText{Text: item.Message},
 			Locations: []sarifLocation{{
 				PhysicalLocation: sarifPhysicalLocation{
-					ArtifactLocation: sarifArtifactLocation{URI: item.File},
+					ArtifactLocation: sarifArtifactLocation{URI: sarifURI(item.File)},
 					Region:           sarifRegionFromFinding(item),
 				},
 			}},
-			PartialFingerprints: map[string]string{"primary": item.Fingerprint},
+			PartialFingerprints: map[string]string{"gruffFingerprint": item.Fingerprint},
 			Properties: map[string]any{
 				"confidence":  item.Confidence,
 				"fingerprint": item.Fingerprint,
@@ -182,27 +203,52 @@ func sarifResults(findings []finding.Finding) []sarifResult {
 				"severity":    item.Severity,
 			},
 		}
+		if ruleIndex, ok := ruleIndices[item.RuleID]; ok {
+			result.RuleIndex = &ruleIndex
+		}
+		if len(item.SecondaryPillars) > 0 {
+			result.Properties["secondaryPillars"] = item.SecondaryPillars
+		}
 		if item.Symbol != "" {
 			result.Properties["symbol"] = item.Symbol
+		}
+		if item.Remediation != "" {
+			result.Properties["remediation"] = item.Remediation
+		}
+		if len(item.Metadata) > 0 {
+			result.Properties["metadata"] = item.Metadata
 		}
 		out = append(out, result)
 	}
 	return out
 }
 
-func sarifRegionFromFinding(item finding.Finding) sarifRegion {
-	if item.Location == nil {
-		return sarifRegion{}
+func sarifRegionFromFinding(item finding.Finding) *sarifRegion {
+	if item.Location == nil || item.Location.Line == 0 {
+		return nil
 	}
 	region := sarifRegion{
 		StartLine:   item.Location.Line,
 		StartColumn: item.Location.Column,
 		EndLine:     item.Location.EndLine,
 	}
-	if region.EndLine == 0 || region.EndLine < region.StartLine {
-		region.EndLine = region.StartLine
+	return &region
+}
+
+func sarifURI(path string) string {
+	path = strings.ReplaceAll(path, "\\", "/")
+	for strings.HasPrefix(path, "./") {
+		path = strings.TrimPrefix(path, "./")
 	}
-	return region
+	return path
+}
+
+func sarifRunPropertiesFromReport(report analysis.Report) sarifRunProperties {
+	return sarifRunProperties{
+		GruffSchemaVersion: report.SchemaVersion,
+		Score:              report.Score.Composite,
+		Grade:              report.Score.Grade,
+	}
 }
 
 func sarifLevel(severity finding.Severity) string {

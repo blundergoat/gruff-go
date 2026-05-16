@@ -92,7 +92,7 @@ The `--format github` output is one workflow command per finding, so each one sh
           category: gruff-go
 ```
 
-Code Scanning will track findings over time, surface them in the Security tab, and dedupe across runs using the `partialFingerprints.primary` value `gruff-go` emits.
+Code Scanning will track findings over time, surface them in the Security tab, and dedupe across runs using the `partialFingerprints.gruffFingerprint` value `gruff-go` emits.
 
 ### Archive the HTML report as an artefact
 

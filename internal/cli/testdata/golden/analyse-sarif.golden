@@ -22,7 +22,12 @@
               },
               "properties": {
                 "pillar": "complexity",
-                "confidence": "high"
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxComplexity": 20
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -42,10 +47,15 @@
               },
               "properties": {
                 "pillar": "complexity",
+                "defaultSeverity": "medium",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
-                ]
+                ],
+                "thresholds": {
+                  "maxDepth": 4
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -65,7 +75,9 @@
               },
               "properties": {
                 "pillar": "dead-code",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
                 ]
@@ -92,7 +104,9 @@
                   "size",
                   "complexity"
                 ],
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "composite",
                   "opt-in"
@@ -116,11 +130,17 @@
               },
               "properties": {
                 "pillar": "design",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "composite",
                   "opt-in"
-                ]
+                ],
+                "thresholds": {
+                  "minFindings": 3,
+                  "minPillars": 2
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -140,10 +160,15 @@
               },
               "properties": {
                 "pillar": "documentation",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
-                ]
+                ],
+                "options": {
+                  "ignoreInternalPackages": true
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -163,7 +188,9 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "confidence": "high"
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "defaultEnabled": true
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -183,11 +210,29 @@
               },
               "properties": {
                 "pillar": "naming",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "naming",
                   "opt-in"
-                ]
+                ],
+                "options": {
+                  "placeholderNames": [
+                    "data",
+                    "info",
+                    "obj",
+                    "tmp",
+                    "temp",
+                    "foo",
+                    "bar",
+                    "baz",
+                    "qux",
+                    "todo",
+                    "thing",
+                    "stuff"
+                  ]
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -207,7 +252,9 @@
               },
               "properties": {
                 "pillar": "naming",
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "opt-in"
@@ -234,7 +281,9 @@
                 "secondaryPillars": [
                   "sensitive-data"
                 ],
+                "defaultSeverity": "medium",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "security"
@@ -258,7 +307,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "high",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -282,7 +333,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "high",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -306,7 +359,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "high",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -330,7 +385,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "critical",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -354,7 +411,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "confidence": "medium"
+                "defaultSeverity": "high",
+                "confidence": "medium",
+                "defaultEnabled": true
               },
               "defaultConfiguration": {
                 "level": "error"
@@ -374,7 +433,12 @@
               },
               "properties": {
                 "pillar": "size",
-                "confidence": "high"
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxLines": 400
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -394,7 +458,12 @@
               },
               "properties": {
                 "pillar": "size",
-                "confidence": "high"
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxLines": 80
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -414,10 +483,15 @@
               },
               "properties": {
                 "pillar": "size",
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
-                ]
+                ],
+                "thresholds": {
+                  "maxParameters": 5
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -437,7 +511,9 @@
               },
               "properties": {
                 "pillar": "test-quality",
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -461,7 +537,9 @@
               },
               "properties": {
                 "pillar": "test-quality",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -485,7 +563,9 @@
               },
               "properties": {
                 "pillar": "test-quality",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -501,6 +581,7 @@
       "results": [
         {
           "ruleId": "complexity.cyclomatic",
+          "ruleIndex": 0,
           "level": "warning",
           "message": {
             "text": "function cyclomatic complexity is 22, above threshold 20"
@@ -519,17 +600,27 @@
             }
           ],
           "partialFingerprints": {
-            "primary": "eb7055e051158304"
+            "gruffFingerprint": "eb7055e051158304"
           },
           "properties": {
             "confidence": "high",
             "fingerprint": "eb7055e051158304",
+            "metadata": {
+              "complexity": 22,
+              "threshold": 20
+            },
             "pillar": "complexity",
+            "remediation": "Split independent decisions or move branches into named helpers.",
             "severity": "medium",
             "symbol": "risky"
           }
         }
-      ]
+      ],
+      "properties": {
+        "gruffSchemaVersion": "gruff-go.analysis.v0.1",
+        "score": 92,
+        "grade": "A"
+      }
     }
   ]
 }

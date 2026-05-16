@@ -22,7 +22,12 @@
               },
               "properties": {
                 "pillar": "complexity",
-                "confidence": "high"
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxComplexity": 2
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -42,10 +47,15 @@
               },
               "properties": {
                 "pillar": "complexity",
+                "defaultSeverity": "medium",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
-                ]
+                ],
+                "thresholds": {
+                  "maxDepth": 4
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -65,7 +75,9 @@
               },
               "properties": {
                 "pillar": "dead-code",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
                 ]
@@ -92,7 +104,9 @@
                   "size",
                   "complexity"
                 ],
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": true,
                 "tags": [
                   "composite",
                   "opt-in"
@@ -116,11 +130,17 @@
               },
               "properties": {
                 "pillar": "design",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "composite",
                   "opt-in"
-                ]
+                ],
+                "thresholds": {
+                  "minFindings": 3,
+                  "minPillars": 2
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -140,10 +160,15 @@
               },
               "properties": {
                 "pillar": "documentation",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
-                ]
+                ],
+                "options": {
+                  "ignoreInternalPackages": true
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -163,7 +188,9 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "confidence": "high"
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "defaultEnabled": true
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -183,11 +210,29 @@
               },
               "properties": {
                 "pillar": "naming",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "naming",
                   "opt-in"
-                ]
+                ],
+                "options": {
+                  "placeholderNames": [
+                    "data",
+                    "info",
+                    "obj",
+                    "tmp",
+                    "temp",
+                    "foo",
+                    "bar",
+                    "baz",
+                    "qux",
+                    "todo",
+                    "thing",
+                    "stuff"
+                  ]
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -207,7 +252,9 @@
               },
               "properties": {
                 "pillar": "naming",
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "opt-in"
@@ -234,7 +281,9 @@
                 "secondaryPillars": [
                   "sensitive-data"
                 ],
+                "defaultSeverity": "medium",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "security"
@@ -258,7 +307,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "high",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -282,7 +333,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "high",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -306,7 +359,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "high",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -330,7 +385,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
+                "defaultSeverity": "critical",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -354,7 +411,9 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "confidence": "medium"
+                "defaultSeverity": "high",
+                "confidence": "medium",
+                "defaultEnabled": true
               },
               "defaultConfiguration": {
                 "level": "error"
@@ -374,7 +433,12 @@
               },
               "properties": {
                 "pillar": "size",
-                "confidence": "high"
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxLines": 400
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -394,7 +458,12 @@
               },
               "properties": {
                 "pillar": "size",
-                "confidence": "high"
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxLines": 4
+                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -414,10 +483,15 @@
               },
               "properties": {
                 "pillar": "size",
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in"
-                ]
+                ],
+                "thresholds": {
+                  "maxParameters": 5
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -437,7 +511,9 @@
               },
               "properties": {
                 "pillar": "test-quality",
+                "defaultSeverity": "low",
                 "confidence": "high",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -461,7 +537,9 @@
               },
               "properties": {
                 "pillar": "test-quality",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -485,7 +563,9 @@
               },
               "properties": {
                 "pillar": "test-quality",
+                "defaultSeverity": "low",
                 "confidence": "medium",
+                "defaultEnabled": false,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -501,6 +581,7 @@
       "results": [
         {
           "ruleId": "design.god-function",
+          "ruleIndex": 3,
           "level": "note",
           "message": {
             "text": "function Hot combines size and complexity findings"
@@ -510,24 +591,42 @@
               "physicalLocation": {
                 "artifactLocation": {
                   "uri": "composite.go"
-                },
-                "region": {}
+                }
               }
             }
           ],
           "partialFingerprints": {
-            "primary": "4a10c037e95fba2e"
+            "gruffFingerprint": "4a10c037e95fba2e"
           },
           "properties": {
             "confidence": "high",
             "fingerprint": "4a10c037e95fba2e",
+            "metadata": {
+              "complexityFindings": 1,
+              "primaryLine": 4,
+              "ruleIds": [
+                "complexity.cyclomatic",
+                "size.function-length"
+              ],
+              "sizeFindings": 1,
+              "underlyingFingerprints": [
+                "1dacf2848e817c39",
+                "d8293925f32a0f34"
+              ]
+            },
             "pillar": "design",
+            "remediation": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
+            "secondaryPillars": [
+              "size",
+              "complexity"
+            ],
             "severity": "low",
             "symbol": "Hot"
           }
         },
         {
           "ruleId": "complexity.cyclomatic",
+          "ruleIndex": 0,
           "level": "warning",
           "message": {
             "text": "function cyclomatic complexity is 3, above threshold 2"
@@ -546,18 +645,24 @@
             }
           ],
           "partialFingerprints": {
-            "primary": "d8293925f32a0f34"
+            "gruffFingerprint": "d8293925f32a0f34"
           },
           "properties": {
             "confidence": "high",
             "fingerprint": "d8293925f32a0f34",
+            "metadata": {
+              "complexity": 3,
+              "threshold": 2
+            },
             "pillar": "complexity",
+            "remediation": "Split independent decisions or move branches into named helpers.",
             "severity": "medium",
             "symbol": "Hot"
           }
         },
         {
           "ruleId": "size.function-length",
+          "ruleIndex": 16,
           "level": "warning",
           "message": {
             "text": "function has 8 lines, above threshold 4"
@@ -576,17 +681,27 @@
             }
           ],
           "partialFingerprints": {
-            "primary": "1dacf2848e817c39"
+            "gruffFingerprint": "1dacf2848e817c39"
           },
           "properties": {
             "confidence": "high",
             "fingerprint": "1dacf2848e817c39",
+            "metadata": {
+              "lines": 8,
+              "threshold": 4
+            },
             "pillar": "size",
+            "remediation": "Extract cohesive helper functions or split independent branches.",
             "severity": "medium",
             "symbol": "Hot"
           }
         }
-      ]
+      ],
+      "properties": {
+        "gruffSchemaVersion": "gruff-go.analysis.v0.1",
+        "score": 92,
+        "grade": "A"
+      }
     }
   ]
 }

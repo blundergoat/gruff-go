@@ -94,7 +94,7 @@ The output includes:
   - `critical` / `high` → `error`
   - `medium` → `warning`
   - `low` / `info` → `note`
-- `partialFingerprints.primary` carries the gruff-go fingerprint so consumers can match findings across runs.
+- `partialFingerprints.gruffFingerprint` carries the gruff-go fingerprint so consumers can match findings across runs.
 
 Upload via GitHub Actions:
 
