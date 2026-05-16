@@ -1,6 +1,7 @@
 package baseline
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -42,6 +43,38 @@ func TestApplyReportsStaleEntries(t *testing.T) {
 	result := Apply(nil, file)
 	if result.StaleEntries != 1 || result.Entries != 1 {
 		t.Fatalf("result = %#v, want stale entry", result)
+	}
+}
+
+func TestBaselineSuppressesSensitiveFindingAcrossPreviewChanges(t *testing.T) {
+	rawSecret := "abcdefghijklmnopqrstuvwxyz123456"
+	redactedPreview := "auth_t...3456"
+	rawPreview := "auth_token = " + rawSecret
+	original := finding.Finding{
+		RuleID:   "sensitive-data.secret-pattern",
+		Message:  "secret-like assignment detected",
+		File:     "secrets.env",
+		Location: &finding.Location{Line: 1},
+		Metadata: map[string]any{"preview": rawPreview},
+	}.WithFingerprint()
+	rerun := original
+	rerun.Metadata = map[string]any{"preview": redactedPreview}
+	rerun = rerun.WithFingerprint()
+	if original.Fingerprint != rerun.Fingerprint {
+		t.Fatalf("fingerprint changed with preview metadata: %q != %q", original.Fingerprint, rerun.Fingerprint)
+	}
+
+	file := FromFindings([]finding.Finding{original})
+	data, err := Marshal(file)
+	if err != nil {
+		t.Fatalf("marshal baseline: %v", err)
+	}
+	if strings.Contains(string(data), rawSecret) || strings.Contains(string(data), rawPreview) {
+		t.Fatalf("baseline persisted raw secret data:\n%s", data)
+	}
+	result := Apply([]finding.Finding{rerun}, file)
+	if result.SuppressedFindings != 1 || len(result.Findings) != 0 || result.StaleEntries != 0 {
+		t.Fatalf("apply = %#v, want one suppressed rerun finding", result)
 	}
 }
 

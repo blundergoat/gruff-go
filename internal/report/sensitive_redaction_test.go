@@ -2,10 +2,15 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
+	"github.com/blundergoat/gruff-go/internal/baseline"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
@@ -86,5 +91,78 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
+	rawSecret := "abcdefghijklmnopqrstuvwxyz123456"
+	root := t.TempDir()
+	secretLine := "auth_token = " + strconv.Quote(rawSecret)
+	if err := os.WriteFile(filepath.Join(root, "secrets.env"), []byte(secretLine+"\n"), 0o600); err != nil {
+		t.Fatalf("write secret fixture: %v", err)
+	}
+
+	reportData, err := analysis.Run(analysis.Options{
+		Root:     root,
+		Paths:    []string{"secrets.env"},
+		Format:   "json",
+		FailOn:   finding.SeverityMedium,
+		Registry: rule.Defaults(),
+	})
+	if err != nil {
+		t.Fatalf("analysis run: %v", err)
+	}
+	if len(reportData.Findings) != 1 || reportData.Findings[0].RuleID != "sensitive-data.secret-pattern" {
+		t.Fatalf("findings = %#v, want one sensitive-data.secret-pattern finding", reportData.Findings)
+	}
+	encodedFinding, err := json.Marshal(reportData.Findings[0])
+	if err != nil {
+		t.Fatalf("marshal finding: %v", err)
+	}
+	if strings.Contains(string(encodedFinding), rawSecret) {
+		t.Fatalf("finding carries raw secret: %s", encodedFinding)
+	}
+
+	baselineFile := baseline.FromFindings(reportData.Findings)
+	baselineJSON, err := baseline.Marshal(baselineFile)
+	if err != nil {
+		t.Fatalf("marshal baseline: %v", err)
+	}
+	applyResult := baseline.Apply(reportData.Findings, baselineFile)
+	if applyResult.SuppressedFindings != 1 || len(applyResult.Findings) != 0 {
+		t.Fatalf("baseline apply = %#v, want one suppressed finding", applyResult)
+	}
+
+	artifacts := map[string]string{
+		"baseline": string(baselineJSON),
+	}
+	for _, format := range []struct {
+		name string
+		emit func(*bytes.Buffer) error
+	}{
+		{"text", func(buf *bytes.Buffer) error { return WriteText(buf, reportData) }},
+		{"json", func(buf *bytes.Buffer) error { return WriteJSON(buf, reportData) }},
+		{"summary-json", func(buf *bytes.Buffer) error { return WriteSummaryJSON(buf, reportData) }},
+		{"sarif", func(buf *bytes.Buffer) error { return WriteSARIF(buf, reportData) }},
+		{"github", func(buf *bytes.Buffer) error { return WriteGitHub(buf, reportData) }},
+		{"html", func(buf *bytes.Buffer) error { return WriteHTML(buf, reportData, HTMLOptions{Interactive: true}) }},
+	} {
+		var buf bytes.Buffer
+		if err := format.emit(&buf); err != nil {
+			t.Fatalf("emit %s: %v", format.name, err)
+		}
+		artifacts[format.name] = buf.String()
+	}
+	artifacts["dashboard-html"] = InjectScanMetadata(artifacts["html"], ScanMetadata{
+		ExitCode:    reportData.Summary.ExitCode,
+		DurationMs:  12,
+		ProjectRoot: root,
+		Command:     "gruff-go analyse --format html secrets.env",
+	})
+
+	for name, artifact := range artifacts {
+		if strings.Contains(artifact, rawSecret) {
+			t.Fatalf("%s artifact leaks raw secret %q:\n%s", name, rawSecret, artifact)
+		}
 	}
 }
