@@ -62,19 +62,14 @@ func TestWriteHTMLSelfContained(t *testing.T) {
 }
 
 func TestWriteHTMLCelebrationSubtitle(t *testing.T) {
-	report := analysis.NewReport(
-		"/repo",
-		[]string{"."},
-		"html",
-		finding.SeverityMedium,
-		false,
-		[]string{"main.go"},
-		nil, nil, nil,
-		nil,
-		rule.Defaults().Definitions(),
-		analysis.BaselineSummary{},
-		analysis.DiffSummary{},
-	)
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "html",
+		FailOn:      finding.SeverityMedium,
+		Scanned:     []string{"main.go"},
+		Definitions: rule.Defaults().Definitions(),
+	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
 		t.Fatalf("WriteHTML: %v", err)
@@ -185,19 +180,15 @@ func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarSize,
 	}
-	report := analysis.NewReport(
-		"/repo",
-		[]string{`<img src=x>`},
-		"html",
-		finding.SeverityMedium,
-		false,
-		[]string{"evil.go"},
-		nil, nil, nil,
-		[]finding.Finding{malicious},
-		rule.Defaults().Definitions(),
-		analysis.BaselineSummary{},
-		analysis.DiffSummary{},
-	)
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{`<img src=x>`},
+		Format:      "html",
+		FailOn:      finding.SeverityMedium,
+		Scanned:     []string{"evil.go"},
+		Findings:    []finding.Finding{malicious},
+		Definitions: rule.Defaults().Definitions(),
+	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
 		t.Fatalf("WriteHTML: %v", err)
@@ -215,25 +206,20 @@ func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 }
 
 func TestWriteHTMLDiagnosticsRender(t *testing.T) {
-	report := analysis.NewReport(
-		"/repo",
-		[]string{"."},
-		"html",
-		finding.SeverityMedium,
-		false,
-		[]string{"a.go"},
-		nil, nil,
-		[]analysis.Diagnostic{{
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:    "/repo",
+		Inputs:  []string{"."},
+		Format:  "html",
+		FailOn:  finding.SeverityMedium,
+		Scanned: []string{"a.go"},
+		Diagnostics: []analysis.Diagnostic{{
 			Stage:    "parse",
 			Message:  "syntax error",
 			File:     "broken.go",
 			Severity: finding.SeverityHigh,
 		}},
-		nil,
-		rule.Defaults().Definitions(),
-		analysis.BaselineSummary{},
-		analysis.DiffSummary{},
-	)
+		Definitions: rule.Defaults().Definitions(),
+	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
 		t.Fatalf("WriteHTML: %v", err)
@@ -248,19 +234,15 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 }
 
 func TestWriteHTMLDiffScopeLabel(t *testing.T) {
-	report := analysis.NewReport(
-		"/repo",
-		[]string{"."},
-		"html",
-		finding.SeverityMedium,
-		false,
-		[]string{"a.go"},
-		nil, nil, nil,
-		nil,
-		rule.Defaults().Definitions(),
-		analysis.BaselineSummary{},
-		analysis.DiffSummary{Enabled: true, Base: "main", ChangedFiles: []string{"a.go", "b.go"}},
-	)
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "html",
+		FailOn:      finding.SeverityMedium,
+		Scanned:     []string{"a.go"},
+		Definitions: rule.Defaults().Definitions(),
+		Diff:        analysis.DiffSummary{Enabled: true, Base: "main", ChangedFiles: []string{"a.go", "b.go"}},
+	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
 		t.Fatalf("WriteHTML: %v", err)
@@ -322,17 +304,13 @@ func buildHTMLFixture() analysis.Report {
 		Pillar:     finding.PillarComplexity,
 		Metadata:   map[string]any{"complexity": 12},
 	})
-	return analysis.NewReport(
-		"/repo",
-		[]string{"."},
-		"html",
-		finding.SeverityMedium,
-		false,
-		[]string{"hot.go", "warm.go", "medium.go"},
-		nil, nil, nil,
-		findings,
-		rule.Defaults().Definitions(),
-		analysis.BaselineSummary{},
-		analysis.DiffSummary{},
-	)
+	return analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "html",
+		FailOn:      finding.SeverityMedium,
+		Scanned:     []string{"hot.go", "warm.go", "medium.go"},
+		Findings:    findings,
+		Definitions: rule.Defaults().Definitions(),
+	})
 }

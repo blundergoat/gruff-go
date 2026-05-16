@@ -35,7 +35,7 @@ M08 default policy table:
 | --- | --- | --- |
 | `complexity.cyclomatic`, `docs.package-comment`, `sensitive-data.secret-pattern`, `size.file-length`, `size.function-length` | Keep default-enabled. | Default dogfood is clean: 78 files, 0 findings, exit 0, score 100/A. |
 | `docs.exported-symbol-comment` | Keep opt-in; tune option default to `ignoreInternalPackages: true`. | Opt-in dogfood dropped from 185 internal-package findings to 0 after the option-default change. Second-corpus evidence is still missing. |
-| `size.parameter-count` | Keep opt-in; track `analysis.NewReport` parameter count as follow-up. | Opt-in dogfood reports 1 real finding in `internal/analysis/report.go`. |
+| `size.parameter-count` | Keep opt-in; resolved the `analysis.NewReport` parameter-count follow-up. | Opt-in dogfood now reports 0 findings after replacing the long `NewReport` signature with a `ReportInput` struct. |
 | `naming.identifier-quality` | Keep opt-in; tune per project. | Opt-in dogfood reports 11 findings, mostly `data` and `info`, which are often idiomatic in Go. |
 | Specific sensitive-data detectors | Keep opt-in. | Opt-in dogfood findings are fixture strings in sensitive-data tests; no production-like leaks found. |
 | `test-quality.skipped-test` | Keep opt-in. | Opt-in dogfood reports 1 intentional test skip branch in golden-update support. |

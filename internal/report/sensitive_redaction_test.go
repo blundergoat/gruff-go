@@ -18,15 +18,13 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	rawPassword := "supersecretpassword"
 	rawPrivateKey := "-----BEGIN RSA PRIVATE KEY-----"
 
-	report := analysis.NewReport(
-		"/repo",
-		[]string{"."},
-		"json",
-		finding.SeverityMedium,
-		false,
-		[]string{"secrets.env"},
-		nil, nil, nil,
-		[]finding.Finding{
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:    "/repo",
+		Inputs:  []string{"."},
+		Format:  "json",
+		FailOn:  finding.SeverityMedium,
+		Scanned: []string{"secrets.env"},
+		Findings: []finding.Finding{
 			{
 				RuleID:     "sensitive-data.aws-access-key",
 				Message:    "AWS access key id detected",
@@ -58,10 +56,8 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Metadata:   map[string]any{"preview": "-----B..." + "KEY-"},
 			},
 		},
-		rule.Defaults().Definitions(),
-		analysis.BaselineSummary{},
-		analysis.DiffSummary{},
-	)
+		Definitions: rule.Defaults().Definitions(),
+	})
 
 	formats := []struct {
 		name string

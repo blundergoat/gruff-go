@@ -97,15 +97,31 @@ type SkippedPath struct {
 	Reason string `json:"reason"`
 }
 
-func NewReport(root string, inputs []string, format string, failOn finding.Severity, includeIgnored bool, scanned []string, skipped []SkippedPath, missing []string, diagnostics []Diagnostic, findings []finding.Finding, definitions []rule.Definition, baseline BaselineSummary, diff DiffSummary) Report {
-	scanned = nonNilStrings(scanned)
-	skipped = nonNilSkipped(skipped)
-	missing = nonNilStrings(missing)
-	diagnostics = nonNilDiagnostics(diagnostics)
-	findings = nonNilFindings(findings)
-	definitions = nonNilDefinitions(definitions)
-	diff.ChangedFiles = nonNilStrings(diff.ChangedFiles)
-	exitCode := ResolveExitCode(diagnostics, findings, failOn)
+type ReportInput struct {
+	Root           string
+	Inputs         []string
+	Format         string
+	FailOn         finding.Severity
+	IncludeIgnored bool
+	Scanned        []string
+	Skipped        []SkippedPath
+	Missing        []string
+	Diagnostics    []Diagnostic
+	Findings       []finding.Finding
+	Definitions    []rule.Definition
+	Baseline       BaselineSummary
+	Diff           DiffSummary
+}
+
+func NewReport(input ReportInput) Report {
+	scanned := nonNilStrings(input.Scanned)
+	skipped := nonNilSkipped(input.Skipped)
+	missing := nonNilStrings(input.Missing)
+	diagnostics := nonNilDiagnostics(input.Diagnostics)
+	findings := nonNilFindings(input.Findings)
+	definitions := nonNilDefinitions(input.Definitions)
+	input.Diff.ChangedFiles = nonNilStrings(input.Diff.ChangedFiles)
+	exitCode := ResolveExitCode(diagnostics, findings, input.FailOn)
 	report := Report{
 		SchemaVersion: SchemaVersion,
 		Tool: Tool{
@@ -113,11 +129,11 @@ func NewReport(root string, inputs []string, format string, failOn finding.Sever
 			Version: "0.1.0-dev",
 		},
 		Run: RunMetadata{
-			WorkingDirectory: root,
-			Inputs:           inputs,
-			Format:           format,
-			FailOn:           string(failOn),
-			IncludeIgnored:   includeIgnored,
+			WorkingDirectory: input.Root,
+			Inputs:           input.Inputs,
+			Format:           input.Format,
+			FailOn:           string(input.FailOn),
+			IncludeIgnored:   input.IncludeIgnored,
 		},
 		Summary: Summary{
 			FilesScanned:       len(scanned),
@@ -130,8 +146,8 @@ func NewReport(root string, inputs []string, format string, failOn finding.Sever
 			ParserMode:         "parser-only",
 			TypeLoadingEnabled: false,
 		},
-		Baseline: baseline,
-		Diff:     diff,
+		Baseline: input.Baseline,
+		Diff:     input.Diff,
 		Score:    scoring.Calculate(findings),
 		Rules:    definitions,
 		Paths: Paths{

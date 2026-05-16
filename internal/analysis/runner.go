@@ -73,7 +73,21 @@ func Run(options Options) (Report, error) {
 	findings, diffSummary, diagnostics := applyDiff(root, options.Paths, findings, diagnostics, options.DiffBase)
 
 	displayRoot := filepath.ToSlash(root)
-	return NewReport(displayRoot, inputsOrDefault(options.Paths), options.Format, options.FailOn, options.IncludeIgnored, scannedPaths(discovery.Files), skippedPaths(discovery.Skipped), discovery.Missing, diagnostics, findings, registry.Definitions(), baselineSummary, diffSummary), nil
+	return NewReport(ReportInput{
+		Root:           displayRoot,
+		Inputs:         inputsOrDefault(options.Paths),
+		Format:         options.Format,
+		FailOn:         options.FailOn,
+		IncludeIgnored: options.IncludeIgnored,
+		Scanned:        scannedPaths(discovery.Files),
+		Skipped:        skippedPaths(discovery.Skipped),
+		Missing:        discovery.Missing,
+		Diagnostics:    diagnostics,
+		Findings:       findings,
+		Definitions:    registry.Definitions(),
+		Baseline:       baselineSummary,
+		Diff:           diffSummary,
+	}), nil
 }
 
 func analysisRoot(root string) (string, error) {
