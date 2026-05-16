@@ -34,7 +34,7 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--report-editor-link` | `none` | File:line link mode: `none`, `vscode`, `phpstorm`. |
 | `--allow-public` | *off* | Permit non-loopback `--host`. Required for `0.0.0.0` etc. |
 
-All flags map 1:1 to the controls-panel form fields, so you can adjust the same knobs from the browser without restarting the server.
+The scan-shaping flags from `--project` through `--report-interactive` map to controls-panel fields, so you can adjust those knobs from the browser without restarting the server. Listener and startup-only settings (`--host`, `--port`, `--scan-timeout`, `--report-editor-link`, and `--allow-public`) stay fixed for the running dashboard process.
 
 ## Security model
 
@@ -44,7 +44,7 @@ The dashboard is **local-only** by design:
 - If `--host` resolves to a non-loopback address, the server **refuses to start** without `--allow-public`. The refusal includes the host name in the error so it's obvious in scripts.
 - When `--allow-public` is set with a non-loopback host, the server prints a `WARNING: binding dashboard to non-loopback host …` line at start-up.
 - The dashboard accepts only `GET` requests. `POST` returns `405 Method Not Allowed`; unknown paths return `404 Not Found`.
-- Every query-string value (project root, paths, config path, baseline path, fail-on, scope, command) is HTML-escaped before it reaches the rendered shell or report. The same escaping path the static HTML reporter uses is reused here.
+- Every query-string value (project root, paths, config path, baseline path, fail-on, scope, include-ignored, and interactive-report state) is HTML-escaped before it reaches the rendered shell or report. The same escaping path the static HTML reporter uses is reused here.
 - `/scan` runs the analyser **in-process** — there is no `exec`, no template substitution into a shell command, no eval. The "command" string shown in the controls panel is a human-readable rendering of what the analyser would be invoked with, not a string passed to a shell.
 - The iframe `postMessage` listener accepts events only from `window.location.origin`. Cross-origin or sandboxed iframes attempting to spoof scan-complete metadata are ignored.
 
@@ -115,6 +115,8 @@ After every scan, the report HTML carries:
 ```
 
 The dashboard shell ignores any message whose `origin` does not match `window.location.origin` and any payload whose `type` is not `gruff-scan-complete`. If you embed the dashboard inside your own page, listen for the same event shape on the matching origin.
+
+When the scan includes ignored files or enables the interactive report UI, the metadata command includes `--include-ignored` and `--report-interactive` so the scan can be reproduced from `gruff-go analyse --format html`.
 
 ## Scan-timeout behaviour
 

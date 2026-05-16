@@ -2,9 +2,11 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +67,44 @@ func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 	}
 	if !strings.Contains(html, `"type":"gruff-scan-complete"`) {
 		t.Error("scan response metadata should declare gruff-scan-complete")
+	}
+}
+
+func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gitignore"), "ignored/\n")
+	writeFile(t, filepath.Join(project, "ignored", "complex.go"), dashboardComplexFixture())
+
+	handler := NewHandler(Options{ProjectRoot: project, FailOn: "medium"})
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	query := url.Values{
+		"project":           {project},
+		"paths":             {"ignored/complex.go"},
+		"scanScope":         {"full"},
+		"failOn":            {"medium"},
+		"includeIgnored":    {"1"},
+		"reportInteractive": {"1"},
+	}
+
+	resp, err := http.Get(server.URL + "/scan?" + query.Encode())
+	if err != nil {
+		t.Fatalf("GET /scan: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	if !strings.Contains(html, "complexity.cyclomatic") {
+		t.Fatalf("scan should include ignored fixture finding; body:\n%s", html)
+	}
+	metadata := extractScanMetadata(t, html)
+	if metadata.ExitCode != 1 {
+		t.Fatalf("metadata exitCode = %d, want 1", metadata.ExitCode)
+	}
+	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity medium ignored/complex.go"
+	if metadata.Command != wantCommand {
+		t.Fatalf("metadata command = %q, want %q", metadata.Command, wantCommand)
 	}
 }
 
@@ -260,19 +300,24 @@ func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 
 func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	command := displayCommand(report.DashboardState{
-		Project:    "/repo",
-		Paths:      "src,internal",
-		Config:     ".gruff.yaml",
-		Baseline:   "baseline.json",
-		FailOn:     "high",
-		ScanScope:  "diff",
-		NoBaseline: "",
-	})
+		Project:           "/repo",
+		Paths:             "src,internal",
+		Config:            ".gruff.yaml",
+		Baseline:          "baseline.json",
+		FailOn:            "high",
+		ScanScope:         "diff",
+		NoBaseline:        "",
+		IncludeIgnored:    "1",
+		ReportInteractive: "1",
+	}, Options{EditorLink: "vscode"})
 	for _, fragment := range []string{
 		"gruff-go analyse --format html",
+		"--report-interactive",
+		"--report-editor-link vscode",
 		"--config .gruff.yaml",
 		"--baseline baseline.json",
 		"--diff-base HEAD",
+		"--include-ignored",
 		"--min-severity high",
 		"src",
 		"internal",
@@ -281,6 +326,42 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 			t.Errorf("displayCommand missing %q in %q", fragment, command)
 		}
 	}
+}
+
+func extractScanMetadata(t *testing.T, html string) struct {
+	Type     string `json:"type"`
+	ExitCode int    `json:"exitCode"`
+	Command  string `json:"command"`
+} {
+	t.Helper()
+	startMarker := `<script id="gruff-dashboard-meta" type="application/json">`
+	start := strings.Index(html, startMarker)
+	if start < 0 {
+		t.Fatalf("metadata script missing from HTML:\n%s", html)
+	}
+	start += len(startMarker)
+	end := strings.Index(html[start:], `</script>`)
+	if end < 0 {
+		t.Fatalf("metadata script is not closed:\n%s", html)
+	}
+	var payload struct {
+		Type     string `json:"type"`
+		ExitCode int    `json:"exitCode"`
+		Command  string `json:"command"`
+	}
+	if err := json.Unmarshal([]byte(html[start:start+end]), &payload); err != nil {
+		t.Fatalf("metadata JSON: %v", err)
+	}
+	if payload.Type != "gruff-scan-complete" {
+		t.Fatalf("metadata type = %q, want gruff-scan-complete", payload.Type)
+	}
+	return payload
+}
+
+func dashboardComplexFixture() string {
+	return "// Package sample is a test package.\npackage sample\n\nfunc risky(a bool) {\n" +
+		strings.Repeat("\tif a {}\n", 21) +
+		"}\n"
 }
 
 func TestSplitPaths(t *testing.T) {

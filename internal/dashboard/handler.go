@@ -88,7 +88,7 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		ExitCode:    reportData.Summary.ExitCode,
 		DurationMs:  durationMs,
 		ProjectRoot: scanOpts.projectRoot,
-		Command:     displayCommand(state),
+		Command:     displayCommand(state, opts),
 	}
 	_, _ = writer.Write([]byte(report.InjectScanMetadata(buffer.String(), metadata)))
 }
@@ -233,8 +233,14 @@ func splitPaths(raw string) []string {
 	return out
 }
 
-func displayCommand(state report.DashboardState) string {
+func displayCommand(state report.DashboardState, opts Options) string {
 	args := []string{"gruff-go", "analyse", "--format", "html"}
+	if state.ReportInteractive == "1" {
+		args = append(args, "--report-interactive")
+	}
+	if opts.EditorLink != "" && opts.EditorLink != "none" {
+		args = append(args, "--report-editor-link", opts.EditorLink)
+	}
 	if state.Config != "" {
 		args = append(args, "--config", state.Config)
 	}
@@ -246,6 +252,9 @@ func displayCommand(state report.DashboardState) string {
 	}
 	if state.ScanScope == "diff" {
 		args = append(args, "--diff-base", "HEAD")
+	}
+	if state.IncludeIgnored == "1" {
+		args = append(args, "--include-ignored")
 	}
 	if state.FailOn != "" {
 		args = append(args, "--min-severity", state.FailOn)
