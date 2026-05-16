@@ -80,6 +80,9 @@ func TestWriteSARIFContract(t *testing.T) {
 	})
 
 	out := writeSARIFBytes(t, report)
+	if len(out) == 0 {
+		t.Fatal("sarif output is empty")
+	}
 	payload := decodeSARIFLog(t, out)
 	run := requireSingleSARIFRun(t, payload)
 	result := requireSingleSARIFResult(t, run.Results)

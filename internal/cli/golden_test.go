@@ -187,7 +187,7 @@ rules:
 
 func TestGoldenDiffMode(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is required for diff-mode golden coverage")
+		t.Fatalf("git is required for diff-mode golden coverage: %v", err)
 	}
 
 	root := t.TempDir()
