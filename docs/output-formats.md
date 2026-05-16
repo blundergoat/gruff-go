@@ -67,7 +67,7 @@ Every finding looks like:
 }
 ```
 
-The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same — that's what baselines key on.
+The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same — that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
 
 ## `summary-json`
 
@@ -172,6 +172,8 @@ Even without flags, the HTML report includes:
 - Cyclomatic distribution histogram with a one-line summary.
 - Findings list grouped by document order.
 - Footer with version + schema metadata.
+
+`design.*` composite findings appear in the findings list and summary counts, but they do not contribute to per-pillar grades, top-offender penalties, or the numeric composite score.
 
 The visual identity is documented in [`.goat-flow/tasks/0.1/M09-html-report-visual-parity.md`](../.goat-flow/tasks/0.1/M09-html-report-visual-parity.md).
 

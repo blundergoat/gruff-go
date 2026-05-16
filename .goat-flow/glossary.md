@@ -54,6 +54,10 @@ Local-only `gruff-go dashboard` HTTP server. It binds to loopback by default, re
 
 A rule listed by `list-rules` with `defaultEnabled: false`. It can be enabled through strict config, but default scans skip it so experimental or context-sensitive signals do not change baseline dogfood behavior.
 
+## Composite Design Finding
+
+A score-neutral `design.*` finding derived from already-emitted base findings. Current composites are `design.god-function` for same-symbol size plus complexity overlap and `design.hotspot-file` for multi-pillar file hotspots. Composites do not feed other composite rules.
+
 ## GOAT Flow
 
 Local agent workflow framework installed from `@blundergoat/goat-flow`. It provides Claude/Codex skills, audit commands, safety references, and `.goat-flow/` project-memory directories.

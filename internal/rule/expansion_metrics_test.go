@@ -203,6 +203,26 @@ func VisibleOutsideModule() {}
 	}
 }
 
+func TestExportedSymbolCommentRuleCanIncludeInternalPackages(t *testing.T) {
+	internalUnit := parseOne(t, "internal/service/service.go", `package service
+
+func VisibleInsideModule() {}
+`)
+	registry, err := DefaultsConfigured(Config{
+		Enabled: map[string]bool{"docs.exported-symbol-comment": true, "docs.package-comment": false},
+		Options: map[string]map[string]any{
+			"docs.exported-symbol-comment": {"ignoreInternalPackages": false},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings := registry.Analyze([]parser.Unit{internalUnit}, Context{})
+	if !containsRuleID(findings, "docs.exported-symbol-comment") {
+		t.Fatalf("findings = %#v, want internal export included when option is false", findings)
+	}
+}
+
 func containsRuleID(findings []finding.Finding, id string) bool {
 	for _, f := range findings {
 		if f.RuleID == id {

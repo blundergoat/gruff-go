@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **19 rules** across **8 pillars**. Five are enabled by default; the rest are opt-in so existing repositories can phase them in without baseline churn.
+`gruff-go` v0.1 ships **21 rules** across **9 pillars**. Five are enabled by default; the rest are opt-in so existing repositories can phase them in without baseline churn.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds and severities).
 
@@ -20,10 +20,14 @@ These run unless explicitly disabled via `selection.excludeRules` or `rules.<id>
 
 These are off by default. Turn them on per project via `rules.<id>.enabled: true` once the codebase is ready.
 
+Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
+
 | Rule ID | Pillar | Severity | Default threshold | Description |
 |---------|--------|----------|-------------------|-------------|
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | `maxDepth: 4` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | — | Empty control-flow blocks that usually indicate unfinished code. |
+| [`design.god-function`](#designgod-function) | design | low | — | Functions that already have both size and complexity findings. |
+| [`design.hotspot-file`](#designhotspot-file) | design | low | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | — | Exported declarations missing a doc comment. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | — | Local identifiers matching a placeholder name list. |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | — | Package names containing underscores. |
@@ -90,17 +94,44 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 
 **Remediation.** Remove the empty block or add the intended implementation.
 
+### `design.god-function`
+
+- **Pillar:** design (secondary: size, complexity)
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Confidence:** high
+- **Tags:** `composite`, `opt-in`
+- **Scoring:** score-neutral
+
+Flags functions that already have at least one size finding and at least one complexity finding on the same file and symbol. The composite finding has no source line so its fingerprint remains stable when the function body shifts but the file and symbol identity stay the same.
+
+**Remediation.** Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.
+
+### `design.hotspot-file`
+
+- **Pillar:** design
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
+- **Confidence:** medium
+- **Tags:** `composite`, `opt-in`
+- **Scoring:** score-neutral
+
+Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules, so a god-function finding will not itself create a hotspot-file finding.
+
+**Remediation.** Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.
+
 ### `docs.exported-symbol-comment`
 
 - **Pillar:** documentation
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
-- **Options:** `ignoreInternalPackages bool` — default `false`
+- **Options:** `ignoreInternalPackages bool` — default `true`
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
 
-Set `ignoreInternalPackages: true` when internal package exports are module-private implementation details rather than public API.
+Set `ignoreInternalPackages: false` when internal package exports should follow the same documentation bar as public API packages.
 
 **Remediation.** Add a Go-style doc comment that begins with the symbol name.
 

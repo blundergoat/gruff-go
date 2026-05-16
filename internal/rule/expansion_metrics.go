@@ -224,7 +224,7 @@ func (ExportedSymbolCommentRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: false,
-		Options:        map[string]any{"ignoreInternalPackages": false},
+		Options:        map[string]any{"ignoreInternalPackages": true},
 		Tags:           []string{"opt-in"},
 		Remediation:    "Add a Go-style doc comment that begins with the symbol name.",
 	}

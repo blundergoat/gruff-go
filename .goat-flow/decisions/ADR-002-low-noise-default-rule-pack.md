@@ -2,7 +2,7 @@
 
 **Status:** Implemented
 **Date:** 2026-05-13
-**Updated:** 2026-05-13
+**Updated:** 2026-05-16
 **Author(s):** Codex
 **Ticket/Context:** `.goat-flow/tasks/0.1`
 
@@ -15,6 +15,8 @@ Evidence from this session:
 - The initial dogfood scan after M04 reported one `size.function-length` finding in `internal/analysis/runner.go`.
 - Refactoring `Run` into helper functions removed the finding without changing thresholds or adding config suppression.
 - The follow-up dogfood scan reported 41 files scanned, 0 findings, exit code 0, and score 100/A.
+- M08 dogfood after composite-rule implementation reported 78 files scanned, 0 default findings, exit code 0, and score 100/A.
+- M08 found `docs.exported-symbol-comment` was too strict when opted in with `ignoreInternalPackages: false`: it reported 185 internal-package findings. The option default is now `true`, and the same opt-in dogfood path reports 0 findings without local suppression.
 
 ## Decision
 
@@ -22,9 +24,22 @@ Keep v0.1 defaults narrow and evidence-backed:
 
 - Default-enabled: file length, function length, cyclomatic complexity, package comment, and secret-like assignment.
 - Default-disabled opt-in expansion rules may exist after config support is available, but they must not change default scan behavior until dogfood and fixture evidence justify enabling them.
+- Composite design findings are normal report findings but score-neutral so they can prioritize overlapping evidence without double-penalizing the underlying size, complexity, documentation, or other base findings.
 - Deferred as default-enabled behavior: naming, waste, test-quality, broader security, dead-code, project-design, trend, dashboard, mutation, and external-linter ingestion rules.
 - When dogfood exposes noise or weak signal, tune implementation or rule shape rather than hiding default problems with local config.
 - Do not add default-disabled heuristic families until config and calibration evidence justify them.
+
+M08 default policy table:
+
+| Rule or family | Decision | Evidence |
+| --- | --- | --- |
+| `complexity.cyclomatic`, `docs.package-comment`, `sensitive-data.secret-pattern`, `size.file-length`, `size.function-length` | Keep default-enabled. | Default dogfood is clean: 78 files, 0 findings, exit 0, score 100/A. |
+| `docs.exported-symbol-comment` | Keep opt-in; tune option default to `ignoreInternalPackages: true`. | Opt-in dogfood dropped from 185 internal-package findings to 0 after the option-default change. Second-corpus evidence is still missing. |
+| `size.parameter-count` | Keep opt-in; track `analysis.NewReport` parameter count as follow-up. | Opt-in dogfood reports 1 real finding in `internal/analysis/report.go`. |
+| `naming.identifier-quality` | Keep opt-in; tune per project. | Opt-in dogfood reports 11 findings, mostly `data` and `info`, which are often idiomatic in Go. |
+| Specific sensitive-data detectors | Keep opt-in. | Opt-in dogfood findings are fixture strings in sensitive-data tests; no production-like leaks found. |
+| `test-quality.skipped-test` | Keep opt-in. | Opt-in dogfood reports 1 intentional test skip branch in golden-update support. |
+| `complexity.nesting-depth`, `dead-code.empty-block`, `naming.package-underscore`, `security.shell-command`, `test-quality.empty-test`, `test-quality.no-failure-path`, `design.god-function`, `design.hotspot-file` | Keep opt-in. | Opt-in dogfood reports 0 findings in this repository; that is not enough evidence to default-enable without the second corpus. |
 
 ## Failure Mode Comparison
 

@@ -141,11 +141,11 @@ rules:
         - "git"
         - "go"
 
-  # Ignore module-private exported symbols under internal/ packages.
+  # Require doc comments for module-private exported symbols too.
   docs.exported-symbol-comment:
     enabled: true
     options:
-      ignoreInternalPackages: true
+      ignoreInternalPackages: false
 ```
 
 If a rule ID doesn't exist, the loader rejects the file with `config: unknown rule "x.y"`. Run `gruff-go list-rules` to print the current registry.

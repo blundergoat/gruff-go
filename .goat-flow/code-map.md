@@ -78,7 +78,7 @@
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict gruff config discovery/parsing for `.gruff.yaml`, `.gruff.yml`, and `.gruff.json`, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
-- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, finding ordering, the built-in default rule pack, and default-disabled opt-in expansion rules.
+- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, the built-in default rule pack, and default-disabled opt-in expansion rules.
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
 - `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.
@@ -86,5 +86,5 @@
 - `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, and exit semantics.
 - `internal/dashboard/` = Local-only dashboard HTTP server, request handling, scan option mapping, and shutdown behavior.
 - `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
-- `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring.
+- `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring with score-neutral `design.*` annotations.
 - No CI config, deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package publication surface exists yet.
