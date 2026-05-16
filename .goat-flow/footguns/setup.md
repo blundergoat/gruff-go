@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-16
 ---
 
 # Setup Footguns
@@ -24,11 +24,11 @@ The package exposes a `test` script, so script detection can look successful. Tr
 hallucination-risk: high
 
 Evidence:
-- `internal/cli/cli.go` (search: `gruff-go analyse [--format text|json|summary-json|sarif|github]`)
+- `internal/cli/cli.go` (search: `output format: text, json, summary-json, sarif, github, or html`)
 - `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff.yaml", ".gruff.yml", ".gruff.json"}`)
 - Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed five default-enabled rules, four opt-in rules, and exited 0.
 
-The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, and a small opt-in expansion pack, but README usage, CI wiring, dashboard, trend storage, broad calibrated rule families, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
+The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a small opt-in expansion pack. CI wiring, trend storage, broad calibrated rule families beyond the expansion pack, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
 
 ## Resolved Entries
 

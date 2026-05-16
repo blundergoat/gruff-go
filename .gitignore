@@ -24,7 +24,8 @@ Thumbs.db
 !.env.example
 
 ### Go ###
-/bin/
+/bin/*
+!/bin/gruff-go
 *.out
 coverage.out
 coverage.html

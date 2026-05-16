@@ -102,6 +102,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
+	includeIgnored := flags.Bool("include-ignored", false, "include files normally skipped by .gitignore and the default-ignored directory list")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -128,14 +129,18 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
+	if *includeIgnored {
+		ignorePaths = nil
+	}
 	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:        flags.Args(),
-		Format:       *format,
-		FailOn:       failOn,
-		Registry:     registry,
-		IgnorePaths:  ignorePaths,
-		BaselinePath: *baselinePath,
-		DiffBase:     *diffBase,
+		Paths:          flags.Args(),
+		Format:         *format,
+		FailOn:         failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
+		BaselinePath:   *baselinePath,
+		DiffBase:       *diffBase,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -172,6 +177,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	outPath := flags.String("out", "", "baseline output path")
 	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
+	includeIgnored := flags.Bool("include-ignored", false, "include files normally skipped by .gitignore and the default-ignored directory list")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -184,12 +190,16 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
+	if *includeIgnored {
+		ignorePaths = nil
+	}
 	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:       flags.Args(),
-		Format:      "json",
-		FailOn:      finding.SeverityCritical,
-		Registry:    registry,
-		IgnorePaths: ignorePaths,
+		Paths:          flags.Args(),
+		Format:         "json",
+		FailOn:         finding.SeverityCritical,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

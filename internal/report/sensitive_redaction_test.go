@@ -23,6 +23,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		[]string{"."},
 		"json",
 		finding.SeverityMedium,
+		false,
 		[]string{"secrets.env"},
 		nil, nil, nil,
 		[]finding.Finding{

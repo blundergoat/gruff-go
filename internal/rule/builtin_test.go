@@ -200,23 +200,59 @@ package withcomment
 }
 
 func TestSensitiveDataRule(t *testing.T) {
-	unit := parser.Unit{
-		File:   source.File{Path: "config.env", Type: source.FileTypeText},
-		Source: "api_key = \"12345678901234567890\"\n",
+	tests := []struct {
+		name string
+		line string
+	}{
+		{name: "api key env", line: "api_key = \"12345678901234567890\""},
+		{name: "api key short declaration", line: "apiKey := \"12345678901234567890\""},
+		{name: "auth token", line: "auth_token = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "access token", line: "access-token = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "refresh token camel", line: "refreshToken = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "client secret", line: "client_secret: \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "bearer value", line: "bearer = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "authorization bearer value", line: "authorization = \"Bearer abcdefghijklmnopqrstuvwxyz123456\""},
 	}
-	findings := SensitiveDataRule{}.AnalyzeUnit(unit, Context{})
-	if len(findings) != 1 {
-		t.Fatalf("findings = %#v, want one secret finding", findings)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "config.env", Type: source.FileTypeText},
+				Source: tt.line + "\n",
+			}
+			findings := SensitiveDataRule{}.AnalyzeUnit(unit, Context{})
+			if len(findings) != 1 {
+				t.Fatalf("findings = %#v, want one secret finding", findings)
+			}
+			if findings[0].Metadata["preview"] == "" {
+				t.Fatalf("finding preview missing: %#v", findings[0])
+			}
+		})
 	}
-	if findings[0].Metadata["preview"] == "" {
-		t.Fatalf("finding preview missing: %#v", findings[0])
+}
+
+func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+	}{
+		{name: "plain non secret", line: "name = \"not-secret\""},
+		{name: "token refresh bool", line: "enabled_token_refresh = true"},
+		{name: "token refresh long value", line: "enabled_token_refresh = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "token ttl", line: "token_ttl = 3600"},
+		{name: "access token enabled", line: "access_token_enabled = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "bearer mode", line: "bearer_mode = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "short bearer authorization", line: "authorization = \"Bearer short\""},
 	}
-	clean := parser.Unit{
-		File:   source.File{Path: "config.env", Type: source.FileTypeText},
-		Source: "name = \"not-secret\"\n",
-	}
-	if got := (SensitiveDataRule{}).AnalyzeUnit(clean, Context{}); len(got) != 0 {
-		t.Fatalf("clean findings = %#v, want none", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "config.env", Type: source.FileTypeText},
+				Source: tt.line + "\n",
+			}
+			if got := (SensitiveDataRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("findings = %#v, want none", got)
+			}
+		})
 	}
 }
 

@@ -45,6 +45,7 @@ type RunMetadata struct {
 	Inputs           []string `json:"inputs"`
 	Format           string   `json:"format"`
 	FailOn           string   `json:"failOn"`
+	IncludeIgnored   bool     `json:"includeIgnored,omitempty"`
 }
 
 type Summary struct {
@@ -96,7 +97,7 @@ type SkippedPath struct {
 	Reason string `json:"reason"`
 }
 
-func NewReport(root string, inputs []string, format string, failOn finding.Severity, scanned []string, skipped []SkippedPath, missing []string, diagnostics []Diagnostic, findings []finding.Finding, definitions []rule.Definition, baseline BaselineSummary, diff DiffSummary) Report {
+func NewReport(root string, inputs []string, format string, failOn finding.Severity, includeIgnored bool, scanned []string, skipped []SkippedPath, missing []string, diagnostics []Diagnostic, findings []finding.Finding, definitions []rule.Definition, baseline BaselineSummary, diff DiffSummary) Report {
 	scanned = nonNilStrings(scanned)
 	skipped = nonNilSkipped(skipped)
 	missing = nonNilStrings(missing)
@@ -116,6 +117,7 @@ func NewReport(root string, inputs []string, format string, failOn finding.Sever
 			Inputs:           inputs,
 			Format:           format,
 			FailOn:           string(failOn),
+			IncludeIgnored:   includeIgnored,
 		},
 		Summary: Summary{
 			FilesScanned:       len(scanned),

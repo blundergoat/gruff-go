@@ -56,61 +56,112 @@ func Discover(options Options) (Result, error) {
 		paths = []string{"."}
 	}
 
-	result := Result{}
+	walker := newDiscoveryWalker(rootAbs, options)
 	for _, input := range paths {
-		path := input
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(rootAbs, path)
-		}
-		info, err := os.Stat(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				result.Missing = append(result.Missing, slashClean(input))
-				continue
-			}
-			return Result{}, err
-		}
-		if !info.IsDir() {
-			addFile(rootAbs, path, options.IncludeIgnored, options.IgnorePatterns, &result)
-			continue
-		}
-		err = filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() {
-				if current == path {
-					return nil
-				}
-				if !options.IncludeIgnored {
-					if reason, ignored := ignoredDir(rootAbs, current, options.IgnorePatterns); ignored {
-						result.Skipped = append(result.Skipped, SkippedPath{Path: displayPath(rootAbs, current), Reason: reason})
-						return filepath.SkipDir
-					}
-				}
-				return nil
-			}
-			addFile(rootAbs, current, options.IncludeIgnored, options.IgnorePatterns, &result)
-			return nil
-		})
-		if err != nil {
+		if err := walker.visitInput(input); err != nil {
 			return Result{}, err
 		}
 	}
+	walker.flushParseErrors()
+	walker.normalize()
+	return walker.result, nil
+}
 
-	slices.SortFunc(result.Files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
-	slices.Sort(result.Missing)
-	slices.SortFunc(result.Skipped, func(a, b SkippedPath) int {
+type discoveryWalker struct {
+	rootAbs         string
+	options         Options
+	matcher         *Matcher
+	gitignoreActive bool
+	result          Result
+}
+
+func newDiscoveryWalker(rootAbs string, options Options) *discoveryWalker {
+	return &discoveryWalker{
+		rootAbs:         rootAbs,
+		options:         options,
+		matcher:         NewMatcher(rootAbs),
+		gitignoreActive: !options.IncludeIgnored,
+	}
+}
+
+func (w *discoveryWalker) visitInput(input string) error {
+	path := input
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(w.rootAbs, path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.result.Missing = append(w.result.Missing, slashClean(input))
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		w.visitFile(path)
+		return nil
+	}
+	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if current == path {
+				return nil
+			}
+			return w.visitDir(current)
+		}
+		w.visitFile(current)
+		return nil
+	})
+}
+
+func (w *discoveryWalker) visitDir(current string) error {
+	rel := displayPath(w.rootAbs, current)
+	if w.gitignoreActive {
+		if ignored, _ := w.matcher.Match(rel, true); ignored {
+			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "gitignored"})
+			return filepath.SkipDir
+		}
+	}
+	if !w.options.IncludeIgnored {
+		if reason, ignored := ignoredDir(w.rootAbs, current, w.options.IgnorePatterns); ignored {
+			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
+			return filepath.SkipDir
+		}
+	}
+	return nil
+}
+
+func (w *discoveryWalker) visitFile(path string) {
+	if w.gitignoreActive {
+		rel := displayPath(w.rootAbs, path)
+		if ignored, _ := w.matcher.Match(rel, false); ignored {
+			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "gitignored"})
+			return
+		}
+	}
+	addFile(w.rootAbs, path, w.options.IncludeIgnored, w.options.IgnorePatterns, &w.result)
+}
+
+func (w *discoveryWalker) flushParseErrors() {
+	for _, badPath := range w.matcher.ParseErrors() {
+		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: badPath, Reason: "gitignore-parse-error"})
+	}
+}
+
+func (w *discoveryWalker) normalize() {
+	slices.SortFunc(w.result.Files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
+	slices.Sort(w.result.Missing)
+	slices.SortFunc(w.result.Skipped, func(a, b SkippedPath) int {
 		if a.Path == b.Path {
 			return strings.Compare(a.Reason, b.Reason)
 		}
 		return strings.Compare(a.Path, b.Path)
 	})
-	result.Files = dedupeFiles(result.Files)
-	result.Missing = slices.Compact(result.Missing)
-	result.Skipped = dedupeSkipped(result.Skipped)
-
-	return result, nil
+	w.result.Files = dedupeFiles(w.result.Files)
+	w.result.Missing = slices.Compact(w.result.Missing)
+	w.result.Skipped = dedupeSkipped(w.result.Skipped)
 }
 
 func addFile(rootAbs, path string, includeIgnored bool, ignorePatterns []string, result *Result) {

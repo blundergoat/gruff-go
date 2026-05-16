@@ -1,3 +1,7 @@
+# Discovery already respects the repo's .gitignore (see ADR-004). paths.ignore
+# is only for project-specific additions on top of that filter (e.g., committed
+# fixture trees or generated artefacts that are not in .gitignore but still
+# uninteresting to analysis). Empty list here means "no extras beyond .gitignore".
 paths:
   ignore: []
 

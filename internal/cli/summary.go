@@ -44,11 +44,12 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 		ignorePaths = nil
 	}
 	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:       flags.Args(),
-		Format:      *format,
-		FailOn:      failOn,
-		Registry:    registry,
-		IgnorePaths: ignorePaths,
+		Paths:          flags.Args(),
+		Format:         *format,
+		FailOn:         failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

@@ -1,6 +1,6 @@
 # Glossary
 
-Last reviewed 2026-05-14.
+Last reviewed 2026-05-16.
 
 ## gruff-go
 
@@ -61,3 +61,11 @@ Files one agent setup owns without widening scope. Claude owns `CLAUDE.md` and `
 ## Learning Loop
 
 Durable shared project-memory directories under `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/`.
+
+## Gitignored Discovery Skip
+
+A `paths.skipped` entry with reason `gitignored` indicates the path matched a rule in the repo's own `.gitignore` chain (see ADR-004 and ADR-005). Discovery never consults the user's global gitignore, `.git/info/exclude`, or any external Git state. A malformed `.gitignore` produces one entry with reason `gitignore-parse-error` and its rules are dropped wholesale.
+
+## --include-ignored
+
+CLI flag on `analyse`, `baseline`, `summary`, and `dashboard`. When set, discovery bypasses both the gitignore filter and the hardcoded fallback directory list, scans every classifiable file in the working tree, and emits `run.includeIgnored: true` in the JSON output. The flag is the documented opt-out; there is no per-rule split.

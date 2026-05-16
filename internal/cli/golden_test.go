@@ -158,6 +158,54 @@ func risky(a bool) {}
 	assertGolden(t, "diff-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+func TestAnalyseRespectsGitignoreByDefault(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n*.log\n")
+	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "// Package main is a test package.\npackage main\n")
+	writeFile(t, root, "notes.log", "noise\n")
+	t.Chdir(root)
+
+	stdout, stderr, code := runGoldenCLI("analyse", "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s\nstdout:\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stdout, `"main.go"`) {
+		t.Fatalf("main.go should be in scanned paths; got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"path": "ignored.go"`) || !strings.Contains(stdout, `"reason": "gitignored"`) {
+		t.Fatalf("ignored.go should appear in skipped with reason gitignored; got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"path": "notes.log"`) {
+		t.Fatalf("notes.log should appear in skipped; got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, `"includeIgnored": true`) {
+		t.Fatalf("includeIgnored should not be emitted on default analyse; got:\n%s", stdout)
+	}
+}
+
+func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n")
+	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "// Package main is a test package.\npackage main\n")
+	t.Chdir(root)
+
+	stdout, stderr, code := runGoldenCLI("analyse", "--format", "json", "--include-ignored")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s\nstdout:\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stdout, `"includeIgnored": true`) {
+		t.Fatalf("--include-ignored should emit run.includeIgnored=true; got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"ignored.go"`) {
+		t.Fatalf("ignored.go should be scanned with --include-ignored; got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, `"reason": "gitignored"`) {
+		t.Fatalf("--include-ignored must not emit gitignored skipped entries; got:\n%s", stdout)
+	}
+}
+
 func runGoldenCLI(args ...string) (string, string, int) {
 	var stdout, stderr bytes.Buffer
 	code := Main(args, &stdout, &stderr)

@@ -13,13 +13,14 @@ import (
 )
 
 type Options struct {
-	Paths        []string
-	Format       string
-	FailOn       finding.Severity
-	Registry     rule.Registry
-	IgnorePaths  []string
-	BaselinePath string
-	DiffBase     string
+	Paths          []string
+	Format         string
+	FailOn         finding.Severity
+	Registry       rule.Registry
+	IgnorePaths    []string
+	IncludeIgnored bool
+	BaselinePath   string
+	DiffBase       string
 }
 
 func Run(options Options) (Report, error) {
@@ -33,6 +34,7 @@ func Run(options Options) (Report, error) {
 		Root:           root,
 		Paths:          options.Paths,
 		IgnorePatterns: options.IgnorePaths,
+		IncludeIgnored: options.IncludeIgnored,
 	})
 	if err != nil {
 		return Report{}, err
@@ -47,7 +49,7 @@ func Run(options Options) (Report, error) {
 	findings, diffSummary, diagnostics := applyDiff(root, options.Paths, findings, diagnostics, options.DiffBase)
 
 	displayRoot := filepath.ToSlash(root)
-	return NewReport(displayRoot, inputsOrDefault(options.Paths), options.Format, options.FailOn, scannedPaths(discovery.Files), skippedPaths(discovery.Skipped), discovery.Missing, diagnostics, findings, registry.Definitions(), baselineSummary, diffSummary), nil
+	return NewReport(displayRoot, inputsOrDefault(options.Paths), options.Format, options.FailOn, options.IncludeIgnored, scannedPaths(discovery.Files), skippedPaths(discovery.Skipped), discovery.Missing, diagnostics, findings, registry.Definitions(), baselineSummary, diffSummary), nil
 }
 
 func normalizeOptions(options Options) Options {

@@ -151,6 +151,34 @@ func TestStateFromQueryOverridesDefaults(t *testing.T) {
 	}
 }
 
+func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
+	state := report.DashboardState{
+		Project:        "/repo",
+		FailOn:         "medium",
+		IncludeIgnored: "1",
+	}
+	scan := buildScanOptions(Options{}, state)
+	if !scan.includeIgnored {
+		t.Fatalf("includeIgnored should be true when query/state sets it")
+	}
+}
+
+func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
+	state := report.DashboardState{Project: "/repo", FailOn: "medium"}
+	scan := buildScanOptions(Options{IncludeIgnored: true}, state)
+	if !scan.includeIgnored {
+		t.Fatalf("includeIgnored should be true when Options.IncludeIgnored is true and state is unset")
+	}
+}
+
+func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
+	values := map[string][]string{"includeIgnored": {"1"}}
+	state := stateFromQuery(Options{}, values)
+	if state.IncludeIgnored != "1" {
+		t.Fatalf("includeIgnored=1 query should round-trip, got %q", state.IncludeIgnored)
+	}
+}
+
 func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	command := displayCommand(report.DashboardState{
 		Project:    "/repo",

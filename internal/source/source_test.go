@@ -39,6 +39,135 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	}
 }
 
+func TestDiscoverRespectsGitignoreWithNegation(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "bin/*\n!bin/keeper.go\n*.log\n")
+	writeFile(t, root, "main.go", "package main\n")
+	writeFile(t, root, "bin/keeper.go", "package keeper\n")
+	writeFile(t, root, "bin/scratch.go", "package scratch\n")
+	writeFile(t, root, "notes.log", "noise\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	want := []string{"bin/keeper.go", "main.go"}
+	if !equal(got, want) {
+		t.Fatalf("files = %#v, want %#v", got, want)
+	}
+
+	gotSkipped := skippedReasons(result.Skipped)
+	for _, want := range []string{
+		"bin/scratch.go:gitignored",
+		"notes.log:gitignored",
+	} {
+		if !contains(gotSkipped, want) {
+			t.Fatalf("skipped reasons %#v missing %q", gotSkipped, want)
+		}
+	}
+}
+
+func TestDiscoverGitignoreNestedOverride(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "*.tmp\n")
+	writeFile(t, root, "pkg/.gitignore", "!keep.tmp\n")
+	writeFile(t, root, "pkg/keep.tmp", "ignored content\n")
+	writeFile(t, root, "pkg/throwaway.tmp", "ignored content\n")
+	writeFile(t, root, "pkg/main.go", "package pkg\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Note: *.tmp matches both keep.tmp and throwaway.tmp; pkg/.gitignore
+	// !keep.tmp re-includes keep.tmp. throwaway.tmp stays gitignored.
+	got := paths(result.Files)
+	wantContains := []string{"pkg/main.go"}
+	for _, w := range wantContains {
+		if !contains(got, w) {
+			t.Fatalf("files = %#v missing %q", got, w)
+		}
+	}
+	// keep.tmp is re-included by negation but .tmp is not a recognised source
+	// extension; the classifier drops it. So it should not appear in Files,
+	// and should NOT appear in Skipped with reason gitignored either.
+	if contains(skippedReasons(result.Skipped), "pkg/keep.tmp:gitignored") {
+		t.Fatalf("pkg/keep.tmp should not be in skipped:gitignored after negation; got %#v", result.Skipped)
+	}
+	if !contains(skippedReasons(result.Skipped), "pkg/throwaway.tmp:gitignored") {
+		t.Fatalf("pkg/throwaway.tmp should be skipped:gitignored; got %#v", result.Skipped)
+	}
+}
+
+func TestDiscoverIncludeIgnoredBypassesGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "secret.go\n")
+	writeFile(t, root, "secret.go", "package secret\n")
+	writeFile(t, root, "main.go", "package main\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}, IncludeIgnored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	want := []string{"main.go", "secret.go"}
+	if !equal(got, want) {
+		t.Fatalf("files = %#v, want %#v", got, want)
+	}
+	for _, item := range result.Skipped {
+		if item.Reason == "gitignored" {
+			t.Fatalf("--include-ignored must not emit gitignored skipped entries; got %#v", item)
+		}
+	}
+}
+
+func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n")
+	writeFile(t, root, "vendor/pkg/vendor.go", "package pkg\n")
+	writeFile(t, root, "node_modules/lib/index.js", "x")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	if !equal(got, []string{"main.go"}) {
+		t.Fatalf("files = %#v, want [main.go]", got)
+	}
+	gotSkipped := skippedReasons(result.Skipped)
+	for _, want := range []string{"vendor:dependency", "node_modules:dependency"} {
+		if !contains(gotSkipped, want) {
+			t.Fatalf("hardcoded fallback skip missing %q in %#v", want, gotSkipped)
+		}
+	}
+}
+
+func TestDiscoverMalformedGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "*.log\n[bad\n")
+	writeFile(t, root, "main.go", "package main\n")
+	writeFile(t, root, "scratch.log", "noise\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Malformed .gitignore: rules dropped, file flagged in Skipped.
+	if !contains(paths(result.Files), "main.go") {
+		t.Fatalf("main.go should still be scanned despite malformed gitignore")
+	}
+	if !contains(skippedReasons(result.Skipped), ".gitignore:gitignore-parse-error") {
+		t.Fatalf("malformed .gitignore must be reported with reason gitignore-parse-error; got %#v", result.Skipped)
+	}
+}
+
 func TestDiscoverRecordsMissingInputs(t *testing.T) {
 	root := t.TempDir()
 	result, err := Discover(Options{Root: root, Paths: []string{"missing.go"}})

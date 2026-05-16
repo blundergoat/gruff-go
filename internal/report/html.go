@@ -290,7 +290,6 @@ func (r htmlRenderer) findings() string {
 	return builder.String()
 }
 
-
 func (r htmlRenderer) findingRow(item finding.Finding) string {
 	tier := severityTierClass(item.Severity)
 	line := 0

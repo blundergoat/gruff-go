@@ -215,7 +215,7 @@ Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedd
 - **Default-enabled:** yes
 - **Confidence:** medium
 
-Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, etc.
+Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, `bearer = "…"`, and `authorization = "Bearer …"`.
 
 Add documented dummies to `allowlists.secretPreviews` so example values in tests and READMEs aren't flagged.
 

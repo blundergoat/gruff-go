@@ -27,5 +27,6 @@ tidy: ## Tidy Go modules
 
 .PHONY: clean
 clean: ## Remove local build and coverage artifacts
-	rm -rf bin coverage.out coverage.html
+	@if [ -d bin ]; then find bin -mindepth 1 ! -name gruff-go -exec rm -rf {} +; fi
+	rm -f coverage.out coverage.html
 	go clean -testcache

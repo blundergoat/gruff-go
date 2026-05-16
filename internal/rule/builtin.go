@@ -17,9 +17,11 @@ const (
 	fileLengthThreshold     = 400
 	functionLengthThreshold = 80
 	cyclomaticThreshold     = 20
+	secretKeyPattern        = `api[_-]?key|auth[_-]?token|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization|bearer|secret|token|password`
+	secretAssignmentPattern = `(?i)(?:^|[^A-Za-z0-9_-])((?:` + secretKeyPattern + `)\s*(?::=|=|:)\s*["']?(?:Bearer\s+)?[A-Za-z0-9_./+=-]{20,})`
 )
 
-var secretPattern = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*["']?[A-Za-z0-9_./+=-]{20,}`)
+var secretPattern = regexp.MustCompile(secretAssignmentPattern)
 
 type FileLengthRule struct {
 	MaxLines int
@@ -238,10 +240,11 @@ func (SensitiveDataRule) Definition() Definition {
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
-		match := secretPattern.FindString(line)
-		if match == "" {
+		matches := secretPattern.FindStringSubmatch(line)
+		if len(matches) < 2 || matches[1] == "" {
 			continue
 		}
+		match := matches[1]
 		metadata := map[string]any{}
 		if len(r.PreviewAllowlist) == 0 || pathfilter.MatchesAny(r.PreviewAllowlist, unit.File.Path) {
 			metadata["preview"] = redact(match)

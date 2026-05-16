@@ -171,11 +171,12 @@ func runScan(_ context.Context, scanOpts scanRunOptions) (analysis.Report, error
 		}
 	}
 	return analysis.Run(analysis.Options{
-		Paths:        scanOpts.paths,
-		Format:       "html",
-		FailOn:       scanOpts.failOn,
-		BaselinePath: scanOpts.baselinePath,
-		DiffBase:     scanOpts.diffBase,
+		Paths:          scanOpts.paths,
+		Format:         "html",
+		FailOn:         scanOpts.failOn,
+		BaselinePath:   scanOpts.baselinePath,
+		DiffBase:       scanOpts.diffBase,
+		IncludeIgnored: scanOpts.includeIgnored,
 	})
 }
 

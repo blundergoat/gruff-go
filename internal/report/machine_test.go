@@ -22,7 +22,7 @@ func TestMachineReportFormats(t *testing.T) {
 		Pillar:      finding.PillarSize,
 		Fingerprint: "abc123",
 	}
-	report := analysis.NewReport("/repo", []string{"."}, "sarif", finding.SeverityMedium, []string{"main.go"}, nil, nil, nil, []finding.Finding{item}, rule.Defaults().Definitions(), analysis.BaselineSummary{}, analysis.DiffSummary{})
+	report := analysis.NewReport("/repo", []string{"."}, "sarif", finding.SeverityMedium, false, []string{"main.go"}, nil, nil, nil, []finding.Finding{item}, rule.Defaults().Definitions(), analysis.BaselineSummary{}, analysis.DiffSummary{})
 
 	var sarif bytes.Buffer
 	if err := WriteSARIF(&sarif, report); err != nil {
