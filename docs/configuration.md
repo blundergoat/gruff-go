@@ -140,6 +140,12 @@ rules:
       allowList:
         - "git"
         - "go"
+
+  # Ignore module-private exported symbols under internal/ packages.
+  docs.exported-symbol-comment:
+    enabled: true
+    options:
+      ignoreInternalPackages: true
 ```
 
 If a rule ID doesn't exist, the loader rejects the file with `config: unknown rule "x.y"`. Run `gruff-go list-rules` to print the current registry.

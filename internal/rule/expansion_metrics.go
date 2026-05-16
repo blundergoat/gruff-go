@@ -211,7 +211,9 @@ func clausesNestingDepth(body *ast.BlockStmt, depth int) int {
 	return best
 }
 
-type ExportedSymbolCommentRule struct{}
+type ExportedSymbolCommentRule struct {
+	IgnoreInternalPackages bool
+}
 
 func (ExportedSymbolCommentRule) Definition() Definition {
 	return Definition{
@@ -222,16 +224,20 @@ func (ExportedSymbolCommentRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: false,
+		Options:        map[string]any{"ignoreInternalPackages": false},
 		Tags:           []string{"opt-in"},
 		Remediation:    "Add a Go-style doc comment that begins with the symbol name.",
 	}
 }
 
-func (ExportedSymbolCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+func (r ExportedSymbolCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
 	}
 	if strings.HasSuffix(unit.File.Path, "_test.go") {
+		return nil
+	}
+	if r.IgnoreInternalPackages && isInternalPackagePath(unit.File.Path) {
 		return nil
 	}
 	findings := []finding.Finding{}
@@ -239,6 +245,16 @@ func (ExportedSymbolCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 		findings = append(findings, exportedDeclFindings(unit, decl)...)
 	}
 	return findings
+}
+
+func isInternalPackagePath(path string) bool {
+	parts := strings.Split(path, "/")
+	for _, part := range parts[:len(parts)-1] {
+		if part == "internal" {
+			return true
+		}
+	}
+	return false
 }
 
 func exportedDeclFindings(unit parser.Unit, decl ast.Decl) []finding.Finding {

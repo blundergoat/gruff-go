@@ -83,7 +83,7 @@ func DefaultsConfigured(config Config) (Registry, error) {
 		SkippedTestRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
 		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
-		ExportedSymbolCommentRule{},
+		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages")},
 		PrivateKeyRule{},
 		AWSAccessKeyRule{},
 		JWTTokenRule{},
@@ -265,6 +265,19 @@ func stringSliceOption(config Config, ruleID, key string) []string {
 		}
 	}
 	return out
+}
+
+func boolOption(config Config, ruleID, key string) bool {
+	options, ok := config.Options[ruleID]
+	if !ok {
+		return false
+	}
+	value, ok := options[key]
+	if !ok {
+		return false
+	}
+	boolValue, ok := value.(bool)
+	return ok && boolValue
 }
 
 func intThreshold(config Config, ruleID string, name string, fallback int) int {

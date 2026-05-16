@@ -96,10 +96,11 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Options:** `ignoreInternalPackages bool` — default `false`
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
 
-> **Note for `internal/` packages.** This rule currently flags every exported symbol regardless of whether the package is internal. Tuning options (`ignoreInternalPackages`, allowlists) are tracked in the backlog before any default-enable consideration.
+Set `ignoreInternalPackages: true` when internal package exports are module-private implementation details rather than public API.
 
 **Remediation.** Add a Go-style doc comment that begins with the symbol name.
 

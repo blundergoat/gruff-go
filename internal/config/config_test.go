@@ -91,7 +91,9 @@ rules:
   docs.exported-symbol-comment:
     enabled: true
     severity: error
-`), rule.Defaults().Definitions())
+    options:
+      ignoreInternalPackages: true
+	`), rule.Defaults().Definitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +112,9 @@ rules:
 	}
 	if options.Severities["docs.exported-symbol-comment"] != "high" {
 		t.Fatalf("severities = %#v, want error alias mapped to high for docs.exported-symbol-comment", options.Severities)
+	}
+	if options.Options["docs.exported-symbol-comment"]["ignoreInternalPackages"] != true {
+		t.Fatalf("options = %#v, want ignoreInternalPackages=true", options.Options)
 	}
 }
 
