@@ -63,7 +63,3 @@ func currentWorkingDirectory() string {
 	}
 	return wd
 }
-
-func changeDir(path string) error {
-	return os.Chdir(path)
-}

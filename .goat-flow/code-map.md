@@ -74,7 +74,7 @@
 ## Go Application Surface
 
 - `cmd/gruff-go/main.go` = Thin executable entrypoint that exits with the CLI package's Main function.
-- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, and `list-rules`.
+- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `list-rules`, `summary`, `report`, and `dashboard`.
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict gruff config discovery/parsing for `.gruff.yaml`, `.gruff.yml`, and `.gruff.json`, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
@@ -84,6 +84,7 @@
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.
 - `internal/pathfilter/` = Shared relative path glob validation and matching.
 - `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, and exit semantics.
-- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, and rule-list rendering.
+- `internal/dashboard/` = Local-only dashboard HTTP server, request handling, scan option mapping, and shutdown behavior.
+- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
 - `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring.
-- No CI config, deployment config, dashboard, database assets, trend storage, external linter ingestion, or package publication surface exists yet.
+- No CI config, deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package publication surface exists yet.

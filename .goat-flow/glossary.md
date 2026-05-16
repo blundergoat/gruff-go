@@ -46,6 +46,10 @@ The `--diff-base` analysis mode. It uses local `git diff --unified=0` output to 
 
 The Static Analysis Results Interchange Format. `gruff-go` emits SARIF 2.1.0 from the same report data used by text, JSON, summary JSON, and GitHub annotation output.
 
+## Dashboard
+
+Local-only `gruff-go dashboard` HTTP server. It binds to loopback by default, renders a dashboard shell around the HTML report, and runs scans in-process with explicit project root/context options rather than changing the process working directory.
+
 ## Opt-In Rule
 
 A rule listed by `list-rules` with `defaultEnabled: false`. It can be enabled through strict config, but default scans skip it so experimental or context-sensitive signals do not change baseline dogfood behavior.

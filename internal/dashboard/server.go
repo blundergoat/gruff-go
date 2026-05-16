@@ -72,11 +72,15 @@ func Serve(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 	}
 
 	handler := NewHandler(opts)
+	writeTimeout := time.Duration(0)
+	if opts.ScanTimeout > 0 {
+		writeTimeout = opts.ScanTimeout + 10*time.Second
+	}
 	server := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      opts.ScanTimeout + 10*time.Second,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       60 * time.Second,
 	}
 

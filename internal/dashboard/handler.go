@@ -3,15 +3,19 @@ package dashboard
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
+	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/report"
+	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
 // NewHandler returns the dashboard HTTP handler that owns / and /scan routes.
@@ -45,12 +49,7 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 	state := stateFromQuery(opts, query)
 	scanOpts := buildScanOptions(opts, state)
 
-	ctx := request.Context()
-	timeout := opts.ScanTimeout
-	if timeout <= 0 {
-		timeout = DefaultScanTimeout
-	}
-	scanCtx, cancel := context.WithTimeout(ctx, timeout)
+	scanCtx, cancel := scanContext(request.Context(), opts.ScanTimeout)
 	defer cancel()
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -60,19 +59,18 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 	duration := time.Since(started)
 	durationMs := int(duration.Milliseconds())
 
-	if runErr != nil {
-		_ = report.WriteDashboardError(writer, "Scan failed.", runErr.Error(), 2, durationMs)
-		return
-	}
-
-	if scanCtx.Err() == context.DeadlineExceeded {
+	if errors.Is(runErr, context.DeadlineExceeded) || scanCtx.Err() == context.DeadlineExceeded {
 		_ = report.WriteDashboardError(
 			writer,
-			fmt.Sprintf("Scan exceeded %ds timeout.", int(timeout.Seconds())),
+			fmt.Sprintf("Scan exceeded %ds timeout.", int(opts.ScanTimeout.Seconds())),
 			"The dashboard cancelled the scan before it completed. Increase --scan-timeout to allow longer runs.",
 			124,
 			durationMs,
 		)
+		return
+	}
+	if runErr != nil {
+		_ = report.WriteDashboardError(writer, "Scan failed.", runErr.Error(), 2, durationMs)
 		return
 	}
 
@@ -93,6 +91,13 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		Command:     displayCommand(state),
 	}
 	_, _ = writer.Write([]byte(report.InjectScanMetadata(buffer.String(), metadata)))
+}
+
+func scanContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout > 0 {
+		return context.WithTimeout(parent, timeout)
+	}
+	return context.WithCancel(parent)
 }
 
 type scanRunOptions struct {
@@ -164,20 +169,53 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 	}
 }
 
-func runScan(_ context.Context, scanOpts scanRunOptions) (analysis.Report, error) {
-	if scanOpts.projectRoot != "" {
-		if err := changeDir(scanOpts.projectRoot); err != nil {
-			return analysis.Report{}, err
-		}
+func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, error) {
+	root, err := dashboardRoot(scanOpts.projectRoot)
+	if err != nil {
+		return analysis.Report{}, err
+	}
+	registry, ignorePaths, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig)
+	if err != nil {
+		return analysis.Report{}, fmt.Errorf("config: %w", err)
+	}
+	if scanOpts.includeIgnored {
+		ignorePaths = nil
 	}
 	return analysis.Run(analysis.Options{
+		Context:        ctx,
+		Root:           root,
 		Paths:          scanOpts.paths,
 		Format:         "html",
 		FailOn:         scanOpts.failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
 		BaselinePath:   scanOpts.baselinePath,
 		DiffBase:       scanOpts.diffBase,
 		IncludeIgnored: scanOpts.includeIgnored,
 	})
+}
+
+func dashboardRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", nil
+	}
+	return filepath.Abs(root)
+}
+
+func dashboardRegistry(root, configPath string, noConfig bool) (rule.Registry, []string, error) {
+	defaults := rule.Defaults()
+	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
+	if err != nil {
+		return rule.Registry{}, nil, err
+	}
+	if loaded.Path == "" {
+		return defaults, nil, nil
+	}
+	registry, err := rule.DefaultsConfigured(loaded.Config.RuleOptions())
+	if err != nil {
+		return rule.Registry{}, nil, err
+	}
+	return registry, loaded.Config.IgnorePaths, nil
 }
 
 func splitPaths(raw string) []string {

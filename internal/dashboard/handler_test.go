@@ -1,12 +1,16 @@
 package dashboard
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
@@ -64,6 +68,71 @@ func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 	}
 }
 
+func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.T) {
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalWD); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gruff.json"), `{
+  "rules": {
+    "size.file-length": {
+      "thresholds": {"maxLines": 1}
+    }
+  }
+}`)
+	writeFile(t, filepath.Join(project, "short.go"), "package sample\n\nfunc ok() {}\n")
+
+	reportData, err := runScan(context.Background(), scanRunOptions{
+		projectRoot: project,
+		paths:       []string{"."},
+		failOn:      "medium",
+	})
+	if err != nil {
+		t.Fatalf("runScan: %v", err)
+	}
+	if got, err := os.Getwd(); err != nil || got != originalWD {
+		t.Fatalf("cwd after runScan = %q, %v; want %q", got, err, originalWD)
+	}
+	if !hasFinding(reportData.Findings, "size.file-length") {
+		t.Fatalf("findings missing size.file-length from project .gruff.json: %#v", reportData.Findings)
+	}
+	if reportData.Run.WorkingDirectory != filepath.ToSlash(project) {
+		t.Fatalf("report root = %q, want %q", reportData.Run.WorkingDirectory, filepath.ToSlash(project))
+	}
+}
+
+func hasFinding(findings []finding.Finding, ruleID string) bool {
+	for _, item := range findings {
+		if item.RuleID == ruleID {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRunScanRespectsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := runScan(ctx, scanRunOptions{
+		projectRoot: t.TempDir(),
+		failOn:      "medium",
+	})
+	if err == nil {
+		t.Fatal("expected runScan to return context cancellation")
+	}
+	if err != context.Canceled {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
 func TestHandlerScanReturnsErrorDocOnInvalidProject(t *testing.T) {
 	handler := NewHandler(Options{})
 	server := httptest.NewServer(handler)
@@ -78,6 +147,16 @@ func TestHandlerScanReturnsErrorDocOnInvalidProject(t *testing.T) {
 	html := string(body)
 	if !strings.Contains(html, "Scan failed") {
 		t.Errorf("invalid project should produce error doc; got: %s", html)
+	}
+}
+
+func writeFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
 	}
 }
 

@@ -1,6 +1,8 @@
 package analysis
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -13,6 +15,8 @@ import (
 )
 
 type Options struct {
+	Context        context.Context
+	Root           string
 	Paths          []string
 	Format         string
 	FailOn         finding.Severity
@@ -24,13 +28,21 @@ type Options struct {
 }
 
 func Run(options Options) (Report, error) {
-	root, err := os.Getwd()
+	root, err := analysisRoot(options.Root)
 	if err != nil {
 		return Report{}, err
 	}
 	options = normalizeOptions(options)
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Report{}, err
+	}
 
 	discovery, err := source.Discover(source.Options{
+		Context:        ctx,
 		Root:           root,
 		Paths:          options.Paths,
 		IgnorePatterns: options.IgnorePaths,
@@ -39,17 +51,47 @@ func Run(options Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return Report{}, err
+	}
 
 	units, parseDiagnostics := parser.Parse(discovery.Files)
+	if err := ctx.Err(); err != nil {
+		return Report{}, err
+	}
 	diagnostics := diagnosticsFromDiscovery(discovery.Missing)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
 	registry := options.Registry
 	findings := registry.Analyze(units, rule.Context{Root: root})
-	findings, baselineSummary, diagnostics := applyBaseline(findings, diagnostics, options.BaselinePath)
+	if err := ctx.Err(); err != nil {
+		return Report{}, err
+	}
+	findings, baselineSummary, diagnostics := applyBaseline(root, findings, diagnostics, options.BaselinePath)
+	if err := ctx.Err(); err != nil {
+		return Report{}, err
+	}
 	findings, diffSummary, diagnostics := applyDiff(root, options.Paths, findings, diagnostics, options.DiffBase)
 
 	displayRoot := filepath.ToSlash(root)
 	return NewReport(displayRoot, inputsOrDefault(options.Paths), options.Format, options.FailOn, options.IncludeIgnored, scannedPaths(discovery.Files), skippedPaths(discovery.Skipped), discovery.Missing, diagnostics, findings, registry.Definitions(), baselineSummary, diffSummary), nil
+}
+
+func analysisRoot(root string) (string, error) {
+	if root == "" {
+		return os.Getwd()
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(rootAbs)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("analysis root is not a directory: %s", root)
+	}
+	return rootAbs, nil
 }
 
 func normalizeOptions(options Options) Options {
@@ -89,19 +131,24 @@ func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	return diagnostics
 }
 
-func applyBaseline(findings []finding.Finding, diagnostics []Diagnostic, baselinePath string) ([]finding.Finding, BaselineSummary, []Diagnostic) {
+func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagnostic, baselinePath string) ([]finding.Finding, BaselineSummary, []Diagnostic) {
 	baselineSummary := BaselineSummary{}
 	if baselinePath == "" {
 		return findings, baselineSummary, diagnostics
 	}
+	displayPath := filepath.ToSlash(baselinePath)
+	loadPath := baselinePath
+	if !filepath.IsAbs(loadPath) {
+		loadPath = filepath.Join(root, loadPath)
+	}
 	baselineSummary.Applied = true
-	baselineSummary.Path = filepath.ToSlash(baselinePath)
-	file, err := baseline.Load(baselinePath)
+	baselineSummary.Path = displayPath
+	file, err := baseline.Load(loadPath)
 	if err != nil {
 		diagnostics = append(diagnostics, Diagnostic{
 			Stage:    "baseline",
 			Message:  err.Error(),
-			File:     filepath.ToSlash(baselinePath),
+			File:     displayPath,
 			Severity: finding.SeverityHigh,
 		})
 		return findings, baselineSummary, diagnostics

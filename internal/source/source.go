@@ -3,6 +3,7 @@ package source
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -36,6 +37,7 @@ type Result struct {
 }
 
 type Options struct {
+	Context        context.Context
 	Root           string
 	Paths          []string
 	IncludeIgnored bool
@@ -43,6 +45,13 @@ type Options struct {
 }
 
 func Discover(options Options) (Result, error) {
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
 	root := options.Root
 	if root == "" {
 		root = "."
@@ -56,8 +65,11 @@ func Discover(options Options) (Result, error) {
 		paths = []string{"."}
 	}
 
-	walker := newDiscoveryWalker(rootAbs, options)
+	walker := newDiscoveryWalker(ctx, rootAbs, options)
 	for _, input := range paths {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
 		if err := walker.visitInput(input); err != nil {
 			return Result{}, err
 		}
@@ -68,6 +80,7 @@ func Discover(options Options) (Result, error) {
 }
 
 type discoveryWalker struct {
+	ctx             context.Context
 	rootAbs         string
 	options         Options
 	matcher         *Matcher
@@ -75,8 +88,9 @@ type discoveryWalker struct {
 	result          Result
 }
 
-func newDiscoveryWalker(rootAbs string, options Options) *discoveryWalker {
+func newDiscoveryWalker(ctx context.Context, rootAbs string, options Options) *discoveryWalker {
 	return &discoveryWalker{
+		ctx:             ctx,
 		rootAbs:         rootAbs,
 		options:         options,
 		matcher:         NewMatcher(rootAbs),
@@ -85,6 +99,9 @@ func newDiscoveryWalker(rootAbs string, options Options) *discoveryWalker {
 }
 
 func (w *discoveryWalker) visitInput(input string) error {
+	if err := w.ctx.Err(); err != nil {
+		return err
+	}
 	path := input
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(w.rootAbs, path)
@@ -102,6 +119,9 @@ func (w *discoveryWalker) visitInput(input string) error {
 		return nil
 	}
 	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if err := w.ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
