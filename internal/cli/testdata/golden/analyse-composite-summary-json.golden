@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "gruff-go.analysis.v0.1",
+  "tool": {
+    "name": "gruff-go",
+    "version": "0.1.0-dev"
+  },
+  "run": {
+    "workingDirectory": "<WORKDIR>",
+    "inputs": [
+      "composite.go"
+    ],
+    "format": "summary-json",
+    "failOn": "medium"
+  },
+  "summary": {
+    "filesScanned": 1,
+    "filesSkipped": 0,
+    "diagnosticsCount": 0,
+    "findingsCount": 3,
+    "countsBySeverity": {
+      "critical": 0,
+      "high": 0,
+      "info": 0,
+      "low": 1,
+      "medium": 2
+    },
+    "countsByPillar": {
+      "complexity": 1,
+      "design": 1,
+      "size": 1
+    },
+    "exitCode": 1,
+    "parserMode": "parser-only",
+    "typeLoadingEnabled": false
+  },
+  "baseline": {
+    "applied": false,
+    "entries": 0,
+    "suppressedFindings": 0,
+    "staleEntries": 0
+  },
+  "diff": {
+    "enabled": false,
+    "changedFiles": [],
+    "filteredFindings": 0
+  },
+  "displayFilter": {
+    "applied": false,
+    "includeRules": [],
+    "excludeRules": [],
+    "includePillars": [],
+    "excludePillars": [],
+    "hiddenFindings": 0
+  },
+  "score": {
+    "composite": 92,
+    "grade": "A",
+    "pillars": {
+      "complexity": 92,
+      "size": 92
+    },
+    "pillarDetails": [
+      {
+        "pillar": "complexity",
+        "score": 92,
+        "grade": "A",
+        "findings": 1,
+        "critical": 0,
+        "high": 0,
+        "medium": 1,
+        "low": 0,
+        "info": 0
+      },
+      {
+        "pillar": "size",
+        "score": 92,
+        "grade": "A",
+        "findings": 1,
+        "critical": 0,
+        "high": 0,
+        "medium": 1,
+        "low": 0,
+        "info": 0
+      }
+    ],
+    "topOffenders": [
+      {
+        "file": "composite.go",
+        "penalty": 16,
+        "findings": 2,
+        "grade": "B",
+        "maxCyclomatic": 3
+      }
+    ],
+    "complexityDistribution": {
+      "1-5": 1,
+      "11-15": 0,
+      "16-20": 0,
+      "21+": 0,
+      "6-10": 0
+    }
+  },
+  "diagnostics": []
+}

@@ -22,6 +22,8 @@ func TestDefaultsListRules(t *testing.T) {
 		"complexity.cyclomatic",
 		"complexity.nesting-depth",
 		"dead-code.empty-block",
+		"design.god-function",
+		"design.hotspot-file",
 		"docs.exported-symbol-comment",
 		"docs.package-comment",
 		"naming.identifier-quality",
@@ -61,6 +63,8 @@ func TestDefaultsListRules(t *testing.T) {
 	for _, id := range []string{
 		"complexity.nesting-depth",
 		"dead-code.empty-block",
+		"design.god-function",
+		"design.hotspot-file",
 		"docs.exported-symbol-comment",
 		"naming.package-underscore",
 		"security.shell-command",

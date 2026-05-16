@@ -1,6 +1,8 @@
 complexity.cyclomatic	complexity	medium	Cyclomatic complexity
 complexity.nesting-depth	complexity	medium	Nesting depth
 dead-code.empty-block	dead-code	low	Empty control-flow block
+design.god-function	design	low	God function
+design.hotspot-file	design	low	Hotspot file
 docs.exported-symbol-comment	documentation	low	Exported symbol comment
 docs.package-comment	documentation	low	Package comment
 naming.identifier-quality	naming	low	Identifier quality

@@ -500,33 +500,90 @@
       },
       "results": [
         {
-          "ruleId": "complexity.cyclomatic",
-          "level": "warning",
+          "ruleId": "design.god-function",
+          "level": "note",
           "message": {
-            "text": "function cyclomatic complexity is 22, above threshold 20"
+            "text": "function Hot combines size and complexity findings"
           },
           "locations": [
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "complex.go"
+                  "uri": "composite.go"
+                },
+                "region": {}
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primary": "4a10c037e95fba2e"
+          },
+          "properties": {
+            "confidence": "high",
+            "fingerprint": "4a10c037e95fba2e",
+            "pillar": "design",
+            "severity": "low",
+            "symbol": "Hot"
+          }
+        },
+        {
+          "ruleId": "complexity.cyclomatic",
+          "level": "warning",
+          "message": {
+            "text": "function cyclomatic complexity is 3, above threshold 2"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
                 },
                 "region": {
                   "startLine": 4,
-                  "endLine": 26
+                  "endLine": 11
                 }
               }
             }
           ],
           "partialFingerprints": {
-            "primary": "eb7055e051158304"
+            "primary": "d8293925f32a0f34"
           },
           "properties": {
             "confidence": "high",
-            "fingerprint": "eb7055e051158304",
+            "fingerprint": "d8293925f32a0f34",
             "pillar": "complexity",
             "severity": "medium",
-            "symbol": "risky"
+            "symbol": "Hot"
+          }
+        },
+        {
+          "ruleId": "size.function-length",
+          "level": "warning",
+          "message": {
+            "text": "function has 8 lines, above threshold 4"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                },
+                "region": {
+                  "startLine": 4,
+                  "endLine": 11
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primary": "1dacf2848e817c39"
+          },
+          "properties": {
+            "confidence": "high",
+            "fingerprint": "1dacf2848e817c39",
+            "pillar": "size",
+            "severity": "medium",
+            "symbol": "Hot"
           }
         }
       ]

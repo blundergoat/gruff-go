@@ -118,6 +118,32 @@ rules:
 	}
 }
 
+func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
+	cfg, err := ParseFile(".gruff.yaml", []byte(`
+rules:
+  design.god-function:
+    enabled: true
+  design.hotspot-file:
+    enabled: true
+    thresholds:
+      minFindings: 4
+      minPillars: 3
+`), rule.Defaults().Definitions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := cfg.RuleOptions()
+	if !options.Enabled["design.god-function"] || !options.Enabled["design.hotspot-file"] {
+		t.Fatalf("enabled map = %#v, want composite rules enabled", options.Enabled)
+	}
+	if options.Thresholds["design.hotspot-file"]["minFindings"] != 4 {
+		t.Fatalf("thresholds = %#v, want design.hotspot-file minFindings=4", options.Thresholds)
+	}
+	if options.Thresholds["design.hotspot-file"]["minPillars"] != 3 {
+		t.Fatalf("thresholds = %#v, want design.hotspot-file minPillars=3", options.Thresholds)
+	}
+}
+
 func TestParseAcceptsLegacyRuleIDAliases(t *testing.T) {
 	cfg, err := ParseFile(".gruff.yaml", []byte(`
 selection:
@@ -159,6 +185,7 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "invalid abbreviation", json: `{"acceptedAbbreviations": ["id"]}`, want: "must be uppercase"},
 		{name: "unknown threshold on parameter-count", json: `{"rules": {"size.parameter-count": {"thresholds": {"maxArgs": 3}}}}`, want: "unknown threshold"},
 		{name: "invalid threshold on nesting-depth", json: `{"rules": {"complexity.nesting-depth": {"thresholds": {"maxDepth": 0}}}}`, want: "must be positive"},
+		{name: "unknown threshold on hotspot", json: `{"rules": {"design.hotspot-file": {"thresholds": {"maxFindings": 3}}}}`, want: "unknown threshold"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

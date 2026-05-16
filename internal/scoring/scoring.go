@@ -47,6 +47,9 @@ func Calculate(findings []finding.Finding) Score {
 	fileMaxCyclomatic := map[string]int{}
 	pillarCounts := map[string]*PillarDetail{}
 	for _, item := range findings {
+		if scoreNeutralFinding(item) {
+			continue
+		}
 		penalty := findingPenalty(item)
 		pillar := string(item.Pillar)
 		pillarPenalty[pillar] += penalty
@@ -129,6 +132,10 @@ func findingPenalty(item finding.Finding) int {
 	default:
 		return base
 	}
+}
+
+func scoreNeutralFinding(item finding.Finding) bool {
+	return strings.HasPrefix(item.RuleID, "design.")
 }
 
 func grade(score int) string {

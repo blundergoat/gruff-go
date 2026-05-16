@@ -149,3 +149,29 @@ func TestCalculateComplexityDistribution(t *testing.T) {
 		t.Errorf("bin 1-5 = %d, want 0 (non-cyclomatic findings should not count)", got)
 	}
 }
+
+func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
+	base := []finding.Finding{
+		{File: "hot.go", RuleID: "size.function-length", Severity: finding.SeverityMedium, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "hot.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityMedium, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
+	}
+	withComposite := append(append([]finding.Finding{}, base...), finding.Finding{
+		File:       "hot.go",
+		RuleID:     "design.god-function",
+		Severity:   finding.SeverityLow,
+		Confidence: finding.ConfidenceHigh,
+		Pillar:     finding.PillarDesign,
+	})
+
+	baseScore := Calculate(base)
+	compositeScore := Calculate(withComposite)
+	if compositeScore.Composite != baseScore.Composite {
+		t.Fatalf("composite score = %d, want score-neutral %d", compositeScore.Composite, baseScore.Composite)
+	}
+	if len(compositeScore.TopOffender) != len(baseScore.TopOffender) || compositeScore.TopOffender[0].Penalty != baseScore.TopOffender[0].Penalty {
+		t.Fatalf("top offenders changed: base=%#v composite=%#v", baseScore.TopOffender, compositeScore.TopOffender)
+	}
+	if _, ok := compositeScore.Pillars["design"]; ok {
+		t.Fatalf("design pillar should be score-neutral, got pillars %#v", compositeScore.Pillars)
+	}
+}

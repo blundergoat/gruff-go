@@ -31,15 +31,25 @@ type ProjectRule interface {
 	AnalyzeProject([]parser.Unit, Context) []finding.Finding
 }
 
+type CompositeRule interface {
+	Definition() Definition
+	AnalyzeFindings([]finding.Finding, Context) []finding.Finding
+}
+
 type Registry struct {
-	unitRules    []UnitRule
-	projectRules []ProjectRule
-	definitions  []Definition
-	enabled      map[string]bool
-	severities   map[string]finding.Severity
+	unitRules      []UnitRule
+	projectRules   []ProjectRule
+	compositeRules []CompositeRule
+	definitions    []Definition
+	enabled        map[string]bool
+	severities     map[string]finding.Severity
 }
 
 func NewRegistry(unitRules []UnitRule, projectRules []ProjectRule) (Registry, error) {
+	return NewRegistryWithComposite(unitRules, projectRules, nil)
+}
+
+func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, compositeRules []CompositeRule) (Registry, error) {
 	seen := map[string]struct{}{}
 	definitions := []Definition{}
 	for _, rule := range unitRules {
@@ -54,6 +64,12 @@ func NewRegistry(unitRules []UnitRule, projectRules []ProjectRule) (Registry, er
 			return Registry{}, err
 		}
 	}
+	for _, rule := range compositeRules {
+		definition := rule.Definition()
+		if err := addDefinition(definition, seen, &definitions); err != nil {
+			return Registry{}, err
+		}
+	}
 	slices.SortFunc(definitions, func(a, b Definition) int { return strings.Compare(a.ID, b.ID) })
 	slices.SortFunc(unitRules, func(a, b UnitRule) int {
 		return strings.Compare(a.Definition().ID, b.Definition().ID)
@@ -61,7 +77,10 @@ func NewRegistry(unitRules []UnitRule, projectRules []ProjectRule) (Registry, er
 	slices.SortFunc(projectRules, func(a, b ProjectRule) int {
 		return strings.Compare(a.Definition().ID, b.Definition().ID)
 	})
-	return Registry{unitRules: unitRules, projectRules: projectRules, definitions: definitions}, nil
+	slices.SortFunc(compositeRules, func(a, b CompositeRule) int {
+		return strings.Compare(a.Definition().ID, b.Definition().ID)
+	})
+	return Registry{unitRules: unitRules, projectRules: projectRules, compositeRules: compositeRules, definitions: definitions}, nil
 }
 
 func Defaults() Registry {
@@ -73,7 +92,7 @@ func Defaults() Registry {
 }
 
 func DefaultsConfigured(config Config) (Registry, error) {
-	registry, err := NewRegistry([]UnitRule{
+	registry, err := NewRegistryWithComposite([]UnitRule{
 		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
@@ -83,7 +102,7 @@ func DefaultsConfigured(config Config) (Registry, error) {
 		SkippedTestRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
 		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
-		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages")},
+		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
 		PrivateKeyRule{},
 		AWSAccessKeyRule{},
 		JWTTokenRule{},
@@ -94,6 +113,12 @@ func DefaultsConfigured(config Config) (Registry, error) {
 	}, []ProjectRule{
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
+	}, []CompositeRule{
+		DesignGodFunctionRule{},
+		DesignHotspotFileRule{
+			MinFindings: intThreshold(config, "design.hotspot-file", "minFindings", hotspotFileMinFindings),
+			MinPillars:  intThreshold(config, "design.hotspot-file", "minPillars", hotspotFileMinPillars),
+		},
 	})
 	if err != nil {
 		return Registry{}, err
@@ -154,6 +179,16 @@ func (r Registry) Analyze(units []parser.Unit, context Context) []finding.Findin
 			continue
 		}
 		for _, item := range rule.AnalyzeProject(units, context) {
+			findings = append(findings, applyDefinition(item, definition))
+		}
+	}
+	baseFindings := append([]finding.Finding(nil), findings...)
+	for _, rule := range r.compositeRules {
+		definition := r.configuredDefinition(rule.Definition())
+		if !r.ruleEnabled(definition) {
+			continue
+		}
+		for _, item := range rule.AnalyzeFindings(baseFindings, context) {
 			findings = append(findings, applyDefinition(item, definition))
 		}
 	}
@@ -267,17 +302,20 @@ func stringSliceOption(config Config, ruleID, key string) []string {
 	return out
 }
 
-func boolOption(config Config, ruleID, key string) bool {
+func boolOption(config Config, ruleID, key string, fallback bool) bool {
 	options, ok := config.Options[ruleID]
 	if !ok {
-		return false
+		return fallback
 	}
 	value, ok := options[key]
 	if !ok {
-		return false
+		return fallback
 	}
 	boolValue, ok := value.(bool)
-	return ok && boolValue
+	if !ok {
+		return fallback
+	}
+	return boolValue
 }
 
 func intThreshold(config Config, ruleID string, name string, fallback int) int {
