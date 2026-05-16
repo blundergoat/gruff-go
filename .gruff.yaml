@@ -3,7 +3,9 @@
 # fixture trees or generated artefacts that are not in .gitignore but still
 # uninteresting to analysis). Empty list here means "no extras beyond .gitignore".
 paths:
-  ignore: []
+  ignore:
+    - 'internal/rule/sensitive_test.go'
+    - 'internal/report/sensitive_redaction_test.go'
 
 allowlists:
   acceptedAbbreviations:
@@ -21,29 +23,108 @@ selection:
   excludePillars: []
 
 rules:
+  # Too many branches make a function harder to test and safely change.
   complexity.cyclomatic:
     enabled: true
     threshold: 20
     severity: warning
+  # Deeply nested control flow hides edge cases and makes review slower.
+  complexity.nesting-depth:
+    enabled: true
+    threshold: 4
+    severity: warning
+  # Empty control-flow blocks usually mean unfinished or obsolete logic.
+  dead-code.empty-block:
+    enabled: true
+    severity: warning
+  # Size plus complexity on the same function marks a structural refactor candidate.
+  design.god-function:
+    enabled: true
+    severity: notice
+  # Files with findings across multiple pillars deserve whole-file triage.
+  design.hotspot-file:
+    enabled: true
+    thresholds:
+      minFindings: 3
+      minPillars: 2
+    severity: notice
+  # Exported API symbols should carry Go doc comments for downstream readers.
+  docs.exported-symbol-comment:
+    enabled: true
+    severity: notice
+    options:
+      ignoreInternalPackages: true
+  # Package comments give godoc users a clear entry point for each package.
   docs.package-comment:
     enabled: true
     severity: notice
+  # Placeholder names such as tmp or obj hide the role an identifier plays.
+  naming.identifier-quality:
+    enabled: true
+    severity: notice
+    options:
+      placeholderNames:
+        - foo
+        - bar
+        - baz
+        - tmp
+        - temp
+        - obj
+        - todo
+        - thing
+        - stuff
+  # Go package names should be short lowercase words without underscores.
+  naming.package-underscore:
+    enabled: true
+    severity: notice
+  # Shell-routed exec.Command calls can turn string interpolation into command injection.
+  security.shell-command:
+    enabled: true
+    severity: error
+  # AWS access key IDs in source can expose cloud credentials.
+  sensitive-data.aws-access-key:
+    enabled: true
+    severity: error
+  # Connection strings with embedded passwords leak direct service access.
+  sensitive-data.connection-string:
+    enabled: true
+    severity: error
+  # JWT-shaped literals in source can expose signed tokens or test data copied from production.
+  sensitive-data.jwt-token:
+    enabled: true
+    severity: error
+  # Private keys in source require immediate rotation and removal.
+  sensitive-data.private-key:
+    enabled: true
+    severity: critical
+  # Secret-like assignments catch broad API key, token, and password patterns.
   sensitive-data.secret-pattern:
     enabled: true
     severity: error
+  # Very large files slow navigation and usually mix responsibilities.
   size.file-length:
     enabled: true
     threshold: 400
     severity: warning
+  # Long functions are harder to understand, test, and refactor.
   size.function-length:
     enabled: true
     threshold: 80
     severity: warning
-  naming.package-underscore:
-    enabled: false
-  security.shell-command:
-    enabled: false
+  # Long parameter lists make call sites brittle and suggest an options struct.
+  size.parameter-count:
+    enabled: true
+    threshold: 5
+    severity: warning
+  # Empty tests create false confidence without exercising behavior.
+  test-quality.empty-test:
+    enabled: true
+    severity: warning
+  # Tests need a path that can fail, not just execute code.
+  test-quality.no-failure-path:
+    enabled: true
+    severity: notice
+  # Skipped tests should stay visible so they do not become hidden debt.
   test-quality.skipped-test:
-    enabled: false
-  dead-code.empty-block:
-    enabled: false
+    enabled: true
+    severity: notice
