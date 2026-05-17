@@ -42,7 +42,7 @@ Top-level shape:
   "score":         { "composite": 92, "grade": "A",
                      "pillars": {...}, "pillarDetails": [...],
                      "topOffenders": [...], "complexityDistribution": {...} },
-  "rules":         [ /* every rule definition active for this run */ ],
+  "rules":         [ /* every rule definition active for this run, including capability */ ],
   "paths":         { "scanned": [...], "skipped": [...], "missing": [] },
   "diagnostics":   [ /* parse errors, missing paths, config errors, etc. */ ],
   "findings":      [ /* one entry per finding */ ]
@@ -69,6 +69,8 @@ Every finding looks like:
 
 The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same — that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
 
+Each rule definition in `rules[]` includes a `capability` field. The closed enum is `parser`, `type`, `ssa`, or `dataflow`; all rules shipped in v0.1 currently report `parser` because they use source text, Go parser units, ASTs, or already-produced findings, not type loading or dataflow analysis.
+
 ## `summary-json`
 
 Same shape as `json` minus the per-finding `findings` array. Useful for CI dashboards that want the counts, score, and diagnostics without parsing thousands of finding records.
@@ -89,7 +91,7 @@ gruff-go analyse --format sarif . > gruff-go.sarif
 
 The output includes:
 
-- `runs[].tool.driver` with the resolved rule registry (one `rules[]` entry per rule active for the run, including pillar / severity / confidence / tags via `properties`).
+- `runs[].tool.driver` with the resolved rule registry (one `rules[]` entry per rule active for the run, including pillar / severity / confidence / capability / tags via `properties`).
 - `runs[].results` with one entry per finding, mapping severity to SARIF `level`:
   - `critical` / `high` → `error`
   - `medium` → `warning`

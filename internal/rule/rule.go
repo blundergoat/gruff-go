@@ -73,7 +73,9 @@ func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, 
 	unitEntries := make([]unitRuleEntry, 0, len(unitRules))
 	for _, rule := range unitRules {
 		definition := rule.Definition()
-		if err := addDefinition(definition, seen, &definitions); err != nil {
+		var err error
+		definition, err = addDefinition(definition, seen, &definitions)
+		if err != nil {
 			return Registry{}, err
 		}
 		unitEntries = append(unitEntries, unitRuleEntry{rule: rule, definition: definition})
@@ -81,7 +83,9 @@ func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, 
 	projectEntries := make([]projectRuleEntry, 0, len(projectRules))
 	for _, rule := range projectRules {
 		definition := rule.Definition()
-		if err := addDefinition(definition, seen, &definitions); err != nil {
+		var err error
+		definition, err = addDefinition(definition, seen, &definitions)
+		if err != nil {
 			return Registry{}, err
 		}
 		projectEntries = append(projectEntries, projectRuleEntry{rule: rule, definition: definition})
@@ -89,7 +93,9 @@ func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, 
 	compositeEntries := make([]compositeRuleEntry, 0, len(compositeRules))
 	for _, rule := range compositeRules {
 		definition := rule.Definition()
-		if err := addDefinition(definition, seen, &definitions); err != nil {
+		var err error
+		definition, err = addDefinition(definition, seen, &definitions)
+		if err != nil {
 			return Registry{}, err
 		}
 		compositeEntries = append(compositeEntries, compositeRuleEntry{rule: rule, definition: definition})
@@ -285,16 +291,16 @@ func CompareFindings(a, b finding.Finding) int {
 	return strings.Compare(a.Fingerprint, b.Fingerprint)
 }
 
-func addDefinition(definition Definition, seen map[string]struct{}, definitions *[]Definition) error {
+func addDefinition(definition Definition, seen map[string]struct{}, definitions *[]Definition) (Definition, error) {
 	if err := definition.Validate(); err != nil {
-		return err
+		return Definition{}, err
 	}
 	if _, ok := seen[definition.ID]; ok {
-		return fmt.Errorf("duplicate rule id %q", definition.ID)
+		return Definition{}, fmt.Errorf("duplicate rule id %q", definition.ID)
 	}
 	seen[definition.ID] = struct{}{}
 	*definitions = append(*definitions, definition)
-	return nil
+	return definition, nil
 }
 
 func applyDefinition(item finding.Finding, definition Definition) finding.Finding {

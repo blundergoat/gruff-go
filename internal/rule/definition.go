@@ -11,6 +11,15 @@ import (
 
 var ruleIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$`)
 
+type Capability string
+
+const (
+	CapabilityParser   Capability = "parser"
+	CapabilityType     Capability = "type"
+	CapabilitySSA      Capability = "ssa"
+	CapabilityDataflow Capability = "dataflow"
+)
+
 type Definition struct {
 	ID               string             `json:"id"`
 	Title            string             `json:"title"`
@@ -19,6 +28,7 @@ type Definition struct {
 	SecondaryPillars []finding.Pillar   `json:"secondaryPillars,omitempty"`
 	Severity         finding.Severity   `json:"severity"`
 	Confidence       finding.Confidence `json:"confidence"`
+	Capability       Capability         `json:"capability"`
 	DefaultEnabled   bool               `json:"defaultEnabled"`
 	Thresholds       map[string]float64 `json:"thresholds,omitempty"`
 	Options          map[string]any     `json:"options,omitempty"`
@@ -26,7 +36,7 @@ type Definition struct {
 	Remediation      string             `json:"remediation,omitempty"`
 }
 
-func (d Definition) Validate() error {
+func (d *Definition) Validate() error {
 	if !ruleIDPattern.MatchString(d.ID) {
 		return fmt.Errorf("invalid rule id %q", d.ID)
 	}
@@ -47,6 +57,12 @@ func (d Definition) Validate() error {
 	if !d.Confidence.Valid() {
 		return fmt.Errorf("rule %q has invalid confidence %q", d.ID, d.Confidence)
 	}
+	if d.Capability == "" {
+		d.Capability = CapabilityParser
+	}
+	if !d.Capability.Valid() {
+		return fmt.Errorf("rule %q has invalid capability %q", d.ID, d.Capability)
+	}
 	for name := range d.Thresholds {
 		if name == "" {
 			return fmt.Errorf("rule %q has empty threshold name", d.ID)
@@ -59,4 +75,13 @@ func (d Definition) Validate() error {
 	}
 	slices.Sort(d.Tags)
 	return nil
+}
+
+func (c Capability) Valid() bool {
+	switch c {
+	case CapabilityParser, CapabilityType, CapabilitySSA, CapabilityDataflow:
+		return true
+	default:
+		return false
+	}
 }

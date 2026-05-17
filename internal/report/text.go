@@ -101,7 +101,7 @@ func WriteRuleText(writer io.Writer, definitions []rule.Definition) error {
 		return err
 	}
 	for _, definition := range definitions {
-		if _, err := fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", definition.ID, definition.Pillar, definition.Severity, definition.Title); err != nil {
+		if _, err := fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", definition.ID, definition.Pillar, definition.Severity, definition.Capability, definition.Title); err != nil {
 			return err
 		}
 	}

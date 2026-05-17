@@ -39,6 +39,11 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	if parsed.Summary.FilesScanned != 1 {
 		t.Fatalf("files scanned = %d, want 1", parsed.Summary.FilesScanned)
 	}
+	for _, definition := range parsed.Rules {
+		if definition.Capability != "parser" {
+			t.Fatalf("rule %s capability = %q, want parser", definition.ID, definition.Capability)
+		}
+	}
 }
 
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
@@ -81,6 +86,9 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(listOut.String(), `"id": "size.file-length"`) {
 		t.Fatalf("list-rules output = %s", listOut.String())
+	}
+	if !strings.Contains(listOut.String(), `"capability": "parser"`) {
+		t.Fatalf("list-rules output missing capability = %s", listOut.String())
 	}
 
 	var missingOut, missingErr bytes.Buffer

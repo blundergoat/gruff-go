@@ -15,6 +15,27 @@ func TestDefinitionValidationRejectsBadIDs(t *testing.T) {
 	}
 }
 
+func TestDefinitionValidateDefaultsCapability(t *testing.T) {
+	definition := validDefinition("size.file-length")
+	definition.Capability = ""
+
+	if err := definition.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if definition.Capability != CapabilityParser {
+		t.Fatalf("capability = %q, want %q", definition.Capability, CapabilityParser)
+	}
+}
+
+func TestDefinitionValidateRejectsInvalidCapability(t *testing.T) {
+	definition := validDefinition("size.file-length")
+	definition.Capability = Capability("magic")
+
+	if err := definition.Validate(); err == nil {
+		t.Fatal("expected invalid capability error")
+	}
+}
+
 func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 	ruleA := fakeUnitRule{id: "size.file-length"}
 	ruleB := fakeUnitRule{id: "size.file-length"}
@@ -75,6 +96,32 @@ func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
 	registry.Analyze([]parser.Unit{unit}, Context{})
 	if calls != 0 {
 		t.Fatalf("disabled rule dispatch calls = %d, want 0", calls)
+	}
+}
+
+func TestDefaultsCapability(t *testing.T) {
+	definitions := Defaults().Definitions()
+	if len(definitions) == 0 {
+		t.Fatal("expected built-in definitions")
+	}
+	for _, definition := range definitions {
+		if definition.Capability != CapabilityParser {
+			t.Fatalf("rule %s capability = %q, want %q", definition.ID, definition.Capability, CapabilityParser)
+		}
+	}
+}
+
+func TestRegistryDefinitionsCapabilityInvariant(t *testing.T) {
+	registry, err := NewRegistry([]UnitRule{fakeUnitRule{id: "size.file-length"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions := registry.Definitions()
+	if len(definitions) != 1 {
+		t.Fatalf("definitions = %d, want 1", len(definitions))
+	}
+	if definitions[0].Capability != CapabilityParser {
+		t.Fatalf("definition capability = %q, want %q", definitions[0].Capability, CapabilityParser)
 	}
 }
 

@@ -2,19 +2,19 @@
 
 `gruff-go` v0.1 ships **21 rules** across **9 pillars**. Five are enabled by default; the rest are opt-in so existing repositories can phase them in without baseline churn.
 
-Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds and severities).
+Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
 ## Default-enabled rules
 
 These run unless explicitly disabled via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
-| Rule ID | Pillar | Severity | Default threshold | Description |
-|---------|--------|----------|-------------------|-------------|
-| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
-| [`docs.package-comment`](#docspackage-comment) | documentation | low | — | Packages with no package-level comment in any file. |
-| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | — | High-risk secret-like key/value assignments. |
-| [`size.file-length`](#sizefile-length) | size | medium | `maxLines: 400` | Files exceeding the line-count threshold. |
-| [`size.function-length`](#sizefunction-length) | size | medium | `maxLines: 80` | Functions exceeding the line-count threshold. |
+| Rule ID | Pillar | Severity | Capability | Default threshold | Description |
+|---------|--------|----------|------------|-------------------|-------------|
+| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
+| [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
+| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
+| [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 400` | Files exceeding the line-count threshold. |
+| [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the line-count threshold. |
 
 ## Opt-in expansion rules
 
@@ -22,24 +22,24 @@ These are off by default. Turn them on per project via `rules.<id>.enabled: true
 
 Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
 
-| Rule ID | Pillar | Severity | Default threshold | Description |
-|---------|--------|----------|-------------------|-------------|
-| [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | `maxDepth: 4` | Functions whose nesting depth exceeds the threshold. |
-| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | — | Empty control-flow blocks that usually indicate unfinished code. |
-| [`design.god-function`](#designgod-function) | design | low | — | Functions that already have both size and complexity findings. |
-| [`design.hotspot-file`](#designhotspot-file) | design | low | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
-| [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | — | Exported declarations missing a doc comment. |
-| [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | — | Local identifiers matching a placeholder name list. |
-| [`naming.package-underscore`](#namingpackage-underscore) | naming | low | — | Package names containing underscores. |
-| [`security.shell-command`](#securityshell-command) | security | medium | — | `exec.Command` invocations that route through a shell interpreter. |
-| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | — | AWS access key id (AKIA…) literals. |
-| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | — | Database/queue URLs with embedded passwords. |
-| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | — | JWT-shaped literals (`eyJ…`). |
-| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | — | PEM-encoded private keys embedded in source. |
-| [`size.parameter-count`](#sizeparameter-count) | size | low | `maxParameters: 5` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | — | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
-| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | — | Test functions that contain code but never reach a failure call. |
-| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | — | Tests that call `t.Skip*`. |
+| Rule ID | Pillar | Severity | Capability | Default threshold | Description |
+|---------|--------|----------|------------|-------------------|-------------|
+| [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 4` | Functions whose nesting depth exceeds the threshold. |
+| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | — | Empty control-flow blocks that usually indicate unfinished code. |
+| [`design.god-function`](#designgod-function) | design | low | parser | — | Functions that already have both size and complexity findings. |
+| [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | — | Exported declarations missing a doc comment. |
+| [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
+| [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
+| [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
+| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | — | AWS access key id (AKIA…) literals. |
+| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
+| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | — | JWT-shaped literals (`eyJ…`). |
+| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | — | PEM-encoded private keys embedded in source. |
+| [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 5` | Functions whose parameter list exceeds the threshold. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | — | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | — | Test functions that contain code but never reach a failure call. |
+| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | — | Tests that call `t.Skip*`. |
 
 ## Severity tiers
 
@@ -64,6 +64,7 @@ The `--min-severity` flag (default `medium`) sets the threshold at which finding
 - **Default-enabled:** yes
 - **Threshold:** `maxComplexity` (default `20`)
 - **Confidence:** high
+- **Capability:** parser
 
 Flags Go functions whose branch count exceeds the configured cyclomatic complexity threshold. The metric counts `if`, `for`, `range`, `case` (when the case has labels), `select` cases, and `&&` / `||` short-circuit operators.
 
@@ -78,6 +79,7 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 - **Default-enabled:** no (opt-in)
 - **Threshold:** `maxDepth` (default `4`)
 - **Confidence:** high
+- **Capability:** parser
 
 Flags functions whose maximum control-flow nesting depth exceeds the threshold. Function literals reset the depth counter so callbacks aren't double-counted as part of their enclosing function.
 
@@ -89,6 +91,7 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 
 Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usually indicate unfinished or accidentally orphaned code.
 
@@ -100,6 +103,7 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** high
+- **Capability:** parser
 - **Tags:** `composite`, `opt-in`
 - **Scoring:** score-neutral
 
@@ -114,6 +118,7 @@ Flags functions that already have at least one size finding and at least one com
 - **Default-enabled:** no (opt-in)
 - **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `composite`, `opt-in`
 - **Scoring:** score-neutral
 
@@ -127,6 +132,7 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Options:** `ignoreInternalPackages bool` — default `true`
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
@@ -141,6 +147,7 @@ Set `ignoreInternalPackages: false` when internal package exports should follow 
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Confidence:** high
+- **Capability:** parser
 
 Flags Go packages that have no package-level comment in any file. Package comments are the standard `godoc` entry point and are cheap to add.
 
@@ -152,6 +159,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `opt-in`, `naming`
 - **Options:** `placeholderNames []string` — default `[data, info, obj, tmp, temp, foo, bar, baz, qux, todo, thing, stuff]`
 
@@ -174,6 +182,7 @@ rules:
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** high
+- **Capability:** parser
 - **Tags:** `go-style`, `opt-in`
 
 Flags Go package names that use underscores instead of short lowercase words (the Go convention favours `oauth2`, not `o_auth_2`).
@@ -186,6 +195,7 @@ Flags Go package names that use underscores instead of short lowercase words (th
 - **Default severity:** medium
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `opt-in`, `security`
 
 Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, etc.) with a command string argument. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
@@ -198,6 +208,7 @@ Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`,
 - **Default severity:** high
 - **Default-enabled:** no (opt-in)
 - **Confidence:** high
+- **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
 
 Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. The finding's `preview` metadata is redacted via the shared `redact()` helper; the raw key never reaches text / JSON / SARIF / GitHub / HTML output (asserted by `internal/report/sensitive_redaction_test.go`).
@@ -210,6 +221,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 - **Default severity:** high
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
 
 Flags database / queue / cache connection URIs that embed a username and password in the URL — `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
@@ -222,6 +234,7 @@ Flags database / queue / cache connection URIs that embed a username and passwor
 - **Default severity:** high
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
 
 Flags JWT-shaped literals — three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
@@ -234,6 +247,7 @@ Flags JWT-shaped literals — three base64url segments separated by dots, the fi
 - **Default severity:** **critical**
 - **Default-enabled:** no (opt-in)
 - **Confidence:** high
+- **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
 
 Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. The most severe of the sensitive-data rules — a leaked private key is almost always a real incident.
@@ -246,6 +260,7 @@ Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedd
 - **Default severity:** high
 - **Default-enabled:** yes
 - **Confidence:** medium
+- **Capability:** parser
 
 Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, `bearer = "…"`, and `authorization = "Bearer …"`.
 
@@ -260,6 +275,7 @@ Add documented dummies to `allowlists.secretPreviews` so example values in tests
 - **Default-enabled:** yes
 - **Threshold:** `maxLines` (default `400`)
 - **Confidence:** high
+- **Capability:** parser
 
 Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities.
 
@@ -272,6 +288,7 @@ Flags Go files that exceed the configured line-count threshold. Long files frequ
 - **Default-enabled:** yes
 - **Threshold:** `maxLines` (default `80`)
 - **Confidence:** high
+- **Capability:** parser
 
 Flags Go functions that exceed the configured line-count threshold.
 
@@ -284,6 +301,7 @@ Flags Go functions that exceed the configured line-count threshold.
 - **Default-enabled:** no (opt-in)
 - **Threshold:** `maxParameters` (default `5`)
 - **Confidence:** high
+- **Capability:** parser
 - **Tags:** `opt-in`
 
 Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count).
@@ -296,6 +314,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** high
+- **Capability:** parser
 - **Tags:** `opt-in`, `tests`
 
 Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body contains no executable statements. An empty test is either an unfinished scaffold left behind by IDE generators or a stub waiting for content — both should be removed or filled in before the build is considered green.
@@ -308,6 +327,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `opt-in`, `tests`
 
 Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call — `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
@@ -322,6 +342,7 @@ The rule walks the function body looking for those methods on the test function'
 - **Default severity:** low
 - **Default-enabled:** no (opt-in)
 - **Confidence:** medium
+- **Capability:** parser
 - **Tags:** `opt-in`, `tests`
 
 Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow`. Skipped tests are easy to forget and often hide real regressions.

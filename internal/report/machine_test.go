@@ -89,6 +89,7 @@ func TestWriteSARIFContract(t *testing.T) {
 
 	requireSARIFDriver(t, run.Tool.Driver)
 	requireSARIFRulesSorted(t, run.Tool.Driver.Rules)
+	requireSARIFRulesCapability(t, run.Tool.Driver.Rules)
 	requireSARIFResultIdentity(t, result, item)
 	requireSARIFRuleIndex(t, result, run.Tool.Driver.Rules)
 	requireNoRawSARIFResultKeys(t, rawSARIFResult(t, out, 0), "codeFlows", "threadFlows", "fixes")
@@ -163,6 +164,18 @@ func requireSARIFRulesSorted(t *testing.T, rules []sarifRule) {
 	for index := 1; index < len(rules); index++ {
 		if rules[index-1].ID > rules[index].ID {
 			t.Fatalf("driver rules are not sorted: %q before %q", rules[index-1].ID, rules[index].ID)
+		}
+	}
+}
+
+func requireSARIFRulesCapability(t *testing.T, rules []sarifRule) {
+	t.Helper()
+	if len(rules) == 0 {
+		t.Fatal("expected SARIF driver rules")
+	}
+	for _, item := range rules {
+		if item.Properties.Capability != rule.CapabilityParser {
+			t.Fatalf("rule %s capability = %q, want %q", item.ID, item.Properties.Capability, rule.CapabilityParser)
 		}
 	}
 }

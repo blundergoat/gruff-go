@@ -106,6 +106,7 @@ type sarifRuleProperty struct {
 	SecondaryPillars []finding.Pillar   `json:"secondaryPillars,omitempty"`
 	DefaultSeverity  finding.Severity   `json:"defaultSeverity"`
 	Confidence       finding.Confidence `json:"confidence"`
+	Capability       rule.Capability    `json:"capability"`
 	DefaultEnabled   bool               `json:"defaultEnabled"`
 	Tags             []string           `json:"tags,omitempty"`
 	Thresholds       map[string]float64 `json:"thresholds,omitempty"`
@@ -168,6 +169,7 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 				SecondaryPillars: definition.SecondaryPillars,
 				DefaultSeverity:  definition.Severity,
 				Confidence:       definition.Confidence,
+				Capability:       definition.Capability,
 				DefaultEnabled:   definition.DefaultEnabled,
 				Tags:             definition.Tags,
 				Thresholds:       definition.Thresholds,
