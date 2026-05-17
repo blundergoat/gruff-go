@@ -83,6 +83,13 @@
         "info": 0
       }
     ],
+    "coverage": {
+      "contributingPillars": [
+        "complexity",
+        "size"
+      ],
+      "caveat": "Composite grade is driven by 2 score-impacting pillars; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage."
+    },
     "topOffenders": [
       {
         "file": "composite.go",
@@ -98,7 +105,8 @@
       "16-20": 0,
       "21+": 0,
       "6-10": 0
-    }
+    },
+    "complexityDistributionScope": "finding-only"
   },
   "diagnostics": []
 }

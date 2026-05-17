@@ -28,6 +28,12 @@ func TestCalculateScoresFindings(t *testing.T) {
 	if len(score.Pillars) != 2 {
 		t.Fatalf("pillars = %#v, want two pillars", score.Pillars)
 	}
+	if len(score.Coverage.ContributingPillars) != 2 || score.Coverage.ContributingPillars[0] != "complexity" || score.Coverage.ContributingPillars[1] != "size" {
+		t.Fatalf("coverage = %#v, want sorted complexity and size pillars", score.Coverage)
+	}
+	if score.Coverage.Caveat == "" {
+		t.Fatal("expected narrow score coverage caveat")
+	}
 	if len(score.TopOffender) != 2 || score.TopOffender[0].Penalty < score.TopOffender[1].Penalty {
 		t.Fatalf("top offenders not sorted: %#v", score.TopOffender)
 	}
@@ -43,6 +49,12 @@ func TestCalculateCleanScore(t *testing.T) {
 	}
 	if score.ComplexityDistribution == nil {
 		t.Fatal("complexity distribution should be initialised even on clean scores")
+	}
+	if score.ComplexityDistributionScope != "finding-only" {
+		t.Fatalf("complexity distribution scope = %q, want finding-only", score.ComplexityDistributionScope)
+	}
+	if len(score.Coverage.ContributingPillars) != 0 || score.Coverage.Caveat == "" {
+		t.Fatalf("clean score coverage = %#v, want empty pillars with caveat", score.Coverage)
 	}
 	for _, bin := range []string{"1-5", "6-10", "11-15", "16-20", "21+"} {
 		if _, ok := score.ComplexityDistribution[bin]; !ok {

@@ -54,13 +54,17 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	if unit.File.Type != source.FileTypeGo || unit.LineCount <= maxLines {
 		return nil
 	}
+	metadata := map[string]any{"lines": unit.LineCount, "threshold": maxLines}
+	if isGoTestFile(unit.File.Path) {
+		metadata["testFile"] = true
+	}
 	return []finding.Finding{{
 		Message: fmt.Sprintf("file has %d lines, above threshold %d", unit.LineCount, maxLines),
 		File:    unit.File.Path,
 		Location: &finding.Location{
 			Line: maxLines + 1,
 		},
-		Metadata: map[string]any{"lines": unit.LineCount, "threshold": maxLines},
+		Metadata: metadata,
 	}}
 }
 
@@ -101,12 +105,16 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		if length <= maxLines {
 			continue
 		}
+		metadata := map[string]any{"lines": length, "threshold": maxLines}
+		if isGoTestFile(unit.File.Path) {
+			metadata["testFile"] = true
+		}
 		findings = append(findings, finding.Finding{
 			Message:  fmt.Sprintf("function has %d lines, above threshold %d", length, maxLines),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: fn.Line, EndLine: fn.EndLine},
 			Symbol:   fn.Name,
-			Metadata: map[string]any{"lines": length, "threshold": maxLines},
+			Metadata: metadata,
 		})
 	}
 	return findings
@@ -183,10 +191,11 @@ func (PackageCommentRule) Definition() Definition {
 
 func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	type packageState struct {
-		name    string
-		file    string
-		hasDoc  bool
-		hasCode bool
+		name       string
+		file       string
+		hasDoc     bool
+		hasCode    bool
+		hasNonTest bool
 	}
 	packages := map[string]packageState{}
 	for _, unit := range units {
@@ -200,6 +209,9 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 		}
 		state.name = unit.AST.Name.Name
 		state.hasCode = true
+		if !isGoTestFile(unit.File.Path) {
+			state.hasNonTest = true
+		}
 		if unit.AST.Doc != nil {
 			state.hasDoc = true
 		}
@@ -208,6 +220,9 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 	findings := []finding.Finding{}
 	for _, state := range packages {
 		if !state.hasCode || state.hasDoc {
+			continue
+		}
+		if !state.hasNonTest && strings.HasSuffix(state.name, "_test") {
 			continue
 		}
 		findings = append(findings, finding.Finding{
@@ -296,6 +311,10 @@ func functionName(fn *ast.FuncDecl) string {
 		}
 	}
 	return name
+}
+
+func isGoTestFile(path string) bool {
+	return strings.HasSuffix(path, "_test.go")
 }
 
 func redact(value string) string {

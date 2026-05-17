@@ -16,6 +16,8 @@ These run unless explicitly disabled via `selection.excludeRules` or `rules.<id>
 | [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 400` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the line-count threshold. |
 
+Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
+
 ## Opt-in expansion rules
 
 These are off by default. Turn them on per project via `rules.<id>.enabled: true` once the codebase is ready.
@@ -68,7 +70,7 @@ The `--min-severity` flag (default `medium`) sets the threshold at which finding
 
 Flags Go functions whose branch count exceeds the configured cyclomatic complexity threshold. The metric counts `if`, `for`, `range`, `case` (when the case has labels), `select` cases, and `&&` / `||` short-circuit operators.
 
-Each finding's metadata carries the measured `complexity` and the active `threshold` — the HTML reporter uses these to populate the cyclomatic distribution histogram.
+Each finding's metadata carries the measured `complexity` and the active `threshold`. The score object's `complexityDistribution` is finding-only: it bins over-threshold `complexity.cyclomatic` findings, not every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
 
 **Remediation.** Split independent decisions, move branches into named helpers, or return early on guard conditions.
 
@@ -149,7 +151,7 @@ Set `ignoreInternalPackages: false` when internal package exports should follow 
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go packages that have no package-level comment in any file. Package comments are the standard `godoc` entry point and are cheap to add.
+Flags Go packages that have no package-level comment in any file. Package comments are the standard `godoc` entry point and are cheap to add. `_test.go`-only external test packages such as `package foo_test` are skipped because they normally document black-box tests, not a production package API.
 
 **Remediation.** Add a package comment that explains the package's responsibility, scope, and the public surface.
 
@@ -277,7 +279,7 @@ Add documented dummies to `allowlists.secretPreviews` so example values in tests
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities.
+Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 
@@ -290,7 +292,7 @@ Flags Go files that exceed the configured line-count threshold. Long files frequ
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions that exceed the configured line-count threshold.
+Flags Go functions that exceed the configured line-count threshold. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
 
 **Remediation.** Extract cohesive helper functions or split independent branches.
 

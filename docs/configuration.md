@@ -116,6 +116,8 @@ Per-rule overrides. Every field is optional:
 - `severity` — `info`, `low`, `medium`, `high`, or `critical`.
 - `options` — opaque per-rule map for rules with bespoke options.
 
+Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses medium severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `low` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-medium configured `severity` applies to test files too and disables that default downranking for the overridden rule.
+
 Examples:
 
 ```yaml

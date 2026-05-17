@@ -304,6 +304,7 @@ func addDefinition(definition Definition, seen map[string]struct{}, definitions 
 }
 
 func applyDefinition(item finding.Finding, definition Definition) finding.Finding {
+	hadSeverity := item.Severity != ""
 	if item.RuleID == "" {
 		item.RuleID = definition.ID
 	}
@@ -321,6 +322,10 @@ func applyDefinition(item finding.Finding, definition Definition) finding.Findin
 	}
 	if item.Remediation == "" {
 		item.Remediation = definition.Remediation
+	}
+	if !hadSeverity && shouldCalibrateTestSizeFinding(item, definition) {
+		item.Severity = finding.SeverityLow
+		item.Confidence = finding.ConfidenceMedium
 	}
 	return item.WithFingerprint()
 }

@@ -12,6 +12,9 @@ Compact terminal-friendly output:
 gruff-go analysis
 schema: gruff-go.analysis.v0.1
 files: 65 scanned, 6 skipped
+score coverage: size
+score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
+complexity distribution: finding-only
 findings:
   [medium] internal/foo/bar.go:42 complexity.cyclomatic: function cyclomatic complexity is 23, above threshold 20
 exit: 1
@@ -40,8 +43,9 @@ Top-level shape:
   "diff":          { "enabled": false, "changedFiles": [], "filteredFindings": 0 },
   "displayFilter": { "applied": false, "...": "..." },
   "score":         { "composite": 92, "grade": "A",
-                     "pillars": {...}, "pillarDetails": [...],
-                     "topOffenders": [...], "complexityDistribution": {...} },
+                     "pillars": {...}, "pillarDetails": [...], "coverage": {...},
+                     "topOffenders": [...], "complexityDistribution": {...},
+                     "complexityDistributionScope": "finding-only" },
   "rules":         [ /* every rule definition active for this run, including capability */ ],
   "paths":         { "scanned": [...], "skipped": [...], "missing": [] },
   "diagnostics":   [ /* parse errors, missing paths, config errors, etc. */ ],
@@ -70,6 +74,10 @@ Every finding looks like:
 The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same — that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
 
 Each rule definition in `rules[]` includes a `capability` field. The closed enum is `parser`, `type`, `ssa`, or `dataflow`; all rules shipped in v0.1 currently report `parser` because they use source text, Go parser units, ASTs, or already-produced findings, not type loading or dataflow analysis.
+
+The `score.coverage` object names the score-impacting pillars that contributed penalties and adds a caveat when the composite is clean or driven by a narrow set of pillars. This is report honesty metadata: it does not change score math, exit-code semantics, or schema version.
+
+`score.complexityDistribution` is scoped by `score.complexityDistributionScope`. In v0.1 the scope is always `finding-only`, meaning the histogram bins over-threshold `complexity.cyclomatic` findings rather than every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
 
 ## `summary-json`
 
@@ -169,9 +177,10 @@ Even without flags, the HTML report includes:
 
 - Masthead with the run inputs, scope, format, fail-on threshold, and tool version.
 - Verdict block with the tilted grade stamp (`A` through `F` plus numeric composite) and a data-driven subtitle.
+- Score coverage caveat when the grade is clean or driven by only one or two score-impacting pillars.
 - Per-pillar grade grid with severity breakdowns.
 - Top-offender file table with cyclomatic, finding count, penalty, and grade per file.
-- Cyclomatic distribution histogram with a one-line summary.
+- Cyclomatic distribution histogram with a one-line finding-only summary.
 - Findings list grouped by document order.
 - Footer with version + schema metadata.
 

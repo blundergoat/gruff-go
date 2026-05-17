@@ -95,6 +95,13 @@
         "info": 0
       }
     ],
+    "coverage": {
+      "contributingPillars": [
+        "complexity",
+        "documentation",
+        "size"
+      ]
+    },
     "topOffenders": [
       {
         "file": "expansion.go",
@@ -109,7 +116,8 @@
       "16-20": 0,
       "21+": 0,
       "6-10": 0
-    }
+    },
+    "complexityDistributionScope": "finding-only"
   },
   "diagnostics": []
 }

@@ -23,6 +23,12 @@ Pre-release foundation. The binary reports `0.1.0-dev`. The CLI surface, schemas
 - **Scoring.** Severity- and confidence-weighted penalties produce a 0–100 composite plus a letter grade (`A`–`F`). The score object surfaces per-pillar scores, per-pillar grade letters with severity breakdowns, top-5 offender files with per-file findings/grade/max-cyclomatic, and a `1-5 / 6-10 / 11-15 / 16-20 / 21+` cyclomatic distribution.
 - **Repository hygiene.** `Makefile` `check` target wraps `go fmt`, `go vet`, `go test ./...`. Strict `gofmt` / `go vet ./...` / `make check` gates kept clean throughout v0.1 work. Self-dogfood (`go run ./cmd/gruff-go analyse .`) returns grade A with zero findings.
 
+### Changed
+
+- Default `size.file-length` and `size.function-length` findings in `_test.go` files keep the same thresholds, messages, metadata, and fingerprints, but report as `low` severity / `medium` confidence under medium severity. Explicit non-medium config severity overrides still apply to test files.
+- `docs.package-comment` skips `_test.go`-only external test packages such as `package foo_test`, reducing documentation noise from black-box test packages while preserving production package-comment checks.
+- Score output now includes `score.coverage` and `score.complexityDistributionScope`. Text, summary, JSON, and HTML reports make narrow score coverage explicit, and the cyclomatic histogram is labelled as finding-only.
+
 ### Known limitations
 
 - Calibration is still single-corpus plus fixtures; no expansion rule was moved to default-enabled without a second real Go corpus or explicit human accepted-risk approval.

@@ -148,6 +148,9 @@ func (r htmlRenderer) verdict() string {
 	builder.WriteString(`</div>`)
 	builder.WriteString(`<div class="verdict-body">`)
 	fmt.Fprintf(&builder, `<div class="verdict-headline">Inspection complete.<br><em>%s</em></div>`, esc(r.verdictSubtitle(counts)))
+	if r.report.Score.Coverage.Caveat != "" {
+		fmt.Fprintf(&builder, `<p class="score-caveat">%s</p>`, esc(r.report.Score.Coverage.Caveat))
+	}
 	builder.WriteString(`<div class="verdict-stats">`)
 	builder.WriteString(stat(fmt.Sprintf("%d", counts.total), "findings", ""))
 	builder.WriteString(stat(fmt.Sprintf("%d", counts.critical), "critical", "fail"))
@@ -244,9 +247,9 @@ func (r htmlRenderer) distribution() string {
 	var builder strings.Builder
 	builder.WriteString(`<section class="chart-section">`)
 	builder.WriteString(`<h2 class="section-head">distribution <span class="aside">cyclomatic complexity</span></h2>`)
-	fmt.Fprintf(&builder, `<p class="chart-summary">%s</p>`, esc(cyclomaticSummary(distribution)))
+	fmt.Fprintf(&builder, `<p class="chart-summary">%s</p>`, esc(cyclomaticSummary(distribution, r.report.Score.ComplexityDistributionScope)))
 	builder.WriteString(`<div class="chart-card">`)
-	builder.WriteString(`<div class="title">cyclomatic complexity &middot; flagged methods</div>`)
+	builder.WriteString(`<div class="title">cyclomatic complexity &middot; finding-only histogram</div>`)
 	builder.WriteString(`<div class="histogram">`)
 	for _, bin := range bins {
 		count := distribution[bin]

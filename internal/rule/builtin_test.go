@@ -203,6 +203,21 @@ package withcomment
 	}
 }
 
+func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
+	production := parseOne(t, "pkg/prod.go", `package pkg
+`)
+	externalTest := parseOne(t, "pkg/prod_test.go", `package pkg_test
+`)
+
+	findings := PackageCommentRule{}.AnalyzeProject([]parser.Unit{production, externalTest}, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("findings = %#v, want one production package finding", findings)
+	}
+	if findings[0].File != "pkg/prod.go" || findings[0].Message != "package pkg has no package comment" {
+		t.Fatalf("finding = %#v, want production package comment finding", findings[0])
+	}
+}
+
 func TestSensitiveDataRule(t *testing.T) {
 	tests := []struct {
 		name string

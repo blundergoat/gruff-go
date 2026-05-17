@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -40,6 +41,23 @@ func writeTextHeader(writer io.Writer, report analysis.Report) error {
 	}
 	if report.DisplayFilter.Applied {
 		if _, err := fmt.Fprintf(writer, "display filter: %d findings hidden; score and exit use full scan\n", report.DisplayFilter.HiddenFindings); err != nil {
+			return err
+		}
+	}
+	if len(report.Score.Coverage.ContributingPillars) > 0 {
+		if _, err := fmt.Fprintf(writer, "score coverage: %s\n", strings.Join(report.Score.Coverage.ContributingPillars, ", ")); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintln(writer, "score coverage: no score-impacting findings"); err != nil {
+		return err
+	}
+	if report.Score.Coverage.Caveat != "" {
+		if _, err := fmt.Fprintf(writer, "score caveat: %s\n", report.Score.Coverage.Caveat); err != nil {
+			return err
+		}
+	}
+	if report.Score.ComplexityDistributionScope != "" {
+		if _, err := fmt.Fprintf(writer, "complexity distribution: %s\n", report.Score.ComplexityDistributionScope); err != nil {
 			return err
 		}
 	}

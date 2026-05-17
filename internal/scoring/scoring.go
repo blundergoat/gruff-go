@@ -3,6 +3,7 @@ package scoring
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -10,12 +11,19 @@ import (
 )
 
 type Score struct {
-	Composite              int            `json:"composite"`
-	Grade                  string         `json:"grade"`
-	Pillars                map[string]int `json:"pillars"`
-	PillarDetails          []PillarDetail `json:"pillarDetails"`
-	TopOffender            []FileScore    `json:"topOffenders"`
-	ComplexityDistribution map[string]int `json:"complexityDistribution"`
+	Composite                   int            `json:"composite"`
+	Grade                       string         `json:"grade"`
+	Pillars                     map[string]int `json:"pillars"`
+	PillarDetails               []PillarDetail `json:"pillarDetails"`
+	Coverage                    ScoreCoverage  `json:"coverage"`
+	TopOffender                 []FileScore    `json:"topOffenders"`
+	ComplexityDistribution      map[string]int `json:"complexityDistribution"`
+	ComplexityDistributionScope string         `json:"complexityDistributionScope"`
+}
+
+type ScoreCoverage struct {
+	ContributingPillars []string `json:"contributingPillars"`
+	Caveat              string   `json:"caveat,omitempty"`
 }
 
 type PillarDetail struct {
@@ -39,6 +47,7 @@ type FileScore struct {
 }
 
 const complexityCyclomaticRuleID = "complexity.cyclomatic"
+const complexityDistributionScopeFindingOnly = "finding-only"
 
 func Calculate(findings []finding.Finding) Score {
 	pillarPenalty := map[string]int{}
@@ -86,12 +95,14 @@ func Calculate(findings []finding.Finding) Score {
 	pillars := map[string]int{}
 	if len(pillarPenalty) == 0 {
 		return Score{
-			Composite:              100,
-			Grade:                  "A",
-			Pillars:                pillars,
-			PillarDetails:          []PillarDetail{},
-			TopOffender:            []FileScore{},
-			ComplexityDistribution: distribution,
+			Composite:                   100,
+			Grade:                       "A",
+			Pillars:                     pillars,
+			PillarDetails:               []PillarDetail{},
+			Coverage:                    scoreCoverage(pillarPenalty),
+			TopOffender:                 []FileScore{},
+			ComplexityDistribution:      distribution,
+			ComplexityDistributionScope: complexityDistributionScopeFindingOnly,
 		}
 	}
 
@@ -107,13 +118,42 @@ func Calculate(findings []finding.Finding) Score {
 		detail.Grade = grade(detail.Score)
 	}
 	return Score{
-		Composite:              composite,
-		Grade:                  grade(composite),
-		Pillars:                pillars,
-		PillarDetails:          collectPillarDetails(pillarCounts),
-		TopOffender:            topOffenders(filePenalty, fileFindings, fileMaxCyclomatic),
-		ComplexityDistribution: distribution,
+		Composite:                   composite,
+		Grade:                       grade(composite),
+		Pillars:                     pillars,
+		PillarDetails:               collectPillarDetails(pillarCounts),
+		Coverage:                    scoreCoverage(pillarPenalty),
+		TopOffender:                 topOffenders(filePenalty, fileFindings, fileMaxCyclomatic),
+		ComplexityDistribution:      distribution,
+		ComplexityDistributionScope: complexityDistributionScopeFindingOnly,
 	}
+}
+
+func scoreCoverage(pillarPenalty map[string]int) ScoreCoverage {
+	pillars := make([]string, 0, len(pillarPenalty))
+	for pillar := range pillarPenalty {
+		pillars = append(pillars, pillar)
+	}
+	slices.Sort(pillars)
+	coverage := ScoreCoverage{ContributingPillars: pillars}
+	switch len(pillars) {
+	case 0:
+		coverage.Caveat = "No score-impacting findings; the score reflects configured parser rules and thresholds, not exhaustive semantic proof."
+	case 1, 2:
+		coverage.Caveat = fmt.Sprintf(
+			"Composite grade is driven by %d score-impacting %s; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.",
+			len(pillars),
+			pluralise(len(pillars), "pillar", "pillars"),
+		)
+	}
+	return coverage
+}
+
+func pluralise(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
 }
 
 func findingPenalty(item finding.Finding) int {

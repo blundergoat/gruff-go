@@ -61,19 +61,24 @@ func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
 	)
 }
 
-func cyclomaticSummary(distribution map[string]int) string {
+func cyclomaticSummary(distribution map[string]int, scope string) string {
 	moderate := distribution["11-15"]
 	high := distribution["16-20"]
 	severe := distribution["21+"]
 	total := moderate + high + severe
+	scopeSuffix := ""
+	if scope != "" {
+		scopeSuffix = " in the finding-only distribution"
+	}
 	if total == 0 {
-		return "0 methods exceed CC 10."
+		return "0 methods exceed CC 10" + scopeSuffix + "; zero bins mean no over-threshold complexity findings were reported."
 	}
 	return fmt.Sprintf(
-		"%d %s %s CC 10 (%d in 11-15, %d in 16-20, %d at 21+).",
+		"%d %s %s CC 10%s (%d in 11-15, %d in 16-20, %d at 21+).",
 		total,
 		pluralise(total, "method", "methods"),
 		pluralise(total, "exceeds", "exceed"),
+		scopeSuffix,
 		moderate,
 		high,
 		severe,

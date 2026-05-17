@@ -31,6 +31,9 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if _, err := fmt.Fprint(writer, header); err != nil {
 		return err
 	}
+	if err := writeScoreCoverage(writer, score); err != nil {
+		return err
+	}
 	if err := writeSeverityCounts(writer, report.Summary.CountsBySeverity); err != nil {
 		return err
 	}
@@ -45,6 +48,27 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
 	return err
+}
+
+func writeScoreCoverage(writer io.Writer, score scoring.Score) error {
+	contributing := "none"
+	if len(score.Coverage.ContributingPillars) > 0 {
+		contributing = strings.Join(score.Coverage.ContributingPillars, ", ")
+	}
+	if _, err := fmt.Fprintf(writer, "score coverage: %s\n", contributing); err != nil {
+		return err
+	}
+	if score.Coverage.Caveat != "" {
+		if _, err := fmt.Fprintf(writer, "score caveat: %s\n", score.Coverage.Caveat); err != nil {
+			return err
+		}
+	}
+	if score.ComplexityDistributionScope != "" {
+		if _, err := fmt.Fprintf(writer, "complexity distribution: %s\n", score.ComplexityDistributionScope); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
