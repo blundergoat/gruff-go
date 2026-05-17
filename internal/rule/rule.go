@@ -37,12 +37,30 @@ type CompositeRule interface {
 }
 
 type Registry struct {
-	unitRules      []UnitRule
-	projectRules   []ProjectRule
-	compositeRules []CompositeRule
-	definitions    []Definition
-	enabled        map[string]bool
-	severities     map[string]finding.Severity
+	unitRules            []unitRuleEntry
+	projectRules         []projectRuleEntry
+	compositeRules       []compositeRuleEntry
+	activeUnitRules      []unitRuleEntry
+	activeProjectRules   []projectRuleEntry
+	activeCompositeRules []compositeRuleEntry
+	definitions          []Definition
+	enabled              map[string]bool
+	severities           map[string]finding.Severity
+}
+
+type unitRuleEntry struct {
+	rule       UnitRule
+	definition Definition
+}
+
+type projectRuleEntry struct {
+	rule       ProjectRule
+	definition Definition
+}
+
+type compositeRuleEntry struct {
+	rule       CompositeRule
+	definition Definition
 }
 
 func NewRegistry(unitRules []UnitRule, projectRules []ProjectRule) (Registry, error) {
@@ -52,35 +70,48 @@ func NewRegistry(unitRules []UnitRule, projectRules []ProjectRule) (Registry, er
 func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, compositeRules []CompositeRule) (Registry, error) {
 	seen := map[string]struct{}{}
 	definitions := []Definition{}
+	unitEntries := make([]unitRuleEntry, 0, len(unitRules))
 	for _, rule := range unitRules {
 		definition := rule.Definition()
 		if err := addDefinition(definition, seen, &definitions); err != nil {
 			return Registry{}, err
 		}
+		unitEntries = append(unitEntries, unitRuleEntry{rule: rule, definition: definition})
 	}
+	projectEntries := make([]projectRuleEntry, 0, len(projectRules))
 	for _, rule := range projectRules {
 		definition := rule.Definition()
 		if err := addDefinition(definition, seen, &definitions); err != nil {
 			return Registry{}, err
 		}
+		projectEntries = append(projectEntries, projectRuleEntry{rule: rule, definition: definition})
 	}
+	compositeEntries := make([]compositeRuleEntry, 0, len(compositeRules))
 	for _, rule := range compositeRules {
 		definition := rule.Definition()
 		if err := addDefinition(definition, seen, &definitions); err != nil {
 			return Registry{}, err
 		}
+		compositeEntries = append(compositeEntries, compositeRuleEntry{rule: rule, definition: definition})
 	}
 	slices.SortFunc(definitions, func(a, b Definition) int { return strings.Compare(a.ID, b.ID) })
-	slices.SortFunc(unitRules, func(a, b UnitRule) int {
-		return strings.Compare(a.Definition().ID, b.Definition().ID)
+	slices.SortFunc(unitEntries, func(a, b unitRuleEntry) int {
+		return strings.Compare(a.definition.ID, b.definition.ID)
 	})
-	slices.SortFunc(projectRules, func(a, b ProjectRule) int {
-		return strings.Compare(a.Definition().ID, b.Definition().ID)
+	slices.SortFunc(projectEntries, func(a, b projectRuleEntry) int {
+		return strings.Compare(a.definition.ID, b.definition.ID)
 	})
-	slices.SortFunc(compositeRules, func(a, b CompositeRule) int {
-		return strings.Compare(a.Definition().ID, b.Definition().ID)
+	slices.SortFunc(compositeEntries, func(a, b compositeRuleEntry) int {
+		return strings.Compare(a.definition.ID, b.definition.ID)
 	})
-	return Registry{unitRules: unitRules, projectRules: projectRules, compositeRules: compositeRules, definitions: definitions}, nil
+	registry := Registry{
+		unitRules:      unitEntries,
+		projectRules:   projectEntries,
+		compositeRules: compositeEntries,
+		definitions:    definitions,
+	}
+	registry.refreshActiveRules()
+	return registry, nil
 }
 
 func Defaults() Registry {
@@ -125,6 +156,7 @@ func DefaultsConfigured(config Config) (Registry, error) {
 	}
 	registry.applyEnablement(config.Enabled)
 	registry.applySeverities(config.Severities)
+	registry.refreshActiveRules()
 	return registry, nil
 }
 
@@ -160,35 +192,56 @@ func (r *Registry) applySeverities(severities map[string]finding.Severity) {
 	}
 }
 
+func (r *Registry) refreshActiveRules() {
+	r.activeUnitRules = r.activeUnitRules[:0]
+	for _, entry := range r.unitRules {
+		definition := r.configuredDefinition(entry.definition)
+		if !r.ruleEnabled(definition) {
+			continue
+		}
+		entry.definition = definition
+		r.activeUnitRules = append(r.activeUnitRules, entry)
+	}
+	r.activeProjectRules = r.activeProjectRules[:0]
+	for _, entry := range r.projectRules {
+		definition := r.configuredDefinition(entry.definition)
+		if !r.ruleEnabled(definition) {
+			continue
+		}
+		entry.definition = definition
+		r.activeProjectRules = append(r.activeProjectRules, entry)
+	}
+	r.activeCompositeRules = r.activeCompositeRules[:0]
+	for _, entry := range r.compositeRules {
+		definition := r.configuredDefinition(entry.definition)
+		if !r.ruleEnabled(definition) {
+			continue
+		}
+		entry.definition = definition
+		r.activeCompositeRules = append(r.activeCompositeRules, entry)
+	}
+}
+
 func (r Registry) Analyze(units []parser.Unit, context Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, unit := range units {
-		for _, rule := range r.unitRules {
-			definition := r.configuredDefinition(rule.Definition())
-			if !r.ruleEnabled(definition) {
-				continue
-			}
-			for _, item := range rule.AnalyzeUnit(unit, context) {
+		for _, entry := range r.activeUnitRules {
+			definition := entry.definition
+			for _, item := range entry.rule.AnalyzeUnit(unit, context) {
 				findings = append(findings, applyDefinition(item, definition))
 			}
 		}
 	}
-	for _, rule := range r.projectRules {
-		definition := r.configuredDefinition(rule.Definition())
-		if !r.ruleEnabled(definition) {
-			continue
-		}
-		for _, item := range rule.AnalyzeProject(units, context) {
+	for _, entry := range r.activeProjectRules {
+		definition := entry.definition
+		for _, item := range entry.rule.AnalyzeProject(units, context) {
 			findings = append(findings, applyDefinition(item, definition))
 		}
 	}
 	baseFindings := append([]finding.Finding(nil), findings...)
-	for _, rule := range r.compositeRules {
-		definition := r.configuredDefinition(rule.Definition())
-		if !r.ruleEnabled(definition) {
-			continue
-		}
-		for _, item := range rule.AnalyzeFindings(baseFindings, context) {
+	for _, entry := range r.activeCompositeRules {
+		definition := entry.definition
+		for _, item := range entry.rule.AnalyzeFindings(baseFindings, context) {
 			findings = append(findings, applyDefinition(item, definition))
 		}
 	}

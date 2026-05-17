@@ -47,6 +47,37 @@ func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	}
 }
 
+func TestRegistryCachesDefinitionsForDispatch(t *testing.T) {
+	calls := 0
+	registry, err := NewRegistry([]UnitRule{countedUnitRule{id: "size.file-length", calls: &calls}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("Definition calls after construction = %d, want 1", calls)
+	}
+
+	unit := parser.Unit{File: source.File{Path: "a.go", Type: source.FileTypeGo}}
+	registry.Analyze([]parser.Unit{unit, unit}, Context{})
+	if calls != 1 {
+		t.Fatalf("Definition calls after dispatch = %d, want cached definition reuse", calls)
+	}
+}
+
+func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
+	calls := 0
+	registry, err := NewRegistry([]UnitRule{disabledUnitRule{id: "size.parameter-count", calls: &calls}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unit := parser.Unit{File: source.File{Path: "a.go", Type: source.FileTypeGo}}
+	registry.Analyze([]parser.Unit{unit}, Context{})
+	if calls != 0 {
+		t.Fatalf("disabled rule dispatch calls = %d, want 0", calls)
+	}
+}
+
 type fakeUnitRule struct{ id string }
 
 func (r fakeUnitRule) Definition() Definition {
@@ -72,6 +103,40 @@ func (r fakeProjectRule) AnalyzeProject(units []parser.Unit, _ Context) []findin
 		Message: "project finding",
 		File:    units[0].File.Path,
 	}}
+}
+
+type countedUnitRule struct {
+	id    string
+	calls *int
+}
+
+func (r countedUnitRule) Definition() Definition {
+	(*r.calls)++
+	return validDefinition(r.id)
+}
+
+func (countedUnitRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return []finding.Finding{{
+		Message:  "unit finding",
+		File:     unit.File.Path,
+		Location: &finding.Location{Line: 1},
+	}}
+}
+
+type disabledUnitRule struct {
+	id    string
+	calls *int
+}
+
+func (r disabledUnitRule) Definition() Definition {
+	definition := validDefinition(r.id)
+	definition.DefaultEnabled = false
+	return definition
+}
+
+func (r disabledUnitRule) AnalyzeUnit(parser.Unit, Context) []finding.Finding {
+	(*r.calls)++
+	return nil
 }
 
 func validDefinition(id string) Definition {

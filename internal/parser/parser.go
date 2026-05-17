@@ -48,10 +48,11 @@ func Parse(files []source.File) ([]Unit, []Diagnostic) {
 			})
 			continue
 		}
+		sourceText := string(data)
 		unit := Unit{
 			File:      file,
-			Source:    string(data),
-			LineCount: countLines(string(data)),
+			Source:    sourceText,
+			LineCount: countLines(sourceText),
 		}
 		if file.Type != source.FileTypeGo {
 			units = append(units, unit)
