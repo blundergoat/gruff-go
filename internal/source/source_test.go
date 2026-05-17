@@ -125,6 +125,73 @@ func TestDiscoverIncludeIgnoredBypassesGitignore(t *testing.T) {
 	}
 }
 
+func TestDiscoverIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "secret.go\n")
+	writeFile(t, root, "secret.go", "package secret\n")
+	writeFile(t, root, "main.go", "package main\n")
+
+	result, err := Discover(Options{
+		Root:           root,
+		Paths:          []string{"."},
+		IncludeIgnored: true,
+		IgnorePatterns: []string{"secret.go"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	if !equal(got, []string{"main.go"}) {
+		t.Fatalf("files = %#v, want only main.go", got)
+	}
+	if !contains(skippedReasons(result.Skipped), "secret.go:config-ignore") {
+		t.Fatalf("secret.go should remain config-ignored with --include-ignored; got %#v", result.Skipped)
+	}
+}
+
+func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "# project owns vendor\n")
+	writeFile(t, root, "main.go", "package main\n")
+	writeFile(t, root, "vendor/pkg/vendor.go", "package pkg\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	want := []string{"main.go", "vendor/pkg/vendor.go"}
+	if !equal(got, want) {
+		t.Fatalf("files = %#v, want %#v", got, want)
+	}
+	if contains(skippedReasons(result.Skipped), "vendor:dependency") {
+		t.Fatalf("vendor should not be hardcoded-skipped when root .gitignore exists: %#v", result.Skipped)
+	}
+}
+
+func TestDiscoverExplicitIgnoredInputDirectoryPrunes(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "node_modules/pkg/index.go", "package pkg\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"node_modules"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Files) != 0 {
+		t.Fatalf("files = %#v, want no files from ignored input directory", result.Files)
+	}
+	gotSkipped := skippedReasons(result.Skipped)
+	if !contains(gotSkipped, "node_modules:dependency") {
+		t.Fatalf("node_modules input should be skipped as a directory; got %#v", gotSkipped)
+	}
+	if contains(gotSkipped, "node_modules/pkg/index.go:dependency") {
+		t.Fatalf("node_modules should be pruned before per-file skips; got %#v", gotSkipped)
+	}
+}
+
 func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")

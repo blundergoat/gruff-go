@@ -17,7 +17,7 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 	top := flags.Int("top", 10, "limit on top rules and top offenders shown")
 	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
-	includeIgnored := flags.Bool("include-ignored", false, "include files under default-ignored directories")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -39,9 +39,6 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
-	}
-	if *includeIgnored {
-		ignorePaths = nil
 	}
 	analysisReport, err := analysis.Run(analysis.Options{
 		Paths:          flags.Args(),

@@ -85,16 +85,19 @@ type discoveryWalker struct {
 	options         Options
 	matcher         *Matcher
 	gitignoreActive bool
+	fallbackActive  bool
 	result          Result
 }
 
 func newDiscoveryWalker(ctx context.Context, rootAbs string, options Options) *discoveryWalker {
+	fallbackActive := !rootHasGitignore(rootAbs)
 	return &discoveryWalker{
 		ctx:             ctx,
 		rootAbs:         rootAbs,
 		options:         options,
 		matcher:         NewMatcher(rootAbs),
 		gitignoreActive: !options.IncludeIgnored,
+		fallbackActive:  fallbackActive,
 	}
 }
 
@@ -117,6 +120,15 @@ func (w *discoveryWalker) visitInput(input string) error {
 	if !info.IsDir() {
 		w.visitFile(path)
 		return nil
+	}
+	path = filepath.Clean(path)
+	if path != filepath.Clean(w.rootAbs) {
+		if err := w.visitDir(path); err != nil {
+			if err == filepath.SkipDir {
+				return nil
+			}
+			return err
+		}
 	}
 	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
 		if err := w.ctx.Err(); err != nil {
@@ -144,11 +156,9 @@ func (w *discoveryWalker) visitDir(current string) error {
 			return filepath.SkipDir
 		}
 	}
-	if !w.options.IncludeIgnored {
-		if reason, ignored := ignoredDir(w.rootAbs, current, w.options.IgnorePatterns); ignored {
-			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
-			return filepath.SkipDir
-		}
+	if reason, ignored := w.ignoredDir(rel); ignored {
+		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
+		return filepath.SkipDir
 	}
 	return nil
 }
@@ -161,7 +171,7 @@ func (w *discoveryWalker) visitFile(path string) {
 			return
 		}
 	}
-	addFile(w.rootAbs, path, w.options.IncludeIgnored, w.options.IgnorePatterns, &w.result)
+	w.addFile(path)
 }
 
 func (w *discoveryWalker) flushParseErrors() {
@@ -184,23 +194,54 @@ func (w *discoveryWalker) normalize() {
 	w.result.Skipped = dedupeSkipped(w.result.Skipped)
 }
 
-func addFile(rootAbs, path string, includeIgnored bool, ignorePatterns []string, result *Result) {
-	rel := displayPath(rootAbs, path)
-	if !includeIgnored {
-		if reason, ignored := ignoredFile(rel, ignorePatterns); ignored {
-			result.Skipped = append(result.Skipped, SkippedPath{Path: rel, Reason: reason})
+func (w *discoveryWalker) ignoredDir(rel string) (string, bool) {
+	if pathfilter.MatchesAny(w.options.IgnorePatterns, rel) {
+		return "config-ignore", true
+	}
+	if w.options.IncludeIgnored {
+		return "", false
+	}
+	if reason, ignored := alwaysIgnoredDir(rel); ignored {
+		return reason, true
+	}
+	if w.fallbackActive {
+		return fallbackIgnoredDir(rel)
+	}
+	return "", false
+}
+
+func (w *discoveryWalker) addFile(path string) {
+	rel := displayPath(w.rootAbs, path)
+	if pathfilter.MatchesAny(w.options.IgnorePatterns, rel) {
+		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "config-ignore"})
+		return
+	}
+	if !w.options.IncludeIgnored {
+		if reason, ignored := alwaysIgnoredFile(rel); ignored {
+			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
 			return
+		}
+		if w.fallbackActive {
+			if reason, ignored := fallbackIgnoredFile(rel); ignored {
+				w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
+				return
+			}
 		}
 	}
 	fileType, ok := classify(path)
 	if !ok {
 		return
 	}
-	if fileType == FileTypeGo && !includeIgnored && isGeneratedGo(path) {
-		result.Skipped = append(result.Skipped, SkippedPath{Path: rel, Reason: "generated"})
+	if fileType == FileTypeGo && !w.options.IncludeIgnored && isGeneratedGo(path) {
+		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "generated"})
 		return
 	}
-	result.Files = append(result.Files, File{Path: rel, AbsPath: path, Type: fileType})
+	w.result.Files = append(w.result.Files, File{Path: rel, AbsPath: path, Type: fileType})
+}
+
+func rootHasGitignore(rootAbs string) bool {
+	info, err := os.Stat(filepath.Join(rootAbs, ".gitignore"))
+	return err == nil && !info.IsDir()
 }
 
 func classify(path string) (FileType, bool) {
@@ -219,22 +260,12 @@ func classify(path string) (FileType, bool) {
 	}
 }
 
-func ignoredDir(rootAbs, path string, ignorePatterns []string) (string, bool) {
-	rel := displayPath(rootAbs, path)
-	if pathfilter.MatchesAny(ignorePatterns, rel) {
-		return "config-ignore", true
-	}
+func alwaysIgnoredDir(rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
 	for _, part := range parts {
 		switch part {
 		case ".git", ".hg", ".svn":
 			return "vcs", true
-		case "vendor", "node_modules":
-			return "dependency", true
-		case "dist", "build", "coverage":
-			return "build-output", true
-		case ".idea", ".vscode":
-			return "local-tooling", true
 		}
 	}
 	if rel == ".goat-flow/tasks" || strings.HasPrefix(rel, ".goat-flow/tasks/") {
@@ -249,10 +280,7 @@ func ignoredDir(rootAbs, path string, ignorePatterns []string) (string, bool) {
 	return "", false
 }
 
-func ignoredFile(rel string, ignorePatterns []string) (string, bool) {
-	if pathfilter.MatchesAny(ignorePatterns, rel) {
-		return "config-ignore", true
-	}
+func alwaysIgnoredFile(rel string) (string, bool) {
 	if strings.HasPrefix(rel, ".goat-flow/tasks/") {
 		return "goat-flow-local-task-state", true
 	}
@@ -262,6 +290,25 @@ func ignoredFile(rel string, ignorePatterns []string) (string, bool) {
 	if strings.HasPrefix(rel, ".goat-flow/scratchpad/") {
 		return "goat-flow-local-scratchpad", true
 	}
+	return "", false
+}
+
+func fallbackIgnoredDir(rel string) (string, bool) {
+	parts := strings.Split(rel, "/")
+	for _, part := range parts {
+		switch part {
+		case "vendor", "node_modules":
+			return "dependency", true
+		case "dist", "build", "coverage":
+			return "build-output", true
+		case ".idea", ".vscode":
+			return "local-tooling", true
+		}
+	}
+	return "", false
+}
+
+func fallbackIgnoredFile(_ string) (string, bool) {
 	return "", false
 }
 

@@ -178,9 +178,6 @@ func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, err
 	if err != nil {
 		return analysis.Report{}, fmt.Errorf("config: %w", err)
 	}
-	if scanOpts.includeIgnored {
-		ignorePaths = nil
-	}
 	return analysis.Run(analysis.Options{
 		Context:        ctx,
 		Root:           root,

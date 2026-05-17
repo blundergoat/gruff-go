@@ -26,7 +26,7 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 	baselinePath := flags.String("baseline", "", "initial baseline file")
 	noBaseline := flags.Bool("no-baseline", false, "skip applying any baseline")
 	diff := flags.Bool("diff", false, "start dashboard in diff-only scan mode")
-	includeIgnored := flags.Bool("include-ignored", false, "include files under default ignored directories")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	failOn := flags.String("fail-on", string(finding.SeverityMedium), "minimum severity that fails a scan")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in the report")
 	editorLink := flags.String("report-editor-link", "none", "html file:line link mode: none, vscode, or phpstorm")

@@ -122,7 +122,7 @@ func parseIgnoreFile(dir, text string) *ignoreFile {
 		if strings.HasSuffix(line, "\r") {
 			line = line[:len(line)-1]
 		}
-		line = strings.TrimRight(line, " \t")
+		line = trimUnescapedTrailingWhitespace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -215,7 +215,31 @@ func matchSegmentsAt(pat []string, pi int, seg []string, si int) bool {
 		pi++
 		si++
 	}
-	return true
+	return si == len(seg)
+}
+
+func trimUnescapedTrailingWhitespace(line string) string {
+	end := len(line)
+	for end > 0 {
+		switch line[end-1] {
+		case ' ', '\t':
+			if escaped(line, end-1) {
+				return line[:end]
+			}
+			end--
+		default:
+			return line[:end]
+		}
+	}
+	return line[:end]
+}
+
+func escaped(line string, index int) bool {
+	backslashes := 0
+	for i := index - 1; i >= 0 && line[i] == '\\'; i-- {
+		backslashes++
+	}
+	return backslashes%2 == 1
 }
 
 func ancestorChain(rel string) []string {

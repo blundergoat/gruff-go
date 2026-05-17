@@ -75,6 +75,20 @@ func TestMatcherNegation(t *testing.T) {
 	}
 }
 
+func TestMatcherNegationReincludesDirectoryDescendants(t *testing.T) {
+	root := writeIgnoreTree(t, map[string]string{
+		".gitignore": "bin/*\n!bin/keep/\n",
+	})
+	m := NewMatcher(root)
+
+	if got, _ := m.Match("bin/scratch/file.go", false); !got {
+		t.Fatalf("bin/scratch/file.go should be ignored through matched ancestor")
+	}
+	if got, _ := m.Match("bin/keep/file.go", false); got {
+		t.Fatalf("bin/keep/file.go should inherit the re-included directory")
+	}
+}
+
 func TestMatcherNegationCannotReIncludeUnderExcludedDir(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "secrets/\n!secrets/public.txt\n",
@@ -135,6 +149,23 @@ func TestMatcherCommentsAndBlankLines(t *testing.T) {
 	}
 	if got, _ := m.Match("scratch.go", false); got {
 		t.Fatalf("comment lines must not be treated as patterns")
+	}
+}
+
+func TestMatcherEscapedTrailingWhitespace(t *testing.T) {
+	root := writeIgnoreTree(t, map[string]string{
+		".gitignore": "name\\ \n*.log\n",
+	})
+	m := NewMatcher(root)
+
+	if got, _ := m.Match("name ", false); !got {
+		t.Fatalf("escaped trailing space should be part of the pattern")
+	}
+	if got, _ := m.Match("name", false); got {
+		t.Fatalf("escaped trailing space should not match name without the space")
+	}
+	if got, _ := m.Match("debug.log", false); !got {
+		t.Fatalf("later rules should still apply after escaped trailing whitespace")
 	}
 }
 
