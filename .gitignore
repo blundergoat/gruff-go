@@ -44,3 +44,9 @@ yarn-error.log*
 /output/
 *.cache
 *.log
+
+### Performance harness (scripts/test-performance.sh) ###
+/scripts/.perf-corpus/
+/scripts/.tools/
+/scripts/.perf-results/
+!/scripts/.perf-results/baseline.json
