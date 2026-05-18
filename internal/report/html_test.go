@@ -10,6 +10,11 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+func defaultDefinitions() []rule.Definition {
+	defaults := rule.Defaults()
+	return defaults.Definitions()
+}
+
 func TestWriteHTMLRendersCoreSections(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -68,7 +73,7 @@ func TestWriteHTMLCelebrationSubtitle(t *testing.T) {
 		Format:      "html",
 		FailOn:      finding.SeverityMedium,
 		Scanned:     []string{"main.go"},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
@@ -187,7 +192,7 @@ func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 		FailOn:      finding.SeverityMedium,
 		Scanned:     []string{"evil.go"},
 		Findings:    []finding.Finding{malicious},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
@@ -218,7 +223,7 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 			File:     "broken.go",
 			Severity: finding.SeverityHigh,
 		}},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 	var out bytes.Buffer
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
@@ -240,7 +245,7 @@ func TestWriteHTMLDiffScopeLabel(t *testing.T) {
 		Format:      "html",
 		FailOn:      finding.SeverityMedium,
 		Scanned:     []string{"a.go"},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 		Diff:        analysis.DiffSummary{Enabled: true, Base: "main", ChangedFiles: []string{"a.go", "b.go"}},
 	})
 	var out bytes.Buffer
@@ -311,6 +316,6 @@ func buildHTMLFixture() analysis.Report {
 		FailOn:      finding.SeverityMedium,
 		Scanned:     []string{"hot.go", "warm.go", "medium.go"},
 		Findings:    findings,
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 }

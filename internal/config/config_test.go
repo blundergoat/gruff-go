@@ -9,6 +9,11 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+func defaultDefinitions() []rule.Definition {
+	defaults := rule.Defaults()
+	return defaults.Definitions()
+}
+
 func TestParseValidatesStrictConfig(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
@@ -26,7 +31,7 @@ rules:
 sensitiveData:
   previewAllowlist:
     - testdata/**
-`), rule.Defaults().Definitions())
+`), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +69,7 @@ rules:
     severity: error
   size.function-length:
     enabled: false
-`), rule.Defaults().Definitions())
+`), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +96,7 @@ rules:
 
 func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	root := t.TempDir()
-	definitions := rule.Defaults().Definitions()
+	definitions := defaultDefinitions()
 	writeConfig(t, root, ".gruff-go.yaml", "rules:\n  size.file-length:\n    enabled: true\n")
 
 	loaded, err := LoadAuto(root, "", false, definitions)
@@ -108,7 +113,7 @@ func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 
 func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	root := t.TempDir()
-	definitions := rule.Defaults().Definitions()
+	definitions := defaultDefinitions()
 	writeConfig(t, root, "config.yaml", "rules:\n  size.file-length:\n    enabled: false\n")
 
 	loaded, err := LoadAuto(root, "", false, definitions)
@@ -126,7 +131,7 @@ func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 	for _, path := range []string{"config.txt", "config.yml"} {
 		t.Run(path, func(t *testing.T) {
-			_, err := ParseFile(path, []byte(`rules: {}`), rule.Defaults().Definitions())
+			_, err := ParseFile(path, []byte(`rules: {}`), defaultDefinitions())
 			if err == nil || !strings.Contains(err.Error(), "unsupported config file extension") {
 				t.Fatalf("err = %v, want unsupported extension", err)
 			}
@@ -184,7 +189,7 @@ rules:
         - '**/*.pb.go'
       excludeNames:
         - GetProtoUser
-	`), rule.Defaults().Definitions())
+	`), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +254,7 @@ rules:
     thresholds:
       minFindings: 4
       minPillars: 3
-`), rule.Defaults().Definitions())
+`), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +280,7 @@ rules:
     enabled: false
   documentation-exported-symbol-comment:
     enabled: true
-`), rule.Defaults().Definitions())
+`), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +329,7 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse([]byte(tt.yaml), rule.Defaults().Definitions())
+			_, err := Parse([]byte(tt.yaml), defaultDefinitions())
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("err = %v, want containing %q", err, tt.want)
 			}

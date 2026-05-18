@@ -29,7 +29,7 @@ func TestMachineReportFormats(t *testing.T) {
 		FailOn:      finding.SeverityMedium,
 		Scanned:     []string{"main.go"},
 		Findings:    []finding.Finding{item},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 
 	var sarif bytes.Buffer
@@ -67,7 +67,7 @@ func TestMachineReportFormats(t *testing.T) {
 }
 
 func TestWriteSARIFContract(t *testing.T) {
-	definitions := reversedDefinitions(rule.Defaults().Definitions())
+	definitions := reversedDefinitions(defaultDefinitions())
 	item := sarifContractFinding()
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -307,7 +307,7 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 		FailOn:      finding.SeverityCritical,
 		Scanned:     []string{"custom/missing.go"},
 		Findings:    []finding.Finding{item},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 
 	var out bytes.Buffer

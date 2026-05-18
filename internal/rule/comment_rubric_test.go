@@ -201,7 +201,8 @@ func TestCommentRubricRuleDefaultsConfigured(t *testing.T) {
 
 func Missing() {}
 `)
-	if findings := Defaults().Analyze([]parser.Unit{unit}, Context{}); containsRuleID(findings, "docs.comment-rubric") {
+	defaults := Defaults()
+	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); containsRuleID(findings, "docs.comment-rubric") {
 		t.Fatalf("default findings = %#v, want docs.comment-rubric disabled", findings)
 	}
 

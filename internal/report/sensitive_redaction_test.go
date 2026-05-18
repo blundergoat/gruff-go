@@ -61,7 +61,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Metadata:   map[string]any{"preview": "-----B..." + "KEY-"},
 			},
 		},
-		Definitions: rule.Defaults().Definitions(),
+		Definitions: defaultDefinitions(),
 	})
 
 	formats := []struct {

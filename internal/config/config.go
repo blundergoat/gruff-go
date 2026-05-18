@@ -208,7 +208,8 @@ func (cfg Config) RuleOptions() rule.Config {
 		SensitiveDataPreviewAllowlist: cfg.SensitiveData.PreviewAllowlist,
 		AcceptedAbbreviations:         cfg.AcceptedAbbreviations,
 	}
-	definitions := rule.Defaults().Definitions()
+	defaults := rule.Defaults()
+	definitions := defaults.Definitions()
 	if len(cfg.Select) > 0 || len(cfg.Selection.Pillars) > 0 {
 		selected := map[string]struct{}{}
 		byID := definitionsByID(definitions)

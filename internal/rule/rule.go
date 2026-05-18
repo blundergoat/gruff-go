@@ -136,7 +136,7 @@ func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, 
 }
 
 // Definitions returns the sorted public rule-definition catalogue.
-func (r Registry) Definitions() []Definition {
+func (r *Registry) Definitions() []Definition {
 	out := make([]Definition, len(r.definitions))
 	copy(out, r.definitions)
 	return out
@@ -202,7 +202,7 @@ func (r *Registry) refreshActiveRules() {
 }
 
 // Analyze dispatches active rules and returns findings in deterministic order.
-func (r Registry) Analyze(units []parser.Unit, context Context) []finding.Finding {
+func (r *Registry) Analyze(units []parser.Unit, context Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, unit := range units {
 		for _, entry := range r.activeUnitRules {
@@ -230,7 +230,7 @@ func (r Registry) Analyze(units []parser.Unit, context Context) []finding.Findin
 }
 
 // configuredDefinition applies registry-level overrides to one definition.
-func (r Registry) configuredDefinition(definition Definition) Definition {
+func (r *Registry) configuredDefinition(definition Definition) Definition {
 	if value, ok := r.enabled[definition.ID]; ok {
 		definition.DefaultEnabled = value
 	}
@@ -241,7 +241,7 @@ func (r Registry) configuredDefinition(definition Definition) Definition {
 }
 
 // ruleEnabled reports whether a definition should be included in dispatch.
-func (r Registry) ruleEnabled(definition Definition) bool {
+func (r *Registry) ruleEnabled(definition Definition) bool {
 	if value, ok := r.enabled[definition.ID]; ok {
 		return value
 	}

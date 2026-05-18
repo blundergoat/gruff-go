@@ -11,7 +11,8 @@ import (
 )
 
 func TestDefaultsListRules(t *testing.T) {
-	definitions := Defaults().Definitions()
+	defaults := Defaults()
+	definitions := defaults.Definitions()
 	got := make([]string, 0, len(definitions))
 	enabled := map[string]bool{}
 	for _, definition := range definitions {

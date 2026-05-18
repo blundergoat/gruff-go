@@ -19,7 +19,8 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 		}},
 	}
 
-	findings := Defaults().Analyze([]parser.Unit{unit}, Context{})
+	defaults := Defaults()
+	findings := defaults.Analyze([]parser.Unit{unit}, Context{})
 	if len(findings) != 2 {
 		t.Fatalf("findings = %#v, want file and function length findings", findings)
 	}

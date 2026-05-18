@@ -100,7 +100,8 @@ func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
 }
 
 func TestDefaultsCapability(t *testing.T) {
-	definitions := Defaults().Definitions()
+	defaults := Defaults()
+	definitions := defaults.Definitions()
 	if len(definitions) == 0 {
 		t.Fatal("expected built-in definitions")
 	}
