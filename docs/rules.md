@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **26 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **28 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
@@ -23,7 +23,9 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
+| [`naming.misspelling`](#namingmisspelling) | naming | low | parser | — | Identifiers, doc comments, and struct tags containing common programming misspellings. |
 | [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | — | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
+| [`naming.package-stutter`](#namingpackage-stutter) | naming | low | parser | — | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
@@ -261,6 +263,35 @@ rules:
 
 **Remediation.** Rename the identifier to something that names its role, or remove it if it is no longer needed. Override the option list when your project has additional placeholder terms to enforce or legitimate uses for one of the built-in placeholders.
 
+### `naming.misspelling`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `naming`, `opt-in`
+- **Options:**
+  - `extra map[string]string` — additional `wrong → right` pairs to add to the built-in dictionary
+  - `ignore []string` — tokens to suppress (lowercased)
+
+Flags identifiers (`func`, `type`, `var`, `const`, struct field names), doc comments, and struct tags containing tokens from a conservative built-in dictionary of common programming misspellings (`recieve`, `seperate`, `lenght`, `occured`, `enviroment`, etc., ~40 entries). Tokens are extracted with camelCase / snake_case / non-letter splitting, lowercased, and matched exactly against the dictionary.
+
+```yaml
+rules:
+  naming.misspelling:
+    enabled: true
+    options:
+      extra:
+        # Project-specific additions, also expressed as wrong → right.
+        privledge: privilege
+      ignore:
+        # Real proper nouns that look like misspellings.
+        - "thier"
+```
+
+**Remediation.** Replace the misspelled token with the suggested correction the finding includes. Add legitimate proper nouns or vendor-specific terms to the `ignore` option.
+
 ### `naming.negated-boolean`
 
 - **Pillar:** naming
@@ -292,6 +323,32 @@ rules:
 ```
 
 **Remediation.** Rename to the positive form: `NoConfig` → `SkipConfig` if the boolean still means "skip", or `EnableConfig` with inverted truth values if you want callers to read positive logic. CLI flag names like `--no-config` can stay as the public surface; only rename the internal Go field.
+
+### `naming.package-stutter`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `go-style`, `naming`, `opt-in`
+- **Options:**
+  - `allowStutter []string` — identifiers (PascalCase form) to exempt from the stutter check. Default: `[Config, Finding]`.
+
+Flags exported top-level types, non-method functions, and exported package-scope variables/constants whose lowercase form starts with their own package name. Stuttering is caught two ways: (a) exact match (`type Rule` in `package rule`, unless allowlisted) and (b) prefix match with an uppercase letter following the package name (`type RuleRegistry` in `package rule`, `type HttpServerOptions` in `package httpserver`). Plain extensions of the package word like `type Rules` in `package rule` (next char is lowercase, the word continues) do *not* fire.
+
+Method names are not checked: a receiver makes the call site unambiguous (`r.RuleApply()` already reads cleanly).
+
+```yaml
+rules:
+  naming.package-stutter:
+    enabled: true
+    options:
+      # Extend the default allowlist with project-specific accepted stutters.
+      allowStutter: ["Config", "Finding", "ParserParser"]
+```
+
+**Remediation.** Rename so call sites read without repetition: `rule.RuleRegistry` → `rule.Registry`, `config.ConfigOptions` → `config.Options`. Add genuine single-noun stutters that the community accepts to `allowStutter`.
 
 ### `naming.package-underscore`
 

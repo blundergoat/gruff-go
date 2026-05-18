@@ -54,11 +54,16 @@ func DefaultsConfigured(config Config) (Registry, error) {
 			AllowList: stringSliceOption(config, "naming.negated-boolean", "allowList"),
 			Scope:     stringOption(config, "naming.negated-boolean", "scope", "exported"),
 		},
+		MisspellingRule{
+			Extra:  stringMapOption(config, "naming.misspelling", "extra"),
+			Ignore: stringSliceOption(config, "naming.misspelling", "ignore"),
+		},
 		EmptyTestRule{},
 		NoFailurePathTestRule{},
 	}, []ProjectRule{
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
+		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},
 		ReceiverConsistencyRule{
 			AllowMixed:   stringSliceOption(config, "naming.receiver-consistency", "allowMixed"),
 			InspectGroup: stringOption(config, "naming.receiver-consistency", "inspectGroup", "both"),
@@ -134,6 +139,31 @@ func stringOption(config Config, ruleID, key string, fallback string) string {
 		return fallback
 	}
 	return stringValue
+}
+
+// stringMapOption reads a string-to-string map rule option from strict config.
+func stringMapOption(config Config, ruleID, key string) map[string]string {
+	options, ok := config.Options[ruleID]
+	if !ok {
+		return nil
+	}
+	value, ok := options[key]
+	if !ok {
+		return nil
+	}
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		str, ok := v.(string)
+		if !ok || str == "" {
+			continue
+		}
+		out[k] = str
+	}
+	return out
 }
 
 // intThreshold reads a named positive integer threshold from strict config.

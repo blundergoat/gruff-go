@@ -139,7 +139,7 @@ The schema, every option, and validation rules are documented in [`docs/configur
 
 ## Rule catalog
 
-`gruff-go` v0.1 ships **26 rules** across **9 pillars**. All rules are enabled by default; disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **28 rules** across **9 pillars**. All rules are enabled by default; disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 See [`docs/rules.md`](docs/rules.md) for the full list with severities, thresholds, and remediation guidance.
 

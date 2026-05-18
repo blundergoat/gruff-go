@@ -243,3 +243,11 @@ func findingSymbols(findings []finding.Finding) map[string]bool {
 	}
 	return out
 }
+
+func findingMessages(findings []finding.Finding) map[string]bool {
+	out := map[string]bool{}
+	for _, item := range findings {
+		out[item.Message] = true
+	}
+	return out
+}

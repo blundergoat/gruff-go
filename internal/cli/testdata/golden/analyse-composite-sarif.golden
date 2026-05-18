@@ -378,6 +378,37 @@
               }
             },
             {
+              "id": "naming.misspelling",
+              "name": "Misspelled identifier or comment",
+              "shortDescription": {
+                "text": "Misspelled identifier or comment"
+              },
+              "fullDescription": {
+                "text": "Flags identifiers, doc comments, and struct tags containing common programming misspellings."
+              },
+              "help": {
+                "text": "Replace the misspelled token with the suggested correction. Use the `ignore` option for project-specific terms that look like misspellings but are intentional (proper nouns, vendor-specific terms)."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "naming",
+                  "opt-in"
+                ],
+                "options": {
+                  "extra": {},
+                  "ignore": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "naming.negated-boolean",
               "name": "Negated boolean",
               "shortDescription": {
@@ -419,6 +450,40 @@
                     "Suppress"
                   ],
                   "scope": "exported"
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.package-stutter",
+              "name": "Package stutter",
+              "shortDescription": {
+                "text": "Package stutter"
+              },
+              "fullDescription": {
+                "text": "Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry)."
+              },
+              "help": {
+                "text": "Rename the identifier to remove the package-name prefix so call sites read `config.Options` instead of `config.ConfigOptions`. Use `allowStutter` for single-noun stutter the community accepts (Config, Finding)."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming",
+                  "opt-in"
+                ],
+                "options": {
+                  "allowStutter": [
+                    "Config",
+                    "Finding"
+                  ]
                 }
               },
               "defaultConfiguration": {
@@ -977,7 +1042,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 21,
+          "ruleIndex": 23,
           "level": "warning",
           "message": {
             "text": "function has 8 lines, above threshold 4"
