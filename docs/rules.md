@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **25 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **26 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
@@ -23,6 +23,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
+| [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | — | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
@@ -259,6 +260,38 @@ rules:
 ```
 
 **Remediation.** Rename the identifier to something that names its role, or remove it if it is no longer needed. Override the option list when your project has additional placeholder terms to enforce or legitimate uses for one of the built-in placeholders.
+
+### `naming.negated-boolean`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `go-style`, `naming`, `opt-in`
+- **Options:**
+  - `prefixes []string` — default `[No, Not, Disable, Disallow, Without, Suppress]`
+  - `allowList []string` — default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook]` (English words that begin with a prefix but are not negations)
+  - `scope string` — default `"exported"`; alternatives `"all"` and `"locals"`
+
+Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if state.Baseline != "" && state.NoBaseline != "1"`) and obscure the actual intent.
+
+Type-aware: only flags identifiers whose syntactic type is `bool`, so `NoOp func()` and `Notify chan struct{}` are correctly ignored. The default `scope: exported` checks struct fields and exported declarations; switch to `"locals"` to additionally flag local `var` declarations inside function bodies, or `"all"` for both.
+
+```yaml
+rules:
+  naming.negated-boolean:
+    enabled: true
+    options:
+      # Extend the prefix list.
+      prefixes: ["No", "Not", "Disable", "Without", "Skip"]
+      # Whitelist a project-specific identifier that collides with a prefix.
+      allowList: ["NoOp", "Notify", "NoticeBoard"]
+      # Also check locals.
+      scope: "locals"
+```
+
+**Remediation.** Rename to the positive form: `NoConfig` → `SkipConfig` if the boolean still means "skip", or `EnableConfig` with inverted truth values if you want callers to read positive logic. CLI flag names like `--no-config` can stay as the public surface; only rename the internal Go field.
 
 ### `naming.package-underscore`
 

@@ -378,6 +378,54 @@
               }
             },
             {
+              "id": "naming.negated-boolean",
+              "name": "Negated boolean",
+              "shortDescription": {
+                "text": "Negated boolean"
+              },
+              "fullDescription": {
+                "text": "Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites."
+              },
+              "help": {
+                "text": "Rename to the positive form (e.g. Skip… instead of No…) so call sites read without double negation."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming",
+                  "opt-in"
+                ],
+                "options": {
+                  "allowList": [
+                    "NoOp",
+                    "Notify",
+                    "Notice",
+                    "Now",
+                    "NoCopy",
+                    "Notation",
+                    "Notebook"
+                  ],
+                  "prefixes": [
+                    "No",
+                    "Not",
+                    "Disable",
+                    "Disallow",
+                    "Without",
+                    "Suppress"
+                  ],
+                  "scope": "exported"
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "naming.package-underscore",
               "name": "Package name contains underscore",
               "shortDescription": {
@@ -929,7 +977,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 20,
+          "ruleIndex": 21,
           "level": "warning",
           "message": {
             "text": "function has 8 lines, above threshold 4"

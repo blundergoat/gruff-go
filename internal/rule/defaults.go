@@ -49,6 +49,11 @@ func DefaultsConfigured(config Config) (Registry, error) {
 			ExcludeNames: stringSliceOption(config, "naming.get-prefix", "excludeNames"),
 		},
 		IdentifierQualityRule{PlaceholderNames: stringSliceOption(config, "naming.identifier-quality", "placeholderNames")},
+		NegatedBooleanRule{
+			Prefixes:  stringSliceOption(config, "naming.negated-boolean", "prefixes"),
+			AllowList: stringSliceOption(config, "naming.negated-boolean", "allowList"),
+			Scope:     stringOption(config, "naming.negated-boolean", "scope", "exported"),
+		},
 		EmptyTestRule{},
 		NoFailurePathTestRule{},
 	}, []ProjectRule{

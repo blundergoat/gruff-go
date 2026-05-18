@@ -9,6 +9,7 @@ docs.package-comment	documentation	low	parser	Package comment
 naming.acronym-case	naming	low	parser	Acronym case
 naming.get-prefix	naming	low	parser	Get prefix
 naming.identifier-quality	naming	low	parser	Identifier quality
+naming.negated-boolean	naming	low	parser	Negated boolean
 naming.package-underscore	naming	low	parser	Package name contains underscore
 naming.receiver-consistency	naming	low	parser	Receiver consistency
 security.shell-command	security	medium	parser	Shell command execution

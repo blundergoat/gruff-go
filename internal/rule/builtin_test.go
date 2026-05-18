@@ -30,6 +30,7 @@ func TestDefaultsListRules(t *testing.T) {
 		"naming.acronym-case",
 		"naming.get-prefix",
 		"naming.identifier-quality",
+		"naming.negated-boolean",
 		"naming.package-underscore",
 		"naming.receiver-consistency",
 		"security.shell-command",

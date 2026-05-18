@@ -34,9 +34,9 @@ type Options struct {
 	ProjectRoot       string
 	Paths             []string
 	ConfigPath        string
-	NoConfig          bool
+	SkipConfig        bool
 	BaselinePath      string
-	NoBaseline        bool
+	SkipBaseline      bool
 	IncludeIgnored    bool
 	Diff              bool
 	FailOn            string

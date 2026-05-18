@@ -305,7 +305,7 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 		Baseline:          "baseline.json",
 		FailOn:            "high",
 		ScanScope:         "diff",
-		NoBaseline:        "",
+		SkipBaseline:      "",
 		IncludeIgnored:    "1",
 		ReportInteractive: "1",
 	}, Options{EditorLink: "vscode"})

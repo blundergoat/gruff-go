@@ -18,14 +18,14 @@ func defaultState(opts Options) report.DashboardState {
 		failOn = "medium"
 	}
 	state := report.DashboardState{
-		Project:    firstNonEmpty(opts.ProjectRoot, currentWorkingDirectory()),
-		Paths:      strings.Join(opts.Paths, ","),
-		ScanScope:  scope,
-		FailOn:     failOn,
-		Config:     opts.ConfigPath,
-		Baseline:   opts.BaselinePath,
-		NoBaseline: boolFlag(opts.NoBaseline),
-		NoConfig:   boolFlag(opts.NoConfig),
+		Project:      firstNonEmpty(opts.ProjectRoot, currentWorkingDirectory()),
+		Paths:        strings.Join(opts.Paths, ","),
+		ScanScope:    scope,
+		FailOn:       failOn,
+		Config:       opts.ConfigPath,
+		Baseline:     opts.BaselinePath,
+		SkipBaseline: boolFlag(opts.SkipBaseline),
+		SkipConfig:   boolFlag(opts.SkipConfig),
 	}
 	if opts.IncludeIgnored {
 		state.IncludeIgnored = "1"

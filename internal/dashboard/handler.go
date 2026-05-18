@@ -127,13 +127,13 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 	if configPath == "" {
 		configPath = opts.ConfigPath
 	}
-	noConfig := state.NoConfig == "1" || opts.NoConfig
+	noConfig := state.SkipConfig == "1" || opts.SkipConfig
 
 	baselinePath := strings.TrimSpace(state.Baseline)
 	if baselinePath == "" {
 		baselinePath = opts.BaselinePath
 	}
-	noBaseline := state.NoBaseline == "1" || opts.NoBaseline
+	noBaseline := state.SkipBaseline == "1" || opts.SkipBaseline
 	if noBaseline {
 		baselinePath = ""
 	}
@@ -241,10 +241,10 @@ func displayCommand(state report.DashboardState, opts Options) string {
 	if state.Config != "" {
 		args = append(args, "--config", state.Config)
 	}
-	if state.NoConfig == "1" {
+	if state.SkipConfig == "1" {
 		args = append(args, "--no-config")
 	}
-	if state.Baseline != "" && state.NoBaseline != "1" {
+	if state.Baseline != "" && state.SkipBaseline != "1" {
 		args = append(args, "--baseline", state.Baseline)
 	}
 	if state.ScanScope == "diff" {
@@ -279,8 +279,8 @@ func stateFromQuery(opts Options, values url.Values) report.DashboardState {
 		FailOn:            get("failOn", defaults.FailOn),
 		Config:            get("config", defaults.Config),
 		Baseline:          get("baseline", defaults.Baseline),
-		NoBaseline:        get("noBaseline", defaults.NoBaseline),
-		NoConfig:          get("noConfig", defaults.NoConfig),
+		SkipBaseline:      get("noBaseline", defaults.SkipBaseline),
+		SkipConfig:        get("noConfig", defaults.SkipConfig),
 		IncludeIgnored:    get("includeIgnored", defaults.IncludeIgnored),
 		ReportInteractive: get("reportInteractive", defaults.ReportInteractive),
 	}

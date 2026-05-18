@@ -16,8 +16,8 @@ type DashboardState struct {
 	FailOn            string
 	Config            string
 	Baseline          string
-	NoBaseline        string
-	NoConfig          string
+	SkipBaseline      string
+	SkipConfig        string
 	IncludeIgnored    string
 	ReportInteractive string
 }
@@ -79,10 +79,10 @@ func DashboardScanQuery(state DashboardState) string {
 	values.Set("failOn", state.FailOn)
 	values.Set("config", state.Config)
 	values.Set("baseline", state.Baseline)
-	if state.NoBaseline == "1" {
+	if state.SkipBaseline == "1" {
 		values.Set("noBaseline", "1")
 	}
-	if state.NoConfig == "1" {
+	if state.SkipConfig == "1" {
 		values.Set("noConfig", "1")
 	}
 	if state.IncludeIgnored == "1" {
@@ -127,8 +127,8 @@ func dashboardHTML(state DashboardState) string {
 	builder.WriteString(`</select></label>`)
 	builder.WriteString(`</div>`)
 	builder.WriteString(`<div class="option-grid">`)
-	builder.WriteString(dashboardCheck("noBaseline", "skip baseline", state.NoBaseline))
-	builder.WriteString(dashboardCheck("noConfig", "skip config", state.NoConfig))
+	builder.WriteString(dashboardCheck("noBaseline", "skip baseline", state.SkipBaseline))
+	builder.WriteString(dashboardCheck("noConfig", "skip config", state.SkipConfig))
 	builder.WriteString(dashboardCheck("includeIgnored", "include ignored", state.IncludeIgnored))
 	builder.WriteString(dashboardCheck("reportInteractive", "interactive findings", state.ReportInteractive))
 	builder.WriteString(`</div>`)
