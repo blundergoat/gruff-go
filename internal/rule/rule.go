@@ -1,3 +1,6 @@
+// Package rule defines scanner rule contracts and deterministic dispatch.
+// It owns the interfaces implemented by rule families, registry construction,
+// finding ordering, default enablement overrides, and metadata application.
 package rule
 
 import (
@@ -9,33 +12,40 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// Context carries run-level information shared with rule implementations.
 type Context struct {
 	Root string
 }
 
+// Config carries rule enablement and override values derived from config files.
 type Config struct {
 	Enabled                       map[string]bool
 	Thresholds                    map[string]map[string]float64
 	Severities                    map[string]finding.Severity
 	Options                       map[string]map[string]any
 	SensitiveDataPreviewAllowlist []string
+	AcceptedAbbreviations         []string
 }
 
+// UnitRule analyzes one parsed source unit at a time.
 type UnitRule interface {
 	Definition() Definition
 	AnalyzeUnit(parser.Unit, Context) []finding.Finding
 }
 
+// ProjectRule analyzes the full parsed unit set for package-level signals.
 type ProjectRule interface {
 	Definition() Definition
 	AnalyzeProject([]parser.Unit, Context) []finding.Finding
 }
 
+// CompositeRule derives score-neutral findings from already-emitted findings.
 type CompositeRule interface {
 	Definition() Definition
 	AnalyzeFindings([]finding.Finding, Context) []finding.Finding
 }
 
+// Registry stores all rule definitions plus the configured active dispatch set.
 type Registry struct {
 	unitRules            []unitRuleEntry
 	projectRules         []projectRuleEntry
@@ -48,25 +58,30 @@ type Registry struct {
 	severities           map[string]finding.Severity
 }
 
+// unitRuleEntry caches a unit rule with its validated definition.
 type unitRuleEntry struct {
 	rule       UnitRule
 	definition Definition
 }
 
+// projectRuleEntry caches a project rule with its validated definition.
 type projectRuleEntry struct {
 	rule       ProjectRule
 	definition Definition
 }
 
+// compositeRuleEntry caches a composite rule with its validated definition.
 type compositeRuleEntry struct {
 	rule       CompositeRule
 	definition Definition
 }
 
+// NewRegistry builds a registry for unit and project rules.
 func NewRegistry(unitRules []UnitRule, projectRules []ProjectRule) (Registry, error) {
 	return NewRegistryWithComposite(unitRules, projectRules, nil)
 }
 
+// NewRegistryWithComposite builds a registry that also dispatches composites.
 func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, compositeRules []CompositeRule) (Registry, error) {
 	seen := map[string]struct{}{}
 	definitions := []Definition{}
@@ -120,58 +135,14 @@ func NewRegistryWithComposite(unitRules []UnitRule, projectRules []ProjectRule, 
 	return registry, nil
 }
 
-func Defaults() Registry {
-	registry, err := DefaultsConfigured(Config{})
-	if err != nil {
-		panic(err)
-	}
-	return registry
-}
-
-func DefaultsConfigured(config Config) (Registry, error) {
-	registry, err := NewRegistryWithComposite([]UnitRule{
-		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
-		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
-		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
-		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
-		EmptyBlockRule{},
-		ShellCommandRule{},
-		SkippedTestRule{},
-		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
-		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
-		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
-		PrivateKeyRule{},
-		AWSAccessKeyRule{},
-		JWTTokenRule{},
-		ConnectionStringRule{},
-		IdentifierQualityRule{PlaceholderNames: stringSliceOption(config, "naming.identifier-quality", "placeholderNames")},
-		EmptyTestRule{},
-		NoFailurePathTestRule{},
-	}, []ProjectRule{
-		PackageCommentRule{},
-		PackageNameUnderscoreRule{},
-	}, []CompositeRule{
-		DesignGodFunctionRule{},
-		DesignHotspotFileRule{
-			MinFindings: intThreshold(config, "design.hotspot-file", "minFindings", hotspotFileMinFindings),
-			MinPillars:  intThreshold(config, "design.hotspot-file", "minPillars", hotspotFileMinPillars),
-		},
-	})
-	if err != nil {
-		return Registry{}, err
-	}
-	registry.applyEnablement(config.Enabled)
-	registry.applySeverities(config.Severities)
-	registry.refreshActiveRules()
-	return registry, nil
-}
-
+// Definitions returns the sorted public rule-definition catalogue.
 func (r Registry) Definitions() []Definition {
 	out := make([]Definition, len(r.definitions))
 	copy(out, r.definitions)
 	return out
 }
 
+// applyEnablement overlays configured enabled/disabled state onto definitions.
 func (r *Registry) applyEnablement(enabled map[string]bool) {
 	if len(enabled) == 0 {
 		return
@@ -185,6 +156,7 @@ func (r *Registry) applyEnablement(enabled map[string]bool) {
 	}
 }
 
+// applySeverities overlays configured severity values onto definitions.
 func (r *Registry) applySeverities(severities map[string]finding.Severity) {
 	if len(severities) == 0 {
 		return
@@ -198,6 +170,7 @@ func (r *Registry) applySeverities(severities map[string]finding.Severity) {
 	}
 }
 
+// refreshActiveRules rebuilds dispatch slices from configured definitions.
 func (r *Registry) refreshActiveRules() {
 	r.activeUnitRules = r.activeUnitRules[:0]
 	for _, entry := range r.unitRules {
@@ -228,6 +201,7 @@ func (r *Registry) refreshActiveRules() {
 	}
 }
 
+// Analyze dispatches active rules and returns findings in deterministic order.
 func (r Registry) Analyze(units []parser.Unit, context Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, unit := range units {
@@ -255,6 +229,7 @@ func (r Registry) Analyze(units []parser.Unit, context Context) []finding.Findin
 	return findings
 }
 
+// configuredDefinition applies registry-level overrides to one definition.
 func (r Registry) configuredDefinition(definition Definition) Definition {
 	if value, ok := r.enabled[definition.ID]; ok {
 		definition.DefaultEnabled = value
@@ -265,6 +240,7 @@ func (r Registry) configuredDefinition(definition Definition) Definition {
 	return definition
 }
 
+// ruleEnabled reports whether a definition should be included in dispatch.
 func (r Registry) ruleEnabled(definition Definition) bool {
 	if value, ok := r.enabled[definition.ID]; ok {
 		return value
@@ -272,6 +248,7 @@ func (r Registry) ruleEnabled(definition Definition) bool {
 	return definition.DefaultEnabled
 }
 
+// CompareFindings orders findings by stable public identity fields.
 func CompareFindings(a, b finding.Finding) int {
 	if a.File != b.File {
 		return strings.Compare(a.File, b.File)
@@ -291,6 +268,7 @@ func CompareFindings(a, b finding.Finding) int {
 	return strings.Compare(a.Fingerprint, b.Fingerprint)
 }
 
+// addDefinition validates and deduplicates one rule definition.
 func addDefinition(definition Definition, seen map[string]struct{}, definitions *[]Definition) (Definition, error) {
 	if err := definition.Validate(); err != nil {
 		return Definition{}, err
@@ -303,6 +281,7 @@ func addDefinition(definition Definition, seen map[string]struct{}, definitions 
 	return definition, nil
 }
 
+// applyDefinition fills rule metadata, calibrations, and fingerprints.
 func applyDefinition(item finding.Finding, definition Definition) finding.Finding {
 	hadSeverity := item.Severity != ""
 	if item.RuleID == "" {
@@ -330,6 +309,7 @@ func applyDefinition(item finding.Finding, definition Definition) finding.Findin
 	return item.WithFingerprint()
 }
 
+// locationLine returns a finding's start line or zero when absent.
 func locationLine(f finding.Finding) int {
 	if f.Location == nil {
 		return 0
@@ -337,59 +317,10 @@ func locationLine(f finding.Finding) int {
 	return f.Location.Line
 }
 
+// locationColumn returns a finding's start column or zero when absent.
 func locationColumn(f finding.Finding) int {
 	if f.Location == nil {
 		return 0
 	}
 	return f.Location.Column
-}
-
-func stringSliceOption(config Config, ruleID, key string) []string {
-	options, ok := config.Options[ruleID]
-	if !ok {
-		return nil
-	}
-	value, ok := options[key]
-	if !ok {
-		return nil
-	}
-	raw, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(raw))
-	for _, item := range raw {
-		if str, ok := item.(string); ok && str != "" {
-			out = append(out, str)
-		}
-	}
-	return out
-}
-
-func boolOption(config Config, ruleID, key string, fallback bool) bool {
-	options, ok := config.Options[ruleID]
-	if !ok {
-		return fallback
-	}
-	value, ok := options[key]
-	if !ok {
-		return fallback
-	}
-	boolValue, ok := value.(bool)
-	if !ok {
-		return fallback
-	}
-	return boolValue
-}
-
-func intThreshold(config Config, ruleID string, name string, fallback int) int {
-	values, ok := config.Thresholds[ruleID]
-	if !ok {
-		return fallback
-	}
-	value, ok := values[name]
-	if !ok || value <= 0 {
-		return fallback
-	}
-	return int(value)
 }

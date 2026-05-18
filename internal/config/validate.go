@@ -81,6 +81,9 @@ func validateSingularThreshold(id string, ruleConfig RuleConfig, definition rule
 	if ruleConfig.Threshold == nil {
 		return nil
 	}
+	if len(ruleConfig.Thresholds) > 0 {
+		return fmt.Errorf("rule %q cannot combine threshold and thresholds", id)
+	}
 	if len(definition.Thresholds) != 1 {
 		return fmt.Errorf("rule %q cannot use singular threshold", id)
 	}

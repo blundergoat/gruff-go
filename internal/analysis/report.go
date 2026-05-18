@@ -1,6 +1,7 @@
-// Package analysis orchestrates scanner runs.
-// It combines discovery, parsing, rule dispatch, filtering, scoring, and report
-// assembly into the stable gruff-go analysis contract.
+// Package analysis defines the gruff-go analysis report contract.
+// It combines source discovery, parser diagnostics, rule findings, filtering,
+// scoring, and metadata into the stable outputs used by the CLI, dashboard,
+// baselines, and downstream tooling.
 package analysis
 
 import (

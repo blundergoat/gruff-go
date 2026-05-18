@@ -152,6 +152,50 @@
               }
             },
             {
+              "id": "docs.comment-rubric",
+              "name": "Comment rubric",
+              "shortDescription": {
+                "text": "Comment rubric"
+              },
+              "fullDescription": {
+                "text": "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values."
+              },
+              "help": {
+                "text": "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "comments",
+                  "documentation",
+                  "opt-in",
+                  "rubric"
+                ],
+                "thresholds": {
+                  "minPackageCommentLines": 2
+                },
+                "options": {
+                  "excludePaths": [],
+                  "ignoreTests": false,
+                  "includePaths": [],
+                  "requireConstComments": false,
+                  "requireFunctionComments": false,
+                  "requireInterfaceComments": false,
+                  "requireNamedTypeComments": false,
+                  "requirePackageSummary": false,
+                  "requireStructComments": false,
+                  "requireVarComments": false
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "docs.exported-symbol-comment",
               "name": "Exported symbol comment",
               "shortDescription": {
@@ -204,6 +248,96 @@
               }
             },
             {
+              "id": "naming.acronym-case",
+              "name": "Acronym case",
+              "shortDescription": {
+                "text": "Acronym case"
+              },
+              "fullDescription": {
+                "text": "Flags identifiers that spell configured Go initialisms with mixed casing."
+              },
+              "help": {
+                "text": "Use all-caps initialisms in exported names and consistently cased initialisms in unexported names."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "go-style",
+                  "naming",
+                  "opt-in"
+                ],
+                "options": {
+                  "acronyms": [
+                    "HTTP",
+                    "URL",
+                    "JSON",
+                    "ID",
+                    "XML",
+                    "API",
+                    "JWT",
+                    "AWS",
+                    "OAUTH",
+                    "CSS",
+                    "HTML",
+                    "YAML",
+                    "SARIF",
+                    "ASCII",
+                    "SQL",
+                    "CLI",
+                    "TCP",
+                    "UDP",
+                    "TLS",
+                    "SSL",
+                    "DNS",
+                    "IP",
+                    "GPU",
+                    "CPU",
+                    "OS"
+                  ],
+                  "allow": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.get-prefix",
+              "name": "Get prefix",
+              "shortDescription": {
+                "text": "Get prefix"
+              },
+              "fullDescription": {
+                "text": "Flags receiver accessor methods that use a Get prefix instead of a direct noun phrase."
+              },
+              "help": {
+                "text": "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "go-style",
+                  "naming",
+                  "opt-in"
+                ],
+                "options": {
+                  "excludeNames": [],
+                  "excludePaths": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "naming.identifier-quality",
               "name": "Identifier quality",
               "shortDescription": {
@@ -227,15 +361,12 @@
                 ],
                 "options": {
                   "placeholderNames": [
-                    "data",
-                    "info",
-                    "obj",
-                    "tmp",
-                    "temp",
                     "foo",
                     "bar",
                     "baz",
-                    "qux",
+                    "tmp",
+                    "temp",
+                    "obj",
                     "todo",
                     "thing",
                     "stuff"
@@ -268,6 +399,38 @@
                   "go-style",
                   "opt-in"
                 ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.receiver-consistency",
+              "name": "Receiver consistency",
+              "shortDescription": {
+                "text": "Receiver consistency"
+              },
+              "fullDescription": {
+                "text": "Flags methods on the same type that use inconsistent receiver names or pointer/value forms."
+              },
+              "help": {
+                "text": "Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "go-style",
+                  "naming",
+                  "opt-in"
+                ],
+                "options": {
+                  "allowMixed": [],
+                  "inspectGroup": "both"
+                }
               },
               "defaultConfiguration": {
                 "level": "note"

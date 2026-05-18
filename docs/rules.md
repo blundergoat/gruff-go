@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **21 rules** across **9 pillars**. Five are enabled by default; the rest are opt-in so existing repositories can phase them in without baseline churn.
+`gruff-go` v0.1 ships **25 rules** across **9 pillars**. Five are enabled by default; the rest are opt-in so existing repositories can phase them in without baseline churn.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
@@ -30,9 +30,13 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | — | Empty control-flow blocks that usually indicate unfinished code. |
 | [`design.god-function`](#designgod-function) | design | low | parser | — | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 2` | Opt-in maintainer comments for package summaries and declarations. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | — | Exported declarations missing a doc comment. |
+| [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
+| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
+| [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
 | [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | — | AWS access key id (AKIA…) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
@@ -128,6 +132,39 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 
 **Remediation.** Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.
 
+### `docs.comment-rubric`
+
+- **Pillar:** documentation
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Threshold:** `minPackageCommentLines` (default `2`)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `comments`, `documentation`, `opt-in`, `rubric`
+- **Options:** `includePaths []string`, `excludePaths []string`, `requirePackageSummary bool`, `requireFunctionComments bool`, `requireNamedTypeComments bool`, `requireStructComments bool`, `requireInterfaceComments bool`, `requireConstComments bool`, `requireVarComments bool`, `ignoreTests bool`
+
+Flags files that opt into a stricter maintainer-comment rubric. The rule can require a package summary with enough non-empty lines, plus directly attached comments for functions, named type declarations, package-scope constants, and package-scope variables. Local `const` and `var` declarations are not enforced.
+
+Use `includePaths` to keep the rule scoped to files where the project wants the stricter standard. `excludePaths` removes fixture or generated paths from that scoped set. `ignoreTests: true` skips `_test.go` files.
+
+```yaml
+rules:
+  docs.comment-rubric:
+    enabled: true
+    threshold: 2
+    severity: low
+    options:
+      includePaths:
+        - internal/analysis/report.go
+      requirePackageSummary: true
+      requireFunctionComments: true
+      requireNamedTypeComments: true
+      requireConstComments: true
+      requireVarComments: true
+```
+
+**Remediation.** Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds.
+
 ### `docs.exported-symbol-comment`
 
 - **Pillar:** documentation
@@ -155,6 +192,58 @@ Flags Go packages that have no package-level comment in any file. Package commen
 
 **Remediation.** Add a package comment that explains the package's responsibility, scope, and the public surface.
 
+### `naming.acronym-case`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `go-style`, `naming`, `opt-in`
+- **Options:** `acronyms []string` — default `[HTTP, URL, JSON, ID, XML, API, JWT, AWS, OAUTH, CSS, HTML, YAML, SARIF, ASCII, SQL, CLI, TCP, UDP, TLS, SSL, DNS, IP, GPU, CPU, OS]`; `allow []string` — exact identifiers to skip
+
+Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Correct all-caps forms such as `HTTPClient`, `URLParser`, `JSONReport`, and `IDGenerator` pass; lowercase initialisms in unexported names such as `urlParser` also pass.
+
+`allowlists.acceptedAbbreviations` suppresses findings for matching tokens project-wide. Use the rule-local `allow` list only for exact third-party or generated API names that must stay as-is.
+
+```yaml
+allowlists:
+  acceptedAbbreviations:
+    - UUID
+
+rules:
+  naming.acronym-case:
+    enabled: true
+    options:
+      acronyms: ["HTTP", "URL", "JSON", "ID", "UUID"]
+      allow: ["ThirdPartyHttpName"]
+```
+
+**Remediation.** Use all-caps initialisms in exported names and consistently cased initialisms in unexported names.
+
+### `naming.get-prefix`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `go-style`, `naming`, `opt-in`
+- **Options:** `excludePaths []string`, `excludeNames []string`
+
+Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context. Package-level functions are not flagged.
+
+```yaml
+rules:
+  naming.get-prefix:
+    enabled: true
+    options:
+      excludePaths: ["**/*.pb.go"]
+      excludeNames: ["GetLegacyName"]
+```
+
+**Remediation.** Rename accessor-style methods from `GetThing` to `Thing` unless parameters make the lookup action explicit.
+
 ### `naming.identifier-quality`
 
 - **Pillar:** naming
@@ -163,7 +252,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `naming`
-- **Options:** `placeholderNames []string` — default `[data, info, obj, tmp, temp, foo, bar, baz, qux, todo, thing, stuff]`
+- **Options:** `placeholderNames []string` — default `[foo, bar, baz, tmp, temp, obj, todo, thing, stuff]`
 
 Flags local `:=` assignments, `var` declarations, and `const` declarations in non-test files whose name matches a configurable list of placeholder tokens. Test files are skipped because disposable identifier names are often appropriate there.
 
@@ -176,7 +265,7 @@ rules:
       placeholderNames: ["foo", "bar", "baz", "tmp"]
 ```
 
-**Remediation.** Rename the identifier to something that names its role, or remove it if it is no longer needed. Override the option list when your domain has legitimate uses for one of the default placeholders (e.g. `info` for `os.FileInfo` results, `data` for raw bytes about to be marshalled).
+**Remediation.** Rename the identifier to something that names its role, or remove it if it is no longer needed. Override the option list when your project has additional placeholder terms to enforce or legitimate uses for one of the built-in placeholders.
 
 ### `naming.package-underscore`
 
@@ -190,6 +279,29 @@ rules:
 Flags Go package names that use underscores instead of short lowercase words (the Go convention favours `oauth2`, not `o_auth_2`).
 
 **Remediation.** Rename the package to a short lowercase name without underscores. Use a package-relative import alias at the call sites if the change ripples wider than expected.
+
+### `naming.receiver-consistency`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `go-style`, `naming`, `opt-in`
+- **Options:** `allowMixed []string` — receiver type names allowed to mix pointer/value receiver forms; `inspectGroup string` — `both` (default), `name`, or `pointer`
+
+Flags methods on the same receiver type that use inconsistent receiver names or pointer/value forms. The rule groups methods across the scanned project by receiver type name, strips leading `*`, and reports methods that use the minority receiver name or form.
+
+```yaml
+rules:
+  naming.receiver-consistency:
+    enabled: true
+    options:
+      inspectGroup: both
+      allowMixed: ["Registry"]
+```
+
+**Remediation.** Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form.
 
 ### `security.shell-command`
 

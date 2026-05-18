@@ -13,15 +13,12 @@ import (
 // always indicate hurried code. Project configs override the list via
 // rules.<id>.options.placeholderNames.
 var defaultPlaceholderNames = []string{
-	"data",
-	"info",
-	"obj",
-	"tmp",
-	"temp",
 	"foo",
 	"bar",
 	"baz",
-	"qux",
+	"tmp",
+	"temp",
+	"obj",
 	"todo",
 	"thing",
 	"stuff",

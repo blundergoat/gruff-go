@@ -54,6 +54,22 @@ rules:
     severity: notice
     options:
       ignoreInternalPackages: true
+  # Selected contract files should explain maintainer-facing boundaries and declarations.
+  docs.comment-rubric:
+    enabled: true
+    threshold: 2
+    severity: notice
+    options:
+      includePaths:
+        - internal/analysis/report.go
+        - internal/config/config.go
+        - internal/rule/rule.go
+      requirePackageSummary: true
+      requireFunctionComments: true
+      requireNamedTypeComments: true
+      requireConstComments: true
+      requireVarComments: true
+      ignoreTests: false
   # Package comments give godoc users a clear entry point for each package.
   docs.package-comment:
     enabled: true

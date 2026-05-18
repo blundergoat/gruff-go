@@ -64,7 +64,7 @@ Patterns are matched against the project-relative path. Trailing slashes mark di
 
 ### `allowlists.acceptedAbbreviations`
 
-Uppercase identifiers that naming rules will treat as a single word rather than flagging as broken CamelCase. Default list includes common Go conventions; add domain-specific ones.
+Uppercase identifiers that naming rules will treat as accepted words. `naming.acronym-case` uses this list to suppress configured initialism findings for project-specific terms.
 
 ```yaml
 allowlists:
@@ -146,6 +146,20 @@ rules:
     enabled: true
     options:
       ignoreInternalPackages: false
+
+  # Enforce a stricter maintainer-comment rubric on selected files.
+  docs.comment-rubric:
+    enabled: true
+    threshold: 2
+    severity: low
+    options:
+      includePaths:
+        - internal/analysis/report.go
+      requirePackageSummary: true
+      requireFunctionComments: true
+      requireNamedTypeComments: true
+      requireConstComments: true
+      requireVarComments: true
 ```
 
 If a rule ID doesn't exist, the loader rejects the file with `config: unknown rule "x.y"`. Run `gruff-go list-rules` to print the current registry.
@@ -159,6 +173,7 @@ The loader rejects:
 - Unknown rule IDs in `selection.rules` or `selection.excludeRules`.
 - Unknown pillar names in `selection.pillars` or `selection.excludePillars`.
 - Non-integer or negative threshold values.
+- A rule config that combines `threshold` and `thresholds`.
 - Severity values outside `info / low / medium / high / critical`.
 - Lowercase abbreviations in `allowlists.acceptedAbbreviations`.
 

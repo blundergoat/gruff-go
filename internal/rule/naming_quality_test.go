@@ -6,11 +6,11 @@ func TestIdentifierQualityFlagsPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
 func Run() {
-	data := compute()
-	info := lookup()
+	foo := compute()
+	tmp := lookup()
 	user := load()
-	_ = data
-	_ = info
+	_ = foo
+	_ = tmp
 	_ = user
 }
 
@@ -20,17 +20,39 @@ func load() int    { return 3 }
 `)
 	findings := IdentifierQualityRule{}.AnalyzeUnit(unit, Context{})
 	if len(findings) != 2 {
-		t.Fatalf("findings = %d, want 2 (data, info); got %#v", len(findings), findings)
+		t.Fatalf("findings = %d, want 2 (foo, tmp); got %#v", len(findings), findings)
 	}
 	names := map[string]bool{}
 	for _, f := range findings {
 		names[f.Symbol] = true
 	}
-	if !names["data"] || !names["info"] {
-		t.Errorf("expected data + info flagged, got %#v", names)
+	if !names["foo"] || !names["tmp"] {
+		t.Errorf("expected foo + tmp flagged, got %#v", names)
 	}
 	if names["user"] {
 		t.Errorf("user should not be flagged")
+	}
+}
+
+func TestIdentifierQualityAllowsRemovedDefaultPlaceholders(t *testing.T) {
+	unit := parseOne(t, "pkg/file.go", `package pkg
+
+func Run() {
+	data := compute()
+	info := lookup()
+	qux := load()
+	_ = data
+	_ = info
+	_ = qux
+}
+
+func compute() int { return 1 }
+func lookup() int  { return 2 }
+func load() int    { return 3 }
+`)
+	findings := IdentifierQualityRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 0 {
+		t.Fatalf("data, info, and qux should no longer be default placeholders, got %#v", findings)
 	}
 }
 
@@ -54,17 +76,32 @@ func TestIdentifierQualityHonoursConfiguredPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
 func Run() {
-	customPlaceholder := 1
-	tmp := 2
-	_ = customPlaceholder
+	data := compute()
+	info := lookup()
+	qux := load()
+	tmp := 4
+	_ = data
+	_ = info
+	_ = qux
 	_ = tmp
 }
+
+func compute() int { return 1 }
+func lookup() int  { return 2 }
+func load() int    { return 3 }
 `)
-	// Override default list — should flag `customPlaceholder` but NOT `tmp`.
-	rule := IdentifierQualityRule{PlaceholderNames: []string{"customPlaceholder"}}
+	// Override default list - should flag the configured names but NOT `tmp`.
+	rule := IdentifierQualityRule{PlaceholderNames: []string{"data", "info", "qux"}}
 	findings := rule.AnalyzeUnit(unit, Context{})
-	if len(findings) != 1 || findings[0].Symbol != "customPlaceholder" {
-		t.Fatalf("expected single finding for customPlaceholder; got %#v", findings)
+	names := map[string]bool{}
+	for _, f := range findings {
+		names[f.Symbol] = true
+	}
+	if len(findings) != 3 || !names["data"] || !names["info"] || !names["qux"] {
+		t.Fatalf("expected findings for configured data/info/qux placeholders; got %#v", findings)
+	}
+	if names["tmp"] {
+		t.Fatalf("tmp should not be flagged when it is not configured; got %#v", findings)
 	}
 }
 
