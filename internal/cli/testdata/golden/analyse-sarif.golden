@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.1.0-dev",
+          "semanticVersion": "0.1.0",
           "rules": [
             {
               "id": "complexity.cyclomatic",

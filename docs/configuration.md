@@ -99,7 +99,7 @@ selection:
   rules: []                           # run only these rule IDs when non-empty
   excludeRules: ["docs.package-comment"] # disable these rule IDs
   pillars: ["security", "complexity"] # run only these pillars when non-empty
-  excludePillars: ["modernisation"]   # disable these pillars
+  excludePillars: ["test-quality"]    # disable these pillars
 ```
 
 The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.

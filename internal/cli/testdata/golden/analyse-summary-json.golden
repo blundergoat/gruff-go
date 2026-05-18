@@ -2,7 +2,7 @@
   "schemaVersion": "gruff-go.analysis.v0.1",
   "tool": {
     "name": "gruff-go",
-    "version": "0.1.0-dev"
+    "version": "0.1.0"
   },
   "run": {
     "workingDirectory": "<WORKDIR>",

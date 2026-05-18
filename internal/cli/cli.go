@@ -16,7 +16,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-const toolVersion = "0.1.0-dev"
+const toolVersion = "0.1.0"
 
 func Main(args []string, stdout, stderr io.Writer) int {
 	args, ansiPref := extractAnsiFlags(args)

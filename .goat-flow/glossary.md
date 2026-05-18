@@ -1,6 +1,6 @@
 # Glossary
 
-Last reviewed 2026-05-16.
+Last reviewed 2026-05-19.
 
 ## gruff-go
 
@@ -50,9 +50,9 @@ The Static Analysis Results Interchange Format. `gruff-go` emits SARIF 2.1.0 fro
 
 Local-only `gruff-go dashboard` HTTP server. It binds to loopback by default, renders a dashboard shell around the HTML report, and runs scans in-process with explicit project root/context options rather than changing the process working directory.
 
-## Opt-In Rule
+## Default-Enabled Rule
 
-A rule listed by `list-rules` with `defaultEnabled: false`. It can be enabled through strict config, but default scans skip it so experimental or context-sensitive signals do not change baseline dogfood behavior.
+Every rule shipped with `gruff-go` is `defaultEnabled: true` per [ADR-007](decisions/ADR-007-comprehensive-default-rule-pack.md). Projects opt out per rule with `rules.<id>.enabled: false`, or per pillar with `selection.excludePillars`. Historical drafts split the catalogue into a five-rule default pack and an opt-in expansion (ADR-002); that split is superseded.
 
 ## Composite Design Finding
 

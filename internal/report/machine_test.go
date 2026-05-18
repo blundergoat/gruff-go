@@ -154,7 +154,7 @@ func requireSingleSARIFRun(t *testing.T, payload sarifLog) sarifRun {
 
 func requireSARIFDriver(t *testing.T, driver sarifDriver) {
 	t.Helper()
-	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.1.0-dev" {
+	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.1.0" {
 		t.Fatalf("unexpected driver identity: %#v", driver)
 	}
 }

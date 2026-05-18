@@ -4,11 +4,11 @@
 
 ## Supported versions
 
-The project is pre-release. Only the `main` branch is supported for fixes today; once a tagged release exists, this table will list which lines receive patches.
+`gruff-go` follows semantic versioning. The current line receives security fixes; older minors do not.
 
 | Version | Supported |
 |---------|-----------|
-| `main` (pre-release `0.1.0-dev`) | ✅ |
+| `0.1.x` (current) | ✅ |
 | anything else | ❌ |
 
 ## Reporting a vulnerability

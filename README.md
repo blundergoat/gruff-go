@@ -1,10 +1,10 @@
 # gruff-go
 
-An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across eleven pillars — size, complexity, dead code, naming, documentation, modernisation, security, sensitive data, test quality, maintainability, and design — and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
+An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across nine pillars — complexity, dead code, design, documentation, naming, security, sensitive data, size, and test quality — and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
 
 ## Status
 
-Pre-release: the binary reports its version as `0.1.0-dev`. The package is not yet published, schemas are versioned but may shift before `v0.1.0` final, and the CLI surface is consumed from source. See [`CHANGELOG.md`](CHANGELOG.md) for the running list of foundation work.
+`v0.1.0` is the first tagged release. The binary reports its version as `0.1.0`. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Requirements
 
@@ -139,7 +139,7 @@ The schema, every option, and validation rules are documented in [`docs/configur
 
 ## Rule catalog
 
-`gruff-go` v0.1 ships **28 rules** across **9 pillars**. All rules are enabled by default; disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **29 rules** across **9 pillars**. All rules are enabled by default; disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 See [`docs/rules.md`](docs/rules.md) for the full list with severities, thresholds, and remediation guidance.
 
@@ -160,6 +160,10 @@ GitHub Actions, GitLab CI, and other runners can consume the SARIF or GitHub-ann
 
 Patches welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, the milestone-style workflow, and the test conventions. Security issues: please follow [`SECURITY.md`](SECURITY.md) instead of opening a public issue.
 
+## Author
+
+Built by [Matthew Hansen](https://www.blundergoat.com/about).
+
 ## License
 
-[MIT](LICENSE). See the LICENSE file for the full text.
+[MIT](LICENSE)

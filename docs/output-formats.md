@@ -35,7 +35,7 @@ Top-level shape:
 ```jsonc
 {
   "schemaVersion": "gruff-go.analysis.v0.1",
-  "tool":          { "name": "gruff-go", "version": "0.1.0-dev" },
+  "tool":          { "name": "gruff-go", "version": "0.1.0" },
   "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "medium" },
   "summary":       { "filesScanned": 65, "filesSkipped": 6, "findingsCount": 3,
                      "countsBySeverity": {...}, "countsByPillar": {...}, "exitCode": 1 },
