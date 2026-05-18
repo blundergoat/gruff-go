@@ -144,13 +144,15 @@ func expansionFixture() string {
 	return `// Package sample is a test package.
 package sample
 
-func Wide(a, b, c, d, e, f int) {
+func Wide(a, b, c, d, e, f, g, h, i int) {
 	if a > 0 {
 		if b > 0 {
 			if c > 0 {
 				if d > 0 {
 					if e > 0 {
-						_ = f
+						if f > 0 {
+							_ = g + h + i
+						}
 					}
 				}
 			}

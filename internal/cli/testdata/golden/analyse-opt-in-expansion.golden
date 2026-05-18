@@ -16,16 +16,17 @@
     "filesScanned": 1,
     "filesSkipped": 0,
     "diagnosticsCount": 0,
-    "findingsCount": 3,
+    "findingsCount": 5,
     "countsBySeverity": {
       "critical": 0,
       "high": 0,
       "info": 0,
-      "low": 2,
+      "low": 4,
       "medium": 1
     },
     "countsByPillar": {
       "complexity": 1,
+      "design": 2,
       "documentation": 1,
       "size": 1
     },

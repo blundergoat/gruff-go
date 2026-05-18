@@ -108,7 +108,7 @@ The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--
 
 Per-rule overrides. Every field is optional:
 
-- `enabled` — turn a default-disabled rule on (or a default-enabled rule off).
+- `enabled` — toggle a rule on or off. All rules are enabled by default; set `false` to disable.
 - `threshold` — shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
 - `thresholds` — for rules with multiple thresholds, name them explicitly.
 - `severity` — `info`, `low`, `medium`, `high`, or `critical`.
@@ -129,9 +129,9 @@ rules:
   docs.package-comment:
     enabled: false
 
-  # Turn on an opt-in expansion rule.
+  # Disable a rule that does not fit this project.
   naming.package-underscore:
-    enabled: true
+    enabled: false
 
   # Custom shell-command rule allowlist.
   security.shell-command:

@@ -1,10 +1,13 @@
 # ADR-002: Low-Noise Default Rule Pack
 
-**Status:** Implemented
+**Status:** Superseded by [ADR-007](ADR-007-comprehensive-default-rule-pack.md) on 2026-05-18.
 **Date:** 2026-05-13
 **Updated:** 2026-05-18
 **Author(s):** Codex
 **Ticket/Context:** `.goat-flow/tasks/0.1`
+
+> Superseded note (2026-05-18): The "narrow, evidence-backed defaults" stance below was reversed in favour of comprehensive default-on coverage with industry-aligned thresholds. See ADR-007 for the new decision, rationale, and current default policy. This ADR is retained as historical record.
+
 
 ## Context
 

@@ -1,37 +1,25 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **25 rules** across **9 pillars**. Five are enabled by default; the rest are opt-in so existing repositories can phase them in without baseline churn.
+`gruff-go` v0.1 ships **25 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
-## Default-enabled rules
+## Rule reference
 
-These run unless explicitly disabled via `selection.excludeRules` or `rules.<id>.enabled: false`.
+Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
+
+`docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
-| [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
-| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
-| [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
-| [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the line-count threshold. |
-
-Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
-
-## Opt-in expansion rules
-
-These are off by default. Turn them on per project via `rules.<id>.enabled: true` once the codebase is ready.
-
-Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
-
-| Rule ID | Pillar | Severity | Capability | Default threshold | Description |
-|---------|--------|----------|------------|-------------------|-------------|
-| [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 4` | Functions whose nesting depth exceeds the threshold. |
+| [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | — | Empty control-flow blocks that usually indicate unfinished code. |
 | [`design.god-function`](#designgod-function) | design | low | parser | — | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
-| [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 2` | Opt-in maintainer comments for package summaries and declarations. |
+| [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 2` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | — | Exported declarations missing a doc comment. |
+| [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
@@ -42,10 +30,15 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | — | JWT-shaped literals (`eyJ…`). |
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | — | PEM-encoded private keys embedded in source. |
-| [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 5` | Functions whose parameter list exceeds the threshold. |
+| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
+| [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
+| [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the line-count threshold. |
+| [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | — | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | — | Test functions that contain code but never reach a failure call. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | — | Tests that call `t.Skip*`. |
+
+Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
 
 ## Severity tiers
 
@@ -82,8 +75,8 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 
 - **Pillar:** complexity
 - **Default severity:** medium
-- **Default-enabled:** no (opt-in)
-- **Threshold:** `maxDepth` (default `4`)
+- **Default-enabled:** yes
+- **Threshold:** `maxDepth` (default `5`)
 - **Confidence:** high
 - **Capability:** parser
 
@@ -95,7 +88,7 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 
 - **Pillar:** dead-code
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 
@@ -107,7 +100,7 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 
 - **Pillar:** design (secondary: size, complexity)
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `composite`, `opt-in`
@@ -121,7 +114,7 @@ Flags functions that already have at least one size finding and at least one com
 
 - **Pillar:** design
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
 - **Confidence:** medium
 - **Capability:** parser
@@ -136,7 +129,7 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 
 - **Pillar:** documentation
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Threshold:** `minPackageCommentLines` (default `2`)
 - **Confidence:** medium
 - **Capability:** parser
@@ -169,7 +162,7 @@ rules:
 
 - **Pillar:** documentation
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Options:** `ignoreInternalPackages bool` — default `true`
@@ -196,7 +189,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 
 - **Pillar:** naming
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`, `opt-in`
@@ -225,7 +218,7 @@ rules:
 
 - **Pillar:** naming
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`, `opt-in`
@@ -248,7 +241,7 @@ rules:
 
 - **Pillar:** naming
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `naming`
@@ -271,7 +264,7 @@ rules:
 
 - **Pillar:** naming
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `go-style`, `opt-in`
@@ -284,7 +277,7 @@ Flags Go package names that use underscores instead of short lowercase words (th
 
 - **Pillar:** naming
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`, `opt-in`
@@ -307,7 +300,7 @@ rules:
 
 - **Pillar:** security (secondary: sensitive-data)
 - **Default severity:** medium
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `security`
@@ -320,7 +313,7 @@ Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`,
 
 - **Pillar:** sensitive-data
 - **Default severity:** high
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
@@ -333,7 +326,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 
 - **Pillar:** sensitive-data
 - **Default severity:** high
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
@@ -346,7 +339,7 @@ Flags database / queue / cache connection URIs that embed a username and passwor
 
 - **Pillar:** sensitive-data
 - **Default severity:** high
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
@@ -359,7 +352,7 @@ Flags JWT-shaped literals — three base64url segments separated by dots, the fi
 
 - **Pillar:** sensitive-data
 - **Default severity:** **critical**
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `opt-in`, `secrets`
@@ -412,8 +405,8 @@ Flags Go functions that exceed the configured line-count threshold. `_test.go` f
 
 - **Pillar:** size
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
-- **Threshold:** `maxParameters` (default `5`)
+- **Default-enabled:** yes
+- **Threshold:** `maxParameters` (default `8`)
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `opt-in`
@@ -426,7 +419,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 
 - **Pillar:** test-quality
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `opt-in`, `tests`
@@ -439,7 +432,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 
 - **Pillar:** test-quality
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `tests`
@@ -454,7 +447,7 @@ The rule walks the function body looking for those methods on the test function'
 
 - **Pillar:** test-quality
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `opt-in`, `tests`
@@ -474,14 +467,13 @@ rules:
     threshold: 12
     severity: high
 
-  # Disable a default-enabled rule.
+  # Disable a rule for this repo.
   docs.package-comment:
     enabled: false
 
-  # Enable an opt-in expansion rule.
+  # Tune a rule's threshold.
   size.parameter-count:
-    enabled: true
-    threshold: 4
+    threshold: 6
 
   # Per-rule options (rule-specific opaque map).
   security.shell-command:
