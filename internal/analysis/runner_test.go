@@ -10,9 +10,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-func TestRunReportsMissingPathAsDiagnostic(t *testing.T) {
+func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	t.Chdir(t.TempDir())
-	report, err := Run(Options{
+	report, err := Analyze(Options{
 		Paths:    []string{"missing.go"},
 		FailOn:   finding.SeverityMedium,
 		Registry: rule.Defaults(),
@@ -28,16 +28,16 @@ func TestRunReportsMissingPathAsDiagnostic(t *testing.T) {
 	}
 }
 
-func TestRunIsDeterministicExceptStartedAt(t *testing.T) {
+func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
-	first, err := Run(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
+	first, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Run(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
+	second, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestRunIsDeterministicExceptStartedAt(t *testing.T) {
 	}
 }
 
-func TestRunExitsOneWhenFindingMeetsThreshold(t *testing.T) {
+func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
 	t.Chdir(root)
@@ -55,7 +55,7 @@ func TestRunExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Run(Options{
+	report, err := Analyze(Options{
 		Registry: registry,
 		FailOn:   finding.SeverityMedium,
 	})

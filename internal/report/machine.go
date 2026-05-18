@@ -186,39 +186,39 @@ func sarifResults(findings []finding.Finding, definitions []rule.Definition) []s
 		ruleIndices[definition.ID] = index
 	}
 	out := make([]sarifResult, 0, len(findings))
-	for _, item := range findings {
+	for _, findingItem := range findings {
 		result := sarifResult{
-			RuleID:  item.RuleID,
-			Level:   sarifLevel(item.Severity),
-			Message: sarifText{Text: item.Message},
+			RuleID:  findingItem.RuleID,
+			Level:   sarifLevel(findingItem.Severity),
+			Message: sarifText{Text: findingItem.Message},
 			Locations: []sarifLocation{{
 				PhysicalLocation: sarifPhysicalLocation{
-					ArtifactLocation: sarifArtifactLocation{URI: sarifURI(item.File)},
-					Region:           sarifRegionFromFinding(item),
+					ArtifactLocation: sarifArtifactLocation{URI: sarifURI(findingItem.File)},
+					Region:           sarifRegionFromFinding(findingItem),
 				},
 			}},
-			PartialFingerprints: map[string]string{"gruffFingerprint": item.Fingerprint},
+			PartialFingerprints: map[string]string{"gruffFingerprint": findingItem.Fingerprint},
 			Properties: map[string]any{
-				"confidence":  item.Confidence,
-				"fingerprint": item.Fingerprint,
-				"pillar":      item.Pillar,
-				"severity":    item.Severity,
+				"confidence":  findingItem.Confidence,
+				"fingerprint": findingItem.Fingerprint,
+				"pillar":      findingItem.Pillar,
+				"severity":    findingItem.Severity,
 			},
 		}
-		if ruleIndex, ok := ruleIndices[item.RuleID]; ok {
+		if ruleIndex, ok := ruleIndices[findingItem.RuleID]; ok {
 			result.RuleIndex = &ruleIndex
 		}
-		if len(item.SecondaryPillars) > 0 {
-			result.Properties["secondaryPillars"] = item.SecondaryPillars
+		if len(findingItem.SecondaryPillars) > 0 {
+			result.Properties["secondaryPillars"] = findingItem.SecondaryPillars
 		}
-		if item.Symbol != "" {
-			result.Properties["symbol"] = item.Symbol
+		if findingItem.Symbol != "" {
+			result.Properties["symbol"] = findingItem.Symbol
 		}
-		if item.Remediation != "" {
-			result.Properties["remediation"] = item.Remediation
+		if findingItem.Remediation != "" {
+			result.Properties["remediation"] = findingItem.Remediation
 		}
-		if len(item.Metadata) > 0 {
-			result.Properties["metadata"] = item.Metadata
+		if len(findingItem.Metadata) > 0 {
+			result.Properties["metadata"] = findingItem.Metadata
 		}
 		out = append(out, result)
 	}

@@ -38,7 +38,7 @@ type Options struct {
 	BaselinePath      string
 	SkipBaseline      bool
 	IncludeIgnored    bool
-	Diff              bool
+	DiffMode          bool
 	FailOn            string
 	ReportInteractive bool
 	EditorLink        string

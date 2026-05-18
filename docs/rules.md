@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **28 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **29 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
@@ -21,6 +21,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | — | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
+| [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
 | [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | low | parser | — | Identifiers, doc comments, and struct tags containing common programming misspellings. |
@@ -216,6 +217,39 @@ rules:
 ```
 
 **Remediation.** Use all-caps initialisms in exported names and consistently cased initialisms in unexported names.
+
+### `naming.contextual-generic`
+
+- **Pillar:** naming
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `naming`, `opt-in`
+- **Thresholds:** `minBodyLines: 15`, `minFunctionLines: 50`
+- **Options:**
+  - `genericNames []string` — range value names to check. Default: `[item, value, entry, elem, v]`
+  - `accumulatorNames []string` — accumulator names to check. Default: `[out, result]`
+  - `requireMultiple bool` — require at least two matching accumulator declarations in a long function before flagging. Default: `true`
+
+Flags generic range value names only when the loop body exceeds `minBodyLines`. Short loops such as `for _, item := range items { ... }` pass because the range expression provides enough context; longer loops ask for a more specific role name. Test files and generated files are skipped.
+
+The optional accumulator branch flags `:=` declarations of names such as `out` or `result` only in functions longer than `minFunctionLines`. By default, the function also needs multiple matching accumulator declarations so ordinary small builders do not produce noise.
+
+```yaml
+rules:
+  naming.contextual-generic:
+    enabled: true
+    thresholds:
+      minBodyLines: 20
+      minFunctionLines: 60
+    options:
+      genericNames: ["item", "entry", "record"]
+      accumulatorNames: ["out", "result", "buffer"]
+      requireMultiple: true
+```
+
+**Remediation.** Rename long-loop values and long-function accumulators to describe the data role they carry, such as `finding`, `skippedPath`, `scoreRow`, or `rendered`.
 
 ### `naming.get-prefix`
 

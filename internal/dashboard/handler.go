@@ -178,7 +178,7 @@ func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, err
 	if err != nil {
 		return analysis.Report{}, fmt.Errorf("config: %w", err)
 	}
-	return analysis.Run(analysis.Options{
+	return analysis.Analyze(analysis.Options{
 		Context:        ctx,
 		Root:           root,
 		Paths:          scanOpts.paths,

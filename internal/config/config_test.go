@@ -189,6 +189,17 @@ rules:
         - '**/*.pb.go'
       excludeNames:
         - GetProtoUser
+  naming.contextual-generic:
+    enabled: true
+    thresholds:
+      minBodyLines: 9
+      minFunctionLines: 40
+    options:
+      genericNames:
+        - record
+      accumulatorNames:
+        - buffer
+      requireMultiple: false
 	`), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +212,7 @@ rules:
 
 func assertExpansionRuleEnablement(t *testing.T, options rule.Config) {
 	t.Helper()
-	if !options.Enabled["size.parameter-count"] || !options.Enabled["complexity.nesting-depth"] || !options.Enabled["docs.exported-symbol-comment"] || !options.Enabled["docs.comment-rubric"] || !options.Enabled["naming.acronym-case"] || !options.Enabled["naming.receiver-consistency"] || !options.Enabled["naming.get-prefix"] {
+	if !options.Enabled["size.parameter-count"] || !options.Enabled["complexity.nesting-depth"] || !options.Enabled["docs.exported-symbol-comment"] || !options.Enabled["docs.comment-rubric"] || !options.Enabled["naming.acronym-case"] || !options.Enabled["naming.receiver-consistency"] || !options.Enabled["naming.get-prefix"] || !options.Enabled["naming.contextual-generic"] {
 		t.Fatalf("enabled map = %#v, want expansion documentation and naming rules enabled", options.Enabled)
 	}
 }
@@ -226,6 +237,12 @@ func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 	if options.Thresholds["docs.comment-rubric"]["minPackageCommentLines"] != 2 {
 		t.Fatalf("thresholds = %#v, want docs.comment-rubric minPackageCommentLines=2", options.Thresholds)
 	}
+	if options.Thresholds["naming.contextual-generic"]["minBodyLines"] != 9 {
+		t.Fatalf("thresholds = %#v, want naming.contextual-generic minBodyLines=9", options.Thresholds)
+	}
+	if options.Thresholds["naming.contextual-generic"]["minFunctionLines"] != 40 {
+		t.Fatalf("thresholds = %#v, want naming.contextual-generic minFunctionLines=40", options.Thresholds)
+	}
 }
 
 func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
@@ -241,6 +258,15 @@ func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 	}
 	if options.Options["naming.get-prefix"]["excludeNames"].([]any)[0] != "GetProtoUser" {
 		t.Fatalf("options = %#v, want naming.get-prefix excludeNames", options.Options)
+	}
+	if options.Options["naming.contextual-generic"]["genericNames"].([]any)[0] != "record" {
+		t.Fatalf("options = %#v, want naming.contextual-generic genericNames", options.Options)
+	}
+	if options.Options["naming.contextual-generic"]["accumulatorNames"].([]any)[0] != "buffer" {
+		t.Fatalf("options = %#v, want naming.contextual-generic accumulatorNames", options.Options)
+	}
+	if options.Options["naming.contextual-generic"]["requireMultiple"] != false {
+		t.Fatalf("options = %#v, want naming.contextual-generic requireMultiple=false", options.Options)
 	}
 }
 
@@ -326,6 +352,8 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "unknown option on acronym case", yaml: "rules:\n  naming.acronym-case:\n    options:\n      canonicalOnly: true\n", want: "unknown option"},
 		{name: "unknown option on receiver consistency", yaml: "rules:\n  naming.receiver-consistency:\n    options:\n      allowValue: true\n", want: "unknown option"},
 		{name: "unknown option on get prefix", yaml: "rules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
+		{name: "unknown option on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
+		{name: "unknown threshold on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

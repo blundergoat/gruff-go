@@ -31,24 +31,24 @@ func (DesignGodFunctionRule) Definition() Definition {
 
 func (DesignGodFunctionRule) AnalyzeFindings(findings []finding.Finding, _ Context) []finding.Finding {
 	groups := map[string]*symbolCompositeGroup{}
-	for _, item := range findings {
-		if item.File == "" || item.Symbol == "" {
+	for _, evidence := range findings {
+		if evidence.File == "" || evidence.Symbol == "" {
 			continue
 		}
-		if item.Pillar != finding.PillarSize && item.Pillar != finding.PillarComplexity {
+		if evidence.Pillar != finding.PillarSize && evidence.Pillar != finding.PillarComplexity {
 			continue
 		}
-		key := item.File + "\x00" + item.Symbol
+		key := evidence.File + "\x00" + evidence.Symbol
 		group := groups[key]
 		if group == nil {
-			group = &symbolCompositeGroup{file: item.File, symbol: item.Symbol}
+			group = &symbolCompositeGroup{file: evidence.File, symbol: evidence.Symbol}
 			groups[key] = group
 		}
-		switch item.Pillar {
+		switch evidence.Pillar {
 		case finding.PillarSize:
-			group.size = append(group.size, item)
+			group.size = append(group.size, evidence)
 		case finding.PillarComplexity:
-			group.complexity = append(group.complexity, item)
+			group.complexity = append(group.complexity, evidence)
 		}
 	}
 
@@ -188,9 +188,9 @@ func compositeEvidenceMetadata(evidence []finding.Finding) map[string]any {
 
 func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
-	for _, item := range findings {
-		if item.RuleID != "" {
-			seen[item.RuleID] = struct{}{}
+	for _, evidence := range findings {
+		if evidence.RuleID != "" {
+			seen[evidence.RuleID] = struct{}{}
 		}
 	}
 	return sortedStringSet(seen)
@@ -198,9 +198,9 @@ func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 
 func uniqueSortedFingerprints(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
-	for _, item := range findings {
-		if item.Fingerprint != "" {
-			seen[item.Fingerprint] = struct{}{}
+	for _, evidence := range findings {
+		if evidence.Fingerprint != "" {
+			seen[evidence.Fingerprint] = struct{}{}
 		}
 	}
 	return sortedStringSet(seen)
@@ -226,12 +226,12 @@ func sortedPillars(pillars map[finding.Pillar]int) []string {
 
 func firstEvidenceLine(findings []finding.Finding) int {
 	first := 0
-	for _, item := range findings {
-		if item.Location == nil || item.Location.Line <= 0 {
+	for _, evidence := range findings {
+		if evidence.Location == nil || evidence.Location.Line <= 0 {
 			continue
 		}
-		if first == 0 || item.Location.Line < first {
-			first = item.Location.Line
+		if first == 0 || evidence.Location.Line < first {
+			first = evidence.Location.Line
 		}
 	}
 	return first

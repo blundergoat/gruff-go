@@ -10,7 +10,7 @@ import (
 // defaultState builds the dashboard form state used on first load.
 func defaultState(opts Options) report.DashboardState {
 	scope := "full"
-	if opts.Diff {
+	if opts.DiffMode {
 		scope = "diff"
 	}
 	failOn := opts.FailOn

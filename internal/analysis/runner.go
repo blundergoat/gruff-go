@@ -27,13 +27,13 @@ type Options struct {
 	DiffBase       string
 }
 
-func Run(options Options) (Report, error) {
-	root, err := analysisRoot(options.Root)
+func Analyze(opts Options) (Report, error) {
+	root, err := analysisRoot(opts.Root)
 	if err != nil {
 		return Report{}, err
 	}
-	options = normalizeOptions(options)
-	ctx := options.Context
+	opts = normalizeOptions(opts)
+	ctx := opts.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -44,9 +44,9 @@ func Run(options Options) (Report, error) {
 	discovery, err := source.Discover(source.Options{
 		Context:        ctx,
 		Root:           root,
-		Paths:          options.Paths,
-		IgnorePatterns: options.IgnorePaths,
-		IncludeIgnored: options.IncludeIgnored,
+		Paths:          opts.Paths,
+		IgnorePatterns: opts.IgnorePaths,
+		IncludeIgnored: opts.IncludeIgnored,
 	})
 	if err != nil {
 		return Report{}, err
@@ -61,24 +61,24 @@ func Run(options Options) (Report, error) {
 	}
 	diagnostics := diagnosticsFromDiscovery(discovery.Missing)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
-	registry := options.Registry
+	registry := opts.Registry
 	findings := registry.Analyze(units, rule.Context{Root: root})
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
-	findings, baselineSummary, diagnostics := applyBaseline(root, findings, diagnostics, options.BaselinePath)
+	findings, baselineSummary, diagnostics := applyBaseline(root, findings, diagnostics, opts.BaselinePath)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
-	findings, diffSummary, diagnostics := applyDiff(root, options.Paths, findings, diagnostics, options.DiffBase)
+	findings, diffSummary, diagnostics := applyDiff(root, opts.Paths, findings, diagnostics, opts.DiffBase)
 
 	displayRoot := filepath.ToSlash(root)
 	return NewReport(ReportInput{
 		Root:           displayRoot,
-		Inputs:         inputsOrDefault(options.Paths),
-		Format:         options.Format,
-		FailOn:         options.FailOn,
-		IncludeIgnored: options.IncludeIgnored,
+		Inputs:         inputsOrDefault(opts.Paths),
+		Format:         opts.Format,
+		FailOn:         opts.FailOn,
+		IncludeIgnored: opts.IncludeIgnored,
 		Scanned:        scannedPaths(discovery.Files),
 		Skipped:        skippedPaths(discovery.Skipped),
 		Missing:        discovery.Missing,
@@ -108,14 +108,14 @@ func analysisRoot(root string) (string, error) {
 	return rootAbs, nil
 }
 
-func normalizeOptions(options Options) Options {
-	if options.FailOn == "" {
-		options.FailOn = finding.SeverityMedium
+func normalizeOptions(opts Options) Options {
+	if opts.FailOn == "" {
+		opts.FailOn = finding.SeverityMedium
 	}
-	if options.Format == "" {
-		options.Format = "text"
+	if opts.Format == "" {
+		opts.Format = "text"
 	}
-	return options
+	return opts
 }
 
 func diagnosticsFromDiscovery(paths []string) []Diagnostic {

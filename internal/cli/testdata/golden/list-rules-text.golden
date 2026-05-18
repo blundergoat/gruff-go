@@ -7,6 +7,7 @@ docs.comment-rubric	documentation	low	parser	Comment rubric
 docs.exported-symbol-comment	documentation	low	parser	Exported symbol comment
 docs.package-comment	documentation	low	parser	Package comment
 naming.acronym-case	naming	low	parser	Acronym case
+naming.contextual-generic	naming	low	parser	Contextual generic name
 naming.get-prefix	naming	low	parser	Get prefix
 naming.identifier-quality	naming	low	parser	Identifier quality
 naming.misspelling	naming	low	parser	Misspelled identifier or comment

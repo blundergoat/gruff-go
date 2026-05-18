@@ -102,7 +102,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		t.Fatalf("write secret fixture: %v", err)
 	}
 
-	reportData, err := analysis.Run(analysis.Options{
+	reportData, err := analysis.Analyze(analysis.Options{
 		Root:     root,
 		Paths:    []string{"secrets.env"},
 		Format:   "json",

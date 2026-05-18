@@ -68,7 +68,7 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 		BaselinePath:      *baselinePath,
 		SkipBaseline:      *noBaseline,
 		IncludeIgnored:    *includeIgnored,
-		Diff:              *diff,
+		DiffMode:          *diff,
 		FailOn:            string(parsedFailOn),
 		ReportInteractive: *reportInteractive,
 		EditorLink:        *editorLink,

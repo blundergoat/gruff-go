@@ -129,7 +129,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
-	analysisReport, err := analysis.Run(analysis.Options{
+	analysisReport, err := analysis.Analyze(analysis.Options{
 		Paths:          flags.Args(),
 		Format:         *format,
 		FailOn:         failOn,
@@ -187,7 +187,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
-	analysisReport, err := analysis.Run(analysis.Options{
+	analysisReport, err := analysis.Analyze(analysis.Options{
 		Paths:          flags.Args(),
 		Format:         "json",
 		FailOn:         finding.SeverityCritical,

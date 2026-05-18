@@ -169,7 +169,7 @@ func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map
 		return receivers
 	}
 	for _, field := range fn.Type.Params.List {
-		if !isTestingHandleType(field.Type, testingPackages) {
+		if !isTestingTBFType(field.Type, testingPackages) {
 			continue
 		}
 		for _, name := range field.Names {
@@ -181,7 +181,7 @@ func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map
 	return receivers
 }
 
-func isTestingHandleType(expr ast.Expr, testingPackages map[string]bool) bool {
+func isTestingTBFType(expr ast.Expr, testingPackages map[string]bool) bool {
 	pointer, ok := expr.(*ast.StarExpr)
 	if !ok {
 		return false

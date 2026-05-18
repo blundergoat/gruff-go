@@ -29,6 +29,7 @@ func TestDefaultsListRules(t *testing.T) {
 		"docs.exported-symbol-comment",
 		"docs.package-comment",
 		"naming.acronym-case",
+		"naming.contextual-generic",
 		"naming.get-prefix",
 		"naming.identifier-quality",
 		"naming.misspelling",

@@ -55,37 +55,37 @@ func Calculate(findings []finding.Finding) Score {
 	fileFindings := map[string]int{}
 	fileMaxCyclomatic := map[string]int{}
 	pillarCounts := map[string]*PillarDetail{}
-	for _, item := range findings {
-		if scoreNeutralFinding(item) {
+	for _, findingItem := range findings {
+		if scoreNeutralFinding(findingItem) {
 			continue
 		}
-		penalty := findingPenalty(item)
-		pillar := string(item.Pillar)
+		penalty := findingPenalty(findingItem)
+		pillar := string(findingItem.Pillar)
 		pillarPenalty[pillar] += penalty
-		filePenalty[item.File] += penalty
-		fileFindings[item.File]++
+		filePenalty[findingItem.File] += penalty
+		fileFindings[findingItem.File]++
 
 		if pillarCounts[pillar] == nil {
 			pillarCounts[pillar] = &PillarDetail{Pillar: pillar}
 		}
 		pillarCounts[pillar].Findings++
-		incrementSeverity(pillarCounts[pillar], item.Severity)
+		incrementSeverity(pillarCounts[pillar], findingItem.Severity)
 
-		if item.RuleID == complexityCyclomaticRuleID {
-			if value, ok := metadataInt(item.Metadata, "complexity"); ok {
-				if existing, seen := fileMaxCyclomatic[item.File]; !seen || value > existing {
-					fileMaxCyclomatic[item.File] = value
+		if findingItem.RuleID == complexityCyclomaticRuleID {
+			if value, ok := metadataInt(findingItem.Metadata, "complexity"); ok {
+				if existing, seen := fileMaxCyclomatic[findingItem.File]; !seen || value > existing {
+					fileMaxCyclomatic[findingItem.File] = value
 				}
 			}
 		}
 	}
 
 	distribution := emptyComplexityDistribution()
-	for _, item := range findings {
-		if item.RuleID != complexityCyclomaticRuleID {
+	for _, findingItem := range findings {
+		if findingItem.RuleID != complexityCyclomaticRuleID {
 			continue
 		}
-		value, ok := metadataInt(item.Metadata, "complexity")
+		value, ok := metadataInt(findingItem.Metadata, "complexity")
 		if !ok {
 			continue
 		}

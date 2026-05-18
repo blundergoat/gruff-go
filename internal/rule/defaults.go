@@ -58,6 +58,13 @@ func DefaultsConfigured(config Config) (Registry, error) {
 			Extra:  stringMapOption(config, "naming.misspelling", "extra"),
 			Ignore: stringSliceOption(config, "naming.misspelling", "ignore"),
 		},
+		ContextualGenericRule{
+			GenericNames:     stringSliceOption(config, "naming.contextual-generic", "genericNames"),
+			MinBodyLines:     intThreshold(config, "naming.contextual-generic", "minBodyLines", contextualGenericBodyLinesThreshold),
+			AccumulatorNames: stringSliceOption(config, "naming.contextual-generic", "accumulatorNames"),
+			MinFunctionLines: intThreshold(config, "naming.contextual-generic", "minFunctionLines", contextualGenericFunctionLinesThreshold),
+			RequireMultiple:  boolPointer(boolOption(config, "naming.contextual-generic", "requireMultiple", true)),
+		},
 		EmptyTestRule{},
 		NoFailurePathTestRule{},
 	}, []ProjectRule{
@@ -122,6 +129,10 @@ func boolOption(config Config, ruleID, key string, fallback bool) bool {
 		return fallback
 	}
 	return boolValue
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 // stringOption reads a string rule option from strict config.

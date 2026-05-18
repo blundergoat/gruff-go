@@ -306,6 +306,51 @@
               }
             },
             {
+              "id": "naming.contextual-generic",
+              "name": "Contextual generic name",
+              "shortDescription": {
+                "text": "Contextual generic name"
+              },
+              "fullDescription": {
+                "text": "Flags generic range variables and accumulator names only when surrounding context is large enough that the name loses meaning."
+              },
+              "help": {
+                "text": "Rename long-loop values and long-function accumulators to describe the data role they carry."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "naming",
+                  "opt-in"
+                ],
+                "thresholds": {
+                  "minBodyLines": 15,
+                  "minFunctionLines": 50
+                },
+                "options": {
+                  "accumulatorNames": [
+                    "out",
+                    "result"
+                  ],
+                  "genericNames": [
+                    "item",
+                    "value",
+                    "entry",
+                    "elem",
+                    "v"
+                  ],
+                  "requireMultiple": true
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "naming.get-prefix",
               "name": "Get prefix",
               "shortDescription": {
@@ -1042,7 +1087,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 23,
+          "ruleIndex": 24,
           "level": "warning",
           "message": {
             "text": "function has 8 lines, above threshold 4"
