@@ -16,17 +16,18 @@
     "filesScanned": 1,
     "filesSkipped": 0,
     "diagnosticsCount": 0,
-    "findingsCount": 3,
+    "findingsCount": 5,
     "countsBySeverity": {
       "critical": 0,
       "high": 0,
       "info": 0,
-      "low": 1,
+      "low": 3,
       "medium": 2
     },
     "countsByPillar": {
       "complexity": 1,
-      "design": 1,
+      "design": 2,
+      "documentation": 1,
       "size": 1
     },
     "exitCode": 1,
@@ -53,10 +54,11 @@
     "hiddenFindings": 0
   },
   "score": {
-    "composite": 92,
+    "composite": 94,
     "grade": "A",
     "pillars": {
       "complexity": 92,
+      "documentation": 98,
       "size": 92
     },
     "pillarDetails": [
@@ -69,6 +71,17 @@
         "high": 0,
         "medium": 1,
         "low": 0,
+        "info": 0
+      },
+      {
+        "pillar": "documentation",
+        "score": 98,
+        "grade": "A",
+        "findings": 1,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 1,
         "info": 0
       },
       {
@@ -86,15 +99,15 @@
     "coverage": {
       "contributingPillars": [
         "complexity",
+        "documentation",
         "size"
-      ],
-      "caveat": "Composite grade is driven by 2 score-impacting pillars; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage."
+      ]
     },
     "topOffenders": [
       {
         "file": "composite.go",
-        "penalty": 16,
-        "findings": 2,
+        "penalty": 18,
+        "findings": 3,
         "grade": "B",
         "maxCyclomatic": 3
       }

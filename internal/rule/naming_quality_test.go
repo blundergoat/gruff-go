@@ -105,9 +105,9 @@ func load() int    { return 3 }
 	}
 }
 
-func TestIdentifierQualityIsDefaultDisabled(t *testing.T) {
-	if (IdentifierQualityRule{}).Definition().DefaultEnabled {
-		t.Error("naming.identifier-quality must be default-disabled in v0.1")
+func TestIdentifierQualityIsDefaultEnabled(t *testing.T) {
+	if !(IdentifierQualityRule{}).Definition().DefaultEnabled {
+		t.Error("naming.identifier-quality must be default-enabled")
 	}
 }
 
@@ -193,14 +193,14 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
-func TestTestQualityRulesDefaultDisabled(t *testing.T) {
+func TestTestQualityRulesDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		EmptyTestRule{}.Definition(),
 		NoFailurePathTestRule{}.Definition(),
 		IdentifierQualityRule{}.Definition(),
 	} {
-		if definition.DefaultEnabled {
-			t.Errorf("rule %q must be default-disabled in v0.1", definition.ID)
+		if !definition.DefaultEnabled {
+			t.Errorf("rule %q must be default-enabled", definition.ID)
 		}
 	}
 }

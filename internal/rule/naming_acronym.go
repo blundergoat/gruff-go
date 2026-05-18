@@ -65,7 +65,7 @@ func (r AcronymCaseRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Tags:           []string{"go-style", "naming", "opt-in"},
 		Options:        map[string]any{"acronyms": defaultAcronymNames, "allow": []string{}},
 		Remediation:    "Use all-caps initialisms in exported names and consistently cased initialisms in unexported names.",

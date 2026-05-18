@@ -51,12 +51,12 @@
                 "defaultSeverity": "medium",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ],
                 "thresholds": {
-                  "maxDepth": 4
+                  "maxDepth": 5
                 }
               },
               "defaultConfiguration": {
@@ -80,7 +80,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ]
@@ -110,7 +110,7 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "composite",
                   "opt-in"
@@ -137,7 +137,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "composite",
                   "opt-in"
@@ -168,7 +168,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "comments",
                   "documentation",
@@ -212,7 +212,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ],
@@ -264,7 +264,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "naming",
@@ -322,7 +322,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "naming",
@@ -354,7 +354,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "naming",
                   "opt-in"
@@ -394,7 +394,7 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "opt-in"
@@ -421,7 +421,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "naming",
@@ -456,7 +456,7 @@
                 "defaultSeverity": "medium",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "security"
@@ -483,7 +483,7 @@
                 "defaultSeverity": "high",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -510,7 +510,7 @@
                 "defaultSeverity": "high",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -537,7 +537,7 @@
                 "defaultSeverity": "high",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -564,7 +564,7 @@
                 "defaultSeverity": "critical",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -666,12 +666,12 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ],
                 "thresholds": {
-                  "maxParameters": 5
+                  "maxParameters": 8
                 }
               },
               "defaultConfiguration": {
@@ -695,7 +695,7 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -722,7 +722,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -749,7 +749,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "tests"

@@ -91,9 +91,9 @@ func (c *Client) Close() {}
 	}
 }
 
-func TestReceiverConsistencyIsDefaultDisabled(t *testing.T) {
-	if (ReceiverConsistencyRule{}).Definition().DefaultEnabled {
-		t.Error("naming.receiver-consistency must be default-disabled in v0.1")
+func TestReceiverConsistencyIsDefaultEnabled(t *testing.T) {
+	if !(ReceiverConsistencyRule{}).Definition().DefaultEnabled {
+		t.Error("naming.receiver-consistency must be default-enabled")
 	}
 	if (ReceiverConsistencyRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.receiver-consistency must be parser-capability")

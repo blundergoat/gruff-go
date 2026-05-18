@@ -36,7 +36,7 @@ func (r IdentifierQualityRule) Definition() Definition {
 		Pillar:         finding.PillarNaming,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Tags:           []string{"opt-in", "naming"},
 		Options:        map[string]any{"placeholderNames": defaultPlaceholderNames},
 		Remediation:    "Rename the identifier to something that names its role, or remove it if it is no longer needed.",

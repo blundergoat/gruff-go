@@ -109,27 +109,27 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 package sample
 
 func risky(a bool) {
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
 }
 `)
 	t.Chdir(root)
@@ -251,27 +251,27 @@ func complexFixture() string {
 package sample
 
 func risky(a bool) {
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
 }
 `
 }

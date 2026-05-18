@@ -45,7 +45,7 @@ func (r CommentRubricRule) Definition() Definition {
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Thresholds: map[string]float64{
 			"minPackageCommentLines": float64(r.minPackageCommentLines()),
 		},

@@ -23,7 +23,7 @@ func (DesignGodFunctionRule) Definition() Definition {
 		SecondaryPillars: []finding.Pillar{finding.PillarSize, finding.PillarComplexity},
 		Severity:         finding.SeverityLow,
 		Confidence:       finding.ConfidenceHigh,
-		DefaultEnabled:   false,
+		DefaultEnabled:   true,
 		Tags:             []string{"composite", "opt-in"},
 		Remediation:      "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
 	}
@@ -107,7 +107,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 		Pillar:         finding.PillarDesign,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Thresholds: map[string]float64{
 			"minFindings": float64(minFindings),
 			"minPillars":  float64(minPillars),

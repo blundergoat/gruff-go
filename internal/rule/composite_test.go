@@ -81,7 +81,7 @@ func TestDesignHotspotFileRule(t *testing.T) {
 	}
 }
 
-func TestCompositeRulesAreOptIn(t *testing.T) {
+func TestCompositeRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "hot.go", `// Package sample is a test package.
 package sample
 
@@ -104,14 +104,15 @@ func Hot(a bool, b bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); containsRuleID(findings, "design.god-function") || containsRuleID(findings, "design.hotspot-file") {
-		t.Fatalf("default findings = %#v, want composite rules disabled", findings)
+	findings := defaults.Analyze([]parser.Unit{unit}, Context{})
+	if !containsRuleID(findings, "design.god-function") || !containsRuleID(findings, "design.hotspot-file") {
+		t.Fatalf("default findings = %#v, want composite rules to fire", findings)
 	}
 
-	enabled, err := DefaultsConfigured(Config{
+	disabled, err := DefaultsConfigured(Config{
 		Enabled: map[string]bool{
-			"design.god-function": true,
-			"design.hotspot-file": true,
+			"design.god-function": false,
+			"design.hotspot-file": false,
 		},
 		Thresholds: map[string]map[string]float64{
 			"size.function-length":  {"maxLines": 4},
@@ -122,9 +123,9 @@ func Hot(a bool, b bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := enabled.Analyze([]parser.Unit{unit}, Context{})
-	if !containsRuleID(findings, "design.god-function") || !containsRuleID(findings, "design.hotspot-file") {
-		t.Fatalf("enabled findings = %#v, want both composite rules", findings)
+	disabledFindings := disabled.Analyze([]parser.Unit{unit}, Context{})
+	if containsRuleID(disabledFindings, "design.god-function") || containsRuleID(disabledFindings, "design.hotspot-file") {
+		t.Fatalf("disabled findings = %#v, want composite rules silenced", disabledFindings)
 	}
 }
 

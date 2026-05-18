@@ -67,15 +67,15 @@ func TestConnectionStringRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], "supersecretpassword")
 }
 
-func TestSensitiveDetectorsAreDefaultDisabled(t *testing.T) {
+func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		PrivateKeyRule{}.Definition(),
 		AWSAccessKeyRule{}.Definition(),
 		JWTTokenRule{}.Definition(),
 		ConnectionStringRule{}.Definition(),
 	} {
-		if definition.DefaultEnabled {
-			t.Errorf("rule %q must be default-disabled in v0.1", definition.ID)
+		if !definition.DefaultEnabled {
+			t.Errorf("rule %q must be default-enabled", definition.ID)
 		}
 	}
 }

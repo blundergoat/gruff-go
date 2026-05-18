@@ -12,7 +12,7 @@ func TestParameterCountRule(t *testing.T) {
 
 type Builder struct{}
 
-func Wide(a, b, c, d, e, f int) {}
+func Wide(a, b, c, d, e, f, g, h, i int) {}
 
 func Narrow(a, b, c int) {}
 
@@ -22,17 +22,17 @@ func (Builder) Many(a, b, c, d, e int) {}
 	if len(findings) != 1 || findings[0].Symbol != "Wide" {
 		t.Fatalf("findings = %#v, want one finding on Wide", findings)
 	}
-	if findings[0].Metadata["parameters"] != 6 {
-		t.Fatalf("metadata = %#v, want parameters=6", findings[0].Metadata)
+	if findings[0].Metadata["parameters"] != 9 {
+		t.Fatalf("metadata = %#v, want parameters=9", findings[0].Metadata)
 	}
 
-	below := ParameterCountRule{MaxParameters: 6}.AnalyzeUnit(unit, Context{})
+	below := ParameterCountRule{MaxParameters: 9}.AnalyzeUnit(unit, Context{})
 	if len(below) != 0 {
-		t.Fatalf("threshold-6 findings = %#v, want none", below)
+		t.Fatalf("threshold-9 findings = %#v, want none", below)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "size.parameter-count") {
-		t.Fatalf("default scan = %#v, want size.parameter-count disabled", findings)
+	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); !containsRuleID(findings, "size.parameter-count") {
+		t.Fatalf("default scan = %#v, want size.parameter-count enabled", findings)
 	}
 }
 
@@ -45,7 +45,9 @@ func Deep(a, b, c bool) {
 			if c {
 				for i := 0; i < 10; i++ {
 					if i > 0 {
-						_ = i
+						if i < 5 {
+							_ = i
+						}
 					}
 				}
 			}
@@ -57,8 +59,8 @@ func Deep(a, b, c bool) {
 	if len(findings) != 1 || findings[0].Symbol != "Deep" {
 		t.Fatalf("findings = %#v, want one finding on Deep", findings)
 	}
-	if findings[0].Metadata["depth"] != 5 {
-		t.Fatalf("metadata = %#v, want depth=5", findings[0].Metadata)
+	if findings[0].Metadata["depth"] != 6 {
+		t.Fatalf("metadata = %#v, want depth=6", findings[0].Metadata)
 	}
 
 	shallow := parseOne(t, "shallow.go", `package sample
@@ -98,8 +100,8 @@ func Outer() {
 		t.Fatalf("func-lit findings = %#v, want outer counted independently of literal", findings)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{deep}, Context{})); containsRuleID(findings, "complexity.nesting-depth") {
-		t.Fatalf("default scan = %#v, want complexity.nesting-depth disabled", findings)
+	if findings := (Defaults().Analyze([]parser.Unit{deep}, Context{})); !containsRuleID(findings, "complexity.nesting-depth") {
+		t.Fatalf("default scan = %#v, want complexity.nesting-depth enabled", findings)
 	}
 }
 
@@ -167,8 +169,8 @@ func ExportedTestHelper() {}
 		t.Fatalf("test-file findings = %#v, want none", findings)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "docs.exported-symbol-comment") {
-		t.Fatalf("default scan = %#v, want docs.exported-symbol-comment disabled", findings)
+	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); !containsRuleID(findings, "docs.exported-symbol-comment") {
+		t.Fatalf("default scan = %#v, want docs.exported-symbol-comment enabled", findings)
 	}
 }
 

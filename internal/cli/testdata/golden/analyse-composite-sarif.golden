@@ -51,12 +51,12 @@
                 "defaultSeverity": "medium",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ],
                 "thresholds": {
-                  "maxDepth": 4
+                  "maxDepth": 5
                 }
               },
               "defaultConfiguration": {
@@ -80,7 +80,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ]
@@ -137,7 +137,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "composite",
                   "opt-in"
@@ -168,7 +168,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "comments",
                   "documentation",
@@ -212,7 +212,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ],
@@ -264,7 +264,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "naming",
@@ -322,7 +322,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "naming",
@@ -354,7 +354,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "naming",
                   "opt-in"
@@ -394,7 +394,7 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "opt-in"
@@ -421,7 +421,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "go-style",
                   "naming",
@@ -456,7 +456,7 @@
                 "defaultSeverity": "medium",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "security"
@@ -483,7 +483,7 @@
                 "defaultSeverity": "high",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -510,7 +510,7 @@
                 "defaultSeverity": "high",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -537,7 +537,7 @@
                 "defaultSeverity": "high",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -564,7 +564,7 @@
                 "defaultSeverity": "critical",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "secrets"
@@ -666,12 +666,12 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in"
                 ],
                 "thresholds": {
-                  "maxParameters": 5
+                  "maxParameters": 8
                 }
               },
               "defaultConfiguration": {
@@ -695,7 +695,7 @@
                 "defaultSeverity": "low",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -722,7 +722,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -749,7 +749,7 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "opt-in",
                   "tests"
@@ -809,6 +809,54 @@
           }
         },
         {
+          "ruleId": "design.hotspot-file",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "file has findings across multiple quality pillars"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "c8f0761928502c92"
+          },
+          "properties": {
+            "confidence": "medium",
+            "fingerprint": "c8f0761928502c92",
+            "metadata": {
+              "findings": 3,
+              "minFindings": 3,
+              "minPillars": 2,
+              "pillars": [
+                "complexity",
+                "documentation",
+                "size"
+              ],
+              "primaryLine": 4,
+              "ruleIds": [
+                "complexity.cyclomatic",
+                "docs.exported-symbol-comment",
+                "size.function-length"
+              ],
+              "underlyingFingerprints": [
+                "1dacf2848e817c39",
+                "470a3d967e37e18b",
+                "d8293925f32a0f34"
+              ]
+            },
+            "pillar": "design",
+            "remediation": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
+            "severity": "low"
+          }
+        },
+        {
           "ruleId": "complexity.cyclomatic",
           "ruleIndex": 0,
           "level": "warning",
@@ -841,6 +889,41 @@
             "pillar": "complexity",
             "remediation": "Split independent decisions or move branches into named helpers.",
             "severity": "medium",
+            "symbol": "Hot"
+          }
+        },
+        {
+          "ruleId": "docs.exported-symbol-comment",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "exported function \"Hot\" has no doc comment"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                },
+                "region": {
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "470a3d967e37e18b"
+          },
+          "properties": {
+            "confidence": "medium",
+            "fingerprint": "470a3d967e37e18b",
+            "metadata": {
+              "kind": "function",
+              "symbol": "Hot"
+            },
+            "pillar": "documentation",
+            "remediation": "Add a Go-style doc comment that begins with the symbol name.",
+            "severity": "low",
             "symbol": "Hot"
           }
         },
@@ -883,7 +966,7 @@
       ],
       "properties": {
         "gruffSchemaVersion": "gruff-go.analysis.v0.1",
-        "score": 92,
+        "score": 94,
         "grade": "A"
       }
     }

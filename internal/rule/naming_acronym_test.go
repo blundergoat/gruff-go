@@ -106,9 +106,9 @@ type HttpClient struct{}
 	}
 }
 
-func TestAcronymCaseIsDefaultDisabled(t *testing.T) {
-	if (AcronymCaseRule{}).Definition().DefaultEnabled {
-		t.Error("naming.acronym-case must be default-disabled in v0.1")
+func TestAcronymCaseIsDefaultEnabled(t *testing.T) {
+	if !(AcronymCaseRule{}).Definition().DefaultEnabled {
+		t.Error("naming.acronym-case must be default-enabled")
 	}
 	if (AcronymCaseRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.acronym-case must be parser-capability")

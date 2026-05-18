@@ -53,34 +53,9 @@ func TestDefaultsListRules(t *testing.T) {
 			t.Fatalf("rules = %#v, want %#v", got, want)
 		}
 	}
-	for _, id := range []string{
-		"complexity.cyclomatic",
-		"docs.package-comment",
-		"sensitive-data.secret-pattern",
-		"size.file-length",
-		"size.function-length",
-	} {
+	for _, id := range want {
 		if !enabled[id] {
 			t.Fatalf("rule %s should be default enabled", id)
-		}
-	}
-	for _, id := range []string{
-		"complexity.nesting-depth",
-		"dead-code.empty-block",
-		"design.god-function",
-		"design.hotspot-file",
-		"docs.comment-rubric",
-		"docs.exported-symbol-comment",
-		"naming.acronym-case",
-		"naming.get-prefix",
-		"naming.package-underscore",
-		"naming.receiver-consistency",
-		"security.shell-command",
-		"size.parameter-count",
-		"test-quality.skipped-test",
-	} {
-		if enabled[id] {
-			t.Fatalf("rule %s should be default disabled", id)
 		}
 	}
 }
@@ -335,7 +310,7 @@ func TestSkipped(t *testing.T) {
 	}
 }
 
-func TestExpansionRulesAreOptIn(t *testing.T) {
+func TestExpansionRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "empty.go", `// Package sample is a test package.
 package sample
 
@@ -344,19 +319,19 @@ func empty(a bool) {
 }
 `)
 	defaults := Defaults()
-	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); len(findings) != 0 {
-		t.Fatalf("default findings = %#v, want disabled expansion rules skipped", findings)
+	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); !containsRuleID(findings, "dead-code.empty-block") {
+		t.Fatalf("default findings = %#v, want dead-code.empty-block fired", findings)
 	}
 
-	enabledRegistry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"dead-code.empty-block": true},
+	disabledRegistry, err := DefaultsConfigured(Config{
+		Enabled: map[string]bool{"dead-code.empty-block": false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := enabledRegistry.Analyze([]parser.Unit{unit}, Context{})
-	if len(findings) != 1 || findings[0].RuleID != "dead-code.empty-block" {
-		t.Fatalf("enabled findings = %#v, want dead-code.empty-block", findings)
+	findings := disabledRegistry.Analyze([]parser.Unit{unit}, Context{})
+	if containsRuleID(findings, "dead-code.empty-block") {
+		t.Fatalf("disabled findings = %#v, want dead-code.empty-block silenced", findings)
 	}
 }
 

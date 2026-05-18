@@ -19,7 +19,7 @@ func (EmptyTestRule) Definition() Definition {
 		Pillar:         finding.PillarTestQuality,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Tags:           []string{"opt-in", "tests"},
 		Remediation:    "Add an assertion that exercises the behaviour the test name claims, or remove the empty test.",
 	}
@@ -58,7 +58,7 @@ func (NoFailurePathTestRule) Definition() Definition {
 		Pillar:         finding.PillarTestQuality,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Tags:           []string{"opt-in", "tests"},
 		Remediation:    "Add an assertion or document why the test cannot fail.",
 	}

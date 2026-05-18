@@ -52,9 +52,9 @@ func (s Store) GetUser() User { return User{} }
 	}
 }
 
-func TestGetPrefixIsDefaultDisabled(t *testing.T) {
-	if (GetPrefixRule{}).Definition().DefaultEnabled {
-		t.Error("naming.get-prefix must be default-disabled in v0.1")
+func TestGetPrefixIsDefaultEnabled(t *testing.T) {
+	if !(GetPrefixRule{}).Definition().DefaultEnabled {
+		t.Error("naming.get-prefix must be default-enabled")
 	}
 	if (GetPrefixRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.get-prefix must be parser-capability")
