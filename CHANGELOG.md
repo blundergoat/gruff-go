@@ -26,6 +26,7 @@ Pre-release foundation. The binary reports `0.1.0-dev`. The CLI surface, schemas
 ### Changed
 
 - Default `size.file-length` and `size.function-length` findings in `_test.go` files keep the same thresholds, messages, metadata, and fingerprints, but report as `low` severity / `medium` confidence under medium severity. Explicit non-medium config severity overrides still apply to test files.
+- `size.file-length` default `maxLines` raised from `400` to `500`. Calibration on a real Go corpus showed default reports were dominated by line-count findings; the production handler size signal is preserved at the new threshold and project dogfood remains clean (83 files, 0 findings, exit 0, score 100/A). Fingerprint, metadata, message, severity, and exit-code semantics are unchanged; projects pinning `threshold: 400` in `.gruff.yaml` keep the stricter policy.
 - `docs.package-comment` skips `_test.go`-only external test packages such as `package foo_test`, reducing documentation noise from black-box test packages while preserving production package-comment checks.
 - Score output now includes `score.coverage` and `score.complexityDistributionScope`. Text, summary, JSON, and HTML reports make narrow score coverage explicit, and the cyclomatic histogram is labelled as finding-only.
 

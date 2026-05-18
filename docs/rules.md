@@ -13,7 +13,7 @@ These run unless explicitly disabled via `selection.excludeRules` or `rules.<id>
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
-| [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 400` | Files exceeding the line-count threshold. |
+| [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the line-count threshold. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
@@ -387,7 +387,7 @@ Add documented dummies to `allowlists.secretPreviews` so example values in tests
 - **Pillar:** size
 - **Default severity:** medium
 - **Default-enabled:** yes
-- **Threshold:** `maxLines` (default `400`)
+- **Threshold:** `maxLines` (default `500`)
 - **Confidence:** high
 - **Capability:** parser
 

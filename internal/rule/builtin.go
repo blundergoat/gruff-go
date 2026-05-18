@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	fileLengthThreshold     = 400
+	fileLengthThreshold     = 500
 	functionLengthThreshold = 80
 	cyclomaticThreshold     = 20
 	secretKeyPattern        = `api[_-]?key|auth[_-]?token|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization|bearer|secret|token|password`

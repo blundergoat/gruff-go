@@ -2,7 +2,7 @@
 
 **Status:** Implemented
 **Date:** 2026-05-13
-**Updated:** 2026-05-16
+**Updated:** 2026-05-18
 **Author(s):** Codex
 **Ticket/Context:** `.goat-flow/tasks/0.1`
 
@@ -17,6 +17,7 @@ Evidence from this session:
 - The follow-up dogfood scan reported 41 files scanned, 0 findings, exit code 0, and score 100/A.
 - M08 dogfood after composite-rule implementation reported 78 files scanned, 0 default findings, exit code 0, and score 100/A.
 - M08 found `docs.exported-symbol-comment` was too strict when opted in with `ignoreInternalPackages: false`: it reported 185 internal-package findings. The option default is now `true`, and the same opt-in dogfood path reports 0 findings without local suppression.
+- 2026-05-18: `size.file-length` default `maxLines` raised from 400 to 500. M22 calibration on `blundergoat-platform` showed default reports were dominated by line-count rules; raising the threshold preserves the production handler size signal while reducing test/declarative-noise volume. Dogfood after the change: 83 files, 0 findings, exit 0, score 100/A. Single hard threshold retained; no tiered/banded confidence introduced.
 
 ## Decision
 

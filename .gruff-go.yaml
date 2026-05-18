@@ -120,7 +120,7 @@ rules:
   # Very large files slow navigation and usually mix responsibilities.
   size.file-length:
     enabled: true
-    threshold: 400
+    threshold: 500
     severity: warning
   # Long functions are harder to understand, test, and refactor.
   size.function-length:

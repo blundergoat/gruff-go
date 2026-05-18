@@ -130,7 +130,7 @@ rules:
     threshold: 15
     severity: high
   size.file-length:
-    threshold: 400
+    threshold: 300
   naming.package-underscore:
     enabled: true
 ```

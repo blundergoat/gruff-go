@@ -616,7 +616,7 @@
                 "capability": "parser",
                 "defaultEnabled": true,
                 "thresholds": {
-                  "maxLines": 400
+                  "maxLines": 500
                 }
               },
               "defaultConfiguration": {
