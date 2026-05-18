@@ -17,7 +17,8 @@ import (
 
 const SchemaVersion = "gruff-go.config.v0.1"
 
-var defaultConfigFiles = []string{".gruff.yaml", ".gruff.yml", ".gruff.json"}
+// defaultConfigFiles lists auto-discovered config files in precedence order.
+var defaultConfigFiles = []string{".gruff-go.yaml"}
 
 type Config struct {
 	SchemaVersion         string                `json:"schemaVersion,omitempty"`
@@ -126,19 +127,19 @@ func Load(path string, definitions []rule.Definition) (Config, error) {
 }
 
 func Parse(data []byte, definitions []rule.Definition) (Config, error) {
-	return parseJSON(data, definitions)
+	return parseYAML(data, definitions)
 }
 
 func ParseFile(path string, data []byte, definitions []rule.Definition) (Config, error) {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".yaml", ".yml":
+	case ".yaml":
 		return parseYAML(data, definitions)
 	default:
-		return parseJSON(data, definitions)
+		return Config{}, fmt.Errorf("unsupported config file extension %q (want .yaml)", filepath.Ext(path))
 	}
 }
 
-func parseJSON(data []byte, definitions []rule.Definition) (Config, error) {
+func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -147,7 +148,7 @@ func parseJSON(data []byte, definitions []rule.Definition) (Config, error) {
 	}
 	var trailing struct{}
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return Config{}, fmt.Errorf("config contains trailing JSON values")
+		return Config{}, fmt.Errorf("config contains trailing values")
 	}
 	cfg = cfg.Normalized()
 	if err := cfg.Validate(definitions); err != nil {

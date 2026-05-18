@@ -1,4 +1,6 @@
-// Package analysis orchestrates scanner runs and assembles stable reports.
+// Package analysis orchestrates scanner runs.
+// It combines discovery, parsing, rule dispatch, filtering, scoring, and report
+// assembly into the stable gruff-go analysis contract.
 package analysis
 
 import (
@@ -10,8 +12,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
 
+// SchemaVersion identifies the stable analysis report schema emitted by gruff-go.
 const SchemaVersion = "gruff-go.analysis.v0.1"
 
+// Diagnostic describes a non-finding problem encountered while building a report.
 type Diagnostic struct {
 	Stage    string            `json:"stage"`
 	Message  string            `json:"message"`
@@ -20,6 +24,7 @@ type Diagnostic struct {
 	Severity finding.Severity  `json:"severity"`
 }
 
+// Report is the full structured result of one analysis run.
 type Report struct {
 	SchemaVersion string               `json:"schemaVersion"`
 	Tool          Tool                 `json:"tool"`
@@ -35,11 +40,13 @@ type Report struct {
 	Findings      []finding.Finding    `json:"findings"`
 }
 
+// Tool identifies the scanner binary that produced a report.
 type Tool struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 
+// RunMetadata records invocation settings that shaped a report.
 type RunMetadata struct {
 	WorkingDirectory string   `json:"workingDirectory"`
 	Inputs           []string `json:"inputs"`
@@ -48,6 +55,7 @@ type RunMetadata struct {
 	IncludeIgnored   bool     `json:"includeIgnored,omitempty"`
 }
 
+// Summary aggregates high-level counts and exit status for a report.
 type Summary struct {
 	FilesScanned       int            `json:"filesScanned"`
 	FilesSkipped       int            `json:"filesSkipped"`
@@ -60,6 +68,7 @@ type Summary struct {
 	TypeLoadingEnabled bool           `json:"typeLoadingEnabled"`
 }
 
+// BaselineSummary records how a baseline affected findings.
 type BaselineSummary struct {
 	Applied            bool   `json:"applied"`
 	Path               string `json:"path,omitempty"`
@@ -68,6 +77,7 @@ type BaselineSummary struct {
 	StaleEntries       int    `json:"staleEntries"`
 }
 
+// DiffSummary records changed-line filtering applied to findings.
 type DiffSummary struct {
 	Enabled          bool     `json:"enabled"`
 	Base             string   `json:"base,omitempty"`
@@ -76,6 +86,7 @@ type DiffSummary struct {
 	Caveat           string   `json:"caveat,omitempty"`
 }
 
+// DisplayFilterSummary records presentation-only finding filters.
 type DisplayFilterSummary struct {
 	Applied        bool     `json:"applied"`
 	IncludeRules   []string `json:"includeRules"`
@@ -86,17 +97,20 @@ type DisplayFilterSummary struct {
 	Caveat         string   `json:"caveat,omitempty"`
 }
 
+// Paths lists files scanned, skipped, and missing during discovery.
 type Paths struct {
 	Scanned []string      `json:"scanned"`
 	Skipped []SkippedPath `json:"skipped"`
 	Missing []string      `json:"missing"`
 }
 
+// SkippedPath records why a project-relative path was excluded.
 type SkippedPath struct {
 	Path   string `json:"path"`
 	Reason string `json:"reason"`
 }
 
+// ReportInput contains inputs needed to assemble a Report.
 type ReportInput struct {
 	Root           string
 	Inputs         []string
@@ -113,6 +127,7 @@ type ReportInput struct {
 	Diff           DiffSummary
 }
 
+// NewReport assembles a deterministic report from analysis inputs.
 func NewReport(input ReportInput) Report {
 	scanned := nonNilStrings(input.Scanned)
 	skipped := nonNilSkipped(input.Skipped)
@@ -162,6 +177,7 @@ func NewReport(input ReportInput) Report {
 	return report
 }
 
+// nonNilStrings returns an empty string slice when values is nil.
 func nonNilStrings(values []string) []string {
 	if values == nil {
 		return []string{}
@@ -169,6 +185,7 @@ func nonNilStrings(values []string) []string {
 	return values
 }
 
+// nonNilSkipped returns an empty skipped-path slice when values is nil.
 func nonNilSkipped(values []SkippedPath) []SkippedPath {
 	if values == nil {
 		return []SkippedPath{}
@@ -176,6 +193,7 @@ func nonNilSkipped(values []SkippedPath) []SkippedPath {
 	return values
 }
 
+// nonNilDiagnostics returns an empty diagnostic slice when values is nil.
 func nonNilDiagnostics(values []Diagnostic) []Diagnostic {
 	if values == nil {
 		return []Diagnostic{}
@@ -183,6 +201,7 @@ func nonNilDiagnostics(values []Diagnostic) []Diagnostic {
 	return values
 }
 
+// nonNilFindings returns an empty finding slice when values is nil.
 func nonNilFindings(values []finding.Finding) []finding.Finding {
 	if values == nil {
 		return []finding.Finding{}
@@ -190,6 +209,7 @@ func nonNilFindings(values []finding.Finding) []finding.Finding {
 	return values
 }
 
+// nonNilDefinitions returns an empty rule-definition slice when values is nil.
 func nonNilDefinitions(values []rule.Definition) []rule.Definition {
 	if values == nil {
 		return []rule.Definition{}
@@ -197,6 +217,7 @@ func nonNilDefinitions(values []rule.Definition) []rule.Definition {
 	return values
 }
 
+// ResolveExitCode returns the CLI exit code implied by diagnostics and findings.
 func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failOn finding.Severity) int {
 	if len(diagnostics) > 0 {
 		return 2
@@ -209,6 +230,7 @@ func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failO
 	return 0
 }
 
+// SortReport orders report collections for deterministic output.
 func SortReport(report *Report) {
 	slices.Sort(report.Paths.Scanned)
 	slices.Sort(report.Paths.Missing)
@@ -225,6 +247,7 @@ func SortReport(report *Report) {
 	})
 }
 
+// compareDiagnostics orders diagnostics by file, line, stage, and message.
 func compareDiagnostics(a, b Diagnostic) int {
 	if a.File != b.File {
 		return strings.Compare(a.File, b.File)
@@ -238,6 +261,7 @@ func compareDiagnostics(a, b Diagnostic) int {
 	return strings.Compare(a.Message, b.Message)
 }
 
+// locationLine returns zero when a diagnostic has no location.
 func locationLine(location *finding.Location) int {
 	if location == nil {
 		return 0
@@ -245,6 +269,7 @@ func locationLine(location *finding.Location) int {
 	return location.Line
 }
 
+// countSeverity counts findings by severity.
 func countSeverity(findings []finding.Finding) map[string]int {
 	counts := map[string]int{
 		string(finding.SeverityInfo):     0,
@@ -259,6 +284,7 @@ func countSeverity(findings []finding.Finding) map[string]int {
 	return counts
 }
 
+// countPillar counts findings by quality pillar.
 func countPillar(findings []finding.Finding) map[string]int {
 	counts := map[string]int{}
 	for _, item := range findings {

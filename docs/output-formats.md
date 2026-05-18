@@ -205,6 +205,6 @@ Set `--min-severity` to control where the line falls (default: `medium`).
 | Schema | Used by | File |
 |--------|---------|------|
 | `gruff-go.analysis.v0.1` | `json`, `summary-json` | `internal/analysis/report.go` |
-| `gruff-go.config.v0.1`   | `.gruff.yaml` / `.gruff.json` config loader | `internal/config/config.go` |
+| `gruff-go.config.v0.1`   | `.gruff-go.yaml` config loader | `internal/config/config.go` |
 | `gruff-go.baseline.v0.1` | `baseline` subcommand | `internal/baseline/baseline.go` |
 | `sarif-2.1.0`            | `sarif` | `internal/report/machine.go` |

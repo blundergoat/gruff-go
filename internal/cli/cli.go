@@ -92,7 +92,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
@@ -172,7 +172,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("baseline", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	outPath := flags.String("out", "", "baseline output path")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	if err := flags.Parse(args); err != nil {
@@ -217,7 +217,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("list-rules", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text or json")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	if err := flags.Parse(args); err != nil {
 		return 2

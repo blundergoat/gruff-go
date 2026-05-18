@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,22 +10,23 @@ import (
 )
 
 func TestParseValidatesStrictConfig(t *testing.T) {
-	cfg, err := Parse([]byte(`{
-		"schemaVersion": "gruff-go.config.v0.1",
-		"select": ["size.file-length"],
-		"ignorePaths": ["fixtures/**"],
-		"acceptedAbbreviations": ["ID", "HTTP"],
-		"rules": {
-			"size.file-length": {
-				"enabled": true,
-				"thresholds": {"maxLines": 120}
-			},
-			"size.function-length": {
-				"enabled": false
-			}
-		},
-		"sensitiveData": {"previewAllowlist": ["testdata/**"]}
-	}`), rule.Defaults().Definitions())
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+select: [size.file-length]
+ignorePaths:
+  - fixtures/**
+acceptedAbbreviations: [ID, HTTP]
+rules:
+  size.file-length:
+    enabled: true
+    thresholds:
+      maxLines: 120
+  size.function-length:
+    enabled: false
+sensitiveData:
+  previewAllowlist:
+    - testdata/**
+`), rule.Defaults().Definitions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +40,7 @@ func TestParseValidatesStrictConfig(t *testing.T) {
 }
 
 func TestParseYAMLGruffShape(t *testing.T) {
-	cfg, err := ParseFile(".gruff.yaml", []byte(`
+	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 paths:
   ignore:
     - 'fixtures/**'
@@ -77,8 +80,53 @@ rules:
 	}
 }
 
+func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
+	root := t.TempDir()
+	definitions := rule.Defaults().Definitions()
+	writeConfig(t, root, ".gruff-go.yaml", "rules:\n  size.file-length:\n    enabled: true\n")
+
+	loaded, err := LoadAuto(root, "", false, definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Path != filepath.ToSlash(filepath.Join(root, ".gruff-go.yaml")) {
+		t.Fatalf("path = %q, want .gruff-go.yaml", loaded.Path)
+	}
+	if loaded.Config.Rules["size.file-length"].Enabled == nil || !*loaded.Config.Rules["size.file-length"].Enabled {
+		t.Fatalf("loaded config = %#v, want preferred .gruff-go.yaml", loaded.Config.Rules)
+	}
+}
+
+func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
+	root := t.TempDir()
+	definitions := rule.Defaults().Definitions()
+	writeConfig(t, root, "config.yaml", "rules:\n  size.file-length:\n    enabled: false\n")
+
+	loaded, err := LoadAuto(root, "", false, definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Path != "" {
+		t.Fatalf("path = %q, want no auto-discovered config", loaded.Path)
+	}
+	if len(loaded.Config.Rules) != 0 {
+		t.Fatalf("loaded config = %#v, want empty config", loaded.Config)
+	}
+}
+
+func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
+	for _, path := range []string{"config.txt", "config.yml"} {
+		t.Run(path, func(t *testing.T) {
+			_, err := ParseFile(path, []byte(`rules: {}`), rule.Defaults().Definitions())
+			if err == nil || !strings.Contains(err.Error(), "unsupported config file extension") {
+				t.Fatalf("err = %v, want unsupported extension", err)
+			}
+		})
+	}
+}
+
 func TestParseAcceptsExpansionRuleConfig(t *testing.T) {
-	cfg, err := ParseFile(".gruff.yaml", []byte(`
+	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 rules:
   size.parameter-count:
     enabled: true
@@ -119,7 +167,7 @@ rules:
 }
 
 func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
-	cfg, err := ParseFile(".gruff.yaml", []byte(`
+	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 rules:
   design.god-function:
     enabled: true
@@ -145,7 +193,7 @@ rules:
 }
 
 func TestParseAcceptsLegacyRuleIDAliases(t *testing.T) {
-	cfg, err := ParseFile(".gruff.yaml", []byte(`
+	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 selection:
   rules:
     - size-file-length
@@ -170,26 +218,34 @@ rules:
 	}
 }
 
+func writeConfig(t *testing.T, root, rel, contents string) {
+	t.Helper()
+	path := filepath.Join(root, rel)
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestParseRejectsInvalidConfig(t *testing.T) {
 	tests := []struct {
 		name string
-		json string
+		yaml string
 		want string
 	}{
-		{name: "unknown top-level key", json: `{"unknown": true}`, want: "unknown field"},
-		{name: "unknown selected rule", json: `{"select": ["missing-rule"]}`, want: "unknown selected rule"},
-		{name: "unknown rule", json: `{"rules": {"missing-rule": {"enabled": true}}}`, want: "unknown rule"},
-		{name: "unknown threshold", json: `{"rules": {"size.file-length": {"thresholds": {"maxBytes": 1}}}}`, want: "unknown threshold"},
-		{name: "invalid threshold", json: `{"rules": {"size.file-length": {"thresholds": {"maxLines": 0}}}}`, want: "must be positive"},
-		{name: "invalid ignore", json: `{"ignorePaths": ["../outside"]}`, want: "must stay inside"},
-		{name: "invalid abbreviation", json: `{"acceptedAbbreviations": ["id"]}`, want: "must be uppercase"},
-		{name: "unknown threshold on parameter-count", json: `{"rules": {"size.parameter-count": {"thresholds": {"maxArgs": 3}}}}`, want: "unknown threshold"},
-		{name: "invalid threshold on nesting-depth", json: `{"rules": {"complexity.nesting-depth": {"thresholds": {"maxDepth": 0}}}}`, want: "must be positive"},
-		{name: "unknown threshold on hotspot", json: `{"rules": {"design.hotspot-file": {"thresholds": {"maxFindings": 3}}}}`, want: "unknown threshold"},
+		{name: "unknown top-level key", yaml: `unknown: true`, want: "unknown field"},
+		{name: "unknown selected rule", yaml: "select:\n  - missing-rule\n", want: "unknown selected rule"},
+		{name: "unknown rule", yaml: "rules:\n  missing-rule:\n    enabled: true\n", want: "unknown rule"},
+		{name: "unknown threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxBytes: 1\n", want: "unknown threshold"},
+		{name: "invalid threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
+		{name: "invalid ignore", yaml: "ignorePaths:\n  - ../outside\n", want: "must stay inside"},
+		{name: "invalid abbreviation", yaml: "acceptedAbbreviations:\n  - id\n", want: "must be uppercase"},
+		{name: "unknown threshold on parameter-count", yaml: "rules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
+		{name: "invalid threshold on nesting-depth", yaml: "rules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
+		{name: "unknown threshold on hotspot", yaml: "rules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse([]byte(tt.json), rule.Defaults().Definitions())
+			_, err := Parse([]byte(tt.yaml), rule.Defaults().Definitions())
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("err = %v, want containing %q", err, tt.want)
 			}

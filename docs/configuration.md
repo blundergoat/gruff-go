@@ -1,6 +1,6 @@
 # Configuration
 
-`gruff-go` is configurable through a single project-root file: `.gruff.yaml`, `.gruff.yml`, or `.gruff.json` (the loader tries them in that order). The file is **strict** — unknown keys, unknown rule IDs, unknown pillars, and out-of-range thresholds all fail closed with a clear diagnostic. The schema is versioned: `gruff-go.config.v0.1`.
+`gruff-go` is configurable through a single project-root file: `.gruff-go.yaml`. The file is **strict** — unknown keys, unknown rule IDs, unknown pillars, and out-of-range thresholds all fail closed with a clear diagnostic. The schema is versioned: `gruff-go.config.v0.1`.
 
 ## Discovery
 
@@ -20,7 +20,7 @@ gruff-go analyse --no-config .
 ## Full schema
 
 ```yaml
-# .gruff.yaml
+# .gruff-go.yaml
 paths:
   ignore: []          # extra path prefixes/globs to skip; merged with built-in ignores
 
@@ -46,13 +46,11 @@ rules:
       <key>: <value>
 ```
 
-JSON form (`.gruff.json`) carries the same keys with standard JSON syntax. Mixing YAML and JSON files isn't supported — pick one.
-
 ## Section reference
 
 ### `paths.ignore`
 
-A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), dependency caches (`vendor/`, `node_modules/`), generated Go files (`//go:generate`-emitted with the standard `Code generated … DO NOT EDIT.` header), and GOAT Flow scratchpads. The entries you add are layered on top.
+A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), non-application metadata directories (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`), dependency caches (`vendor/`, `node_modules/`), and generated Go files (`//go:generate`-emitted with the standard `Code generated … DO NOT EDIT.` header). The entries you add are layered on top.
 
 ```yaml
 paths:

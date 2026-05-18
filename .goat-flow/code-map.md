@@ -4,7 +4,7 @@
 
 - `README.md` = Minimal project title only.
 - `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`.
-- `.gruff.yaml` = Standalone dogfood scanner config for this repository; mirrors current default-enabled rules and keeps expansion rules disabled.
+- `.gruff-go.yaml` = Standalone dogfood scanner config for this repository; mirrors current default-enabled rules and keeps expansion rules disabled.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `package.json` = npm package metadata; declares `@blundergoat/goat-flow` and the placeholder failing `npm test` script.
 - `package-lock.json` = npm lockfile for GOAT Flow and transitive dependencies.
@@ -77,7 +77,7 @@
 - `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `list-rules`, `summary`, `report`, and `dashboard`.
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
-- `internal/config/` = Strict gruff config discovery/parsing for `.gruff.yaml`, `.gruff.yml`, and `.gruff.json`, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
+- `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
 - `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, the built-in default rule pack, and default-disabled opt-in expansion rules.
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
 - `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.

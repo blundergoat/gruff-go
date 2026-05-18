@@ -112,7 +112,7 @@ func dashboardHTML(state DashboardState) string {
 	builder.WriteString(dashboardField("Paths", "paths", state.Paths, ""))
 	builder.WriteString(`</div>`)
 	builder.WriteString(`<div class="field-grid">`)
-	builder.WriteString(dashboardField("Config path", "config", state.Config, ".gruff.yaml"))
+	builder.WriteString(dashboardField("Config path", "config", state.Config, ".gruff-go.yaml"))
 	builder.WriteString(dashboardField("Baseline", "baseline", state.Baseline, "gruff-baseline.json"))
 	builder.WriteString(`</div>`)
 	builder.WriteString(`<div class="field-grid">`)

@@ -19,7 +19,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")

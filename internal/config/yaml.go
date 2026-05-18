@@ -34,7 +34,7 @@ func parseYAML(data []byte, definitions []rule.Definition) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return parseJSON(encoded, definitions)
+	return decodeConfigPayload(encoded, definitions)
 }
 
 func yamlLines(input string) []yamlLine {

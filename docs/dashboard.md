@@ -23,7 +23,7 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--scan-timeout` | `120` | Per-scan deadline in seconds. `0` disables. |
 | `--project` | *current dir* | Initial project root the controls panel pre-fills. |
 | `--paths` | *empty* | Comma-separated initial paths to scan. |
-| `--config` | *auto-discover* | Initial `.gruff.yaml` path. |
+| `--config` | *auto-discover* | Initial `.gruff-go.yaml` path. |
 | `--no-config` | *off* | Skip auto-loading any config file. |
 | `--baseline` | *empty* | Initial baseline JSON path. |
 | `--no-baseline` | *off* | Refuse to apply any baseline. |

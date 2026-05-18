@@ -120,13 +120,12 @@ func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.
 	})
 
 	project := t.TempDir()
-	writeFile(t, filepath.Join(project, ".gruff.json"), `{
-  "rules": {
-    "size.file-length": {
-      "thresholds": {"maxLines": 1}
-    }
-  }
-}`)
+	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+rules:
+  size.file-length:
+    thresholds:
+      maxLines: 1
+`)
 	writeFile(t, filepath.Join(project, "short.go"), "package sample\n\nfunc ok() {}\n")
 
 	reportData, err := runScan(context.Background(), scanRunOptions{
@@ -141,7 +140,7 @@ func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.
 		t.Fatalf("cwd after runScan = %q, %v; want %q", got, err, originalWD)
 	}
 	if !hasFinding(reportData.Findings, "size.file-length") {
-		t.Fatalf("findings missing size.file-length from project .gruff.json: %#v", reportData.Findings)
+		t.Fatalf("findings missing size.file-length from project .gruff-go.yaml: %#v", reportData.Findings)
 	}
 	if reportData.Run.WorkingDirectory != filepath.ToSlash(project) {
 		t.Fatalf("report root = %q, want %q", reportData.Run.WorkingDirectory, filepath.ToSlash(project))
@@ -234,7 +233,7 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 	opts := Options{
 		ProjectRoot:  "/repo",
 		Paths:        []string{"internal"},
-		ConfigPath:   ".gruff.yaml",
+		ConfigPath:   ".gruff-go.yaml",
 		BaselinePath: "baseline.json",
 		FailOn:       "high",
 	}
@@ -302,7 +301,7 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	command := displayCommand(report.DashboardState{
 		Project:           "/repo",
 		Paths:             "src,internal",
-		Config:            ".gruff.yaml",
+		Config:            ".gruff-go.yaml",
 		Baseline:          "baseline.json",
 		FailOn:            "high",
 		ScanScope:         "diff",
@@ -314,7 +313,7 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 		"gruff-go analyse --format html",
 		"--report-interactive",
 		"--report-editor-link vscode",
-		"--config .gruff.yaml",
+		"--config .gruff-go.yaml",
 		"--baseline baseline.json",
 		"--diff-base HEAD",
 		"--include-ignored",

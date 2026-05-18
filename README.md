@@ -45,7 +45,7 @@ gruff-go analyse ./cmd/myapp ./internal/auth
 # Fail only on critical findings (default: medium)
 gruff-go analyse --min-severity critical .
 
-# Skip the auto-loaded .gruff.yaml for a single run
+# Skip the auto-loaded .gruff-go.yaml for a single run
 gruff-go analyse --no-config .
 
 # Scan only what changed against main
@@ -109,7 +109,7 @@ See [`docs/output-formats.md`](docs/output-formats.md) for the schema details an
 
 ## Configuration
 
-`gruff-go` auto-loads `.gruff.yaml`, `.gruff.yml`, then `.gruff.json` from the project root unless `--config <path>` or `--no-config` is given. The config is strict: unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds all fail closed.
+`gruff-go` auto-loads `.gruff-go.yaml` from the project root unless `--config <path>` or `--no-config` is given. The config is strict: unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds all fail closed.
 
 A minimal example:
 

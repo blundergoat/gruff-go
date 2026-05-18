@@ -157,17 +157,16 @@ func risky(a bool) {
 func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
-	writeFile(t, root, "config.json", `{
-		"rules": {
-			"complexity.cyclomatic": {
-				"thresholds": {"maxComplexity": 100}
-			}
-		}
-	}`)
+	writeFile(t, root, "config.yaml", `
+rules:
+  complexity.cyclomatic:
+    thresholds:
+      maxComplexity: 100
+`)
 	t.Chdir(root)
 
 	var configOut, configErr bytes.Buffer
-	if code := Main([]string{"analyse", "--config", "config.json", "."}, &configOut, &configErr); code != 0 {
+	if code := Main([]string{"analyse", "--config", "config.yaml", "."}, &configOut, &configErr); code != 0 {
 		t.Fatalf("config exit = %d, stderr = %s, stdout = %s", code, configErr.String(), configOut.String())
 	}
 
@@ -189,10 +188,10 @@ func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	}
 }
 
-func TestAnalyseAutoLoadsGruffYAMLAndNoConfigSkipsIt(t *testing.T) {
+func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
-	writeFile(t, root, ".gruff.yaml", `
+	writeFile(t, root, ".gruff-go.yaml", `
 rules:
   complexity.cyclomatic:
     threshold: 100

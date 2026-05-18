@@ -2,19 +2,20 @@
 
 **Status:** Accepted
 **Date:** 2026-05-16
+**Updated:** 2026-05-18
 **Author(s):** Claude
 **Ticket/Context:** `.goat-flow/tasks/0.1/M12-respect-gitignore-in-discovery.md`
 
 ## Context
 
-`internal/source.Discover` is the boundary that decides which files the rule registry sees. Its v0.1 design (ADR-001) walks the working directory, classifies files by extension, and drops a hardcoded set of directory names (`.git`, `vendor`, `node_modules`, `dist`, `build`, `coverage`, `.idea`, `.vscode`, plus three `.goat-flow/` subdirs). Anything else is offered to the parser and the text-rule passes.
+`internal/source.Discover` is the boundary that decides which files the rule registry sees. Its v0.1 design (ADR-001) walks the working directory, classifies files by extension, and drops a hardcoded set of directory names (`.git`, `vendor`, `node_modules`, `dist`, `build`, `coverage`, `.idea`, `.vscode`, plus agent/workflow metadata directories such as `.agents`, `.claude`, `.codex`, `.github`, and `.goat-flow`). Anything else is offered to the parser and the text-rule passes.
 
 That model conflates two boundaries that the working tree already separates:
 
 - "What this project consists of" — the tracked working tree, the contract the developer is willing to publish.
 - "What happens to live next to the project" — generated artefacts, machine-local tooling state, editor caches, agent runtime files, dependency caches, build outputs, dotfiles owned by other tools.
 
-Git already maintains a precise, per-project description of that second set in `.gitignore`. Every project that uses Git keeps this file current as a routine consequence of normal work; it is the most reliable signal the scanner can read for "do not analyse this." The hardcoded directory list captures only the broadest, most universal cases of the second set; everything project-specific (or new) leaks through and ends up in front of the rule registry until the developer notices the noise and adds the path to `paths.ignore` in `.gruff.yaml`.
+Git already maintains a precise, per-project description of that second set in `.gitignore`. Every project that uses Git keeps this file current as a routine consequence of normal work; it is the most reliable signal the scanner can read for "do not analyse this." The hardcoded directory list captures only the broadest, most universal cases of the second set; everything project-specific (or new) leaks through and ends up in front of the rule registry until the developer notices the noise and adds the path to `paths.ignore` in `.gruff-go.yaml`.
 
 Maintaining that exclusion list in two places — `.gitignore` and `paths.ignore` — is a steady-state drift hazard. The repository owner already names the boundary once in `.gitignore`; the scanner should consume that source rather than ask the owner to mirror it.
 
@@ -29,8 +30,8 @@ A tertiary concern is the discovery-time cost of running rules over files the de
 - `internal/source.Discover` consults a gitignore matcher for every directory and file it encounters. A path that the matcher reports as ignored is added to `paths.skipped` with reason `gitignored` and is not handed to the classifier, the parser, or any rule.
 - The matcher implements the gitignore spec as Git itself defines it: hierarchical `.gitignore` files at every depth, later rules override earlier rules within the same file, deeper files override shallower files, explicit `!pattern` re-includes a previously excluded path, anchored vs un-anchored patterns and directory-only `/` suffixes are honoured.
 - Only `.gitignore` files inside the discovery root participate. The user's global gitignore, `.git/info/exclude`, and `core.excludesFile` are not consulted. Discovery does not shell out to `git` and does not require the `.git` directory to exist.
-- VCS metadata directories (`.git`, `.hg`, `.svn`) and GOAT Flow local task/log/scratchpad directories are always excluded unless `--include-ignored` is set; they are not project source. The broader hardcoded directory list (`vendor`, `node_modules`, `.idea`, etc.) remains in place only as a fallback for repositories without a root `.gitignore` (extracted tarballs, vendored snapshots, build contexts where `.gitignore` was pruned). In repositories with a root `.gitignore`, that file owns the project boundary for broad cache, dependency, and build directories.
-- `paths.ignore` in `.gruff.yaml` continues to layer additively on top. A path matched by either source is skipped. Neither source can re-include a path the other has dropped; `paths.ignore` does not support negation in this revision.
+- VCS metadata directories (`.git`, `.hg`, `.svn`) and non-application metadata directories (`.agents`, `.claude`, `.codex`, `.github`, and `.goat-flow`) are always excluded unless `--include-ignored` is set; they are not project source. The broader hardcoded directory list (`vendor`, `node_modules`, `.idea`, etc.) remains in place only as a fallback for repositories without a root `.gitignore` (extracted tarballs, vendored snapshots, build contexts where `.gitignore` was pruned). In repositories with a root `.gitignore`, that file owns the project boundary for broad cache, dependency, and build directories.
+- `paths.ignore` in `.gruff-go.yaml` continues to layer additively on top. A path matched by either source is skipped. Neither source can re-include a path the other has dropped; `paths.ignore` does not support negation in this revision.
 - A new boolean flag, `--include-ignored`, on `analyse`, `baseline`, `summary`, and the dashboard's `/scan` query bypasses the gitignore matcher, generated-file skip, and hardcoded default/fallback ignore lists. `paths.ignore` continues to apply because it is explicit scanner policy, not a working-tree ignore source. When the flag is set, the JSON output exposes `run.includeIgnored: true`; when unset, the field is omitted.
 - The JSON schema gains exactly one value: `gitignored` is added to the set of allowed strings on `paths.skipped[].reason`. The schema version is unchanged. No other field is added or renamed.
 - `gruff-go` does not modify `.gitignore` under any circumstance. The scanner reads; it never writes.
@@ -51,7 +52,7 @@ The choice of matcher implementation — vendored library vs. in-tree parser —
 
 ## Reversibility
 
-Two-way door at the behaviour level. The matcher sits behind a discrete interface in `internal/source/`; a future decision can replace its policy (e.g. split gitignore handling per rule pillar, honour `.git/info/exclude`, accept a project-wide opt-out flag in `.gruff.yaml`) without rewriting the walker, the classifier, or any rule. The hardcoded fallback list stays in place, so disabling the gitignore matcher entirely returns the scanner to its v0.1 behaviour without further change.
+Two-way door at the behaviour level. The matcher sits behind a discrete interface in `internal/source/`; a future decision can replace its policy (e.g. split gitignore handling per rule pillar, honour `.git/info/exclude`, accept a project-wide opt-out flag in `.gruff-go.yaml`) without rewriting the walker, the classifier, or any rule. The hardcoded fallback list stays in place, so disabling the gitignore matcher entirely returns the scanner to its v0.1 behaviour without further change.
 
 One-way door at the JSON schema level: the `gitignored` value on `paths.skipped[].reason` is additive and will not be removed once consumers depend on it. A later decision that retires the matcher must still emit `gitignored` for the lifetime of `gruff-go.analysis.v0.1`, or move the contract to a new schema version.
 

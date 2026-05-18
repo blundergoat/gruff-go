@@ -266,29 +266,20 @@ func alwaysIgnoredDir(rel string) (string, bool) {
 		switch part {
 		case ".git", ".hg", ".svn":
 			return "vcs", true
+		case ".agents", ".claude", ".codex", ".github", ".goat-flow":
+			return "non-application-metadata", true
 		}
-	}
-	if rel == ".goat-flow/tasks" || strings.HasPrefix(rel, ".goat-flow/tasks/") {
-		return "goat-flow-local-task-state", true
-	}
-	if rel == ".goat-flow/logs" || strings.HasPrefix(rel, ".goat-flow/logs/") {
-		return "goat-flow-local-logs", true
-	}
-	if rel == ".goat-flow/scratchpad" || strings.HasPrefix(rel, ".goat-flow/scratchpad/") {
-		return "goat-flow-local-scratchpad", true
 	}
 	return "", false
 }
 
 func alwaysIgnoredFile(rel string) (string, bool) {
-	if strings.HasPrefix(rel, ".goat-flow/tasks/") {
-		return "goat-flow-local-task-state", true
-	}
-	if strings.HasPrefix(rel, ".goat-flow/logs/") {
-		return "goat-flow-local-logs", true
-	}
-	if strings.HasPrefix(rel, ".goat-flow/scratchpad/") {
-		return "goat-flow-local-scratchpad", true
+	parts := strings.Split(rel, "/")
+	for _, part := range parts[:len(parts)-1] {
+		switch part {
+		case ".agents", ".claude", ".codex", ".github", ".goat-flow":
+			return "non-application-metadata", true
+		}
 	}
 	return "", false
 }

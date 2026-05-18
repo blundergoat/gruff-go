@@ -12,7 +12,7 @@ The v0.1 analysis model uses standard-library source discovery and `go/parser` w
 
 ## Gruff Config
 
-Analysis config loaded explicitly by `--config` or discovered as `.gruff.yaml`, `.gruff.yml`, then `.gruff.json`. The root `.gruff.yaml` is this repository's dogfood config. It uses the gruff-family shape `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, `selection`, and `rules.<id>`. Rule IDs are canonical dotted names, while legacy hyphen-only and old `documentation.*` aliases are still accepted for config compatibility.
+Analysis config loaded explicitly by `--config` or discovered as `.gruff-go.yaml`. The root `.gruff-go.yaml` is this repository's dogfood config. It uses the gruff-family shape `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, `selection`, and `rules.<id>`. Rule IDs are canonical dotted names, while legacy hyphen-only and old `documentation.*` aliases are still accepted for rule-ID compatibility.
 
 ## Rule ID
 

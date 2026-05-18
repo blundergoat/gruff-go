@@ -46,7 +46,7 @@ func TestGoldenAnalysisFormats(t *testing.T) {
 func TestGoldenConfigLoading(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
-	writeFile(t, root, ".gruff.yaml", `
+	writeFile(t, root, ".gruff-go.yaml", `
 rules:
   complexity.cyclomatic:
     threshold: 100
@@ -90,7 +90,7 @@ func TestGoldenBaselineSuppression(t *testing.T) {
 func TestGoldenOptInExpansionRules(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "expansion.go", expansionFixture())
-	writeFile(t, root, ".gruff.yaml", `
+	writeFile(t, root, ".gruff-go.yaml", `
 rules:
   size.parameter-count:
     enabled: true
@@ -125,7 +125,7 @@ func TestGoldenCompositeRuleOutputs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			writeFile(t, root, "composite.go", compositeFixture())
-			writeFile(t, root, ".gruff.yaml", compositeConfig())
+			writeFile(t, root, ".gruff-go.yaml", compositeConfig())
 			t.Chdir(root)
 
 			stdout, stderr, code := runGoldenCLI("analyse", "--format", tc.format, "composite.go")
@@ -267,7 +267,7 @@ func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
-	writeFile(t, root, ".gruff.yaml", "paths:\n  ignore:\n    - secret.go\n")
+	writeFile(t, root, ".gruff-go.yaml", "paths:\n  ignore:\n    - secret.go\n")
 	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
 	writeFile(t, root, "secret.go", "// Package main is a test package.\npackage main\n")
 	t.Chdir(root)

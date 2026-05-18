@@ -217,4 +217,4 @@ If CI needs to **scan and report** without **failing**, run the scan in a step w
 
 - **Shallow clones** break `--diff-base`. Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
 - **First run on a busy codebase** with thousands of findings is a waste of CI cycles. Generate a baseline locally first, commit it, and let CI scan against it.
-- **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff.yaml`.
+- **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff-go.yaml`.
