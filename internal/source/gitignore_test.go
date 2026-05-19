@@ -204,6 +204,39 @@ func TestMatcherNestedOverride(t *testing.T) {
 	}
 }
 
+// TestMatcherNestedIgnoreWithoutRoot verifies nested .gitignore files still
+// apply when the discovery root has no .gitignore of its own.
+func TestMatcherNestedIgnoreWithoutRoot(t *testing.T) {
+	root := writeIgnoreTree(t, map[string]string{
+		"pkg/.gitignore": "*.tmp\n",
+	})
+	m := NewMatcher(root)
+
+	if got, _ := m.Match("pkg/scratch.tmp", false); !got {
+		t.Fatalf("nested .gitignore should ignore pkg/scratch.tmp")
+	}
+	if got, _ := m.Match("pkg/scratch.go", false); got {
+		t.Fatalf("nested .gitignore should not ignore pkg/scratch.go")
+	}
+}
+
+// TestMatcherNestedParseErrorWithoutRoot verifies the fast path still loads
+// nested .gitignore files so parse diagnostics are not lost.
+func TestMatcherNestedParseErrorWithoutRoot(t *testing.T) {
+	root := writeIgnoreTree(t, map[string]string{
+		"pkg/.gitignore": "[bad\n",
+	})
+	m := NewMatcher(root)
+
+	if got, _ := m.Match("pkg/main.go", false); got {
+		t.Fatalf("malformed nested .gitignore should not ignore pkg/main.go")
+	}
+	errs := m.ParseErrors()
+	if len(errs) != 1 || errs[0] != "pkg/.gitignore" {
+		t.Fatalf("ParseErrors = %#v, want [pkg/.gitignore]", errs)
+	}
+}
+
 // TestMatcherEmptyFile verifies an empty .gitignore matches nothing.
 func TestMatcherEmptyFile(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{

@@ -153,7 +153,7 @@ run_smoke() {
   summary_file=$(mktemp)
   trap 'rm -f "$summary_file"' RETURN
   start_ns=$(date +%s%N)
-  # gruff-go discovers .gruff.yaml from cwd, so cd into the repo for realism.
+  # gruff-go discovers .gruff-go.yaml from cwd, so cd into the repo for realism.
   (cd "$REPO_ROOT" && "$BIN" analyse --format summary-json .) > "$summary_file"
   end_ns=$(date +%s%N)
   elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
@@ -260,7 +260,7 @@ run_matrix() {
   ensure_corpus "$CORPUS_DIR/large" "$LARGE_FILES"
 
   # For apples-to-apples timing we use --no-config on every corpus so the same
-  # default-enabled rule set runs everywhere. Self timing reads its own .gruff.yaml
+  # default-enabled rule set runs everywhere. Self timing reads its own .gruff-go.yaml
   # under --smoke; matrix is for cross-corpus comparison.
   local rows=()
   for entry in "self:$REPO_ROOT" "medium:$CORPUS_DIR/medium" "large:$CORPUS_DIR/large"; do
@@ -322,6 +322,11 @@ list_rules() {
   "$BIN" list-rules 2>/dev/null | awk -F'\t' '{print $1}'
 }
 
+write_single_rule_config() {
+  # $1: output path; $2: rule id
+  printf 'selection:\n  rules:\n    - %s\n' "$2" > "$1"
+}
+
 run_sweep() {
   log ""
   log "== sweep =="
@@ -358,8 +363,8 @@ PY
   printf '%s\n' "------------------------------  ------------  ------------"
 
   # Project config applied to the medium corpus, so this is a same-input comparison
-  # against --no-config below. We point --config at the repo's .gruff.yaml.
-  local raw; raw=$(hyperfine_run "sweep-ruleset-config" "$CORPUS_DIR/medium" "$BIN analyse --config $REPO_ROOT/.gruff.yaml --format summary-json .")
+  # against --no-config below. We point --config at the repo's .gruff-go.yaml.
+  local raw; raw=$(hyperfine_run "sweep-ruleset-config" "$CORPUS_DIR/medium" "$BIN analyse --config $REPO_ROOT/.gruff-go.yaml --format summary-json .")
   python3 - "config-default" "$raw" <<'PY'
 import json, sys
 name, raw = sys.argv[1], sys.argv[2]
@@ -386,9 +391,15 @@ with open("/tmp/gruff-sweep-stash.jsonl", "a") as fh:
     fh.write(json.dumps({"dim": "ruleset", "name": name, "median_ms": median, "stddev_ms": stddev}) + "\n")
 PY
 
-  # Each rule alone via --no-config --include-rules.
+  # Each rule alone via a temporary config selection. Display filters such as
+  # --include-rules intentionally do not change analysis inputs, so they would
+  # not isolate rule execution cost here.
   for rid in $(list_rules); do
-    raw=$(hyperfine_run "sweep-rule-$rid" "$CORPUS_DIR/medium" "$BIN analyse --no-config --include-rules $rid --format summary-json .")
+    local rule_config
+    rule_config=$(mktemp "$RESULTS_DIR/rule-${rid}.XXXXXX.yaml")
+    write_single_rule_config "$rule_config" "$rid"
+    raw=$(hyperfine_run "sweep-rule-$rid" "$CORPUS_DIR/medium" "$BIN analyse --config $rule_config --format summary-json .")
+    rm -f "$rule_config"
     python3 - "$rid" "$raw" <<'PY'
 import json, sys
 name, raw = sys.argv[1], sys.argv[2]
@@ -617,7 +628,7 @@ PY
 }
 
 # ---------- arg parsing ----------
-mode_smoke=0; mode_matrix=0; mode_sweep=0; mode_compare=0; mode_baseline_update=0; ci_mode=0
+mode_smoke=0; mode_matrix=0; mode_sweep=0; mode_compare=0; mode_baseline_update=0
 if [[ $# -eq 0 ]]; then mode_smoke=1; fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -627,7 +638,6 @@ while [[ $# -gt 0 ]]; do
     --compare) mode_compare=1; mode_matrix=1; mode_sweep=1;;
     --baseline-update) mode_baseline_update=1; mode_matrix=1; mode_sweep=1;;
     --ci)
-      ci_mode=1
       REGRESSION_CORPUS_PCT=15
       REGRESSION_RULE_PCT=35
       mode_matrix=1; mode_sweep=1; mode_compare=1

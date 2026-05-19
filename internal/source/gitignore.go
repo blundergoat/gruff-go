@@ -17,14 +17,19 @@ import (
 // Git state. See `.goat-flow/decisions/ADR-004-gitignore-respecting-discovery.md`
 // and `.goat-flow/decisions/ADR-005-gitignore-matcher-implementation.md`.
 type Matcher struct {
-	rootAbs string
-	cache   map[string]*ignoreFile
+	rootAbs        string
+	cache          map[string]*ignoreFile
+	ruleChainCache map[string]bool
 }
 
 // NewMatcher builds a Matcher rooted at rootAbs. .gitignore files are loaded
 // lazily on Match calls.
 func NewMatcher(rootAbs string) *Matcher {
-	return &Matcher{rootAbs: rootAbs, cache: map[string]*ignoreFile{}}
+	return &Matcher{
+		rootAbs:        rootAbs,
+		cache:          map[string]*ignoreFile{},
+		ruleChainCache: map[string]bool{},
+	}
 }
 
 // Match reports whether rel is ignored. rel is slash-separated and relative to
@@ -36,6 +41,9 @@ func NewMatcher(rootAbs string) *Matcher {
 func (m *Matcher) Match(rel string, isDir bool) (matched bool, source string) {
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" || rel == "." {
+		return false, ""
+	}
+	if !m.hasRulesInChain(parentDir(rel)) {
 		return false, ""
 	}
 	matched, source = m.matchPath(rel, isDir)
@@ -50,6 +58,24 @@ func (m *Matcher) Match(rel string, isDir bool) (matched bool, source string) {
 		}
 	}
 	return false, source
+}
+
+// hasRulesInChain reports whether any .gitignore from root through dir exists
+// with usable rules. It still loads malformed files so ParseErrors can surface
+// them, but malformed rules do not force the slower matcher path.
+func (m *Matcher) hasRulesInChain(dir string) bool {
+	if value, ok := m.ruleChainCache[dir]; ok {
+		return value
+	}
+	for _, ancestor := range dirChain(dir) {
+		file := m.load(ancestor)
+		if file != nil && file.err == nil && len(file.rules) > 0 {
+			m.ruleChainCache[dir] = true
+			return true
+		}
+	}
+	m.ruleChainCache[dir] = false
+	return false
 }
 
 // ParseErrors returns the relative paths of .gitignore files that failed to
@@ -262,6 +288,29 @@ func ancestorChain(rel string) []string {
 		out = append(out, strings.Join(parts[:i], "/"))
 	}
 	return out
+}
+
+// dirChain returns dir plus each of its ancestors, from root downward.
+func dirChain(dir string) []string {
+	if dir == "" || dir == "." {
+		return []string{""}
+	}
+	parts := strings.Split(dir, "/")
+	out := make([]string, 0, len(parts)+1)
+	out = append(out, "")
+	for i := 1; i <= len(parts); i++ {
+		out = append(out, strings.Join(parts[:i], "/"))
+	}
+	return out
+}
+
+// parentDir returns the slash-separated directory containing rel.
+func parentDir(rel string) string {
+	index := strings.LastIndex(rel, "/")
+	if index < 0 {
+		return ""
+	}
+	return rel[:index]
 }
 
 // relPathFrom returns rel rewritten relative to dir.

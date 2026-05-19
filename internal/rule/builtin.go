@@ -109,28 +109,35 @@ func (r FunctionLengthRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits a finding for every function in the unit longer than the threshold.
-//
-// "Length" is measured in *code-bearing* lines — lines that contain at least
-// one Go token after stripping whitespace and comments. The change keeps the
-// threshold honest: a heavily documented but short function shouldn't be
-// flagged just because its doc/inline comments inflate the raw span. The
-// rule also honors a directly attached `//nolint:funlen` (or `//nolint:all`)
-// doc comment so authors can opt out of a single function without configuring
-// the rule globally.
+// AnalyzeUnit emits findings for functions longer than the threshold, measured
+// in code-bearing lines. Direct `//nolint:funlen` or `//nolint:all` doc comments
+// suppress the rule for one function without global configuration.
 func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.File.Type != source.FileTypeGo {
 		return nil
 	}
 	maxLines := r.maxLines()
+	hasCandidate := false
+	for _, fn := range unit.Functions {
+		if fn.EndLine-fn.Line+1 > maxLines {
+			hasCandidate = true
+			break
+		}
+	}
+	if !hasCandidate {
+		return nil
+	}
 	codeLines := codeBearingLines(unit.Source)
 	nolintNames := funlenNolintNames(unit.AST)
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {
+		rawLength := fn.EndLine - fn.Line + 1
+		if rawLength <= maxLines {
+			continue
+		}
 		if nolintNames[fn.Name] {
 			continue
 		}
-		rawLength := fn.EndLine - fn.Line + 1
 		length := countLinesInRange(codeLines, fn.Line, fn.EndLine)
 		if length == 0 {
 			length = rawLength
