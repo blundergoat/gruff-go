@@ -29,6 +29,7 @@ func TestDefaultsListRules(t *testing.T) {
 		"design.god-function",
 		"design.hotspot-file",
 		"docs.comment-rubric",
+		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
 		"docs.package-comment",
 		"naming.acronym-case",
@@ -61,7 +62,15 @@ func TestDefaultsListRules(t *testing.T) {
 			t.Fatalf("rules = %#v, want %#v", got, want)
 		}
 	}
+	// docs.config-field-comment ships default-disabled; all other shipped rules are default-enabled.
+	defaultDisabled := map[string]bool{"docs.config-field-comment": true}
 	for _, id := range want {
+		if defaultDisabled[id] {
+			if enabled[id] {
+				t.Fatalf("rule %s should be default disabled", id)
+			}
+			continue
+		}
 		if !enabled[id] {
 			t.Fatalf("rule %s should be default enabled", id)
 		}

@@ -15,13 +15,16 @@ import (
 )
 
 // commentRubricMinPackageCommentLines is the default minimum line count for package summaries.
+// A one-line `// Package foo …` summary passes when the rule's `requirePackageSummary` is enabled
+// and no threshold is configured. Projects that want the stricter floor opt in via `threshold: 2`.
 const (
-	commentRubricMinPackageCommentLines = 2
+	commentRubricMinPackageCommentLines = 1
 )
 
 // CommentRubricRule enforces maintainer-oriented comments for selected declaration kinds.
 type CommentRubricRule struct {
 	MinPackageCommentLines   int
+	MinWordsBeyondSymbol     int
 	IncludePaths             []string
 	ExcludePaths             []string
 	RequirePackageSummary    bool
@@ -47,7 +50,7 @@ func (r CommentRubricRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.comment-rubric",
 		Title:          "Comment rubric",
-		Description:    "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values.",
+		Description:    "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply.",
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
@@ -59,6 +62,7 @@ func (r CommentRubricRule) Definition() Definition {
 			"excludePaths":             []string{},
 			"ignoreTests":              false,
 			"includePaths":             []string{},
+			"minWordsBeyondSymbol":     0,
 			"requireConstComments":     false,
 			"requireFunctionComments":  false,
 			"requireInterfaceComments": false,
@@ -68,7 +72,7 @@ func (r CommentRubricRule) Definition() Definition {
 			"requireVarComments":       false,
 		},
 		Tags:        []string{"comments", "documentation", "opt-in", "rubric"},
-		Remediation: "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds.",
+		Remediation: "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When minWordsBeyondSymbol is set, the comment must add at least that many tokens beyond the symbol's own identifier tokens; replace name-restatement summaries with substantive context.",
 	}
 }
 
@@ -132,12 +136,16 @@ func (r CommentRubricRule) packageSummaryFindings(unit parser.Unit) []finding.Fi
 }
 
 // funcCommentFindings emits a finding when a top-level function or method has no useful attached comment.
+// The symbol passed to hasUsefulDeclarationComment is the qualified function name (Receiver.Method for
+// methods, plain name otherwise) so that minWordsBeyondSymbol counts comment tokens against the full
+// identifier set, which is what catches paraphrase boilerplate like
+// "// Definition returns the rule metadata for FooRule." on receiver methods.
 func (r CommentRubricRule) funcCommentFindings(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
-	if hasUsefulDeclarationComment(fn.Doc, fn.Name.Name) {
+	symbol := functionName(fn)
+	if hasUsefulDeclarationComment(fn.Doc, symbol, r.MinWordsBeyondSymbol) {
 		return nil
 	}
 	position := unit.FileSet.Position(fn.Name.NamePos)
-	symbol := functionName(fn)
 	return []finding.Finding{{
 		Message:  fmt.Sprintf("%s %q has no attached comment", funcKind(fn), symbol),
 		File:     unit.File.Path,
@@ -148,16 +156,19 @@ func (r CommentRubricRule) funcCommentFindings(unit parser.Unit, fn *ast.FuncDec
 }
 
 // genDeclCommentFindings dispatches to per-kind helpers for type, const, and var declarations.
+// Const and var enforcement is unconditionally suppressed on Go test files because fixture-scope
+// values rarely benefit from required comments even when the rest of the rubric stays strict.
+// IgnoreTests (whole-file exemption) is still honoured by AnalyzeUnit before this method runs.
 func (r CommentRubricRule) genDeclCommentFindings(unit parser.Unit, decl *ast.GenDecl) []finding.Finding {
 	switch decl.Tok {
 	case token.TYPE:
 		return r.typeCommentFindings(unit, decl)
 	case token.CONST:
-		if r.RequireConstComments {
+		if r.RequireConstComments && !isGoTestFile(unit.File.Path) {
 			return r.valueCommentFindings(unit, decl, "const")
 		}
 	case token.VAR:
-		if r.RequireVarComments {
+		if r.RequireVarComments && !isGoTestFile(unit.File.Path) {
 			return r.valueCommentFindings(unit, decl, "var")
 		}
 	}
@@ -169,7 +180,7 @@ func (r CommentRubricRule) typeCommentFindings(unit parser.Unit, decl *ast.GenDe
 	findings := []finding.Finding{}
 	for _, spec := range decl.Specs {
 		typeSpec, ok := spec.(*ast.TypeSpec)
-		if !ok || !r.requiresTypeComment(typeSpec) || hasUsefulTypeComment(decl, typeSpec) {
+		if !ok || !r.requiresTypeComment(typeSpec) || hasUsefulTypeComment(decl, typeSpec, r.MinWordsBeyondSymbol) {
 			continue
 		}
 		position := unit.FileSet.Position(typeSpec.Name.NamePos)
@@ -209,7 +220,7 @@ func (r CommentRubricRule) valueCommentFindings(unit parser.Unit, decl *ast.GenD
 			continue
 		}
 		for _, name := range valueSpec.Names {
-			if hasUsefulValueComment(decl, valueSpec, name.Name) {
+			if hasUsefulValueComment(decl, valueSpec, name.Name, r.MinWordsBeyondSymbol) {
 				continue
 			}
 			position := unit.FileSet.Position(name.NamePos)
@@ -253,33 +264,93 @@ func hasUsefulComment(group *ast.CommentGroup) bool {
 }
 
 // hasUsefulDeclarationComment reports whether the comment adds context beyond the symbol name itself.
-func hasUsefulDeclarationComment(group *ast.CommentGroup, symbol string) bool {
+// When minWordsBeyondSymbol is positive, the comment must additionally contribute at least that many
+// unique tokens that are not part of the symbol's own tokenised identifier set.
+func hasUsefulDeclarationComment(group *ast.CommentGroup, symbol string, minWordsBeyondSymbol int) bool {
 	if !hasUsefulComment(group) {
 		return false
 	}
-	return normalizeCommentText(group.Text()) != normalizeCommentText(symbol)
+	if normalizeCommentText(group.Text()) == normalizeCommentText(symbol) {
+		return false
+	}
+	if minWordsBeyondSymbol > 0 && commentTokensBeyondSymbol(group.Text(), symbol) < minWordsBeyondSymbol {
+		return false
+	}
+	return true
 }
 
 // hasUsefulTypeComment reports whether a type spec or its containing GenDecl supplies a useful comment.
-func hasUsefulTypeComment(decl *ast.GenDecl, spec *ast.TypeSpec) bool {
-	if hasUsefulDeclarationComment(spec.Doc, spec.Name.Name) {
+func hasUsefulTypeComment(decl *ast.GenDecl, spec *ast.TypeSpec, minWordsBeyondSymbol int) bool {
+	if hasUsefulDeclarationComment(spec.Doc, spec.Name.Name, minWordsBeyondSymbol) {
 		return true
 	}
 	if len(decl.Specs) > 1 {
 		return hasUsefulComment(decl.Doc)
 	}
-	return hasUsefulDeclarationComment(decl.Doc, spec.Name.Name)
+	return hasUsefulDeclarationComment(decl.Doc, spec.Name.Name, minWordsBeyondSymbol)
 }
 
 // hasUsefulValueComment reports whether a const or var spec or its containing GenDecl supplies a useful comment.
-func hasUsefulValueComment(decl *ast.GenDecl, spec *ast.ValueSpec, symbol string) bool {
-	if hasUsefulDeclarationComment(spec.Doc, symbol) {
+func hasUsefulValueComment(decl *ast.GenDecl, spec *ast.ValueSpec, symbol string, minWordsBeyondSymbol int) bool {
+	if hasUsefulDeclarationComment(spec.Doc, symbol, minWordsBeyondSymbol) {
 		return true
 	}
 	if len(decl.Specs) > 1 || len(spec.Names) > 1 {
 		return hasUsefulComment(decl.Doc)
 	}
-	return hasUsefulDeclarationComment(decl.Doc, symbol)
+	return hasUsefulDeclarationComment(decl.Doc, symbol, minWordsBeyondSymbol)
+}
+
+// commentTokensBeyondSymbol returns the count of unique comment tokens that do not appear in the
+// symbol's tokenised identifier set. Both inputs are first split on non-alphanumeric runs (so a
+// qualified method name like "Receiver.Method" contributes both sides to the symbol set), then each
+// word is routed through splitIdentifierTokens for camel-case-aware sub-token matching.
+func commentTokensBeyondSymbol(comment, symbol string) int {
+	symbolTokens := identifierTokenSet(symbol)
+	seen := map[string]bool{}
+	count := 0
+	for _, token := range identifierTokens(comment) {
+		if symbolTokens[token] || seen[token] {
+			continue
+		}
+		seen[token] = true
+		count++
+	}
+	return count
+}
+
+// identifierTokenSet returns the lowercased camel-case-split token set for the supplied identifier
+// (or identifier-like string). Non-alphanumeric characters are treated as word boundaries so that
+// qualified names like "Receiver.Method" contribute both halves.
+func identifierTokenSet(identifier string) map[string]bool {
+	out := map[string]bool{}
+	for _, token := range identifierTokens(identifier) {
+		out[token] = true
+	}
+	return out
+}
+
+// identifierTokens returns the ordered list of lowercased sub-tokens from an identifier or free-form
+// text. The string is first split on non-alphanumeric runs, then each word is routed through
+// splitIdentifierTokens so camel-case sub-tokens contribute separately.
+func identifierTokens(text string) []string {
+	mapped := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, text)
+	tokens := []string{}
+	for _, word := range strings.Fields(mapped) {
+		for _, token := range splitIdentifierTokens(word) {
+			lower := strings.ToLower(strings.TrimSpace(token))
+			if lower == "" {
+				continue
+			}
+			tokens = append(tokens, lower)
+		}
+	}
+	return tokens
 }
 
 // normalizeCommentText lowercases a comment, replaces non-alphanumeric characters with spaces, and collapses whitespace.

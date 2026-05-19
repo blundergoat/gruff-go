@@ -4,7 +4,15 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **`docs.comment-rubric` quality-floor option `minWordsBeyondSymbol`.** When set to a positive integer, the rule additionally requires the comment to contribute at least that many unique tokens beyond the symbol's own tokenised identifier set. Both inputs are tokenised with the same camel-case-aware splitter the acronym-case rule uses, then lowercased and de-duplicated. The check runs after the existing "comment normalises differently from the symbol" gate; both must pass. Default `0` (option off) preserves existing behaviour. Use this option to reject "name + filler" paraphrase boilerplate while still accepting substantive docs on short-named symbols.
+- **`docs.config-field-comment` rule.** New default-disabled documentation rule that flags exported fields on struct types declared inside configured `includePaths` that have no useful doc comment. Embedded and unexported fields are out of scope. The "useful comment" check is shared with `docs.comment-rubric`. Intended for user-facing configuration schema types; projects opt in by enabling the rule and setting `includePaths`.
+
+### Changed
+
+- **`docs.comment-rubric` test-file scoping.** `requireConstComments` and `requireVarComments` no longer fire on `*_test.go` files even when `ignoreTests` is false. Function, named-type, and package-summary checks continue to apply on test files unless `ignoreTests: true`. The whole-file exemption via `ignoreTests: true` is unchanged.
+- **`docs.comment-rubric` default `minPackageCommentLines` lowered from `2` to `1`.** A single-line `// Package foo …` summary now passes when `requirePackageSummary: true` and no threshold is configured. Projects with `threshold: 2` (including this repository's dogfood config) continue to use their configured value verbatim, so existing strict configurations are unaffected.
 
 ## [0.1.0] - 2026-05-19
 

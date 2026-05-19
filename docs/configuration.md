@@ -148,6 +148,10 @@ rules:
       ignoreInternalPackages: false
 
   # Enforce a stricter maintainer-comment rubric on selected files.
+  # Threshold defaults to 1 (one-line package summary OK); set to 2 for the older two-line floor.
+  # minWordsBeyondSymbol is opt-in: when set, comments that only restate the symbol name are rejected.
+  # _test.go files: requireConstComments and requireVarComments are automatically scoped away even
+  # when ignoreTests is false. Function, named-type, and package-summary checks still apply.
   docs.comment-rubric:
     enabled: true
     threshold: 2
@@ -155,11 +159,21 @@ rules:
     options:
       includePaths:
         - internal/analysis/report.go
+      minWordsBeyondSymbol: 3
       requirePackageSummary: true
       requireFunctionComments: true
       requireNamedTypeComments: true
       requireConstComments: true
       requireVarComments: true
+
+  # Require doc comments on every exported field of configuration-style struct types.
+  # Default-disabled; enable per-path via includePaths so general struct fields stay un-enforced.
+  docs.config-field-comment:
+    enabled: true
+    severity: notice
+    options:
+      includePaths:
+        - internal/config/config.go
 ```
 
 If a rule ID doesn't exist, the loader rejects the file with `config: unknown rule "x.y"`. Run `gruff-go list-rules` to print the current registry.

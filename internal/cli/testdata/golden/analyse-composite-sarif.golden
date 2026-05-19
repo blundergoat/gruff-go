@@ -158,10 +158,10 @@
                 "text": "Comment rubric"
               },
               "fullDescription": {
-                "text": "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values."
+                "text": "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply."
               },
               "help": {
-                "text": "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds."
+                "text": "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When minWordsBeyondSymbol is set, the comment must add at least that many tokens beyond the symbol's own identifier tokens; replace name-restatement summaries with substantive context."
               },
               "properties": {
                 "pillar": "documentation",
@@ -176,12 +176,13 @@
                   "rubric"
                 ],
                 "thresholds": {
-                  "minPackageCommentLines": 2
+                  "minPackageCommentLines": 1
                 },
                 "options": {
                   "excludePaths": [],
                   "ignoreTests": false,
                   "includePaths": [],
+                  "minWordsBeyondSymbol": 0,
                   "requireConstComments": false,
                   "requireFunctionComments": false,
                   "requireInterfaceComments": false,
@@ -189,6 +190,39 @@
                   "requirePackageSummary": false,
                   "requireStructComments": false,
                   "requireVarComments": false
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.config-field-comment",
+              "name": "Config field comment",
+              "shortDescription": {
+                "text": "Config field comment"
+              },
+              "fullDescription": {
+                "text": "Flags exported fields on struct types declared inside configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope. Default-disabled and intended for user-facing configuration schema types."
+              },
+              "help": {
+                "text": "Add a doc comment to every exported field of structs declared in the configured includePaths."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "comments",
+                  "documentation",
+                  "opt-in",
+                  "struct-fields"
+                ],
+                "options": {
+                  "excludePaths": [],
+                  "includePaths": []
                 }
               },
               "defaultConfiguration": {
@@ -1052,7 +1086,7 @@
         },
         {
           "ruleId": "docs.exported-symbol-comment",
-          "ruleIndex": 6,
+          "ruleIndex": 7,
           "level": "note",
           "message": {
             "text": "exported function \"Hot\" has no doc comment"
@@ -1087,7 +1121,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 24,
+          "ruleIndex": 25,
           "level": "warning",
           "message": {
             "text": "function has 8 lines, above threshold 4"

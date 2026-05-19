@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **29 rules** across **9 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **30 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
 
@@ -10,6 +10,8 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 `docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
 
+`docs.config-field-comment` is the only default-disabled rule; it enforces doc comments on every exported field of struct types declared inside its `includePaths`. Enable it for user-facing configuration types when you want every knob documented.
+
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
@@ -17,7 +19,8 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | — | Empty control-flow blocks that usually indicate unfinished code. |
 | [`design.god-function`](#designgod-function) | design | low | parser | — | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
-| [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 2` | Path-scoped maintainer comments for package summaries and declarations. |
+| [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | — | Opt-in: doc comments on every exported field of struct types inside configured `includePaths`. Default-disabled. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | — | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
@@ -134,15 +137,21 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 - **Pillar:** documentation
 - **Default severity:** low
 - **Default-enabled:** yes
-- **Threshold:** `minPackageCommentLines` (default `2`)
+- **Threshold:** `minPackageCommentLines` (default `1`)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `comments`, `documentation`, `opt-in`, `rubric`
-- **Options:** `includePaths []string`, `excludePaths []string`, `requirePackageSummary bool`, `requireFunctionComments bool`, `requireNamedTypeComments bool`, `requireStructComments bool`, `requireInterfaceComments bool`, `requireConstComments bool`, `requireVarComments bool`, `ignoreTests bool`
+- **Options:** `includePaths []string`, `excludePaths []string`, `minWordsBeyondSymbol int` (default `0`), `requirePackageSummary bool`, `requireFunctionComments bool`, `requireNamedTypeComments bool`, `requireStructComments bool`, `requireInterfaceComments bool`, `requireConstComments bool`, `requireVarComments bool`, `ignoreTests bool`
 
 Flags files that opt into a stricter maintainer-comment rubric. The rule can require a package summary with enough non-empty lines, plus directly attached comments for functions, named type declarations, package-scope constants, and package-scope variables. Local `const` and `var` declarations are not enforced.
 
-Use `includePaths` to keep the rule scoped to files where the project wants the stricter standard. `excludePaths` removes fixture or generated paths from that scoped set. `ignoreTests: true` skips `_test.go` files.
+Use `includePaths` to keep the rule scoped to files where the project wants the stricter standard. `excludePaths` removes fixture or generated paths from that scoped set. `ignoreTests: true` skips `_test.go` files entirely.
+
+**Default package summary threshold.** `minPackageCommentLines` defaults to `1`: a single-line `// Package foo …` summary passes when `requirePackageSummary: true` and no threshold is configured. Projects that want the stricter two-line floor opt in via `threshold: 2`.
+
+**Test-file scoping.** On `*_test.go` files the rule does not enforce `requireConstComments` or `requireVarComments`, even when `ignoreTests` is false. Test-scope const and var declarations rarely earn the required comment. Function, named-type, and package-summary checks continue to fire on test files unless `ignoreTests: true`.
+
+**Quality floor (`minWordsBeyondSymbol`).** When this option is positive, every required comment must add at least N unique tokens that are NOT part of the symbol's own identifier tokens. Both inputs are tokenised via the same camel-case-aware splitter the acronym-case rule uses, then lowercased and de-duplicated. The check runs after the existing "comment normalises differently from the symbol" gate; both must pass. At `0` (default) behaviour is identical to today's rule. Use this option to reject "name + filler" boilerplate like `// Definition is.` on a `Definition()` method while still accepting substantive docs on short-named symbols.
 
 ```yaml
 rules:
@@ -153,6 +162,7 @@ rules:
     options:
       includePaths:
         - internal/analysis/report.go
+      minWordsBeyondSymbol: 3
       requirePackageSummary: true
       requireFunctionComments: true
       requireNamedTypeComments: true
@@ -160,7 +170,34 @@ rules:
       requireVarComments: true
 ```
 
-**Remediation.** Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds.
+**Remediation.** Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When `minWordsBeyondSymbol` is set, replace name-restatement summaries with substantive context.
+
+### `docs.config-field-comment`
+
+- **Pillar:** documentation
+- **Default severity:** low
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `comments`, `documentation`, `opt-in`, `struct-fields`
+- **Options:** `includePaths []string`, `excludePaths []string`
+
+Flags exported fields on struct types declared inside configured `includePaths` that have no useful doc comment. The "useful comment" check is shared with `docs.comment-rubric`: the comment must exist (at least one non-empty line) and must normalise differently from the field name itself. Embedded fields (no `Names` on the `*ast.Field`) and unexported fields are out of scope and never produce findings.
+
+The rule is default-disabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule applies to every Go file; projects are expected to scope it via `includePaths` to keep noise down.
+
+```yaml
+rules:
+  docs.config-field-comment:
+    enabled: true
+    severity: notice
+    options:
+      includePaths:
+        - internal/config/config.go
+        - internal/analysis/report.go
+```
+
+**Remediation.** Add a doc comment to every exported field of structs declared in the configured `includePaths`.
 
 ### `docs.exported-symbol-comment`
 

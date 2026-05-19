@@ -13,7 +13,19 @@ func Defaults() Registry {
 
 // DefaultsConfigured returns the built-in registry after applying rule config.
 func DefaultsConfigured(config Config) (Registry, error) {
-	registry, err := NewRegistryWithComposite([]UnitRule{
+	registry, err := NewRegistryWithComposite(defaultUnitRules(config), defaultProjectRules(config), defaultCompositeRules(config))
+	if err != nil {
+		return Registry{}, err
+	}
+	registry.applyEnablement(config.Enabled)
+	registry.applySeverities(config.Severities)
+	registry.refreshActiveRules()
+	return registry, nil
+}
+
+// defaultUnitRules builds the per-unit rule slice from strict config so DefaultsConfigured stays small.
+func defaultUnitRules(config Config) []UnitRule {
+	return []UnitRule{
 		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
@@ -25,6 +37,7 @@ func DefaultsConfigured(config Config) (Registry, error) {
 		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
 		CommentRubricRule{
 			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
+			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),
 			IncludePaths:             stringSliceOption(config, "docs.comment-rubric", "includePaths"),
 			ExcludePaths:             stringSliceOption(config, "docs.comment-rubric", "excludePaths"),
 			RequirePackageSummary:    boolOption(config, "docs.comment-rubric", "requirePackageSummary", false),
@@ -37,6 +50,10 @@ func DefaultsConfigured(config Config) (Registry, error) {
 			IgnoreTests:              boolOption(config, "docs.comment-rubric", "ignoreTests", false),
 		},
 		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
+		ConfigFieldCommentRule{
+			IncludePaths: stringSliceOption(config, "docs.config-field-comment", "includePaths"),
+			ExcludePaths: stringSliceOption(config, "docs.config-field-comment", "excludePaths"),
+		},
 		PrivateKeyRule{},
 		AWSAccessKeyRule{},
 		JWTTokenRule{},
@@ -69,7 +86,12 @@ func DefaultsConfigured(config Config) (Registry, error) {
 		},
 		EmptyTestRule{},
 		NoFailurePathTestRule{},
-	}, []ProjectRule{
+	}
+}
+
+// defaultProjectRules builds the project-level rule slice from strict config.
+func defaultProjectRules(config Config) []ProjectRule {
+	return []ProjectRule{
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
 		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},
@@ -77,20 +99,18 @@ func DefaultsConfigured(config Config) (Registry, error) {
 			AllowMixed:   stringSliceOption(config, "naming.receiver-consistency", "allowMixed"),
 			InspectGroup: stringOption(config, "naming.receiver-consistency", "inspectGroup", "both"),
 		},
-	}, []CompositeRule{
+	}
+}
+
+// defaultCompositeRules builds the composite rule slice from strict config.
+func defaultCompositeRules(config Config) []CompositeRule {
+	return []CompositeRule{
 		DesignGodFunctionRule{},
 		DesignHotspotFileRule{
 			MinFindings: intThreshold(config, "design.hotspot-file", "minFindings", hotspotFileMinFindings),
 			MinPillars:  intThreshold(config, "design.hotspot-file", "minPillars", hotspotFileMinPillars),
 		},
-	})
-	if err != nil {
-		return Registry{}, err
 	}
-	registry.applyEnablement(config.Enabled)
-	registry.applySeverities(config.Severities)
-	registry.refreshActiveRules()
-	return registry, nil
 }
 
 // stringSliceOption reads a string-slice rule option from strict config.
@@ -191,4 +211,37 @@ func intThreshold(config Config, ruleID string, name string, fallback int) int {
 		return fallback
 	}
 	return int(value)
+}
+
+// intOption reads an integer rule option from strict config, accepting numeric forms (int, int64, float64).
+// Negative values fall through to the supplied fallback; zero is preserved so callers can disable a feature
+// explicitly. The strict config decoder hands integers in as int or float64 depending on the source format.
+func intOption(config Config, ruleID, key string, fallback int) int {
+	options, ok := config.Options[ruleID]
+	if !ok {
+		return fallback
+	}
+	value, ok := options[key]
+	if !ok {
+		return fallback
+	}
+	switch v := value.(type) {
+	case int:
+		if v < 0 {
+			return fallback
+		}
+		return v
+	case int64:
+		if v < 0 {
+			return fallback
+		}
+		return int(v)
+	case float64:
+		if v < 0 {
+			return fallback
+		}
+		return int(v)
+	default:
+		return fallback
+	}
 }
