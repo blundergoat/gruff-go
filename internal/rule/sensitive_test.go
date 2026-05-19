@@ -171,10 +171,10 @@ func TestConnectionStringRuleSkipsPlaceholderCredentials(t *testing.T) {
 // host is not local, or the password lacks a placeholder marker.
 func TestConnectionStringRuleStillFlagsRealLookingSecrets(t *testing.T) {
 	cases := []string{
-		`u = "postgres://app:supersecretpassword@db.internal:5432/orders"`,        // non-local host
-		`u = "postgres://app:Tr0ub4dor&3@localhost:5432/orders"`,                  // local but real-looking pass
-		`u = "postgres://service:9XmPq2VkL8wHb6Nz@localhost:5432/prod"`,           // local but high-entropy pass
-		`u = "mongodb://admin:realPassword2024@10.0.0.5:27017/app?ssl=true"`,      // private IP, real-looking
+		`u = "postgres://app:supersecretpassword@db.internal:5432/orders"`,   // non-local host
+		`u = "postgres://app:Tr0ub4dor&3@localhost:5432/orders"`,             // local but real-looking pass
+		`u = "postgres://service:9XmPq2VkL8wHb6Nz@localhost:5432/prod"`,      // local but high-entropy pass
+		`u = "mongodb://admin:realPassword2024@10.0.0.5:27017/app?ssl=true"`, // private IP, real-looking
 	}
 	for _, src := range cases {
 		t.Run(src[:32], func(t *testing.T) {

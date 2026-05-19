@@ -986,7 +986,7 @@
               ],
               "sizeFindings": 1,
               "underlyingFingerprints": [
-                "1dacf2848e817c39",
+                "6c2b61fff900ee69",
                 "d8293925f32a0f34"
               ]
             },
@@ -1038,8 +1038,8 @@
                 "size.function-length"
               ],
               "underlyingFingerprints": [
-                "1dacf2848e817c39",
                 "470a3d967e37e18b",
+                "6c2b61fff900ee69",
                 "d8293925f32a0f34"
               ]
             },
@@ -1124,7 +1124,7 @@
           "ruleIndex": 25,
           "level": "warning",
           "message": {
-            "text": "function has 8 lines, above threshold 4"
+            "text": "function has 8 code lines, above threshold 4"
           },
           "locations": [
             {
@@ -1140,13 +1140,14 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "1dacf2848e817c39"
+            "gruffFingerprint": "6c2b61fff900ee69"
           },
           "properties": {
             "confidence": "high",
-            "fingerprint": "1dacf2848e817c39",
+            "fingerprint": "6c2b61fff900ee69",
             "metadata": {
               "lines": 8,
+              "rawLines": 8,
               "threshold": 4
             },
             "pillar": "size",

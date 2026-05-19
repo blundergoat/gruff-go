@@ -23,10 +23,13 @@ var (
 
 // connectionPlaceholderPasswords are common dev/test password tokens we treat as
 // non-secrets when the connection's host is a local-development hostname.
-// Match is case-insensitive substring of the password component.
+// Match is case-insensitive substring of the password component. Including
+// short tokens like "pass" / "invalid" is intentional: localhost-targeted
+// passwords containing these substrings are nearly always fixtures, and the
+// host co-condition limits the false-positive surface.
 var connectionPlaceholderPasswords = []string{
 	"change_me", "changeme", "your_password", "your-password", "your-secret",
-	"placeholder", "example", "dummy", "fake",
+	"placeholder", "example", "dummy", "fake", "invalid", "pass",
 	"dev_password", "test_password", "dev-password", "test-password",
 	"localpass", "localpassword",
 }
