@@ -118,7 +118,16 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 	}
 }
 
-// hasFailureCall reports whether fn invokes a known testing failure helper on a *testing.T/B/F receiver.
+// hasFailureCall reports whether fn invokes either:
+//   - a known testing failure helper on a *testing.T/B/F receiver, or
+//   - an assertion helper (Assert*/Require*/Expect*/Must*/Check*) that
+//     receives the testing receiver as one of its arguments.
+//
+// The helper-call heuristic was added because most Go test suites factor
+// assertions into helpers (`testutil.AssertStatus(t, ...)`); without it the
+// rule produced a wave of false positives on otherwise well-asserted tests.
+// Requiring the helper to take the receiver as an argument keeps unrelated
+// `MustX` calls (e.g. `json.MustDecode`) from being mistaken for assertions.
 func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
 	receivers := testingReceiverNames(fn, testingPackages)
 	if len(receivers) == 0 {
@@ -133,23 +142,88 @@ func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
 		if !ok {
 			return true
 		}
-		selector, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		receiver, ok := selector.X.(*ast.Ident)
-		if !ok || !receivers[receiver.Name] {
-			return true
-		}
-		switch selector.Sel.Name {
-		case "Error", "Errorf", "Fatal", "Fatalf", "Fail", "FailNow":
+		if isReceiverFailureCall(call, receivers) {
 			found = true
-		case "Helper", "Skip", "Skipf", "SkipNow", "Log", "Logf", "Cleanup", "Parallel", "Name", "Run", "Setenv":
-			// Known non-failing helpers — keep scanning siblings.
+			return false
 		}
-		return !found
+		if isAssertionHelperCall(call, receivers) {
+			found = true
+			return false
+		}
+		return true
 	})
 	return found
+}
+
+// isReceiverFailureCall reports whether the call is `<t>.<failing-method>(...)`
+// where <t> is one of the known testing receivers.
+func isReceiverFailureCall(call *ast.CallExpr, receivers map[string]bool) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	if !ok || !receivers[receiver.Name] {
+		return false
+	}
+	switch selector.Sel.Name {
+	case "Error", "Errorf", "Fatal", "Fatalf", "Fail", "FailNow":
+		return true
+	}
+	return false
+}
+
+// isAssertionHelperCall reports whether the call looks like a third-party
+// assertion helper that will fail the test on its own. The function name must
+// begin with a known assertion prefix AND one of its arguments must be a
+// testing receiver — both halves are needed to avoid catching unrelated
+// `Must*`/`Check*` helpers that have nothing to do with testing.
+func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool) bool {
+	name := callFunctionName(call)
+	if !hasAssertionHelperPrefix(name) {
+		return false
+	}
+	for _, arg := range call.Args {
+		ident, ok := arg.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		if receivers[ident.Name] {
+			return true
+		}
+	}
+	return false
+}
+
+// callFunctionName returns the bare identifier name of a call's function,
+// whether the call is `Foo()` or `pkg.Foo()`. Returns empty string for
+// dynamic calls (e.g. closures or chained method calls).
+func callFunctionName(call *ast.CallExpr) string {
+	switch fn := call.Fun.(type) {
+	case *ast.Ident:
+		return fn.Name
+	case *ast.SelectorExpr:
+		return fn.Sel.Name
+	}
+	return ""
+}
+
+// hasAssertionHelperPrefix recognizes the common assertion-helper name shapes
+// across Go testing libraries (stdlib-style Assert*, testify-style Require*,
+// gomega/Ginkgo Expect*, builder Must*, table Check*). The prefix must be
+// followed by an uppercase character so prefixes like "Asserts" or "Mustache"
+// don't trigger.
+func hasAssertionHelperPrefix(name string) bool {
+	for _, prefix := range []string{"Assert", "Require", "Expect", "Must", "Check"} {
+		if len(name) <= len(prefix) || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		next := name[len(prefix)]
+		if next >= 'A' && next <= 'Z' {
+			return true
+		}
+	}
+	return false
 }
 
 // testingPackageNames returns the import names under which the standard "testing" package is reachable.

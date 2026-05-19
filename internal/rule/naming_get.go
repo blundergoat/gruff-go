@@ -51,24 +51,73 @@ func (r GetPrefixRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 			continue
 		}
 		position := unit.FileSet.Position(fn.Name.Pos())
+		kind := "receiver method"
+		if fn.Recv == nil {
+			kind = "context accessor"
+		}
 		findings = append(findings, finding.Finding{
-			Message:  fmt.Sprintf("method %q uses Get prefix for an accessor-style receiver method", fn.Name.Name),
+			Message:  fmt.Sprintf("function %q uses Get prefix for an accessor-style %s", fn.Name.Name, kind),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: position.Line, Column: position.Column},
 			Symbol:   fn.Name.Name,
-			Metadata: map[string]any{"method": fn.Name.Name},
+			Metadata: map[string]any{"method": fn.Name.Name, "kind": kind},
 		})
 	}
 	return findings
 }
 
-// isGetterPrefixCandidate reports whether a function declaration is an accessor-shaped Get* method.
+// isGetterPrefixCandidate reports whether a function declaration is an
+// accessor-shaped Get* function. The rule covers two shapes:
+//
+//  1. Receiver method with no parameters and a single result (or value + error).
+//     This is the classic Go convention violation.
+//  2. Free function whose only parameter is context.Context and that returns
+//     a single value (or value + error). This covers the common context-value
+//     accessor pattern (`GetLogger(ctx)`, `GetRequestID(ctx)`) where the Get
+//     prefix is just as redundant as on a method.
 func isGetterPrefixCandidate(fn *ast.FuncDecl) bool {
-	if fn.Recv == nil || !hasGetPrefix(fn.Name.Name) || fieldListCount(fn.Type.Params) != 0 {
+	if !hasGetPrefix(fn.Name.Name) {
 		return false
 	}
-	results := fieldListCount(fn.Type.Results)
-	return results == 1 || results == 2 && resultListEndsWithError(fn.Type.Results)
+	if !hasGetterResultShape(fn.Type.Results) {
+		return false
+	}
+	if fn.Recv != nil {
+		return fieldListCount(fn.Type.Params) == 0
+	}
+	return paramListIsSingleContext(fn.Type.Params)
+}
+
+// hasGetterResultShape reports whether the result list matches the
+// "single value" or "value + error" accessor convention.
+func hasGetterResultShape(results *ast.FieldList) bool {
+	count := fieldListCount(results)
+	if count == 1 {
+		return true
+	}
+	return count == 2 && resultListEndsWithError(results)
+}
+
+// paramListIsSingleContext reports whether the parameter list is a single
+// context.Context argument (with any name). We require exactly one field with
+// one name so things like `(ctx, foo context.Context)` don't match.
+func paramListIsSingleContext(params *ast.FieldList) bool {
+	if params == nil || len(params.List) != 1 {
+		return false
+	}
+	field := params.List[0]
+	if len(field.Names) != 1 {
+		return false
+	}
+	selector, ok := field.Type.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return pkg.Name == "context" && selector.Sel.Name == "Context"
 }
 
 // hasGetPrefix reports whether name starts with Get followed by an uppercase letter.

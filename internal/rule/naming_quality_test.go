@@ -203,6 +203,79 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
+// TestNoFailurePathRuleAcceptsAssertionHelpers ensures tests that delegate
+// assertions to helpers (`testutil.AssertStatus(t, ...)`, `require.NoError(t, err)`, etc.)
+// are not flagged. The helper-recognition heuristic keys on the prefix and on
+// the receiver being passed as an argument, so unrelated `MustX` calls don't
+// accidentally suppress the rule.
+func TestNoFailurePathRuleAcceptsAssertionHelpers(t *testing.T) {
+	unit := parseOne(t, "pkg/sample_test.go", `package pkg
+
+import "testing"
+
+type fakeT struct{}
+
+func MustParse(s string) int { return 0 }
+func AssertStatus(t *testing.T, got, want int) {}
+func RequireNoError(t *testing.T, err error) {}
+func ExpectEqual(t *testing.T, a, b int) {}
+func MustEqual(t *testing.T, a, b int) {}
+func CheckLen(t *testing.T, s string, n int) {}
+func helperWithoutT(s string) {}
+
+func TestAssertHelper(t *testing.T) {
+	AssertStatus(t, 200, 200)
+}
+
+func TestRequireHelper(t *testing.T) {
+	RequireNoError(t, nil)
+}
+
+func TestExpectHelper(t *testing.T) {
+	ExpectEqual(t, 1, 1)
+}
+
+func TestMustHelper(t *testing.T) {
+	MustEqual(t, 1, 1)
+}
+
+func TestCheckHelper(t *testing.T) {
+	CheckLen(t, "abc", 3)
+}
+
+func TestQualifiedAssertion(t *testing.T) {
+	helpers.AssertStatus(t, 200, 200)
+}
+
+// Should still be flagged: MustParse takes no testing receiver,
+// so the heuristic must not treat it as an assertion helper.
+func TestMustWithoutReceiver(t *testing.T) {
+	_ = MustParse("x")
+}
+
+// Should still be flagged: helper without an assertion prefix.
+func TestUnrelatedHelper(t *testing.T) {
+	helperWithoutT("x")
+}
+`)
+	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.Symbol] = true
+	}
+	if !got["TestMustWithoutReceiver"] || !got["TestUnrelatedHelper"] {
+		t.Fatalf("expected only MustWithoutReceiver + UnrelatedHelper to fire; got %#v", got)
+	}
+	for _, suppressed := range []string{
+		"TestAssertHelper", "TestRequireHelper", "TestExpectHelper",
+		"TestMustHelper", "TestCheckHelper", "TestQualifiedAssertion",
+	} {
+		if got[suppressed] {
+			t.Errorf("%s should be accepted as having a failure path", suppressed)
+		}
+	}
+}
+
 // TestTestQualityRulesDefaultEnabled asserts all test-quality rules ship enabled by default.
 func TestTestQualityRulesDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{

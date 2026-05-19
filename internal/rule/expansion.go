@@ -5,6 +5,7 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,6 +13,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
+
+// skipTodoMarkers are case-insensitive substrings we treat as evidence that a
+// `t.Skip(...)` is debt rather than a legitimate environment-not-ready guard.
+var skipTodoMarkers = []string{"todo", "fixme", "xxx", "hack", "wip"}
 
 // PackageNameUnderscoreRule flags Go package names that contain underscores.
 type PackageNameUnderscoreRule struct{}
@@ -166,14 +171,25 @@ func (SkippedTestRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for skip-call sites inside Go test files.
+//
+// A skip is considered legitimate (and therefore not flagged) when it is reachable
+// only through a conditional control-flow construct (if/for/switch/range/select),
+// since that pattern is the standard way to guard integration tests on missing
+// infrastructure. Skips inside a conditional are still flagged when their message
+// includes a TODO/FIXME-style marker so debt is not hidden behind a runtime check.
 func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
 	}
+	conditionalRegions := conditionalBodyRanges(unit.AST)
 	findings := []finding.Finding{}
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok || !isTestingSkipCall(call) {
+			return true
+		}
+		conditional := isPosInsideAny(call.Pos(), call.End(), conditionalRegions)
+		if conditional && !skipMessageMentionsDebt(call) {
 			return true
 		}
 		position := unit.FileSet.Position(call.Pos())
@@ -185,6 +201,86 @@ func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 		return true
 	})
 	return findings
+}
+
+// posRange is a half-open byte/position interval [start, end] inclusive on both
+// ends because ast.Node.End() points at one past the last character but token.Pos
+// comparison still works.
+type posRange struct {
+	start token.Pos
+	end   token.Pos
+}
+
+// conditionalBodyRanges collects the positional extents of every
+// control-flow body in the file. A `t.Skip(...)` whose call site falls inside
+// one of these ranges is reachable only when the condition holds, so we treat
+// it as a deliberate environment guard rather than test debt.
+func conditionalBodyRanges(file *ast.File) []posRange {
+	out := []posRange{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch stmt := node.(type) {
+		case *ast.IfStmt:
+			if stmt.Body != nil {
+				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
+			}
+			if stmt.Else != nil {
+				out = append(out, posRange{stmt.Else.Pos(), stmt.Else.End()})
+			}
+		case *ast.ForStmt:
+			if stmt.Body != nil {
+				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
+			}
+		case *ast.RangeStmt:
+			if stmt.Body != nil {
+				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
+			}
+		case *ast.SwitchStmt:
+			if stmt.Body != nil {
+				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
+			}
+		case *ast.TypeSwitchStmt:
+			if stmt.Body != nil {
+				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
+			}
+		case *ast.SelectStmt:
+			if stmt.Body != nil {
+				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// isPosInsideAny reports whether the supplied [start, end] range is fully
+// contained in any of the candidate ranges.
+func isPosInsideAny(start, end token.Pos, ranges []posRange) bool {
+	for _, r := range ranges {
+		if r.start <= start && end <= r.end {
+			return true
+		}
+	}
+	return false
+}
+
+// skipMessageMentionsDebt returns true when any string-literal argument to the
+// skip call carries a TODO/FIXME/XXX/HACK/WIP marker (case-insensitive). These
+// markers indicate the skip is documenting work to come, not infrastructure
+// availability, so we keep flagging them even when conditionally reachable.
+func skipMessageMentionsDebt(call *ast.CallExpr) bool {
+	for _, arg := range call.Args {
+		literal, ok := stringLiteral(arg)
+		if !ok {
+			continue
+		}
+		lower := strings.ToLower(literal)
+		for _, marker := range skipTodoMarkers {
+			if strings.Contains(lower, marker) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // isControlFlowBlock reports whether the block is the body of an if/for/switch/select construct.

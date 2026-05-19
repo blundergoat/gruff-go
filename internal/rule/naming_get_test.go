@@ -57,6 +57,43 @@ func (s Store) GetUser() User { return User{} }
 	}
 }
 
+// TestGetPrefixFlagsContextAccessorFunctions asserts the rule also catches the
+// context-value accessor pattern (`GetLogger(ctx)`) at free-function scope.
+// Other free-function shapes — including zero-param `GetGlobal` and variadic
+// or multi-param signatures — must remain unflagged.
+func TestGetPrefixFlagsContextAccessorFunctions(t *testing.T) {
+	unit := parseOne(t, "pkg/ctx.go", `package pkg
+
+import "context"
+
+type Logger struct{}
+type RequestID string
+type Config struct{}
+
+func GetLogger(ctx context.Context) *Logger { return nil }
+func GetRequestID(ctx context.Context) RequestID { return "" }
+func GetConfig(ctx context.Context) (Config, error) { return Config{}, nil }
+
+// Free functions outside the new pattern stay untouched:
+func GetGlobalLogger() *Logger { return nil }
+func GetByID(ctx context.Context, id string) *Logger { return nil }
+func GetMany(ctx context.Context) (*Logger, *Logger, error) { return nil, nil, nil }
+`)
+	findings := GetPrefixRule{}.AnalyzeUnit(unit, Context{})
+	got := findingSymbols(findings)
+	want := map[string]bool{"GetLogger": true, "GetRequestID": true, "GetConfig": true}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("expected %s to be flagged", name)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("unexpected finding for %s", name)
+		}
+	}
+}
+
 // TestGetPrefixIsDefaultEnabled confirms the rule is enabled by default with parser capability.
 func TestGetPrefixIsDefaultEnabled(t *testing.T) {
 	if !(GetPrefixRule{}).Definition().DefaultEnabled {

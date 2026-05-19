@@ -21,6 +21,22 @@ var (
 	connectionPattern = regexp.MustCompile(`(?i)\b(postgres|postgresql|mysql|mongodb|mongodb\+srv|redis|amqp|amqps)://[^:\s/@]+:[^@\s/]+@[^\s]+`)
 )
 
+// connectionPlaceholderPasswords are common dev/test password tokens we treat as
+// non-secrets when the connection's host is a local-development hostname.
+// Match is case-insensitive substring of the password component.
+var connectionPlaceholderPasswords = []string{
+	"change_me", "changeme", "your_password", "your-password", "your-secret",
+	"placeholder", "example", "dummy", "fake",
+	"dev_password", "test_password", "dev-password", "test-password",
+	"localpass", "localpassword",
+}
+
+// connectionLocalHosts are hostnames we consider "obviously local development"
+// for the purpose of skipping placeholder credentials.
+var connectionLocalHosts = []string{
+	"localhost", "127.0.0.1", "::1", "0.0.0.0", "db", "database", "postgres",
+}
+
 // PrivateKeyRule flags PEM-encoded private keys embedded in source or text files.
 type PrivateKeyRule struct{}
 
@@ -109,17 +125,72 @@ func (ConnectionStringRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for connection URIs containing embedded passwords.
+// Skips obvious dev/test placeholder credentials targeting localhost-like hosts.
 func (ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, connectionPattern, "connection string with embedded password detected")
+	raw := scanLinesForSecret(unit, connectionPattern, "connection string with embedded password detected")
+	if len(raw) == 0 {
+		return raw
+	}
+	lines := strings.Split(unit.Source, "\n")
+	out := make([]finding.Finding, 0, len(raw))
+	for _, item := range raw {
+		if item.Location == nil || item.Location.Line < 1 || item.Location.Line > len(lines) {
+			out = append(out, item)
+			continue
+		}
+		match := connectionPattern.FindString(lines[item.Location.Line-1])
+		if match != "" && isPlaceholderConnectionString(match) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // scanLinesForSecret walks the unit source line by line, emitting a finding for each pattern match.
+// Lines that are entirely Go comments, or that carry a suppression annotation
+// (`#nosec`, `//nolint:gosec`, `//nolint:all`), are skipped to keep noise down
+// in dev/test fixtures and inline documentation.
 func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string) []finding.Finding {
 	if unit.Source == "" {
 		return nil
 	}
 	findings := []finding.Finding{}
+	inBlockComment := false
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		// Track multi-line /* ... */ block comments. If the line both opens and
+		// closes a block, treat it as comment-only when there's no following code.
+		if inBlockComment {
+			if idx := strings.Index(line, "*/"); idx >= 0 {
+				inBlockComment = false
+				after := strings.TrimSpace(line[idx+2:])
+				if after == "" {
+					continue
+				}
+				line = line[idx+2:]
+				trimmed = strings.TrimLeft(line, " \t")
+			} else {
+				continue
+			}
+		}
+		if strings.HasPrefix(trimmed, "/*") {
+			closeIdx := strings.Index(trimmed[2:], "*/")
+			if closeIdx < 0 {
+				inBlockComment = true
+				continue
+			}
+			after := strings.TrimSpace(trimmed[closeIdx+4:])
+			if after == "" {
+				continue
+			}
+		}
+		if strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		if hasSecretSuppressionAnnotation(line) {
+			continue
+		}
 		match := pattern.FindString(line)
 		if match == "" {
 			continue
@@ -132,4 +203,94 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 		})
 	}
 	return findings
+}
+
+// hasSecretSuppressionAnnotation reports whether a source line carries an
+// inline suppression marker. gruff-go honors both gosec's `#nosec` form and
+// golangci-lint's `//nolint:gosec` / `//nolint:all` forms so authors don't have
+// to add a tool-specific annotation just for this scanner.
+func hasSecretSuppressionAnnotation(line string) bool {
+	if strings.Contains(line, "#nosec") {
+		return true
+	}
+	if !strings.Contains(line, "//nolint") {
+		return false
+	}
+	idx := strings.Index(line, "//nolint")
+	rest := line[idx+len("//nolint"):]
+	if rest == "" || rest[0] != ':' {
+		return false
+	}
+	rest = rest[1:]
+	if i := strings.IndexAny(rest, " \t/"); i >= 0 {
+		rest = rest[:i]
+	}
+	for _, name := range strings.Split(rest, ",") {
+		name = strings.TrimSpace(name)
+		if name == "gosec" || name == "all" {
+			return true
+		}
+	}
+	return false
+}
+
+// isPlaceholderConnectionString returns true when the URL embeds an obvious
+// dev/test placeholder password AND points at a localhost-style host. Both
+// halves are required so we don't silently swallow a real production secret
+// that happens to mention a placeholder word.
+func isPlaceholderConnectionString(connStr string) bool {
+	password, host, ok := splitConnectionURL(connStr)
+	if !ok {
+		return false
+	}
+	if !stringEqualsAny(host, connectionLocalHosts) {
+		return false
+	}
+	lowerPass := strings.ToLower(password)
+	for _, marker := range connectionPlaceholderPasswords {
+		if strings.Contains(lowerPass, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitConnectionURL extracts the password and bare host out of
+// scheme://user:password@host[:port][/path][?query], returning ok=false when
+// the URL is malformed.
+func splitConnectionURL(connStr string) (password, host string, ok bool) {
+	schemeEnd := strings.Index(connStr, "://")
+	if schemeEnd < 0 {
+		return "", "", false
+	}
+	rest := connStr[schemeEnd+3:]
+	atIdx := strings.LastIndex(rest, "@")
+	if atIdx < 0 {
+		return "", "", false
+	}
+	userPass := rest[:atIdx]
+	hostPart := rest[atIdx+1:]
+	colonIdx := strings.LastIndex(userPass, ":")
+	if colonIdx < 0 {
+		return "", "", false
+	}
+	password = userPass[colonIdx+1:]
+	host = hostPart
+	for _, sep := range []string{":", "/", "?"} {
+		if idx := strings.Index(host, sep); idx >= 0 {
+			host = host[:idx]
+			break
+		}
+	}
+	return password, host, true
+}
+
+// stringEqualsAny reports whether value matches any element of options.
+func stringEqualsAny(value string, options []string) bool {
+	for _, opt := range options {
+		if value == opt {
+			return true
+		}
+	}
+	return false
 }

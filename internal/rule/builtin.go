@@ -5,6 +5,8 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"go/scanner"
+	"go/token"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -108,23 +110,40 @@ func (r FunctionLengthRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits a finding for every function in the unit longer than the threshold.
+//
+// "Length" is measured in *code-bearing* lines — lines that contain at least
+// one Go token after stripping whitespace and comments. The change keeps the
+// threshold honest: a heavily documented but short function shouldn't be
+// flagged just because its doc/inline comments inflate the raw span. The
+// rule also honors a directly attached `//nolint:funlen` (or `//nolint:all`)
+// doc comment so authors can opt out of a single function without configuring
+// the rule globally.
 func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.File.Type != source.FileTypeGo {
 		return nil
 	}
 	maxLines := r.maxLines()
+	codeLines := codeBearingLines(unit.Source)
+	nolintNames := funlenNolintNames(unit.AST)
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {
-		length := fn.EndLine - fn.Line + 1
+		if nolintNames[fn.Name] {
+			continue
+		}
+		rawLength := fn.EndLine - fn.Line + 1
+		length := countLinesInRange(codeLines, fn.Line, fn.EndLine)
+		if length == 0 {
+			length = rawLength
+		}
 		if length <= maxLines {
 			continue
 		}
-		metadata := map[string]any{"lines": length, "threshold": maxLines}
+		metadata := map[string]any{"lines": length, "threshold": maxLines, "rawLines": rawLength}
 		if isGoTestFile(unit.File.Path) {
 			metadata["testFile"] = true
 		}
 		findings = append(findings, finding.Finding{
-			Message:  fmt.Sprintf("function has %d lines, above threshold %d", length, maxLines),
+			Message:  fmt.Sprintf("function has %d code lines, above threshold %d", length, maxLines),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: fn.Line, EndLine: fn.EndLine},
 			Symbol:   fn.Name,
@@ -132,6 +151,123 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		})
 	}
 	return findings
+}
+
+// codeBearingLines runs go/scanner over the source and returns the set of
+// 1-based line numbers that hold at least one non-comment, non-whitespace
+// token. Blank lines, doc-only lines, and lines inside `/* */` blocks are
+// excluded. Returns nil for non-Go input or empty source.
+func codeBearingLines(src string) map[int]bool {
+	if src == "" {
+		return nil
+	}
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(src))
+	var s scanner.Scanner
+	// Suppress scanner errors: this rule should never fail because a partial
+	// parse left junk behind; we only want token-line positions.
+	s.Init(file, []byte(src), func(token.Position, string) {}, 0)
+	out := map[int]bool{}
+	for {
+		pos, tok, _ := s.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.ILLEGAL {
+			continue
+		}
+		out[file.Position(pos).Line] = true
+	}
+	return out
+}
+
+// countLinesInRange returns how many lines in [start, end] are code-bearing.
+// When codeLines is nil (e.g. for non-Go input) the caller substitutes the raw
+// span, so we don't silently emit zero-length findings.
+func countLinesInRange(codeLines map[int]bool, start, end int) int {
+	if codeLines == nil {
+		return 0
+	}
+	count := 0
+	for line := start; line <= end; line++ {
+		if codeLines[line] {
+			count++
+		}
+	}
+	return count
+}
+
+// funlenNolintNames walks the file's function declarations and returns the
+// names (matching parser.Function.Name, including the receiver prefix for
+// methods) of those carrying a directly attached `//nolint:funlen` or
+// `//nolint:all` directive in their doc comment. golangci-lint's broader nolint
+// syntax (block-scoped directives, etc.) is intentionally not supported here —
+// this is the narrow opt-out for a single function decl.
+func funlenNolintNames(file *ast.File) map[string]bool {
+	out := map[string]bool{}
+	if file == nil {
+		return out
+	}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Doc == nil {
+			continue
+		}
+		if !docMentionsFunlenNolint(fn.Doc) {
+			continue
+		}
+		out[funcDeclSymbol(fn)] = true
+	}
+	return out
+}
+
+// docMentionsFunlenNolint reports whether a comment group contains a
+// `//nolint:funlen`-style suppression entry. The parsing is intentionally
+// liberal so reasonable variations (`//nolint: funlen`, `//nolint:funlen,goconst`,
+// trailing explanatory `// reason`) all match.
+func docMentionsFunlenNolint(doc *ast.CommentGroup) bool {
+	for _, c := range doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+		if !strings.HasPrefix(text, "nolint") {
+			continue
+		}
+		rest := strings.TrimPrefix(text, "nolint")
+		if rest == "" {
+			return true
+		}
+		if rest[0] != ':' {
+			continue
+		}
+		rest = rest[1:]
+		if i := strings.IndexAny(rest, " \t/"); i >= 0 {
+			rest = rest[:i]
+		}
+		for _, name := range strings.Split(rest, ",") {
+			name = strings.TrimSpace(name)
+			if name == "funlen" || name == "all" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// funcDeclSymbol mirrors parser.functions' Name construction so nolint lookups
+// align with the names attached to parser.Function entries.
+func funcDeclSymbol(fn *ast.FuncDecl) string {
+	name := fn.Name.Name
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return name
+	}
+	switch expr := fn.Recv.List[0].Type.(type) {
+	case *ast.Ident:
+		return expr.Name + "." + name
+	case *ast.StarExpr:
+		if ident, ok := expr.X.(*ast.Ident); ok {
+			return ident.Name + "." + name
+		}
+	}
+	return "receiver." + name
 }
 
 // CyclomaticComplexityRule flags Go functions with cyclomatic complexity above the threshold.

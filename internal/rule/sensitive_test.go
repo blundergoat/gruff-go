@@ -97,6 +97,98 @@ func TestSensitiveDetectorsAreCleanOnInnocuousInput(t *testing.T) {
 	}
 }
 
+// TestScanLinesForSecretSkipsComments asserts comment-only lines do not trigger findings.
+// This keeps "format: postgres://user:password@host" doc snippets from looking like leaks.
+func TestScanLinesForSecretSkipsComments(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{name: "line comment", source: "// Example: postgres://app:supersecretpassword@db.internal:5432/orders\n"},
+		{name: "godoc tab indent", source: "//\tpostgres://app:supersecretpassword@db.internal:5432/orders\n"},
+		{name: "block comment one line", source: "/* postgres://app:supersecretpassword@db.internal:5432/orders */\n"},
+		{name: "block comment multi line", source: "/*\npostgres://app:supersecretpassword@db.internal:5432/orders\n*/\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "doc.go", Type: source.FileTypeGo},
+				Source: tc.source,
+			}
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("expected no findings on comment-only source, got %#v", got)
+			}
+		})
+	}
+}
+
+// TestScanLinesForSecretHonoursSuppressions asserts inline annotations silence findings.
+// gosec's `#nosec` and golangci-lint's `//nolint:gosec` / `//nolint:all` are both honored.
+func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
+	cases := []string{
+		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders // #nosec G101 -- fixture",
+		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders //nolint:gosec",
+		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders //nolint:gosec,goconst",
+		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders //nolint:all",
+	}
+	for _, line := range cases {
+		t.Run(line[:20], func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "main.go", Type: source.FileTypeGo},
+				Source: line + "\n",
+			}
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("expected suppressed line to produce no findings, got %#v", got)
+			}
+		})
+	}
+}
+
+// TestConnectionStringRuleSkipsPlaceholderCredentials asserts dev fixtures pointing at
+// localhost-style hosts with obvious placeholder passwords are not flagged.
+func TestConnectionStringRuleSkipsPlaceholderCredentials(t *testing.T) {
+	cases := []string{
+		`const u = "postgres://app:dev_password_change_me@localhost:5432/orders"`,
+		`const u = "postgres://app:changeme@127.0.0.1:5432/orders"`,
+		`const u = "postgres://app:your-password@db:5432/orders"`,
+		`const u = "postgres://app:placeholder@localhost/orders"`,
+	}
+	for _, src := range cases {
+		t.Run(src[:32], func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "fixture.go", Type: source.FileTypeGo},
+				Source: src + "\n",
+			}
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("expected placeholder credential to be skipped, got %#v", got)
+			}
+		})
+	}
+}
+
+// TestConnectionStringRuleStillFlagsRealLookingSecrets asserts the placeholder
+// heuristic does not swallow credentials that look like production: either the
+// host is not local, or the password lacks a placeholder marker.
+func TestConnectionStringRuleStillFlagsRealLookingSecrets(t *testing.T) {
+	cases := []string{
+		`u = "postgres://app:supersecretpassword@db.internal:5432/orders"`,        // non-local host
+		`u = "postgres://app:Tr0ub4dor&3@localhost:5432/orders"`,                  // local but real-looking pass
+		`u = "postgres://service:9XmPq2VkL8wHb6Nz@localhost:5432/prod"`,           // local but high-entropy pass
+		`u = "mongodb://admin:realPassword2024@10.0.0.5:27017/app?ssl=true"`,      // private IP, real-looking
+	}
+	for _, src := range cases {
+		t.Run(src[:32], func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "fixture.go", Type: source.FileTypeGo},
+				Source: src + "\n",
+			}
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+				t.Fatalf("expected one finding on real-looking secret, got %#v", got)
+			}
+		})
+	}
+}
+
 func assertNoRawSecret(t *testing.T, item finding.Finding, raw string) {
 	t.Helper()
 	if strings.Contains(item.Message, raw) {
