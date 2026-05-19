@@ -1,3 +1,5 @@
+// Package dashboard test helpers expose shared utilities for server tests.
+// They keep listener and fixture boilerplate out of individual test files.
 package dashboard
 
 import "net"

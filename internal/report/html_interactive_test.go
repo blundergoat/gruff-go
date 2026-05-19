@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file holds tests for the interactive HTML report's filter UI.
 package report
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestWriteHTMLFindingRowsCarryDataAttributes asserts the static report still emits filter data attributes.
 func TestWriteHTMLFindingRowsCarryDataAttributes(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -27,6 +30,7 @@ func TestWriteHTMLFindingRowsCarryDataAttributes(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLInteractiveEmitsFilterForm verifies the interactive report renders the filter form and findings list.
 func TestWriteHTMLInteractiveEmitsFilterForm(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -56,6 +60,7 @@ func TestWriteHTMLInteractiveEmitsFilterForm(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLNonInteractiveOmitsScript verifies the static report omits the interactive script and filter markers.
 func TestWriteHTMLNonInteractiveOmitsScript(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -75,6 +80,7 @@ func TestWriteHTMLNonInteractiveOmitsScript(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLInteractiveSeverityOptionOrder asserts severity options appear in canonical priority order.
 func TestWriteHTMLInteractiveSeverityOptionOrder(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -99,6 +105,7 @@ func TestWriteHTMLInteractiveSeverityOptionOrder(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLInteractivePillarOptionsSortedAndDeduped asserts pillar options are alphabetical and de-duplicated.
 func TestWriteHTMLInteractivePillarOptionsSortedAndDeduped(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -125,6 +132,7 @@ func TestWriteHTMLInteractivePillarOptionsSortedAndDeduped(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLInteractiveCountReflectsAllFindings asserts the filter count starts at the full finding total.
 func TestWriteHTMLInteractiveCountReflectsAllFindings(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer

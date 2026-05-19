@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file holds the machine-readable reporters: summary JSON, SARIF, and GitHub annotations.
 package report
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// WriteSummaryJSON writes a compact JSON envelope containing scoring and metadata but no per-finding rows.
 func WriteSummaryJSON(writer io.Writer, report analysis.Report) error {
 	payload := struct {
 		SchemaVersion string                        `json:"schemaVersion"`
@@ -35,6 +38,7 @@ func WriteSummaryJSON(writer io.Writer, report analysis.Report) error {
 	return WriteJSON(writer, payload)
 }
 
+// WriteSARIF writes the report as a SARIF 2.1.0 log including rule definitions, results, and run properties.
 func WriteSARIF(writer io.Writer, report analysis.Report) error {
 	payload := sarifLog{
 		Version: "2.1.0",
@@ -52,6 +56,7 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 	return WriteJSON(writer, payload)
 }
 
+// WriteGitHub writes each finding as a GitHub workflow annotation command on its own line.
 func WriteGitHub(writer io.Writer, report analysis.Report) error {
 	for _, item := range report.Findings {
 		level := githubLevel(item.Severity)
@@ -65,28 +70,33 @@ func WriteGitHub(writer io.Writer, report analysis.Report) error {
 	return nil
 }
 
+// sarifLog is the top-level SARIF document envelope.
 type sarifLog struct {
 	Version string     `json:"version"`
 	Schema  string     `json:"$schema"`
 	Runs    []sarifRun `json:"runs"`
 }
 
+// sarifRun captures a single analyser run within the SARIF log.
 type sarifRun struct {
 	Tool       sarifTool          `json:"tool"`
 	Results    []sarifResult      `json:"results"`
 	Properties sarifRunProperties `json:"properties"`
 }
 
+// sarifTool describes the analyser tool block in a SARIF run.
 type sarifTool struct {
 	Driver sarifDriver `json:"driver"`
 }
 
+// sarifDriver names the analyser tool and lists the rules it can emit.
 type sarifDriver struct {
 	Name            string      `json:"name"`
 	SemanticVersion string      `json:"semanticVersion,omitempty"`
 	Rules           []sarifRule `json:"rules"`
 }
 
+// sarifRule mirrors the SARIF reportingDescriptor object for a single rule.
 type sarifRule struct {
 	ID                   string                    `json:"id"`
 	Name                 string                    `json:"name"`
@@ -97,10 +107,12 @@ type sarifRule struct {
 	DefaultConfiguration sarifDefaultConfiguration `json:"defaultConfiguration"`
 }
 
+// sarifDefaultConfiguration mirrors the SARIF defaultConfiguration object on a rule.
 type sarifDefaultConfiguration struct {
 	Level string `json:"level"`
 }
 
+// sarifRuleProperty carries the gruff-specific rule metadata under SARIF properties.
 type sarifRuleProperty struct {
 	Pillar           finding.Pillar     `json:"pillar"`
 	SecondaryPillars []finding.Pillar   `json:"secondaryPillars,omitempty"`
@@ -113,10 +125,12 @@ type sarifRuleProperty struct {
 	Options          map[string]any     `json:"options,omitempty"`
 }
 
+// sarifText is the SARIF multi-format string container used for messages and descriptions.
 type sarifText struct {
 	Text string `json:"text"`
 }
 
+// sarifResult mirrors a single SARIF result entry corresponding to one finding.
 type sarifResult struct {
 	RuleID              string            `json:"ruleId"`
 	RuleIndex           *int              `json:"ruleIndex,omitempty"`
@@ -127,31 +141,37 @@ type sarifResult struct {
 	Properties          map[string]any    `json:"properties"`
 }
 
+// sarifRunProperties carries gruff-go metadata at the SARIF run level.
 type sarifRunProperties struct {
 	GruffSchemaVersion string `json:"gruffSchemaVersion"`
 	Score              int    `json:"score"`
 	Grade              string `json:"grade"`
 }
 
+// sarifLocation wraps a physical location reference for a SARIF result.
 type sarifLocation struct {
 	PhysicalLocation sarifPhysicalLocation `json:"physicalLocation"`
 }
 
+// sarifPhysicalLocation captures the file artefact and optional region of a SARIF location.
 type sarifPhysicalLocation struct {
 	ArtifactLocation sarifArtifactLocation `json:"artifactLocation"`
 	Region           *sarifRegion          `json:"region,omitempty"`
 }
 
+// sarifArtifactLocation references the source artefact for a SARIF location.
 type sarifArtifactLocation struct {
 	URI string `json:"uri"`
 }
 
+// sarifRegion describes the line and column span associated with a SARIF result.
 type sarifRegion struct {
 	StartLine   int `json:"startLine,omitempty"`
 	StartColumn int `json:"startColumn,omitempty"`
 	EndLine     int `json:"endLine,omitempty"`
 }
 
+// sarifRules converts gruff rule definitions into SARIF reportingDescriptor entries.
 func sarifRules(definitions []rule.Definition) []sarifRule {
 	out := make([]sarifRule, 0, len(definitions))
 	for _, definition := range definitions {
@@ -180,6 +200,7 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 	return out
 }
 
+// sarifResults converts findings into SARIF results, indexing each entry into the driver rule list.
 func sarifResults(findings []finding.Finding, definitions []rule.Definition) []sarifResult {
 	ruleIndices := map[string]int{}
 	for index, definition := range definitions {
@@ -225,6 +246,7 @@ func sarifResults(findings []finding.Finding, definitions []rule.Definition) []s
 	return out
 }
 
+// sarifRegionFromFinding produces a SARIF region from a finding location, or nil when the line is unknown.
 func sarifRegionFromFinding(item finding.Finding) *sarifRegion {
 	if item.Location == nil || item.Location.Line == 0 {
 		return nil
@@ -237,6 +259,7 @@ func sarifRegionFromFinding(item finding.Finding) *sarifRegion {
 	return &region
 }
 
+// sarifURI normalises a report file path into a forward-slash, dot-stripped SARIF URI.
 func sarifURI(path string) string {
 	path = strings.ReplaceAll(path, "\\", "/")
 	for strings.HasPrefix(path, "./") {
@@ -245,6 +268,7 @@ func sarifURI(path string) string {
 	return path
 }
 
+// sarifRunPropertiesFromReport copies gruff schema, score, and grade into SARIF run properties.
 func sarifRunPropertiesFromReport(report analysis.Report) sarifRunProperties {
 	return sarifRunProperties{
 		GruffSchemaVersion: report.SchemaVersion,
@@ -253,6 +277,7 @@ func sarifRunPropertiesFromReport(report analysis.Report) sarifRunProperties {
 	}
 }
 
+// sarifLevel maps a gruff severity onto the matching SARIF level string.
 func sarifLevel(severity finding.Severity) string {
 	switch severity {
 	case finding.SeverityCritical, finding.SeverityHigh:
@@ -264,6 +289,7 @@ func sarifLevel(severity finding.Severity) string {
 	}
 }
 
+// githubLevel maps a gruff severity onto the corresponding GitHub annotation level.
 func githubLevel(severity finding.Severity) string {
 	switch severity {
 	case finding.SeverityCritical, finding.SeverityHigh:
@@ -275,6 +301,7 @@ func githubLevel(severity finding.Severity) string {
 	}
 }
 
+// githubLocation builds the comma-separated location parameters for a GitHub annotation command.
 func githubLocation(item finding.Finding) string {
 	parts := []string{"file=" + escapeGitHubProperty(item.File)}
 	if item.Location != nil && item.Location.Line > 0 {
@@ -289,6 +316,7 @@ func githubLocation(item finding.Finding) string {
 	return strings.Join(parts, ",") + ","
 }
 
+// escapeGitHubMessage percent-encodes characters that break GitHub workflow command parsing.
 func escapeGitHubMessage(value string) string {
 	value = strings.ReplaceAll(value, "%", "%25")
 	value = strings.ReplaceAll(value, "\r", "%0D")
@@ -296,6 +324,7 @@ func escapeGitHubMessage(value string) string {
 	return value
 }
 
+// escapeGitHubProperty extends escapeGitHubMessage with separator escapes for annotation property values.
 func escapeGitHubProperty(value string) string {
 	value = escapeGitHubMessage(value)
 	value = strings.ReplaceAll(value, ":", "%3A")

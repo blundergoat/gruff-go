@@ -1,3 +1,5 @@
+// Package source gitignore matcher applies repository-local .gitignore rules.
+// It is consumed by Discover to skip files Git would normally ignore.
 package source
 
 import (
@@ -63,6 +65,7 @@ func (m *Matcher) ParseErrors() []string {
 	return out
 }
 
+// matchPath walks the ancestor chain and evaluates rules from each .gitignore.
 func (m *Matcher) matchPath(rel string, isDir bool) (bool, string) {
 	chain := ancestorChain(rel)
 	matched := false
@@ -86,6 +89,7 @@ func (m *Matcher) matchPath(rel string, isDir bool) (bool, string) {
 	return matched, source
 }
 
+// load reads and caches the .gitignore file at the given directory.
 func (m *Matcher) load(dir string) *ignoreFile {
 	if existing, ok := m.cache[dir]; ok {
 		return existing
@@ -101,12 +105,14 @@ func (m *Matcher) load(dir string) *ignoreFile {
 	return file
 }
 
+// ignoreFile holds the parsed rules from a single .gitignore file.
 type ignoreFile struct {
 	dir   string
 	rules []ignoreRule
 	err   error
 }
 
+// ignoreRule represents one .gitignore pattern with parsed flags.
 type ignoreRule struct {
 	raw      string
 	negation bool
@@ -115,6 +121,7 @@ type ignoreRule struct {
 	parts    []string
 }
 
+// parseIgnoreFile parses .gitignore text into rules attached to the given directory.
 func parseIgnoreFile(dir, text string) *ignoreFile {
 	file := &ignoreFile{dir: dir}
 	for _, raw := range strings.Split(text, "\n") {
@@ -137,6 +144,7 @@ func parseIgnoreFile(dir, text string) *ignoreFile {
 	return file
 }
 
+// parseIgnoreRule converts a single .gitignore line into a structured ignoreRule.
 func parseIgnoreRule(raw string) (ignoreRule, error) {
 	rule := ignoreRule{raw: raw}
 	line := raw
@@ -176,6 +184,7 @@ func parseIgnoreRule(raw string) (ignoreRule, error) {
 	return rule, nil
 }
 
+// match reports whether the rule applies to the given relative path.
 func (r ignoreRule) match(rel string) bool {
 	if rel == "" {
 		return false
@@ -192,6 +201,7 @@ func (r ignoreRule) match(rel string) bool {
 	return false
 }
 
+// matchSegmentsAt recursively matches pattern segments against path segments.
 func matchSegmentsAt(pat []string, pi int, seg []string, si int) bool {
 	for pi < len(pat) {
 		if pat[pi] == "**" {
@@ -218,6 +228,7 @@ func matchSegmentsAt(pat []string, pi int, seg []string, si int) bool {
 	return si == len(seg)
 }
 
+// trimUnescapedTrailingWhitespace strips trailing whitespace that is not backslash-escaped.
 func trimUnescapedTrailingWhitespace(line string) string {
 	end := len(line)
 	for end > 0 {
@@ -234,6 +245,7 @@ func trimUnescapedTrailingWhitespace(line string) string {
 	return line[:end]
 }
 
+// escaped reports whether the character at index is preceded by an odd number of backslashes.
 func escaped(line string, index int) bool {
 	backslashes := 0
 	for i := index - 1; i >= 0 && line[i] == '\\'; i-- {
@@ -242,6 +254,7 @@ func escaped(line string, index int) bool {
 	return backslashes%2 == 1
 }
 
+// ancestorChain returns the directory ancestors of rel, from root down to its parent.
 func ancestorChain(rel string) []string {
 	parts := strings.Split(rel, "/")
 	out := []string{""}
@@ -251,6 +264,7 @@ func ancestorChain(rel string) []string {
 	return out
 }
 
+// relPathFrom returns rel rewritten relative to dir.
 func relPathFrom(dir, rel string) string {
 	if dir == "" {
 		return rel
@@ -258,6 +272,7 @@ func relPathFrom(dir, rel string) string {
 	return strings.TrimPrefix(rel, dir+"/")
 }
 
+// joinIgnorePath joins a directory and ignore file name with a slash separator.
 func joinIgnorePath(dir, name string) string {
 	if dir == "" {
 		return name

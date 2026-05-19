@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the naming.negated-boolean rule.
 package rule
 
 import (
@@ -10,16 +12,20 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// defaultNegatedBooleanPrefixes lists prefixes treated as negations on exported booleans by default.
 var defaultNegatedBooleanPrefixes = []string{"No", "Not", "Disable", "Disallow", "Without", "Suppress"}
 
+// defaultNegatedBooleanAllowList enumerates identifiers that look negated but are accepted as-is.
 var defaultNegatedBooleanAllowList = []string{"NoOp", "Notify", "Notice", "Now", "NoCopy", "Notation", "Notebook"}
 
+// NegatedBooleanRule flags boolean identifiers whose names start with negation prefixes.
 type NegatedBooleanRule struct {
 	Prefixes  []string
 	AllowList []string
 	Scope     string
 }
 
+// Definition returns the rule metadata for NegatedBooleanRule.
 func (r NegatedBooleanRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.negated-boolean",
@@ -40,6 +46,7 @@ func (r NegatedBooleanRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit scans the unit for negated boolean identifiers in scope.
 func (r NegatedBooleanRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -60,12 +67,14 @@ func (r NegatedBooleanRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 	return findings
 }
 
+// negatedContext bundles the prefix list, allow-list, and active scope for a scan.
 type negatedContext struct {
 	prefixes []string
 	allow    map[string]bool
 	scope    string
 }
 
+// buildContext resolves rule options into a negatedContext ready for traversal.
 func (r NegatedBooleanRule) buildContext() *negatedContext {
 	prefixes := r.prefixSet()
 	if len(prefixes) == 0 {
@@ -78,6 +87,7 @@ func (r NegatedBooleanRule) buildContext() *negatedContext {
 	}
 }
 
+// check evaluates a single identifier against the scope, prefix, and allow-list rules.
 func (c *negatedContext) check(unit parser.Unit, ident *ast.Ident) (finding.Finding, bool) {
 	if ident == nil || ident.Name == "" || ident.Name == "_" {
 		return finding.Finding{}, false
@@ -91,6 +101,7 @@ func (c *negatedContext) check(unit parser.Unit, ident *ast.Ident) (finding.Find
 	return makeNegatedFinding(unit, ident), true
 }
 
+// checkIdents applies check to a slice of identifiers, accumulating findings.
 func (c *negatedContext) checkIdents(unit parser.Unit, idents []*ast.Ident) []finding.Finding {
 	var out []finding.Finding
 	for _, ident := range idents {
@@ -101,6 +112,7 @@ func (c *negatedContext) checkIdents(unit parser.Unit, idents []*ast.Ident) []fi
 	return out
 }
 
+// checkBoolField checks the names of a struct/parameter field when its type is bool.
 func (c *negatedContext) checkBoolField(unit parser.Unit, field *ast.Field) []finding.Finding {
 	if !isBoolType(field.Type) {
 		return nil
@@ -108,6 +120,7 @@ func (c *negatedContext) checkBoolField(unit parser.Unit, field *ast.Field) []fi
 	return c.checkIdents(unit, field.Names)
 }
 
+// checkBoolValueSpec checks the names declared in a value spec when its type is bool.
 func (c *negatedContext) checkBoolValueSpec(unit parser.Unit, spec *ast.ValueSpec) []finding.Finding {
 	if !isBoolType(spec.Type) {
 		return nil
@@ -115,6 +128,7 @@ func (c *negatedContext) checkBoolValueSpec(unit parser.Unit, spec *ast.ValueSpe
 	return c.checkIdents(unit, spec.Names)
 }
 
+// checkStruct recursively walks struct fields, flagging negated boolean members.
 func (c *negatedContext) checkStruct(unit parser.Unit, st *ast.StructType) []finding.Finding {
 	if st == nil || st.Fields == nil {
 		return nil
@@ -129,6 +143,7 @@ func (c *negatedContext) checkStruct(unit parser.Unit, st *ast.StructType) []fin
 	return out
 }
 
+// analyzeGenDecl inspects each spec in a general declaration for boolean negations.
 func (c *negatedContext) analyzeGenDecl(unit parser.Unit, decl *ast.GenDecl) []finding.Finding {
 	var out []finding.Finding
 	for _, spec := range decl.Specs {
@@ -144,6 +159,7 @@ func (c *negatedContext) analyzeGenDecl(unit parser.Unit, decl *ast.GenDecl) []f
 	return out
 }
 
+// analyzeFuncDecl examines a function declaration's signature and optionally its body.
 func (c *negatedContext) analyzeFuncDecl(unit parser.Unit, decl *ast.FuncDecl) []finding.Finding {
 	var out []finding.Finding
 	out = append(out, c.checkFuncReturn(unit, decl)...)
@@ -154,6 +170,7 @@ func (c *negatedContext) analyzeFuncDecl(unit parser.Unit, decl *ast.FuncDecl) [
 	return out
 }
 
+// checkFuncReturn flags negated naming on functions returning a single boolean.
 func (c *negatedContext) checkFuncReturn(unit parser.Unit, decl *ast.FuncDecl) []finding.Finding {
 	if decl.Name == nil || decl.Type == nil || decl.Type.Results == nil {
 		return nil
@@ -170,6 +187,7 @@ func (c *negatedContext) checkFuncReturn(unit parser.Unit, decl *ast.FuncDecl) [
 	return nil
 }
 
+// checkFuncParams flags boolean parameters whose names begin with a negation prefix.
 func (c *negatedContext) checkFuncParams(unit parser.Unit, decl *ast.FuncDecl) []finding.Finding {
 	if decl.Type == nil || decl.Type.Params == nil {
 		return nil
@@ -181,6 +199,7 @@ func (c *negatedContext) checkFuncParams(unit parser.Unit, decl *ast.FuncDecl) [
 	return out
 }
 
+// checkFuncBody walks a function body's local value specs for negated boolean names.
 func (c *negatedContext) checkFuncBody(unit parser.Unit, decl *ast.FuncDecl) []finding.Finding {
 	if decl.Body == nil {
 		return nil
@@ -195,6 +214,7 @@ func (c *negatedContext) checkFuncBody(unit parser.Unit, decl *ast.FuncDecl) []f
 	return out
 }
 
+// prefixSet returns the trimmed set of negation prefixes, falling back to defaults.
 func (r NegatedBooleanRule) prefixSet() []string {
 	source := r.Prefixes
 	if len(source) == 0 {
@@ -209,6 +229,7 @@ func (r NegatedBooleanRule) prefixSet() []string {
 	return out
 }
 
+// allowSet returns the configured allow list as a lookup set, defaulting if empty.
 func (r NegatedBooleanRule) allowSet() map[string]bool {
 	source := r.AllowList
 	if len(source) == 0 {
@@ -223,6 +244,7 @@ func (r NegatedBooleanRule) allowSet() map[string]bool {
 	return out
 }
 
+// scopeValue normalises the rule's Scope option to one of the supported keywords.
 func (r NegatedBooleanRule) scopeValue() string {
 	switch r.Scope {
 	case "all", "locals", "exported":
@@ -232,6 +254,7 @@ func (r NegatedBooleanRule) scopeValue() string {
 	}
 }
 
+// negatedScopeAllows reports whether the given scope permits inspecting an identifier with the supplied export visibility.
 func negatedScopeAllows(scope string, exported bool) bool {
 	switch scope {
 	case "locals":
@@ -243,6 +266,7 @@ func negatedScopeAllows(scope string, exported bool) bool {
 	}
 }
 
+// matchesNegatedPrefix reports whether name starts with a known negation prefix and is not allow-listed.
 func matchesNegatedPrefix(name string, prefixes []string, allow map[string]bool) bool {
 	if allow[name] {
 		return false
@@ -261,6 +285,7 @@ func matchesNegatedPrefix(name string, prefixes []string, allow map[string]bool)
 	return false
 }
 
+// tryNegatedPrefix reports whether name has the prefix followed by an uppercase letter.
 func tryNegatedPrefix(name, prefix string) bool {
 	if !strings.HasPrefix(name, prefix) {
 		return false
@@ -271,6 +296,7 @@ func tryNegatedPrefix(name, prefix string) bool {
 	return unicode.IsUpper(rune(name[len(prefix)]))
 }
 
+// isBoolType reports whether the type expression refers to the built-in bool.
 func isBoolType(expr ast.Expr) bool {
 	ident, ok := expr.(*ast.Ident)
 	if !ok {
@@ -279,6 +305,7 @@ func isBoolType(expr ast.Expr) bool {
 	return ident.Name == "bool"
 }
 
+// makeNegatedFinding constructs a Finding describing a negated boolean identifier.
 func makeNegatedFinding(unit parser.Unit, ident *ast.Ident) finding.Finding {
 	position := unit.FileSet.Position(ident.NamePos)
 	return finding.Finding{

@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// This file wires the dashboard subcommand to the dashboard server package.
 package cli
 
 import (
@@ -13,6 +15,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// runDashboard parses dashboard flags and starts the embedded HTTP dashboard.
 func runDashboard(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -82,6 +85,7 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// parseDashboardTimeout interprets the --scan-timeout flag value as a duration.
 func parseDashboardTimeout(raw string) (time.Duration, error) {
 	value, err := strconv.Atoi(raw)
 	if err != nil || value < 0 {
@@ -93,6 +97,7 @@ func parseDashboardTimeout(raw string) (time.Duration, error) {
 	return time.Duration(value) * time.Second, nil
 }
 
+// splitComma splits raw on commas and drops empty entries after trimming whitespace.
 func splitComma(raw string) []string {
 	if raw == "" {
 		return nil

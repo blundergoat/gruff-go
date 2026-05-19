@@ -1,3 +1,5 @@
+// Package finding defines the Finding payload and fingerprint helpers.
+// Findings carry rule output, location, severity, and identity hash data.
 package finding
 
 import (
@@ -6,6 +8,7 @@ import (
 	"encoding/json"
 )
 
+// Finding is a single rule result emitted by the analyser pipeline.
 type Finding struct {
 	RuleID           string         `json:"ruleId"`
 	Message          string         `json:"message"`
@@ -21,11 +24,13 @@ type Finding struct {
 	Fingerprint      string         `json:"fingerprint"`
 }
 
+// WithFingerprint returns a copy of the finding with Fingerprint populated.
 func (f Finding) WithFingerprint() Finding {
 	f.Fingerprint = f.ComputeFingerprint()
 	return f
 }
 
+// ComputeFingerprint hashes the finding identity fields into a stable short ID.
 func (f Finding) ComputeFingerprint() string {
 	line, column, endLine := 0, 0, 0
 	if f.Location != nil {

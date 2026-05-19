@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file implements the compact text summary writer used by the CLI digest.
 package report
 
 import (
@@ -18,6 +20,7 @@ type SummaryOptions struct {
 }
 
 // WriteSummaryText renders a compact human-readable digest of the report.
+// WriteSummaryText renders a compact human-readable digest of the analysis report to writer.
 func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOptions) error {
 	top := opts.Top
 	if top <= 0 {
@@ -50,6 +53,7 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	return err
 }
 
+// writeScoreCoverage emits score coverage, optional caveat, and complexity distribution scope lines.
 func writeScoreCoverage(writer io.Writer, score scoring.Score) error {
 	contributing := "none"
 	if len(score.Coverage.ContributingPillars) > 0 {
@@ -71,6 +75,7 @@ func writeScoreCoverage(writer io.Writer, score scoring.Score) error {
 	return nil
 }
 
+// writeSeverityCounts emits the severity breakdown table for the summary digest.
 func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
 	if _, err := fmt.Fprintln(writer, "severity:"); err != nil {
 		return err
@@ -83,6 +88,7 @@ func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
 	return nil
 }
 
+// writePillarBreakdown emits each pillar's grade, score, and finding count sorted by activity.
 func writePillarBreakdown(writer io.Writer, details []scoring.PillarDetail) error {
 	if len(details) == 0 {
 		return nil
@@ -105,6 +111,7 @@ func writePillarBreakdown(writer io.Writer, details []scoring.PillarDetail) erro
 	return nil
 }
 
+// writeTopRules emits the most-triggered rules in descending count order.
 func writeTopRules(writer io.Writer, entries []ruleCount) error {
 	if len(entries) == 0 {
 		return nil
@@ -120,6 +127,7 @@ func writeTopRules(writer io.Writer, entries []ruleCount) error {
 	return nil
 }
 
+// writeTopOffenders emits up to top file offenders ordered by penalty.
 func writeTopOffenders(writer io.Writer, offenders []scoring.FileScore, top int) error {
 	if len(offenders) == 0 {
 		return nil
@@ -139,11 +147,13 @@ func writeTopOffenders(writer io.Writer, offenders []scoring.FileScore, top int)
 	return nil
 }
 
+// ruleCount pairs a rule ID with the number of times it fired in the report.
 type ruleCount struct {
 	RuleID string
 	Count  int
 }
 
+// computeTopRules returns the top rule IDs by finding count, capped at top entries.
 func computeTopRules(report analysis.Report, top int) []ruleCount {
 	counts := map[string]int{}
 	for _, item := range report.Findings {
@@ -165,6 +175,7 @@ func computeTopRules(report analysis.Report, top int) []ruleCount {
 	return entries
 }
 
+// gradeOrNA returns grade or the placeholder "n/a" when grade is empty.
 func gradeOrNA(grade string) string {
 	if grade == "" {
 		return "n/a"

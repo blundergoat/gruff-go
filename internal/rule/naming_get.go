@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the get-prefix rule for accessor-style methods.
 package rule
 
 import (
@@ -17,6 +19,7 @@ type GetPrefixRule struct {
 	ExcludeNames []string
 }
 
+// Definition describes the get-prefix rule for the registry.
 func (r GetPrefixRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.get-prefix",
@@ -33,6 +36,7 @@ func (r GetPrefixRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit walks function declarations and reports accessor methods using a Get prefix.
 func (r GetPrefixRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || hasGeneratedHeader(unit.Source) || pathfilter.MatchesAny(r.ExcludePaths, unit.File.Path) {
 		return nil
@@ -56,6 +60,7 @@ func (r GetPrefixRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 	return findings
 }
 
+// isGetterPrefixCandidate reports whether a function declaration is an accessor-shaped Get* method.
 func isGetterPrefixCandidate(fn *ast.FuncDecl) bool {
 	if fn.Recv == nil || !hasGetPrefix(fn.Name.Name) || fieldListCount(fn.Type.Params) != 0 {
 		return false
@@ -64,6 +69,7 @@ func isGetterPrefixCandidate(fn *ast.FuncDecl) bool {
 	return results == 1 || results == 2 && resultListEndsWithError(fn.Type.Results)
 }
 
+// hasGetPrefix reports whether name starts with Get followed by an uppercase letter.
 func hasGetPrefix(name string) bool {
 	if !strings.HasPrefix(name, "Get") {
 		return false
@@ -72,6 +78,7 @@ func hasGetPrefix(name string) bool {
 	return len(runes) > 3 && unicode.IsUpper(runes[3])
 }
 
+// fieldListCount returns the total number of fields across all entries in a FieldList.
 func fieldListCount(list *ast.FieldList) int {
 	if list == nil {
 		return 0
@@ -87,6 +94,7 @@ func fieldListCount(list *ast.FieldList) int {
 	return count
 }
 
+// resultListEndsWithError reports whether the final result of a function signature is the built-in error type.
 func resultListEndsWithError(list *ast.FieldList) bool {
 	if list == nil || len(list.List) == 0 {
 		return false

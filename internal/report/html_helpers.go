@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file collects shared helpers used by the HTML reporter.
 package report
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// severityTotals aggregates finding counts by severity for headline summaries.
 type severityTotals struct {
 	total    int
 	critical int
@@ -20,6 +23,7 @@ type severityTotals struct {
 	info     int
 }
 
+// severityCounts tallies findings across the report by severity.
 func severityCounts(report analysis.Report) severityTotals {
 	counts := severityTotals{total: len(report.Findings)}
 	for _, item := range report.Findings {
@@ -39,6 +43,7 @@ func severityCounts(report analysis.Report) severityTotals {
 	return counts
 }
 
+// verdictSubtitle returns the human-readable subtitle shown beneath the grade stamp.
 func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
 	thresholdFindings := counts.critical + counts.high + counts.medium
 	if thresholdFindings == 0 {
@@ -61,6 +66,7 @@ func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
 	)
 }
 
+// cyclomaticSummary formats a one-line caption describing the over-threshold complexity bins.
 func cyclomaticSummary(distribution map[string]int, scope string) string {
 	moderate := distribution["11-15"]
 	high := distribution["16-20"]
@@ -85,6 +91,7 @@ func cyclomaticSummary(distribution map[string]int, scope string) string {
 	)
 }
 
+// histogramTier maps a complexity bin label to the CSS tier suffix used for the histogram bar.
 func histogramTier(bin string) string {
 	switch bin {
 	case "11-15":
@@ -96,6 +103,7 @@ func histogramTier(bin string) string {
 	}
 }
 
+// severityTierClass maps a severity to the CSS class used to colour severity badges.
 func severityTierClass(severity finding.Severity) string {
 	switch severity {
 	case finding.SeverityCritical, finding.SeverityHigh:
@@ -107,6 +115,7 @@ func severityTierClass(severity finding.Severity) string {
 	}
 }
 
+// tierClass derives the CSS tier class from a single-letter grade.
 func tierClass(grade string) string {
 	if grade == "" {
 		return "n"
@@ -114,6 +123,7 @@ func tierClass(grade string) string {
 	return strings.ToLower(string(grade[0]))
 }
 
+// metaRow renders a labelled metadata row in the masthead.
 func metaRow(label, value string) string {
 	return fmt.Sprintf(
 		`<div><span class="label">%s</span><span class="val">%s</span></div>`,
@@ -122,6 +132,7 @@ func metaRow(label, value string) string {
 	)
 }
 
+// stat renders a single statistic block with a number, label, and optional tier class.
 func stat(number, label, class string) string {
 	return fmt.Sprintf(
 		`<div class="stat"><div class="num %s">%s</div><div class="lbl">%s</div></div>`,
@@ -131,6 +142,7 @@ func stat(number, label, class string) string {
 	)
 }
 
+// breakdownRow renders a key/value row inside a pillar breakdown block.
 func breakdownRow(key, value string) string {
 	return fmt.Sprintf(
 		`<div class="row"><span class="key">%s</span><span class="val">%s</span></div>`,
@@ -139,6 +151,7 @@ func breakdownRow(key, value string) string {
 	)
 }
 
+// optionalInt formats an optional integer, returning "n/a" when it is nil.
 func optionalInt(value *int) string {
 	if value == nil {
 		return "n/a"
@@ -146,6 +159,7 @@ func optionalInt(value *int) string {
 	return fmt.Sprintf("%d", *value)
 }
 
+// pluralise returns singular or plural depending on the count.
 func pluralise(count int, singular, plural string) string {
 	if count == 1 {
 		return singular
@@ -153,6 +167,7 @@ func pluralise(count int, singular, plural string) string {
 	return plural
 }
 
+// displayInputs returns a sorted copy of the scan inputs, defaulting to "." when empty.
 func displayInputs(inputs []string) []string {
 	if len(inputs) == 0 {
 		return []string{"."}
@@ -162,6 +177,7 @@ func displayInputs(inputs []string) []string {
 	return sorted
 }
 
+// scopeLabel returns the human-readable scan scope label for the masthead.
 func scopeLabel(summary analysis.DiffSummary) string {
 	if summary.Enabled {
 		return fmt.Sprintf("diff · %d changed files", len(summary.ChangedFiles))
@@ -169,6 +185,7 @@ func scopeLabel(summary analysis.DiffSummary) string {
 	return "full project"
 }
 
+// encodePathSegments percent-encodes each segment of a slash-separated path.
 func encodePathSegments(absolutePath string) string {
 	segments := strings.Split(absolutePath, "/")
 	for i, segment := range segments {
@@ -177,6 +194,7 @@ func encodePathSegments(absolutePath string) string {
 	return strings.Join(segments, "/")
 }
 
+// esc HTML-escapes a value for safe inclusion in the rendered document.
 func esc(value string) string {
 	return html.EscapeString(value)
 }

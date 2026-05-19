@@ -1,4 +1,5 @@
 // Package pathfilter validates and matches slash-separated repository paths.
+// It supports glob-style patterns and a restricted trailing /** recursive suffix.
 package pathfilter
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 )
 
+// Validate ensures a user-provided path pattern is well-formed and repo-relative.
 func Validate(pattern string) error {
 	if pattern == "" {
 		return fmt.Errorf("path pattern must not be empty")
@@ -31,6 +33,7 @@ func Validate(pattern string) error {
 	return nil
 }
 
+// MatchesAny reports whether any of the supplied patterns matches the relative path.
 func MatchesAny(patterns []string, rel string) bool {
 	for _, pattern := range patterns {
 		if Matches(pattern, rel) {
@@ -40,6 +43,7 @@ func MatchesAny(patterns []string, rel string) bool {
 	return false
 }
 
+// Matches reports whether the pattern matches the relative path.
 func Matches(pattern string, rel string) bool {
 	rel = path.Clean(strings.TrimPrefix(rel, "./"))
 	pattern = strings.TrimPrefix(pattern, "./")

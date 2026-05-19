@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the test-quality.* rules that grade Go test files.
 package rule
 
 import (
@@ -9,8 +11,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// EmptyTestRule flags Go test functions whose body contains no executable statements.
 type EmptyTestRule struct{}
 
+// Definition returns the rule metadata for EmptyTestRule.
 func (EmptyTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.empty-test",
@@ -25,6 +29,7 @@ func (EmptyTestRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit reports each Test/Benchmark/Fuzz function in the unit that has an empty body.
 func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -48,8 +53,10 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 	return findings
 }
 
+// NoFailurePathTestRule flags Go test functions whose bodies cannot reach a failure call.
 type NoFailurePathTestRule struct{}
 
+// Definition returns the rule metadata for NoFailurePathTestRule.
 func (NoFailurePathTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.no-failure-path",
@@ -64,6 +71,7 @@ func (NoFailurePathTestRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit reports each test function whose body never reaches a testing failure method.
 func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -110,6 +118,7 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 	}
 }
 
+// hasFailureCall reports whether fn invokes a known testing failure helper on a *testing.T/B/F receiver.
 func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
 	receivers := testingReceiverNames(fn, testingPackages)
 	if len(receivers) == 0 {
@@ -143,6 +152,7 @@ func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
 	return found
 }
 
+// testingPackageNames returns the import names under which the standard "testing" package is reachable.
 func testingPackageNames(file *ast.File) map[string]bool {
 	names := map[string]bool{}
 	for _, imported := range file.Imports {
@@ -163,6 +173,7 @@ func testingPackageNames(file *ast.File) map[string]bool {
 	return names
 }
 
+// testingReceiverNames returns the parameter names in fn whose type is *testing.T, *testing.B, or *testing.F.
 func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map[string]bool {
 	receivers := map[string]bool{}
 	if fn.Type == nil || fn.Type.Params == nil {
@@ -181,6 +192,7 @@ func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map
 	return receivers
 }
 
+// isTestingTBFType reports whether expr names *testing.T, *testing.B, or *testing.F.
 func isTestingTBFType(expr ast.Expr, testingPackages map[string]bool) bool {
 	pointer, ok := expr.(*ast.StarExpr)
 	if !ok {

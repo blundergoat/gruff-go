@@ -1,7 +1,10 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the naming.misspelling rule against fixture sources.
 package rule
 
 import "testing"
 
+// TestMisspellingFlagsIdentifiers verifies that common misspellings in identifiers fire findings.
 func TestMisspellingFlagsIdentifiers(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -29,6 +32,7 @@ const Wierd = 1
 	}
 }
 
+// TestMisspellingFlagsCamelCaseTokens checks that camelCase sub-tokens are detected.
 func TestMisspellingFlagsCamelCaseTokens(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -46,6 +50,7 @@ type EnviromentConfig struct{}
 	}
 }
 
+// TestMisspellingFlagsDocComments confirms misspellings inside doc comments are reported.
 func TestMisspellingFlagsDocComments(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -59,6 +64,7 @@ func Process() {}
 	}
 }
 
+// TestMisspellingFlagsStructTags ensures struct tag literals are scanned for misspellings.
 func TestMisspellingFlagsStructTags(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -73,6 +79,7 @@ type Sample struct {
 	}
 }
 
+// TestMisspellingHonoursIgnoreList checks that tokens listed in Ignore are suppressed.
 func TestMisspellingHonoursIgnoreList(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -86,6 +93,7 @@ type Sample struct {
 	}
 }
 
+// TestMisspellingAcceptsExtraDictionary verifies user-provided Extra entries augment the dictionary.
 func TestMisspellingAcceptsExtraDictionary(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -102,6 +110,7 @@ type Sample struct {
 	}
 }
 
+// TestMisspellingIsDefaultEnabled asserts the rule ships enabled with parser capability.
 func TestMisspellingIsDefaultEnabled(t *testing.T) {
 	if !(MisspellingRule{}).Definition().DefaultEnabled {
 		t.Error("naming.misspelling must be default-enabled")
@@ -111,6 +120,7 @@ func TestMisspellingIsDefaultEnabled(t *testing.T) {
 	}
 }
 
+// TestMisspellingClampsToWordBoundaries ensures clean identifiers and comments produce no findings.
 func TestMisspellingClampsToWordBoundaries(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 

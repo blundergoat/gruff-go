@@ -1,3 +1,5 @@
+// Package analysis runner ties source discovery, parsing, and rule execution together.
+// It produces a deterministic Report consumed by the CLI and report renderers.
 package analysis
 
 import (
@@ -14,6 +16,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// Options configures a single Analyze invocation.
 type Options struct {
 	Context        context.Context
 	Root           string
@@ -27,6 +30,7 @@ type Options struct {
 	DiffBase       string
 }
 
+// Analyze runs discovery, parsing, and rules against the configured root.
 func Analyze(opts Options) (Report, error) {
 	root, err := analysisRoot(opts.Root)
 	if err != nil {
@@ -90,6 +94,7 @@ func Analyze(opts Options) (Report, error) {
 	}), nil
 }
 
+// analysisRoot resolves the supplied root to an absolute directory path.
 func analysisRoot(root string) (string, error) {
 	if root == "" {
 		return os.Getwd()
@@ -108,6 +113,7 @@ func analysisRoot(root string) (string, error) {
 	return rootAbs, nil
 }
 
+// normalizeOptions fills defaults for empty Options fields.
 func normalizeOptions(opts Options) Options {
 	if opts.FailOn == "" {
 		opts.FailOn = finding.SeverityMedium
@@ -118,6 +124,7 @@ func normalizeOptions(opts Options) Options {
 	return opts
 }
 
+// diagnosticsFromDiscovery converts missing paths into discovery diagnostics.
 func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 	diagnostics := []Diagnostic{}
 	for _, missing := range paths {
@@ -131,6 +138,7 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 	return diagnostics
 }
 
+// diagnosticsFromParser converts parser diagnostics into analysis diagnostics.
 func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	diagnostics := []Diagnostic{}
 	for _, item := range parseDiagnostics {
@@ -145,6 +153,7 @@ func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	return diagnostics
 }
 
+// applyBaseline suppresses findings that match the loaded baseline file.
 func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagnostic, baselinePath string) ([]finding.Finding, BaselineSummary, []Diagnostic) {
 	baselineSummary := BaselineSummary{}
 	if baselinePath == "" {
@@ -174,6 +183,7 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	return result.Findings, baselineSummary, diagnostics
 }
 
+// applyDiff filters findings against git diff lines from the configured base.
 func applyDiff(root string, paths []string, findings []finding.Finding, diagnostics []Diagnostic, diffBase string) ([]finding.Finding, DiffSummary, []Diagnostic) {
 	diffSummary := DiffSummary{}
 	if diffBase == "" {
@@ -197,6 +207,7 @@ func applyDiff(root string, paths []string, findings []finding.Finding, diagnost
 	return result.Findings, diffSummary, diagnostics
 }
 
+// scannedPaths extracts the relative paths from discovered source files.
 func scannedPaths(files []source.File) []string {
 	scanned := make([]string, 0, len(files))
 	for _, file := range files {
@@ -205,6 +216,7 @@ func scannedPaths(files []source.File) []string {
 	return scanned
 }
 
+// skippedPaths copies discovery skip entries into report-shaped values.
 func skippedPaths(items []source.SkippedPath) []SkippedPath {
 	skipped := make([]SkippedPath, 0, len(items))
 	for _, item := range items {
@@ -213,6 +225,7 @@ func skippedPaths(items []source.SkippedPath) []SkippedPath {
 	return skipped
 }
 
+// inputsOrDefault returns paths or a single "." when no inputs were provided.
 func inputsOrDefault(paths []string) []string {
 	inputs := paths
 	if len(inputs) == 0 {
@@ -221,6 +234,7 @@ func inputsOrDefault(paths []string) []string {
 	return inputs
 }
 
+// parserLocation builds a Location from a parser diagnostic when line info exists.
 func parserLocation(item parser.Diagnostic) *finding.Location {
 	if item.Line == 0 && item.Column == 0 {
 		return nil

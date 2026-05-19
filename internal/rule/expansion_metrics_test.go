@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the structural-metric rules and shared findings helper.
 package rule
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// TestParameterCountRule verifies the parameter-count threshold and metadata payload.
 func TestParameterCountRule(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
@@ -37,6 +40,7 @@ func (Builder) Many(a, b, c, d, e int) {}
 	}
 }
 
+// TestNestingDepthRule covers deep/shallow/func-lit nesting cases for the rule.
 func TestNestingDepthRule(t *testing.T) {
 	deep := parseOne(t, "deep.go", `package sample
 
@@ -107,6 +111,7 @@ func Outer() {
 	}
 }
 
+// TestExportedSymbolCommentRule verifies which exported declarations get flagged.
 func TestExportedSymbolCommentRule(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
@@ -177,6 +182,7 @@ func ExportedTestHelper() {}
 	}
 }
 
+// TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages option.
 func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 
@@ -208,6 +214,7 @@ func VisibleOutsideModule() {}
 	}
 }
 
+// TestExportedSymbolCommentRuleCanIncludeInternalPackages verifies opt-in for internal packages.
 func TestExportedSymbolCommentRuleCanIncludeInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 
@@ -228,6 +235,7 @@ func VisibleInsideModule() {}
 	}
 }
 
+// containsRuleID reports whether any finding in the slice has the given rule ID.
 func containsRuleID(findings []finding.Finding, id string) bool {
 	for _, f := range findings {
 		if f.RuleID == id {

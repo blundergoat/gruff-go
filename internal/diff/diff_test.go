@@ -1,3 +1,5 @@
+// Package diff tests cover patch parsing, changed-line filtering, and git invocation.
+// They exercise both the in-process Parse path and the FromGit subprocess path.
 package diff
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// TestParseAndFilterChangedLines verifies hunk parsing and filtering against changed lines.
 func TestParseAndFilterChangedLines(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
 --- a/a.go
@@ -36,6 +39,7 @@ diff --git a/b.go b/b.go
 	}
 }
 
+// TestParseIgnoresDeletedOnlyFiles verifies fully deleted files yield no changed entries.
 func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/deleted.go b/deleted.go
 --- a/deleted.go
@@ -48,6 +52,7 @@ func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	}
 }
 
+// TestFromGitReportsWorkingTreeBaseRef shells out to git and confirms changed line detection.
 func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-q")
@@ -70,6 +75,7 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	}
 }
 
+// TestFromGitReportsNonGitDiagnostics ensures non-repo invocations return an error.
 func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
 	_, err := FromGit(t.TempDir(), "HEAD", []string{"."})
 	if err == nil {
@@ -77,6 +83,7 @@ func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
 	}
 }
 
+// runGit executes a git command inside root and fails the test on errors.
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)
@@ -86,6 +93,7 @@ func runGit(t *testing.T, root string, args ...string) {
 	}
 }
 
+// writeFile writes contents to root/rel, creating parent directories as needed.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

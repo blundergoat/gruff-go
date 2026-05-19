@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the naming.misspelling rule.
 package rule
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// defaultMisspellingDictionary maps common misspellings to their suggested corrections.
 var defaultMisspellingDictionary = map[string]string{
 	"accomodate":  "accommodate",
 	"adress":      "address",
@@ -53,11 +56,13 @@ var defaultMisspellingDictionary = map[string]string{
 	"wierd":       "weird",
 }
 
+// MisspellingRule flags identifiers, comments, and struct tags containing common programming misspellings.
 type MisspellingRule struct {
 	Extra  map[string]string
 	Ignore []string
 }
 
+// Definition returns the rule metadata for MisspellingRule.
 func (r MisspellingRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.misspelling",
@@ -77,6 +82,7 @@ func (r MisspellingRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit scans the given unit for misspellings in identifiers, comments, and struct tags.
 func (r MisspellingRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -92,6 +98,7 @@ func (r MisspellingRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Find
 	return ctx.findings
 }
 
+// misspellingContext holds the per-unit state used while scanning for misspellings.
 type misspellingContext struct {
 	unit     parser.Unit
 	dict     map[string]string
@@ -100,6 +107,7 @@ type misspellingContext struct {
 	findings []finding.Finding
 }
 
+// buildContext returns a misspellingContext seeded with the rule's dictionary and ignore list.
 func (r MisspellingRule) buildContext(unit parser.Unit) *misspellingContext {
 	dict := r.dictionary()
 	if len(dict) == 0 {
@@ -113,6 +121,7 @@ func (r MisspellingRule) buildContext(unit parser.Unit) *misspellingContext {
 	}
 }
 
+// emit records a misspelling finding for the given token unless it is ignored or already reported.
 func (c *misspellingContext) emit(tok, suggestion string, pos token.Pos) {
 	if c.ignore[tok] {
 		return
@@ -131,6 +140,7 @@ func (c *misspellingContext) emit(tok, suggestion string, pos token.Pos) {
 	})
 }
 
+// checkText tokenises the given text and emits findings for any tokens in the dictionary.
 func (c *misspellingContext) checkText(text string, pos token.Pos) {
 	for _, tok := range tokenizeForMisspelling(text) {
 		if suggestion, ok := c.dict[tok]; ok {
@@ -139,6 +149,7 @@ func (c *misspellingContext) checkText(text string, pos token.Pos) {
 	}
 }
 
+// checkComments scans each comment in the group for misspelled tokens.
 func (c *misspellingContext) checkComments(group *ast.CommentGroup) {
 	if group == nil {
 		return
@@ -148,6 +159,7 @@ func (c *misspellingContext) checkComments(group *ast.CommentGroup) {
 	}
 }
 
+// walkDecl dispatches to the appropriate walker for general and function declarations.
 func (c *misspellingContext) walkDecl(decl ast.Decl) {
 	switch d := decl.(type) {
 	case *ast.GenDecl:
@@ -157,6 +169,7 @@ func (c *misspellingContext) walkDecl(decl ast.Decl) {
 	}
 }
 
+// walkGenDecl inspects type, value, and import specs in the given general declaration.
 func (c *misspellingContext) walkGenDecl(decl *ast.GenDecl) {
 	c.checkComments(decl.Doc)
 	for _, spec := range decl.Specs {
@@ -172,6 +185,7 @@ func (c *misspellingContext) walkGenDecl(decl *ast.GenDecl) {
 	}
 }
 
+// walkFuncDecl inspects the doc, name, and parameter names of a function declaration.
 func (c *misspellingContext) walkFuncDecl(decl *ast.FuncDecl) {
 	c.checkComments(decl.Doc)
 	if decl.Name != nil {
@@ -185,6 +199,7 @@ func (c *misspellingContext) walkFuncDecl(decl *ast.FuncDecl) {
 	}
 }
 
+// walkStructFields walks each field in a struct type, inspecting names, docs, and tags.
 func (c *misspellingContext) walkStructFields(st *ast.StructType) {
 	if st.Fields == nil {
 		return
@@ -194,6 +209,7 @@ func (c *misspellingContext) walkStructFields(st *ast.StructType) {
 	}
 }
 
+// walkField inspects a single field's doc, names, and struct tag for misspellings.
 func (c *misspellingContext) walkField(field *ast.Field) {
 	c.checkComments(field.Doc)
 	for _, name := range field.Names {
@@ -204,6 +220,7 @@ func (c *misspellingContext) walkField(field *ast.Field) {
 	}
 }
 
+// walkValueSpec inspects the doc and names attached to a value spec.
 func (c *misspellingContext) walkValueSpec(spec *ast.ValueSpec) {
 	c.checkComments(spec.Doc)
 	for _, name := range spec.Names {
@@ -211,6 +228,7 @@ func (c *misspellingContext) walkValueSpec(spec *ast.ValueSpec) {
 	}
 }
 
+// dictionary returns the merged default and user-supplied misspelling dictionary.
 func (r MisspellingRule) dictionary() map[string]string {
 	out := make(map[string]string, len(defaultMisspellingDictionary)+len(r.Extra))
 	for wrong, right := range defaultMisspellingDictionary {
@@ -226,6 +244,7 @@ func (r MisspellingRule) dictionary() map[string]string {
 	return out
 }
 
+// ignoreSet normalises the configured ignore list into a lookup set of lowercase tokens.
 func (r MisspellingRule) ignoreSet() map[string]bool {
 	out := make(map[string]bool, len(r.Ignore))
 	for _, name := range r.Ignore {
@@ -236,6 +255,7 @@ func (r MisspellingRule) ignoreSet() map[string]bool {
 	return out
 }
 
+// tokenizeForMisspelling splits text into lowercase word tokens, respecting camelCase boundaries.
 func tokenizeForMisspelling(text string) []string {
 	runes := []rune(text)
 	var tokens []string
@@ -263,6 +283,7 @@ func tokenizeForMisspelling(text string) []string {
 	return tokens
 }
 
+// shouldSplitMisspellingToken reports whether position i marks a camelCase word boundary.
 func shouldSplitMisspellingToken(runes []rune, i int) bool {
 	prev := runes[i-1]
 	cur := runes[i]

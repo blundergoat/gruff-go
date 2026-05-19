@@ -1,7 +1,10 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the identifier-quality, empty-test, and no-failure-path rules.
 package rule
 
 import "testing"
 
+// TestIdentifierQualityFlagsPlaceholders verifies short-variable declarations matching the placeholder list are flagged.
 func TestIdentifierQualityFlagsPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -34,6 +37,7 @@ func load() int    { return 3 }
 	}
 }
 
+// TestIdentifierQualityAllowsRemovedDefaultPlaceholders confirms data, info, and qux are no longer default placeholders.
 func TestIdentifierQualityAllowsRemovedDefaultPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -56,6 +60,7 @@ func load() int    { return 3 }
 	}
 }
 
+// TestIdentifierQualityIgnoresTestFiles ensures test files are skipped to avoid noisy fixture identifiers.
 func TestIdentifierQualityIgnoresTestFiles(t *testing.T) {
 	unit := parseOne(t, "pkg/file_test.go", `package pkg
 
@@ -72,6 +77,7 @@ func TestSomething(t *testing.T) {
 	}
 }
 
+// TestIdentifierQualityHonoursConfiguredPlaceholders verifies user-supplied placeholder lists replace the defaults.
 func TestIdentifierQualityHonoursConfiguredPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -105,12 +111,14 @@ func load() int    { return 3 }
 	}
 }
 
+// TestIdentifierQualityIsDefaultEnabled asserts the rule ships enabled by default.
 func TestIdentifierQualityIsDefaultEnabled(t *testing.T) {
 	if !(IdentifierQualityRule{}).Definition().DefaultEnabled {
 		t.Error("naming.identifier-quality must be default-enabled")
 	}
 }
 
+// TestEmptyTestRuleFlagsEmptyBody checks the empty-test rule emits a single finding for an empty test body.
 func TestEmptyTestRuleFlagsEmptyBody(t *testing.T) {
 	unit := parseOne(t, "pkg/sample_test.go", `package pkg
 
@@ -131,6 +139,7 @@ func TestPopulated(t *testing.T) {
 	}
 }
 
+// TestEmptyTestRuleIgnoresNonTestFiles confirms non-test files do not trigger empty-test findings.
 func TestEmptyTestRuleIgnoresNonTestFiles(t *testing.T) {
 	unit := parseOne(t, "pkg/sample.go", `package pkg
 
@@ -142,6 +151,7 @@ func TestEmpty() {
 	}
 }
 
+// TestNoFailurePathRuleFlagsAssertionlessTests verifies the no-failure-path rule identifies tests without t.Fatal-style assertions.
 func TestNoFailurePathRuleFlagsAssertionlessTests(t *testing.T) {
 	unit := parseOne(t, "pkg/sample_test.go", `package pkg
 
@@ -193,6 +203,7 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
+// TestTestQualityRulesDefaultEnabled asserts all test-quality rules ship enabled by default.
 func TestTestQualityRulesDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		EmptyTestRule{}.Definition(),

@@ -1,3 +1,5 @@
+// Package analysis tests exercise the Analyze pipeline end-to-end.
+// They cover diagnostics, deterministic output, and exit-code thresholds.
 package analysis
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// TestAnalyzeReportsMissingPathAsDiagnostic asserts missing inputs surface as discovery diagnostics.
 func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	t.Chdir(t.TempDir())
 	report, err := Analyze(Options{
@@ -28,6 +31,7 @@ func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	}
 }
 
+// TestAnalyzeIsDeterministicExceptStartedAt confirms repeated runs match aside from timestamps.
 func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -46,6 +50,7 @@ func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	}
 }
 
+// TestAnalyzeExitsOneWhenFindingMeetsThreshold checks the threshold-driven exit code.
 func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -70,8 +75,10 @@ func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	}
 }
 
+// findingRule is a test rule that always emits one finding per unit.
 type findingRule struct{}
 
+// Definition returns the rule metadata used by the registry.
 func (findingRule) Definition() rule.Definition {
 	return rule.Definition{
 		ID:             "size.file-length",
@@ -83,6 +90,7 @@ func (findingRule) Definition() rule.Definition {
 	}
 }
 
+// AnalyzeUnit emits a single fixed finding for the given unit.
 func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Finding {
 	return []finding.Finding{{
 		Message:  "test finding",
@@ -91,6 +99,7 @@ func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Findi
 	}}
 }
 
+// writeFile writes contents to root/rel, creating parent directories as needed.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the expansion rule pack (package name, dead code, security, test quality).
 package rule
 
 import (
@@ -11,8 +13,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// PackageNameUnderscoreRule flags Go package names that contain underscores.
 type PackageNameUnderscoreRule struct{}
 
+// Definition returns the rule metadata for PackageNameUnderscoreRule.
 func (PackageNameUnderscoreRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-underscore",
@@ -27,6 +31,7 @@ func (PackageNameUnderscoreRule) Definition() Definition {
 	}
 }
 
+// AnalyzeProject emits one finding per Go package whose name contains an underscore.
 func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	type packageState struct {
 		name string
@@ -61,8 +66,10 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 	return findings
 }
 
+// EmptyBlockRule flags empty control-flow blocks that indicate unfinished or dead code.
 type EmptyBlockRule struct{}
 
+// Definition returns the rule metadata for EmptyBlockRule.
 func (EmptyBlockRule) Definition() Definition {
 	return Definition{
 		ID:             "dead-code.empty-block",
@@ -77,6 +84,7 @@ func (EmptyBlockRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for every empty control-flow block in the unit.
 func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -98,8 +106,10 @@ func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 	return findings
 }
 
+// ShellCommandRule flags exec.Command calls that invoke a shell interpreter.
 type ShellCommandRule struct{}
 
+// Definition returns the rule metadata for ShellCommandRule.
 func (ShellCommandRule) Definition() Definition {
 	return Definition{
 		ID:               "security.shell-command",
@@ -115,6 +125,7 @@ func (ShellCommandRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for exec.Command calls that pass shell interpreter arguments.
 func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -136,8 +147,10 @@ func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
+// SkippedTestRule flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.
 type SkippedTestRule struct{}
 
+// Definition returns the rule metadata for SkippedTestRule.
 func (SkippedTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.skipped-test",
@@ -152,6 +165,7 @@ func (SkippedTestRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for skip-call sites inside Go test files.
 func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -173,6 +187,7 @@ func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 	return findings
 }
 
+// isControlFlowBlock reports whether the block is the body of an if/for/switch/select construct.
 func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -198,6 +213,7 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	return found
 }
 
+// isExecCommandCall reports whether the call expression is exec.Command(...).
 func isExecCommandCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Command" {
@@ -207,6 +223,7 @@ func isExecCommandCall(call *ast.CallExpr) bool {
 	return ok && receiver.Name == "exec"
 }
 
+// usesShellCommand reports whether an exec.Command call invokes a shell interpreter.
 func usesShellCommand(call *ast.CallExpr) bool {
 	if len(call.Args) < 2 {
 		return false
@@ -222,6 +239,7 @@ func usesShellCommand(call *ast.CallExpr) bool {
 	return flag == "-c" || flag == "/C"
 }
 
+// isShellInterpreter reports whether a string names a known shell interpreter binary.
 func isShellInterpreter(value string) bool {
 	switch value {
 	case "sh", "bash", "zsh", "cmd", "cmd.exe", "powershell", "pwsh":
@@ -231,6 +249,7 @@ func isShellInterpreter(value string) bool {
 	}
 }
 
+// isTestingSkipCall reports whether the call is a testing.Skip variant.
 func isTestingSkipCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -244,6 +263,7 @@ func isTestingSkipCall(call *ast.CallExpr) bool {
 	}
 }
 
+// stringLiteral returns the unquoted contents of a basic string literal.
 func stringLiteral(expr ast.Expr) (string, bool) {
 	literal, ok := expr.(*ast.BasicLit)
 	if !ok {

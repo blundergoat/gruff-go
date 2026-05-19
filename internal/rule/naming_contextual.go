@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the contextual-generic naming rule for range and accumulator identifiers.
 package rule
 
 import (
@@ -10,14 +12,19 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// defaultContextualGenericNames lists the generic range identifiers the rule watches for in long loops.
 var defaultContextualGenericNames = []string{"item", "value", "entry", "elem", "v"}
+
+// defaultContextualAccumulatorNames lists the accumulator identifiers the rule watches for in long functions.
 var defaultContextualAccumulatorNames = []string{"out", "result"}
 
+// contextualGenericBodyLinesThreshold and contextualGenericFunctionLinesThreshold provide the default size gates.
 const (
 	contextualGenericBodyLinesThreshold     = 15
 	contextualGenericFunctionLinesThreshold = 50
 )
 
+// ContextualGenericRule flags generic range or accumulator names only when the surrounding context is large.
 type ContextualGenericRule struct {
 	GenericNames     []string
 	MinBodyLines     int
@@ -26,6 +33,7 @@ type ContextualGenericRule struct {
 	RequireMultiple  *bool
 }
 
+// contextualGenericContext carries the resolved configuration for one analyser invocation.
 type contextualGenericContext struct {
 	genericNames     map[string]bool
 	minBodyLines     int
@@ -34,12 +42,14 @@ type contextualGenericContext struct {
 	requireMultiple  bool
 }
 
+// accumulatorDecl records one accumulator identifier together with its enclosing function context.
 type accumulatorDecl struct {
 	ident         *ast.Ident
 	functionName  string
 	functionLines int
 }
 
+// Definition describes the contextual-generic rule for the registry.
 func (r ContextualGenericRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.contextual-generic",
@@ -64,6 +74,7 @@ func (r ContextualGenericRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit walks each function in the unit and emits range and accumulator findings.
 func (r ContextualGenericRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || strings.HasSuffix(unit.File.Path, "_test.go") || hasGeneratedHeader(unit.Source) {
 		return nil
@@ -84,6 +95,7 @@ func (r ContextualGenericRule) AnalyzeUnit(unit parser.Unit, _ Context) []findin
 	return findings
 }
 
+// context resolves the rule's configuration into a per-invocation contextualGenericContext.
 func (r ContextualGenericRule) context() contextualGenericContext {
 	requireMultiple := true
 	if r.RequireMultiple != nil {
@@ -98,6 +110,7 @@ func (r ContextualGenericRule) context() contextualGenericContext {
 	}
 }
 
+// rangeFindings collects findings for range statements inside a function body.
 func (c contextualGenericContext) rangeFindings(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	findings := []finding.Finding{}
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
@@ -115,6 +128,7 @@ func (c contextualGenericContext) rangeFindings(unit parser.Unit, fn *ast.FuncDe
 	return findings
 }
 
+// rangeFinding emits a finding when a range value identifier is generic in a long loop body.
 func (c contextualGenericContext) rangeFinding(unit parser.Unit, stmt *ast.RangeStmt) (finding.Finding, bool) {
 	ident, ok := stmt.Value.(*ast.Ident)
 	if !ok || ident.Name == "_" || !c.genericNames[strings.ToLower(ident.Name)] {
@@ -140,6 +154,7 @@ func (c contextualGenericContext) rangeFinding(unit parser.Unit, stmt *ast.Range
 	}, true
 }
 
+// accumulatorFindings collects findings for generic accumulator identifiers inside long functions.
 func (c contextualGenericContext) accumulatorFindings(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	functionLines := nodeLineCount(unit, fn)
 	if functionLines <= c.minFunctionLines {
@@ -168,6 +183,7 @@ func (c contextualGenericContext) accumulatorFindings(unit parser.Unit, fn *ast.
 	return findings
 }
 
+// accumulatorDecls inspects a function body for accumulator-style short variable declarations.
 func (c contextualGenericContext) accumulatorDecls(fn *ast.FuncDecl, functionLines int) []accumulatorDecl {
 	decls := []accumulatorDecl{}
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
@@ -195,6 +211,7 @@ func (c contextualGenericContext) accumulatorDecls(fn *ast.FuncDecl, functionLin
 	return decls
 }
 
+// blockBodyLines counts the lines strictly inside a block, excluding its braces.
 func blockBodyLines(unit parser.Unit, block *ast.BlockStmt) int {
 	if block == nil {
 		return 0
@@ -207,6 +224,7 @@ func blockBodyLines(unit parser.Unit, block *ast.BlockStmt) int {
 	return end - start - 1
 }
 
+// nodeLineCount returns the inclusive line span of a syntax node in the unit's file set.
 func nodeLineCount(unit parser.Unit, node ast.Node) int {
 	start := unit.FileSet.Position(node.Pos()).Line
 	end := unit.FileSet.Position(node.End()).Line
@@ -216,6 +234,7 @@ func nodeLineCount(unit parser.Unit, node ast.Node) int {
 	return end - start + 1
 }
 
+// rangeExpressionName extracts a readable name from a range expression for use in finding messages.
 func rangeExpressionName(expr ast.Expr) string {
 	switch item := expr.(type) {
 	case *ast.Ident:
@@ -238,6 +257,7 @@ func rangeExpressionName(expr ast.Expr) string {
 	return "range expression"
 }
 
+// lowerStringSetWithDefault returns a lowercased set of values, falling back to fallback when values is empty.
 func lowerStringSetWithDefault(values, fallback []string) map[string]bool {
 	source := values
 	if len(source) == 0 {
@@ -253,6 +273,7 @@ func lowerStringSetWithDefault(values, fallback []string) map[string]bool {
 	return out
 }
 
+// positiveOrDefault returns value when positive, otherwise the supplied fallback.
 func positiveOrDefault(value, fallback int) int {
 	if value > 0 {
 		return value

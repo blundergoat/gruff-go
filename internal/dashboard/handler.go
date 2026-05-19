@@ -1,3 +1,5 @@
+// Package dashboard HTTP handlers wire dashboard form state to scans.
+// They translate query parameters into analysis options and render results.
 package dashboard
 
 import (
@@ -44,6 +46,7 @@ func NewHandler(opts Options) http.Handler {
 	return mux
 }
 
+// handleScan runs an analysis from /scan query parameters and writes HTML output.
 func handleScan(writer http.ResponseWriter, request *http.Request, opts Options) {
 	query := request.URL.Query()
 	state := stateFromQuery(opts, query)
@@ -93,6 +96,7 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 	_, _ = writer.Write([]byte(report.InjectScanMetadata(buffer.String(), metadata)))
 }
 
+// scanContext returns a derived context that applies the per-scan timeout when set.
 func scanContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if timeout > 0 {
 		return context.WithTimeout(parent, timeout)
@@ -100,6 +104,7 @@ func scanContext(parent context.Context, timeout time.Duration) (context.Context
 	return context.WithCancel(parent)
 }
 
+// scanRunOptions captures the resolved inputs for a single dashboard scan.
 type scanRunOptions struct {
 	projectRoot       string
 	paths             []string
@@ -113,6 +118,7 @@ type scanRunOptions struct {
 	reportInteractive bool
 }
 
+// buildScanOptions merges dashboard defaults with form state into runScan inputs.
 func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions {
 	projectRoot := strings.TrimSpace(state.Project)
 	if projectRoot == "" {
@@ -169,6 +175,7 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 	}
 }
 
+// runScan loads the registry and runs analysis.Analyze for the given scan options.
 func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, error) {
 	root, err := dashboardRoot(scanOpts.projectRoot)
 	if err != nil {
@@ -192,6 +199,7 @@ func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, err
 	})
 }
 
+// dashboardRoot resolves the requested project root to an absolute path or empty string.
 func dashboardRoot(root string) (string, error) {
 	if strings.TrimSpace(root) == "" {
 		return "", nil
@@ -199,6 +207,7 @@ func dashboardRoot(root string) (string, error) {
 	return filepath.Abs(root)
 }
 
+// dashboardRegistry loads project config and returns the configured rule registry.
 func dashboardRegistry(root, configPath string, noConfig bool) (rule.Registry, []string, error) {
 	defaults := rule.Defaults()
 	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
@@ -215,6 +224,7 @@ func dashboardRegistry(root, configPath string, noConfig bool) (rule.Registry, [
 	return registry, loaded.Config.IgnorePaths, nil
 }
 
+// splitPaths breaks a comma-separated path query value into trimmed entries.
 func splitPaths(raw string) []string {
 	if raw == "" {
 		return nil
@@ -230,6 +240,7 @@ func splitPaths(raw string) []string {
 	return out
 }
 
+// displayCommand reconstructs the equivalent `gruff-go analyse` shell command for state.
 func displayCommand(state report.DashboardState, opts Options) string {
 	args := []string{"gruff-go", "analyse", "--format", "html"}
 	if state.ReportInteractive == "1" {

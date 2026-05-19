@@ -1,4 +1,5 @@
 // Package scoring computes compact quality scores from analysis findings.
+// It produces pillar-level and file-level grades plus a complexity distribution.
 package scoring
 
 import (
@@ -10,6 +11,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// Score is the top-level scoring payload rendered into the analysis report.
 type Score struct {
 	Composite                   int            `json:"composite"`
 	Grade                       string         `json:"grade"`
@@ -21,11 +23,13 @@ type Score struct {
 	ComplexityDistributionScope string         `json:"complexityDistributionScope"`
 }
 
+// ScoreCoverage describes which pillars contributed to the composite score and a caveat.
 type ScoreCoverage struct {
 	ContributingPillars []string `json:"contributingPillars"`
 	Caveat              string   `json:"caveat,omitempty"`
 }
 
+// PillarDetail breaks down findings and grade for a single quality pillar.
 type PillarDetail struct {
 	Pillar   string `json:"pillar"`
 	Score    int    `json:"score"`
@@ -38,6 +42,7 @@ type PillarDetail struct {
 	Info     int    `json:"info"`
 }
 
+// FileScore reports the penalty, finding count, and grade for a single file.
 type FileScore struct {
 	File          string `json:"file"`
 	Penalty       int    `json:"penalty"`
@@ -46,9 +51,13 @@ type FileScore struct {
 	MaxCyclomatic *int   `json:"maxCyclomatic,omitempty"`
 }
 
+// complexityCyclomaticRuleID is the rule whose findings feed the complexity histogram.
 const complexityCyclomaticRuleID = "complexity.cyclomatic"
+
+// complexityDistributionScopeFindingOnly marks histograms built from findings only.
 const complexityDistributionScopeFindingOnly = "finding-only"
 
+// Calculate aggregates findings into a composite Score with per-pillar detail.
 func Calculate(findings []finding.Finding) Score {
 	pillarPenalty := map[string]int{}
 	filePenalty := map[string]int{}
@@ -129,6 +138,7 @@ func Calculate(findings []finding.Finding) Score {
 	}
 }
 
+// scoreCoverage builds the coverage caveat from the contributing pillars.
 func scoreCoverage(pillarPenalty map[string]int) ScoreCoverage {
 	pillars := make([]string, 0, len(pillarPenalty))
 	for pillar := range pillarPenalty {
@@ -149,6 +159,7 @@ func scoreCoverage(pillarPenalty map[string]int) ScoreCoverage {
 	return coverage
 }
 
+// pluralise returns the singular or plural form based on count.
 func pluralise(count int, singular, plural string) string {
 	if count == 1 {
 		return singular
@@ -156,6 +167,7 @@ func pluralise(count int, singular, plural string) string {
 	return plural
 }
 
+// findingPenalty computes the penalty score for a single finding based on severity and confidence.
 func findingPenalty(item finding.Finding) int {
 	base := map[finding.Severity]int{
 		finding.SeverityInfo:     1,
@@ -174,10 +186,12 @@ func findingPenalty(item finding.Finding) int {
 	}
 }
 
+// scoreNeutralFinding reports whether a finding is excluded from score penalties.
 func scoreNeutralFinding(item finding.Finding) bool {
 	return strings.HasPrefix(item.RuleID, "design.")
 }
 
+// grade maps a numeric score (0-100) to a letter grade.
 func grade(score int) string {
 	switch {
 	case score >= 90:
@@ -193,6 +207,7 @@ func grade(score int) string {
 	}
 }
 
+// topOffenders returns the highest-penalty files, capped at five entries.
 func topOffenders(filePenalty, fileFindings, fileMaxCyclomatic map[string]int) []FileScore {
 	files := make([]FileScore, 0, len(filePenalty))
 	for file, penalty := range filePenalty {
@@ -221,6 +236,7 @@ func topOffenders(filePenalty, fileFindings, fileMaxCyclomatic map[string]int) [
 	return files
 }
 
+// incrementSeverity bumps the severity counter on a PillarDetail.
 func incrementSeverity(detail *PillarDetail, severity finding.Severity) {
 	switch severity {
 	case finding.SeverityCritical:
@@ -236,6 +252,7 @@ func incrementSeverity(detail *PillarDetail, severity finding.Severity) {
 	}
 }
 
+// collectPillarDetails returns sorted PillarDetail values from the count map.
 func collectPillarDetails(pillarCounts map[string]*PillarDetail) []PillarDetail {
 	details := make([]PillarDetail, 0, len(pillarCounts))
 	for _, detail := range pillarCounts {
@@ -247,6 +264,7 @@ func collectPillarDetails(pillarCounts map[string]*PillarDetail) []PillarDetail 
 	return details
 }
 
+// emptyComplexityDistribution returns a zero-valued bucket map for complexity histograms.
 func emptyComplexityDistribution() map[string]int {
 	return map[string]int{
 		"1-5":   0,
@@ -257,6 +275,7 @@ func emptyComplexityDistribution() map[string]int {
 	}
 }
 
+// complexityBin returns the histogram bucket label for a cyclomatic complexity value.
 func complexityBin(complexity int) string {
 	switch {
 	case complexity <= 5:
@@ -272,6 +291,7 @@ func complexityBin(complexity int) string {
 	}
 }
 
+// metadataInt reads an integer value from finding metadata under the given key.
 func metadataInt(metadata map[string]any, key string) (int, bool) {
 	if metadata == nil {
 		return 0, false

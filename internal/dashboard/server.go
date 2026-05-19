@@ -1,4 +1,5 @@
 // Package dashboard serves the local browser dashboard for interactive analysis.
+// It hosts the HTTP server, default options, and scan orchestration entrypoints.
 package dashboard
 
 import (
@@ -111,6 +112,7 @@ func Serve(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 	}
 }
 
+// isLoopbackHost reports whether the host string resolves to a loopback address.
 func isLoopbackHost(host string) bool {
 	switch strings.ToLower(host) {
 	case "127.0.0.1", "::1", "localhost":
@@ -123,6 +125,7 @@ func isLoopbackHost(host string) bool {
 	return parsed.IsLoopback()
 }
 
+// initialURL builds the dashboard root URL with the default scan query string.
 func initialURL(host string, port int, opts Options) string {
 	state := defaultState(opts)
 	query := dashboardQueryFromState(state)

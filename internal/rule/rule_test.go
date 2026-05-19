@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file covers Definition validation and Registry dispatch semantics.
 package rule
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// TestDefinitionValidationRejectsBadIDs ensures Definition.Validate refuses malformed rule IDs.
 func TestDefinitionValidationRejectsBadIDs(t *testing.T) {
 	definition := validDefinition("bad_id")
 	if err := definition.Validate(); err == nil {
@@ -15,6 +18,7 @@ func TestDefinitionValidationRejectsBadIDs(t *testing.T) {
 	}
 }
 
+// TestDefinitionValidateDefaultsCapability confirms an empty Capability defaults to CapabilityParser.
 func TestDefinitionValidateDefaultsCapability(t *testing.T) {
 	definition := validDefinition("size.file-length")
 	definition.Capability = ""
@@ -27,6 +31,7 @@ func TestDefinitionValidateDefaultsCapability(t *testing.T) {
 	}
 }
 
+// TestDefinitionValidateRejectsInvalidCapability ensures unknown capability values are rejected.
 func TestDefinitionValidateRejectsInvalidCapability(t *testing.T) {
 	definition := validDefinition("size.file-length")
 	definition.Capability = Capability("magic")
@@ -36,6 +41,7 @@ func TestDefinitionValidateRejectsInvalidCapability(t *testing.T) {
 	}
 }
 
+// TestRegistryRejectsDuplicateIDs verifies NewRegistry returns an error when two rules share an ID.
 func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 	ruleA := fakeUnitRule{id: "size.file-length"}
 	ruleB := fakeUnitRule{id: "size.file-length"}
@@ -44,6 +50,7 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 	}
 }
 
+// TestRegistrySortsAndDispatchesRuleShapes checks Registry sorts definitions and dispatches both unit and project rules.
 func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	unit := parser.Unit{File: source.File{Path: "b.go", Type: source.FileTypeGo}}
 	unitRule := fakeUnitRule{id: "size.file-length"}
@@ -68,6 +75,7 @@ func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	}
 }
 
+// TestRegistryCachesDefinitionsForDispatch ensures Definition() is invoked only once per rule.
 func TestRegistryCachesDefinitionsForDispatch(t *testing.T) {
 	calls := 0
 	registry, err := NewRegistry([]UnitRule{countedUnitRule{id: "size.file-length", calls: &calls}}, nil)
@@ -85,6 +93,7 @@ func TestRegistryCachesDefinitionsForDispatch(t *testing.T) {
 	}
 }
 
+// TestRegistryDoesNotDispatchDisabledRules confirms rules with DefaultEnabled=false are skipped during Analyze.
 func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
 	calls := 0
 	registry, err := NewRegistry([]UnitRule{disabledUnitRule{id: "size.parameter-count", calls: &calls}}, nil)
@@ -99,6 +108,7 @@ func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
 	}
 }
 
+// TestDefaultsCapability asserts every built-in rule advertises CapabilityParser.
 func TestDefaultsCapability(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
@@ -112,6 +122,7 @@ func TestDefaultsCapability(t *testing.T) {
 	}
 }
 
+// TestRegistryDefinitionsCapabilityInvariant verifies a freshly built Registry exposes parser-capability definitions.
 func TestRegistryDefinitionsCapabilityInvariant(t *testing.T) {
 	registry, err := NewRegistry([]UnitRule{fakeUnitRule{id: "size.file-length"}}, nil)
 	if err != nil {
@@ -126,12 +137,15 @@ func TestRegistryDefinitionsCapabilityInvariant(t *testing.T) {
 	}
 }
 
+// fakeUnitRule is a minimal UnitRule stub used to exercise registry plumbing.
 type fakeUnitRule struct{ id string }
 
+// Definition returns a valid Definition keyed by the stub's id.
 func (r fakeUnitRule) Definition() Definition {
 	return validDefinition(r.id)
 }
 
+// AnalyzeUnit returns a single canned unit-level finding for the given unit.
 func (r fakeUnitRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return []finding.Finding{{
 		Message:  "unit finding",
@@ -140,12 +154,15 @@ func (r fakeUnitRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 	}}
 }
 
+// fakeProjectRule is a minimal ProjectRule stub used to exercise registry plumbing.
 type fakeProjectRule struct{ id string }
 
+// Definition returns a valid Definition keyed by the stub's id.
 func (r fakeProjectRule) Definition() Definition {
 	return validDefinition(r.id)
 }
 
+// AnalyzeProject returns a single canned project-level finding for the given units.
 func (r fakeProjectRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	return []finding.Finding{{
 		Message: "project finding",
@@ -153,16 +170,19 @@ func (r fakeProjectRule) AnalyzeProject(units []parser.Unit, _ Context) []findin
 	}}
 }
 
+// countedUnitRule records each Definition invocation in calls so tests can assert caching.
 type countedUnitRule struct {
 	id    string
 	calls *int
 }
 
+// Definition increments the call counter and returns a valid Definition for the stub id.
 func (r countedUnitRule) Definition() Definition {
 	(*r.calls)++
 	return validDefinition(r.id)
 }
 
+// AnalyzeUnit returns a single canned unit-level finding for the given unit.
 func (countedUnitRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return []finding.Finding{{
 		Message:  "unit finding",
@@ -171,22 +191,26 @@ func (countedUnitRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 	}}
 }
 
+// disabledUnitRule advertises DefaultEnabled=false and records dispatch attempts in calls.
 type disabledUnitRule struct {
 	id    string
 	calls *int
 }
 
+// Definition returns a Definition that opts the rule out of default execution.
 func (r disabledUnitRule) Definition() Definition {
 	definition := validDefinition(r.id)
 	definition.DefaultEnabled = false
 	return definition
 }
 
+// AnalyzeUnit increments the call counter so tests can assert the registry skipped this rule.
 func (r disabledUnitRule) AnalyzeUnit(parser.Unit, Context) []finding.Finding {
 	(*r.calls)++
 	return nil
 }
 
+// validDefinition builds a minimal Definition that passes Validate using the supplied id.
 func validDefinition(id string) Definition {
 	return Definition{
 		ID:             id,

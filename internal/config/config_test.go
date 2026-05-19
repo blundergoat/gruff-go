@@ -1,3 +1,5 @@
+// Package config tests cover YAML parsing, rule validation, and discovery.
+// They guard the strict schema, rule overrides, and legacy alias compatibility.
 package config
 
 import (
@@ -9,11 +11,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// defaultDefinitions returns rule definitions from the default registry for tests.
 func defaultDefinitions() []rule.Definition {
 	defaults := rule.Defaults()
 	return defaults.Definitions()
 }
 
+// TestParseValidatesStrictConfig checks the strict schema accepts a typical config.
 func TestParseValidatesStrictConfig(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
@@ -47,6 +51,7 @@ sensitiveData:
 	}
 }
 
+// TestParseYAMLGruffShape verifies the gruff-go YAML shape maps to rule options.
 func TestParseYAMLGruffShape(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 paths:
@@ -94,6 +99,7 @@ rules:
 	}
 }
 
+// TestResolvePathLoadsOnlyGruffGoYAML asserts auto-discovery prefers .gruff-go.yaml.
 func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	root := t.TempDir()
 	definitions := defaultDefinitions()
@@ -111,6 +117,7 @@ func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	}
 }
 
+// TestResolvePathIgnoresNonDefaultConfigFiles asserts non-default filenames are skipped.
 func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	root := t.TempDir()
 	definitions := defaultDefinitions()
@@ -128,6 +135,7 @@ func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	}
 }
 
+// TestParseFileRejectsUnsupportedConfigExtension ensures only .yaml configs are accepted.
 func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 	for _, path := range []string{"config.txt", "config.yml"} {
 		t.Run(path, func(t *testing.T) {
@@ -139,6 +147,7 @@ func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 	}
 }
 
+// TestParseAcceptsExpansionRuleConfig covers expansion documentation and naming rule options.
 func TestParseAcceptsExpansionRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 rules:
@@ -210,6 +219,7 @@ rules:
 	assertExpansionRuleOptions(t, options)
 }
 
+// assertExpansionRuleEnablement checks the expansion rules are enabled in options.
 func assertExpansionRuleEnablement(t *testing.T, options rule.Config) {
 	t.Helper()
 	if !options.Enabled["size.parameter-count"] || !options.Enabled["complexity.nesting-depth"] || !options.Enabled["docs.exported-symbol-comment"] || !options.Enabled["docs.comment-rubric"] || !options.Enabled["naming.acronym-case"] || !options.Enabled["naming.receiver-consistency"] || !options.Enabled["naming.get-prefix"] || !options.Enabled["naming.contextual-generic"] {
@@ -217,6 +227,7 @@ func assertExpansionRuleEnablement(t *testing.T, options rule.Config) {
 	}
 }
 
+// assertExpansionRuleThresholds checks expansion rule thresholds and severities.
 func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 	t.Helper()
 	if options.Thresholds["size.parameter-count"]["maxParameters"] != 8 {
@@ -245,6 +256,7 @@ func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 	}
 }
 
+// assertExpansionRuleOptions checks parsed option maps for expansion rules.
 func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 	t.Helper()
 	if options.Options["docs.comment-rubric"]["requireFunctionComments"] != true {
@@ -270,6 +282,7 @@ func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 	}
 }
 
+// TestParseAcceptsCompositeRuleConfig verifies composite design rules parse and validate.
 func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 rules:
@@ -296,6 +309,7 @@ rules:
 	}
 }
 
+// TestParseAcceptsLegacyRuleIDAliases covers hyphenated and renamed legacy rule IDs.
 func TestParseAcceptsLegacyRuleIDAliases(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 selection:
@@ -322,6 +336,7 @@ rules:
 	}
 }
 
+// writeConfig writes a config file under the test root for discovery tests.
 func writeConfig(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
@@ -330,6 +345,7 @@ func writeConfig(t *testing.T, root, rel, contents string) {
 	}
 }
 
+// TestParseRejectsInvalidConfig table-tests rejection cases for invalid configurations.
 func TestParseRejectsInvalidConfig(t *testing.T) {
 	tests := []struct {
 		name string

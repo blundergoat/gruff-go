@@ -1,3 +1,5 @@
+// Package scoring tests cover composite scoring, file enrichment, and complexity bins.
+// They drive Calculate with crafted findings and assert deterministic output.
 package scoring
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// TestCalculateScoresFindings verifies pillar penalties and coverage caveats.
 func TestCalculateScoresFindings(t *testing.T) {
 	score := Calculate([]finding.Finding{{
 		File:       "a.go",
@@ -39,6 +42,7 @@ func TestCalculateScoresFindings(t *testing.T) {
 	}
 }
 
+// TestCalculateCleanScore confirms an all-clean run returns the perfect A grade.
 func TestCalculateCleanScore(t *testing.T) {
 	score := Calculate(nil)
 	if score.Composite != 100 || score.Grade != "A" {
@@ -66,6 +70,7 @@ func TestCalculateCleanScore(t *testing.T) {
 	}
 }
 
+// TestCalculatePillarDetailsSortedAndCounted verifies pillar detail counts and ordering.
 func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		{File: "a.go", Severity: finding.SeverityCritical, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity},
@@ -94,6 +99,7 @@ func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 	}
 }
 
+// TestCalculateFileScoreEnrichment confirms top offenders carry max cyclomatic info.
 func TestCalculateFileScoreEnrichment(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		{
@@ -140,6 +146,7 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 	}
 }
 
+// TestCalculateComplexityDistribution checks complexity histogram bucketing.
 func TestCalculateComplexityDistribution(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityMedium, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 12}},
@@ -162,6 +169,7 @@ func TestCalculateComplexityDistribution(t *testing.T) {
 	}
 }
 
+// TestCalculateCompositeDesignFindingsAreScoreNeutral ensures design.* findings do not penalize the score.
 func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	base := []finding.Finding{
 		{File: "hot.go", RuleID: "size.function-length", Severity: finding.SeverityMedium, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},

@@ -1,4 +1,5 @@
 // Package diff computes changed-line filters from git diffs.
+// It powers the changed-lines-only scan mode used by CI integrations.
 package diff
 
 import (
@@ -13,19 +14,23 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// ChangedLines describes the set of lines per file altered relative to a git base.
 type ChangedLines struct {
 	Base         string
 	LinesByFile  map[string]map[int]struct{}
 	ChangedFiles []string
 }
 
+// FilterResult is the outcome of filtering findings against a ChangedLines set.
 type FilterResult struct {
 	Findings         []finding.Finding
 	FilteredFindings int
 }
 
+// hunkPattern matches the unified-diff hunk header used to recover added line ranges.
 var hunkPattern = regexp.MustCompile(`@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@`)
 
+// FromGit runs `git diff` against base and returns the changed lines under paths.
 func FromGit(root string, base string, paths []string) (ChangedLines, error) {
 	if base == "" {
 		return ChangedLines{}, fmt.Errorf("diff base must not be empty")
@@ -49,6 +54,7 @@ func FromGit(root string, base string, paths []string) (ChangedLines, error) {
 	return Parse(base, output), nil
 }
 
+// Parse converts a unified-diff patch into a ChangedLines map keyed by file path.
 func Parse(base string, patch []byte) ChangedLines {
 	result := ChangedLines{
 		Base:        base,
@@ -89,6 +95,7 @@ func Parse(base string, patch []byte) ChangedLines {
 	return result
 }
 
+// Filter keeps findings whose file and line ranges overlap the changed set.
 func Filter(findings []finding.Finding, changed ChangedLines) FilterResult {
 	kept := make([]finding.Finding, 0, len(findings))
 	filtered := 0
@@ -102,6 +109,7 @@ func Filter(findings []finding.Finding, changed ChangedLines) FilterResult {
 	return FilterResult{Findings: kept, FilteredFindings: filtered}
 }
 
+// matchesFinding reports whether a finding overlaps the changed-line set.
 func matchesFinding(item finding.Finding, changed ChangedLines) bool {
 	lines, ok := changed.LinesByFile[item.File]
 	if !ok {
@@ -123,6 +131,7 @@ func matchesFinding(item finding.Finding, changed ChangedLines) bool {
 	return false
 }
 
+// parseNewFile extracts the destination file path from a unified diff header.
 func parseNewFile(line string) string {
 	path := strings.TrimSpace(strings.TrimPrefix(line, "+++ "))
 	if path == "/dev/null" {

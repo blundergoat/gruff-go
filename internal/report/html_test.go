@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file holds the core tests for the HTML report renderer.
 package report
 
 import (
@@ -10,11 +12,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// defaultDefinitions returns the rule definitions registered by Defaults for test fixtures.
 func defaultDefinitions() []rule.Definition {
 	defaults := rule.Defaults()
 	return defaults.Definitions()
 }
 
+// TestWriteHTMLRendersCoreSections checks that the rendered HTML contains every required document section.
 func TestWriteHTMLRendersCoreSections(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -46,6 +50,7 @@ func TestWriteHTMLRendersCoreSections(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLSelfContained ensures the rendered HTML references no external links or scripts.
 func TestWriteHTMLSelfContained(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -66,6 +71,7 @@ func TestWriteHTMLSelfContained(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLCelebrationSubtitle verifies the celebratory subtitle when there are no flagged findings.
 func TestWriteHTMLCelebrationSubtitle(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -84,6 +90,7 @@ func TestWriteHTMLCelebrationSubtitle(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLDataDrivenSubtitle verifies the data-driven subtitle when threshold findings exist.
 func TestWriteHTMLDataDrivenSubtitle(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -96,6 +103,7 @@ func TestWriteHTMLDataDrivenSubtitle(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLSeverityTiers checks the severity badges render with the correct tier class.
 func TestWriteHTMLSeverityTiers(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -119,6 +127,7 @@ func TestWriteHTMLSeverityTiers(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLEditorLinkNone asserts that file locations are emitted as plain spans when editor links are disabled.
 func TestWriteHTMLEditorLinkNone(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -134,6 +143,7 @@ func TestWriteHTMLEditorLinkNone(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLEditorLinkVSCode asserts the VS Code editor scheme is emitted when requested.
 func TestWriteHTMLEditorLinkVSCode(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -146,6 +156,7 @@ func TestWriteHTMLEditorLinkVSCode(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLEditorLinkPhpStorm asserts the PhpStorm editor scheme is emitted when requested.
 func TestWriteHTMLEditorLinkPhpStorm(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -158,6 +169,7 @@ func TestWriteHTMLEditorLinkPhpStorm(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLCyclomaticSummaryAndBins checks the histogram caption and bin tier classes render correctly.
 func TestWriteHTMLCyclomaticSummaryAndBins(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -176,6 +188,7 @@ func TestWriteHTMLCyclomaticSummaryAndBins(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLEscapesMaliciousInput ensures user-supplied strings are HTML-escaped in the rendered report.
 func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 	malicious := finding.Finding{
 		RuleID:     "test.rule",
@@ -210,6 +223,7 @@ func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLDiagnosticsRender verifies that the diagnostics section appears when diagnostics are present.
 func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:    "/repo",
@@ -238,6 +252,7 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLDiffScopeLabel checks the masthead scope label reflects diff-scope runs.
 func TestWriteHTMLDiffScopeLabel(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -257,6 +272,7 @@ func TestWriteHTMLDiffScopeLabel(t *testing.T) {
 	}
 }
 
+// buildHTMLFixture returns a synthetic report covering each severity tier and histogram bin used by the HTML tests.
 func buildHTMLFixture() analysis.Report {
 	findings := []finding.Finding{
 		{

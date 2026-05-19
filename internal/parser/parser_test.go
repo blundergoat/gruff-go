@@ -1,3 +1,5 @@
+// Package parser tests exercise unit construction and diagnostic reporting.
+// They write temp files and run Parse to confirm AST and function metadata.
 package parser
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// TestParseBuildsUnitsAndFunctionMetadata verifies AST and function info on a healthy file.
 func TestParseBuildsUnitsAndFunctionMetadata(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.go")
@@ -33,6 +36,7 @@ func TestParseBuildsUnitsAndFunctionMetadata(t *testing.T) {
 	}
 }
 
+// TestParseReportsParseDiagnostics confirms broken source produces diagnostics not units.
 func TestParseReportsParseDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "broken.go")

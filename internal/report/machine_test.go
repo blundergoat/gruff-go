@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file holds tests for the machine-readable reporters: SARIF, summary JSON, and GitHub annotations.
 package report
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// TestMachineReportFormats end-to-end checks the SARIF, summary JSON, and GitHub annotation outputs together.
 func TestMachineReportFormats(t *testing.T) {
 	item := finding.Finding{
 		RuleID:      "size.file-length",
@@ -66,6 +69,7 @@ func TestMachineReportFormats(t *testing.T) {
 	}
 }
 
+// TestWriteSARIFContract asserts the SARIF output matches the schema contract assertions documented above.
 func TestWriteSARIFContract(t *testing.T) {
 	definitions := reversedDefinitions(defaultDefinitions())
 	item := sarifContractFinding()
@@ -99,6 +103,7 @@ func TestWriteSARIFContract(t *testing.T) {
 	requireSARIFRunProperties(t, run.Properties, report.Score.Composite)
 }
 
+// reversedDefinitions flips the rule definitions slice in place to prove the SARIF writer sorts rules itself.
 func reversedDefinitions(definitions []rule.Definition) []rule.Definition {
 	for left, right := 0, len(definitions)-1; left < right; left, right = left+1, right-1 {
 		definitions[left], definitions[right] = definitions[right], definitions[left]
@@ -106,6 +111,7 @@ func reversedDefinitions(definitions []rule.Definition) []rule.Definition {
 	return definitions
 }
 
+// sarifContractFinding builds the canonical finding used to exercise SARIF contract fields.
 func sarifContractFinding() finding.Finding {
 	return finding.Finding{
 		RuleID:           "size.file-length",
@@ -126,6 +132,7 @@ func sarifContractFinding() finding.Finding {
 	}
 }
 
+// writeSARIFBytes invokes WriteSARIF and returns the produced bytes, failing the test on error.
 func writeSARIFBytes(t *testing.T, report analysis.Report) []byte {
 	t.Helper()
 	var out bytes.Buffer
@@ -135,6 +142,7 @@ func writeSARIFBytes(t *testing.T, report analysis.Report) []byte {
 	return out.Bytes()
 }
 
+// decodeSARIFLog parses SARIF bytes into the typed sarifLog model used in test assertions.
 func decodeSARIFLog(t *testing.T, data []byte) sarifLog {
 	t.Helper()
 	var payload sarifLog
@@ -144,6 +152,7 @@ func decodeSARIFLog(t *testing.T, data []byte) sarifLog {
 	return payload
 }
 
+// requireSingleSARIFRun fails the test when the SARIF payload does not contain exactly one run at version 2.1.0.
 func requireSingleSARIFRun(t *testing.T, payload sarifLog) sarifRun {
 	t.Helper()
 	if payload.Version != "2.1.0" || len(payload.Runs) != 1 {
@@ -152,6 +161,7 @@ func requireSingleSARIFRun(t *testing.T, payload sarifLog) sarifRun {
 	return payload.Runs[0]
 }
 
+// requireSARIFDriver asserts the driver identity matches the gruff-go tool and pinned semantic version.
 func requireSARIFDriver(t *testing.T, driver sarifDriver) {
 	t.Helper()
 	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.1.0" {
@@ -159,6 +169,7 @@ func requireSARIFDriver(t *testing.T, driver sarifDriver) {
 	}
 }
 
+// requireSARIFRulesSorted asserts the driver rules appear in ID-sorted order.
 func requireSARIFRulesSorted(t *testing.T, rules []sarifRule) {
 	t.Helper()
 	for index := 1; index < len(rules); index++ {
@@ -168,6 +179,7 @@ func requireSARIFRulesSorted(t *testing.T, rules []sarifRule) {
 	}
 }
 
+// requireSARIFRulesCapability asserts every driver rule advertises the parser capability.
 func requireSARIFRulesCapability(t *testing.T, rules []sarifRule) {
 	t.Helper()
 	if len(rules) == 0 {
@@ -180,6 +192,7 @@ func requireSARIFRulesCapability(t *testing.T, rules []sarifRule) {
 	}
 }
 
+// requireSingleSARIFResult fails the test when the SARIF run does not contain exactly one result.
 func requireSingleSARIFResult(t *testing.T, results []sarifResult) sarifResult {
 	t.Helper()
 	if len(results) != 1 {
@@ -188,6 +201,7 @@ func requireSingleSARIFResult(t *testing.T, results []sarifResult) sarifResult {
 	return results[0]
 }
 
+// requireSARIFResultIdentity asserts the SARIF result preserves the finding's rule ID and severity-derived level.
 func requireSARIFResultIdentity(t *testing.T, result sarifResult, item finding.Finding) {
 	t.Helper()
 	if result.RuleID != item.RuleID || result.Level != "error" {
@@ -195,6 +209,7 @@ func requireSARIFResultIdentity(t *testing.T, result sarifResult, item finding.F
 	}
 }
 
+// requireSARIFRuleIndex asserts the result.ruleIndex points to the matching driver rule entry.
 func requireSARIFRuleIndex(t *testing.T, result sarifResult, rules []sarifRule) {
 	t.Helper()
 	if result.RuleIndex == nil {
@@ -208,6 +223,7 @@ func requireSARIFRuleIndex(t *testing.T, result sarifResult, rules []sarifRule) 
 	}
 }
 
+// requireNoRawSARIFResultKeys fails the test when forbidden SARIF result keys are present in the raw JSON.
 func requireNoRawSARIFResultKeys(t *testing.T, result map[string]any, keys ...string) {
 	t.Helper()
 	for _, key := range keys {
@@ -217,6 +233,7 @@ func requireNoRawSARIFResultKeys(t *testing.T, result map[string]any, keys ...st
 	}
 }
 
+// requireSARIFFingerprints asserts the gruffFingerprint key carries the finding fingerprint and no stale aliases exist.
 func requireSARIFFingerprints(t *testing.T, fingerprints map[string]string, want string) {
 	t.Helper()
 	if got := fingerprints["gruffFingerprint"]; got != want {
@@ -227,6 +244,7 @@ func requireSARIFFingerprints(t *testing.T, fingerprints map[string]string, want
 	}
 }
 
+// requireSARIFLocation asserts the SARIF location's artefact URI and region match the expected values.
 func requireSARIFLocation(t *testing.T, locations []sarifLocation, wantURI string, want finding.Location) {
 	t.Helper()
 	if len(locations) != 1 {
@@ -244,6 +262,7 @@ func requireSARIFLocation(t *testing.T, locations []sarifLocation, wantURI strin
 	}
 }
 
+// requireSARIFResultProperties asserts the SARIF result.properties block preserves every gruff metadata field.
 func requireSARIFResultProperties(t *testing.T, properties map[string]any, item finding.Finding) {
 	t.Helper()
 	requireSARIFMetadata(t, properties)
@@ -254,6 +273,7 @@ func requireSARIFResultProperties(t *testing.T, properties map[string]any, item 
 	}
 }
 
+// requireSARIFMetadata asserts the metadata sub-block of result.properties survives JSON round-trip.
 func requireSARIFMetadata(t *testing.T, properties map[string]any) {
 	t.Helper()
 	metadata, ok := properties["metadata"].(map[string]any)
@@ -262,6 +282,7 @@ func requireSARIFMetadata(t *testing.T, properties map[string]any) {
 	}
 }
 
+// requireCoreSARIFResultProperties asserts pillar, severity, and confidence are preserved in result.properties.
 func requireCoreSARIFResultProperties(t *testing.T, properties map[string]any, item finding.Finding) {
 	t.Helper()
 	if properties["pillar"] != string(item.Pillar) ||
@@ -271,6 +292,7 @@ func requireCoreSARIFResultProperties(t *testing.T, properties map[string]any, i
 	}
 }
 
+// requireSARIFSecondaryPillars asserts the secondary pillar list survives serialisation.
 func requireSARIFSecondaryPillars(t *testing.T, properties map[string]any) {
 	t.Helper()
 	secondaryPillars, ok := properties["secondaryPillars"].([]any)
@@ -279,6 +301,7 @@ func requireSARIFSecondaryPillars(t *testing.T, properties map[string]any) {
 	}
 }
 
+// requireSARIFRunProperties asserts run-level properties carry the schema version, grade, and score.
 func requireSARIFRunProperties(t *testing.T, properties sarifRunProperties, wantScore int) {
 	t.Helper()
 	if properties.GruffSchemaVersion != analysis.SchemaVersion || properties.Grade == "" {
@@ -289,6 +312,7 @@ func requireSARIFRunProperties(t *testing.T, properties sarifRunProperties, want
 	}
 }
 
+// TestWriteSARIFOmitRuleIndexWhenRuleMissing asserts ruleIndex is omitted when no driver rule matches the finding.
 func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 	item := finding.Finding{
 		RuleID:      "custom.missing-rule",
@@ -349,6 +373,7 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 	}
 }
 
+// TestSARIFLevelMapping checks each gruff severity maps to the documented SARIF level.
 func TestSARIFLevelMapping(t *testing.T) {
 	cases := map[finding.Severity]string{
 		finding.SeverityCritical: "error",
@@ -364,6 +389,7 @@ func TestSARIFLevelMapping(t *testing.T) {
 	}
 }
 
+// rawSARIFResult returns the index-th SARIF result as a generic map for raw-key assertions.
 func rawSARIFResult(t *testing.T, data []byte, index int) map[string]any {
 	t.Helper()
 	var payload map[string]any

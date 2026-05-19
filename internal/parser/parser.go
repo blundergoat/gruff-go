@@ -1,4 +1,5 @@
 // Package parser builds parser-only source units from discovered files.
+// It uses the standard library go/parser without type-checking or imports resolution.
 package parser
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// Unit is a parsed source file with the data rules need for analysis.
 type Unit struct {
 	File      source.File
 	Source    string
@@ -21,12 +23,14 @@ type Unit struct {
 	Functions []Function
 }
 
+// Function describes a top-level function or method discovered during parsing.
 type Function struct {
 	Name    string
 	Line    int
 	EndLine int
 }
 
+// Diagnostic reports a parser failure or read error attached to a specific file.
 type Diagnostic struct {
 	File    string `json:"file,omitempty"`
 	Line    int    `json:"line,omitempty"`
@@ -34,6 +38,7 @@ type Diagnostic struct {
 	Message string `json:"message"`
 }
 
+// Parse converts discovered source files into Units and parser diagnostics.
 func Parse(files []source.File) ([]Unit, []Diagnostic) {
 	units := make([]Unit, 0, len(files))
 	diagnostics := []Diagnostic{}
@@ -72,6 +77,7 @@ func Parse(files []source.File) ([]Unit, []Diagnostic) {
 	return units, diagnostics
 }
 
+// parseDiagnostics converts a parser error or error list into per-file diagnostics.
 func parseDiagnostics(path string, err error) []Diagnostic {
 	if list, ok := err.(scanner.ErrorList); ok {
 		out := make([]Diagnostic, 0, len(list))
@@ -91,6 +97,7 @@ func parseDiagnostics(path string, err error) []Diagnostic {
 	}}
 }
 
+// functions extracts top-level function metadata from a parsed AST file.
 func functions(fset *token.FileSet, file *ast.File) []Function {
 	out := []Function{}
 	for _, decl := range file.Decls {
@@ -109,6 +116,7 @@ func functions(fset *token.FileSet, file *ast.File) []Function {
 	return out
 }
 
+// receiverName returns the receiver type name for method declarations.
 func receiverName(field *ast.Field) string {
 	switch expr := field.Type.(type) {
 	case *ast.Ident:
@@ -121,6 +129,7 @@ func receiverName(field *ast.Field) string {
 	return "receiver"
 }
 
+// countLines returns the total newline-terminated line count of the source text.
 func countLines(text string) int {
 	if text == "" {
 		return 0

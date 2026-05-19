@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file implements the plain-text reporter and rule listing for the CLI.
 package report
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// WriteText renders the full analysis report as plain text to writer.
 func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextHeader(writer, report); err != nil {
 		return err
@@ -24,6 +27,7 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 	return err
 }
 
+// writeTextHeader emits the leading metadata block: schema, file counts, score coverage, and scope.
 func writeTextHeader(writer io.Writer, report analysis.Report) error {
 	if _, err := fmt.Fprintf(writer, "gruff-go analysis\n"); err != nil {
 		return err
@@ -64,6 +68,7 @@ func writeTextHeader(writer io.Writer, report analysis.Report) error {
 	return nil
 }
 
+// writeTextDiagnostics emits a one-line entry per diagnostic when any exist.
 func writeTextDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) error {
 	if len(diagnostics) == 0 {
 		return nil
@@ -83,6 +88,7 @@ func writeTextDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) e
 	return nil
 }
 
+// writeTextFindings emits one line per finding in the order produced by the analyser.
 func writeTextFindings(writer io.Writer, findings []finding.Finding) error {
 	if len(findings) == 0 {
 		_, err := fmt.Fprintln(writer, "findings: none")
@@ -103,6 +109,7 @@ func writeTextFindings(writer io.Writer, findings []finding.Finding) error {
 	return nil
 }
 
+// countGitignored returns the number of skipped paths whose reason is "gitignored".
 func countGitignored(skipped []analysis.SkippedPath) int {
 	n := 0
 	for _, item := range skipped {
@@ -113,6 +120,7 @@ func countGitignored(skipped []analysis.SkippedPath) int {
 	return n
 }
 
+// WriteRuleText writes one line per registered rule with id, pillar, severity, capability, and title.
 func WriteRuleText(writer io.Writer, definitions []rule.Definition) error {
 	if len(definitions) == 0 {
 		_, err := fmt.Fprintln(writer, "No rules registered.")

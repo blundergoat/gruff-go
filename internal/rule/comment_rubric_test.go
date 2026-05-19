@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the comment-rubric rule across its configuration knobs.
 package rule
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// TestCommentRubricRulePackageSummary verifies package summary detection across missing, short, and well-formed files.
 func TestCommentRubricRulePackageSummary(t *testing.T) {
 	rule := CommentRubricRule{
 		RequirePackageSummary:  true,
@@ -37,6 +40,7 @@ package sample
 	}
 }
 
+// TestCommentRubricRuleFunctionComments checks that function and method declarations require useful comments.
 func TestCommentRubricRuleFunctionComments(t *testing.T) {
 	unit := parseOne(t, "functions.go", `package sample
 
@@ -69,6 +73,7 @@ func (Worker) MissingMethod() {}
 	}
 }
 
+// TestCommentRubricRuleNamedTypeComments exercises the named-type, struct-only, and interface-only enforcement modes.
 func TestCommentRubricRuleNamedTypeComments(t *testing.T) {
 	unit := parseOne(t, "types.go", `package sample
 
@@ -112,6 +117,7 @@ type (
 	}
 }
 
+// TestCommentRubricRuleConstAndVarComments confirms const and var enforcement skips function-local declarations.
 func TestCommentRubricRuleConstAndVarComments(t *testing.T) {
 	unit := parseOne(t, "values.go", `package sample
 
@@ -162,6 +168,7 @@ func localValues() {
 	}
 }
 
+// TestCommentRubricRuleScopeControlsAndTests verifies include, exclude, and test-skip path controls.
 func TestCommentRubricRuleScopeControlsAndTests(t *testing.T) {
 	mainUnit := parseOne(t, "internal/config/config.go", `package config
 
@@ -196,6 +203,7 @@ func MissingTestHelper() {}
 	}
 }
 
+// TestCommentRubricRuleDefaultsConfigured confirms the rule activates only after explicit opt-in configuration.
 func TestCommentRubricRuleDefaultsConfigured(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
@@ -237,6 +245,7 @@ func Missing() {}
 	}
 }
 
+// findingSymbols collects finding symbols into a set keyed by symbol name.
 func findingSymbols(findings []finding.Finding) map[string]bool {
 	out := map[string]bool{}
 	for _, item := range findings {
@@ -245,6 +254,7 @@ func findingSymbols(findings []finding.Finding) map[string]bool {
 	return out
 }
 
+// findingMessages collects finding messages into a set keyed by message text.
 func findingMessages(findings []finding.Finding) map[string]bool {
 	out := map[string]bool{}
 	for _, item := range findings {

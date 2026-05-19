@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the naming.receiver-consistency rule.
 package rule
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// receiverMethod captures one method's receiver name and pointer/value form for cross-method comparison.
 type receiverMethod struct {
 	unit     parser.Unit
 	function *ast.FuncDecl
@@ -18,6 +21,7 @@ type receiverMethod struct {
 	form     string
 }
 
+// receiverGroup aggregates the methods declared on a single named type plus tallies of receiver names and forms.
 type receiverGroup struct {
 	methods []receiverMethod
 	names   map[string]int
@@ -30,6 +34,7 @@ type ReceiverConsistencyRule struct {
 	InspectGroup string
 }
 
+// Definition returns the rule metadata for ReceiverConsistencyRule.
 func (r ReceiverConsistencyRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.receiver-consistency",
@@ -46,6 +51,7 @@ func (r ReceiverConsistencyRule) Definition() Definition {
 	}
 }
 
+// AnalyzeProject scans every method across the project for receiver name or form inconsistencies.
 func (r ReceiverConsistencyRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	groups := collectReceiverGroups(units)
 	inspectName, inspectPointer := receiverInspectModes(r.InspectGroup)
@@ -55,6 +61,7 @@ func (r ReceiverConsistencyRule) AnalyzeProject(units []parser.Unit, _ Context) 
 	return findings
 }
 
+// collectReceiverGroups buckets methods across units by their receiver type.
 func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 	groups := map[string]*receiverGroup{}
 	for _, unit := range units {
@@ -85,6 +92,7 @@ func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 	return groups
 }
 
+// receiverConsistencyFindings emits findings for every receiver group whose conventions diverge.
 func receiverConsistencyFindings(groups map[string]*receiverGroup, inspectName bool, inspectPointer bool, allowMixed map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	for typeName, group := range groups {
@@ -93,6 +101,7 @@ func receiverConsistencyFindings(groups map[string]*receiverGroup, inspectName b
 	return findings
 }
 
+// receiverGroupFindings reports each method in a group whose receiver name or form does not match the dominant choice.
 func receiverGroupFindings(typeName string, group *receiverGroup, inspectName bool, inspectPointer bool, allowMixed map[string]bool) []finding.Finding {
 	dominantName := dominantReceiverValue(group.names)
 	dominantForm := dominantReceiverValue(group.forms)
@@ -112,6 +121,7 @@ func receiverGroupFindings(typeName string, group *receiverGroup, inspectName bo
 	return findings
 }
 
+// receiverMethodFromFunc extracts the receiver name, type, and pointer form from a FuncDecl.
 func receiverMethodFromFunc(unit parser.Unit, fn *ast.FuncDecl) (receiverMethod, bool) {
 	field := fn.Recv.List[0]
 	typeName, pointer := receiverType(field.Type)
@@ -129,6 +139,7 @@ func receiverMethodFromFunc(unit parser.Unit, fn *ast.FuncDecl) (receiverMethod,
 	return receiverMethod{unit: unit, function: fn, typeName: typeName, name: name, form: form}, true
 }
 
+// receiverType resolves a receiver expression to its underlying type name and pointer flag.
 func receiverType(expr ast.Expr) (string, bool) {
 	switch item := expr.(type) {
 	case *ast.Ident:
@@ -144,6 +155,7 @@ func receiverType(expr ast.Expr) (string, bool) {
 	return "", false
 }
 
+// dominantReceiverValue picks the most common value in counts, breaking ties alphabetically.
 func dominantReceiverValue(counts map[string]int) string {
 	type candidate struct {
 		value string
@@ -158,6 +170,7 @@ func dominantReceiverValue(counts map[string]int) string {
 	return best.value
 }
 
+// receiverInspectModes maps the InspectGroup option to (inspectName, inspectPointer) flags.
 func receiverInspectModes(input string) (bool, bool) {
 	switch strings.ToLower(strings.TrimSpace(input)) {
 	case "name":
@@ -169,6 +182,7 @@ func receiverInspectModes(input string) (bool, bool) {
 	}
 }
 
+// makeReceiverFinding constructs a Finding describing a receiver name or form mismatch.
 func makeReceiverFinding(method receiverMethod, dominantName string, dominantForm string, nameMismatch bool, formMismatch bool) finding.Finding {
 	position := method.unit.FileSet.Position(method.function.Name.Pos())
 	reason := "receiver differs from dominant convention"

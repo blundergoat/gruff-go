@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements composite design rules that derive findings from other findings.
 package rule
 
 import (
@@ -7,13 +9,16 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// Default thresholds for the design.hotspot-file composite rule.
 const (
 	hotspotFileMinFindings = 3
 	hotspotFileMinPillars  = 2
 )
 
+// DesignGodFunctionRule flags functions that combine both size and complexity findings.
 type DesignGodFunctionRule struct{}
 
+// Definition returns the rule metadata for DesignGodFunctionRule.
 func (DesignGodFunctionRule) Definition() Definition {
 	return Definition{
 		ID:               "design.god-function",
@@ -29,6 +34,7 @@ func (DesignGodFunctionRule) Definition() Definition {
 	}
 }
 
+// AnalyzeFindings emits god-function composites for symbols flagged by both size and complexity rules.
 func (DesignGodFunctionRule) AnalyzeFindings(findings []finding.Finding, _ Context) []finding.Finding {
 	groups := map[string]*symbolCompositeGroup{}
 	for _, evidence := range findings {
@@ -78,11 +84,13 @@ func (DesignGodFunctionRule) AnalyzeFindings(findings []finding.Finding, _ Conte
 	return out
 }
 
+// DesignHotspotFileRule flags files whose findings cross multiple quality pillars.
 type DesignHotspotFileRule struct {
 	MinFindings int
 	MinPillars  int
 }
 
+// minFindings returns the effective minimum-finding threshold for the hotspot rule.
 func (r DesignHotspotFileRule) minFindings() int {
 	if r.MinFindings <= 0 {
 		return hotspotFileMinFindings
@@ -90,6 +98,7 @@ func (r DesignHotspotFileRule) minFindings() int {
 	return r.MinFindings
 }
 
+// minPillars returns the effective minimum-pillar threshold for the hotspot rule.
 func (r DesignHotspotFileRule) minPillars() int {
 	if r.MinPillars <= 0 {
 		return hotspotFileMinPillars
@@ -97,6 +106,7 @@ func (r DesignHotspotFileRule) minPillars() int {
 	return r.MinPillars
 }
 
+// Definition returns the rule metadata for DesignHotspotFileRule.
 func (r DesignHotspotFileRule) Definition() Definition {
 	minFindings := r.minFindings()
 	minPillars := r.minPillars()
@@ -117,6 +127,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 	}
 }
 
+// AnalyzeFindings emits one hotspot composite per file whose findings cross enough pillars.
 func (r DesignHotspotFileRule) AnalyzeFindings(findings []finding.Finding, _ Context) []finding.Finding {
 	minFindings := r.minFindings()
 	minPillars := r.minPillars()
@@ -160,6 +171,7 @@ func (r DesignHotspotFileRule) AnalyzeFindings(findings []finding.Finding, _ Con
 	return out
 }
 
+// symbolCompositeGroup buckets size and complexity findings per file+symbol for god-function detection.
 type symbolCompositeGroup struct {
 	file       string
 	symbol     string
@@ -167,12 +179,14 @@ type symbolCompositeGroup struct {
 	complexity []finding.Finding
 }
 
+// fileCompositeGroup buckets all findings per file for hotspot detection.
 type fileCompositeGroup struct {
 	file     string
 	findings []finding.Finding
 	pillars  map[finding.Pillar]int
 }
 
+// compositeEvidenceMetadata builds the metadata payload for composite findings.
 func compositeEvidenceMetadata(evidence []finding.Finding) map[string]any {
 	metadata := map[string]any{
 		"ruleIds": uniqueSortedRuleIDs(evidence),
@@ -186,6 +200,7 @@ func compositeEvidenceMetadata(evidence []finding.Finding) map[string]any {
 	return metadata
 }
 
+// uniqueSortedRuleIDs returns the sorted unique set of non-empty rule IDs from the findings.
 func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
 	for _, evidence := range findings {
@@ -196,6 +211,7 @@ func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 	return sortedStringSet(seen)
 }
 
+// uniqueSortedFingerprints returns the sorted unique set of non-empty fingerprints from the findings.
 func uniqueSortedFingerprints(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
 	for _, evidence := range findings {
@@ -206,6 +222,7 @@ func uniqueSortedFingerprints(findings []finding.Finding) []string {
 	return sortedStringSet(seen)
 }
 
+// sortedStringSet returns the sorted slice of keys from a string set.
 func sortedStringSet(values map[string]struct{}) []string {
 	out := make([]string, 0, len(values))
 	for value := range values {
@@ -215,6 +232,7 @@ func sortedStringSet(values map[string]struct{}) []string {
 	return out
 }
 
+// sortedPillars returns the sorted slice of pillar names from a pillar-count map.
 func sortedPillars(pillars map[finding.Pillar]int) []string {
 	out := make([]string, 0, len(pillars))
 	for pillar := range pillars {
@@ -224,6 +242,7 @@ func sortedPillars(pillars map[finding.Pillar]int) []string {
 	return out
 }
 
+// firstEvidenceLine returns the smallest non-zero line number among the supplied findings.
 func firstEvidenceLine(findings []finding.Finding) int {
 	first := 0
 	for _, evidence := range findings {

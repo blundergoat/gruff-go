@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// It supports text, JSON, HTML, SARIF, GitHub annotations, and the dashboard shell.
 package report
 
 import (
@@ -94,6 +96,7 @@ func DashboardScanQuery(state DashboardState) string {
 	return values.Encode()
 }
 
+// dashboardHTML composes the dashboard shell document from the current form state.
 func dashboardHTML(state DashboardState) string {
 	var builder strings.Builder
 	builder.WriteString(`<!DOCTYPE html><html lang="en-NZ"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>gruff-go dashboard</title><style>`)
@@ -141,6 +144,7 @@ func dashboardHTML(state DashboardState) string {
 	return builder.String()
 }
 
+// dashboardErrorHTML produces a self-contained error document for the dashboard.
 func dashboardErrorHTML(message, detail string, exitCode, durationMs int) string {
 	return `<!DOCTYPE html><html lang="en-NZ"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>gruff-go dashboard error</title>` +
 		`<style>body{font:14px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#161412;color:#f3e9d2;padding:32px}main{max-width:920px;margin:0 auto}pre{white-space:pre-wrap;background:#0d0c0a;border:1px solid #2a2622;padding:16px;overflow:auto}</style></head><body><main>` +
@@ -151,10 +155,12 @@ func dashboardErrorHTML(message, detail string, exitCode, durationMs int) string
 		`</main></body></html>`
 }
 
+// dashboardLoadingFrame returns the placeholder HTML used inside the iframe before a scan completes.
 func dashboardLoadingFrame() string {
 	return `<!DOCTYPE html><html lang="en-NZ"><head><meta charset="UTF-8"><style>body{margin:0;background:#0d0c0a;color:#f3e9d2;font:14px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;display:grid;place-items:center;min-height:100vh}</style></head><body>Ready to scan.</body></html>`
 }
 
+// dashboardField renders a labelled text input for the dashboard form.
 func dashboardField(label, name, value, placeholder string) string {
 	return fmt.Sprintf(
 		`<label>%s<input name="%s" value="%s" placeholder="%s"></label>`,
@@ -165,6 +171,7 @@ func dashboardField(label, name, value, placeholder string) string {
 	)
 }
 
+// dashboardOption renders a single select option, marking it selected when the value matches.
 func dashboardOption(value, selected, label string) string {
 	selectedAttr := ""
 	if value == selected {
@@ -178,6 +185,7 @@ func dashboardOption(value, selected, label string) string {
 	)
 }
 
+// dashboardCheck renders a labelled checkbox for the dashboard form.
 func dashboardCheck(name, label, value string) string {
 	checked := ""
 	if value == "1" {

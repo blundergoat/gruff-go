@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// This file covers shared flag parity across commands.
 package cli
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 )
 
+// TestVersionFlag verifies both --version and -V emit the tool version string.
 func TestVersionFlag(t *testing.T) {
 	for _, flag := range []string{"--version", "-V"} {
 		var out, errBuf bytes.Buffer
@@ -20,6 +23,7 @@ func TestVersionFlag(t *testing.T) {
 	}
 }
 
+// TestQuietSuppressesStdout verifies the --quiet flag silences non-error output.
 func TestQuietSuppressesStdout(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -34,6 +38,7 @@ func TestQuietSuppressesStdout(t *testing.T) {
 	}
 }
 
+// TestNoAnsiSuppressesEscapes verifies the --no-ansi flag strips ANSI escapes.
 func TestNoAnsiSuppressesEscapes(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	if code := Main([]string{"--no-ansi", "--help"}, &out, &errBuf); code != 0 {
@@ -44,6 +49,7 @@ func TestNoAnsiSuppressesEscapes(t *testing.T) {
 	}
 }
 
+// TestAnsiForcesEscapes verifies the --ansi flag forces ANSI escapes regardless of TTY.
 func TestAnsiForcesEscapes(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	if code := Main([]string{"--ansi", "--help"}, &out, &errBuf); code != 0 {
@@ -57,6 +63,7 @@ func TestAnsiForcesEscapes(t *testing.T) {
 	}
 }
 
+// TestHelpForCommandShowsUsage verifies help renders usage for each known subcommand.
 func TestHelpForCommandShowsUsage(t *testing.T) {
 	for _, cmd := range []string{"analyse", "baseline", "list-rules", "summary", "report", "dashboard"} {
 		var out, errBuf bytes.Buffer
@@ -69,6 +76,7 @@ func TestHelpForCommandShowsUsage(t *testing.T) {
 	}
 }
 
+// TestHelpUnknownCommandFails verifies unknown command names produce exit code 2.
 func TestHelpUnknownCommandFails(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	if code := Main([]string{"help", "doesnotexist"}, &out, &errBuf); code != 2 {
@@ -79,6 +87,7 @@ func TestHelpUnknownCommandFails(t *testing.T) {
 	}
 }
 
+// TestListAliasMatchesUsage verifies list and --help emit identical usage text.
 func TestListAliasMatchesUsage(t *testing.T) {
 	var listOut, helpOut, errBuf bytes.Buffer
 	if code := Main([]string{"list"}, &listOut, &errBuf); code != 0 {
@@ -92,6 +101,7 @@ func TestListAliasMatchesUsage(t *testing.T) {
 	}
 }
 
+// TestSummaryCommandText verifies the summary text output contains expected fragments.
 func TestSummaryCommandText(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -113,6 +123,7 @@ func TestSummaryCommandText(t *testing.T) {
 	}
 }
 
+// TestSummaryRejectsBadFormat verifies summary returns exit code 2 on unknown formats.
 func TestSummaryRejectsBadFormat(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -124,6 +135,7 @@ func TestSummaryRejectsBadFormat(t *testing.T) {
 	}
 }
 
+// TestReportCommandHTMLToFile verifies report --output writes HTML to disk.
 func TestReportCommandHTMLToFile(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -146,6 +158,7 @@ func TestReportCommandHTMLToFile(t *testing.T) {
 	}
 }
 
+// TestReportRejectsBadFormat verifies report returns exit code 2 on unknown formats.
 func TestReportRejectsBadFormat(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -157,6 +170,7 @@ func TestReportRejectsBadFormat(t *testing.T) {
 	}
 }
 
+// readFileToString reads path and returns its contents as a string.
 func readFileToString(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

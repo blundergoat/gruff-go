@@ -1,3 +1,5 @@
+// Package analysis orchestrates discovery, parsing, rule execution, and report assembly.
+// It also applies display-only filters that hide findings without affecting exit codes.
 package analysis
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// DisplayFilter selects which findings are rendered without changing scoring.
 type DisplayFilter struct {
 	IncludeRules   []string
 	ExcludeRules   []string
@@ -13,6 +16,7 @@ type DisplayFilter struct {
 	ExcludePillars []finding.Pillar
 }
 
+// Empty reports whether the filter has no include or exclude selections.
 func (filter DisplayFilter) Empty() bool {
 	return len(filter.IncludeRules) == 0 &&
 		len(filter.ExcludeRules) == 0 &&
@@ -20,6 +24,7 @@ func (filter DisplayFilter) Empty() bool {
 		len(filter.ExcludePillars) == 0
 }
 
+// ApplyDisplayFilter hides findings that do not match the supplied filter.
 func ApplyDisplayFilter(report *Report, filter DisplayFilter) {
 	if filter.Empty() {
 		report.DisplayFilter = DisplayFilterSummary{
@@ -51,6 +56,7 @@ func ApplyDisplayFilter(report *Report, filter DisplayFilter) {
 	}
 }
 
+// displayFilterKeeps reports whether the finding passes the filter's selections.
 func displayFilterKeeps(item finding.Finding, filter DisplayFilter) bool {
 	if len(filter.IncludeRules) > 0 && !slices.Contains(filter.IncludeRules, item.RuleID) {
 		return false
@@ -67,12 +73,14 @@ func displayFilterKeeps(item finding.Finding, filter DisplayFilter) bool {
 	return true
 }
 
+// sortedStrings returns a copy of values sorted lexicographically.
 func sortedStrings(values []string) []string {
 	out := append([]string(nil), values...)
 	slices.Sort(out)
 	return out
 }
 
+// sortedPillars converts pillar values to sorted string identifiers.
 func sortedPillars(values []finding.Pillar) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {

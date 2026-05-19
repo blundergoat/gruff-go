@@ -1,3 +1,5 @@
+// Package source tests exercise Discover across classification and ignore rules.
+// They construct temp directory trees and assert files, skips, and missing paths.
 package source
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths verifies built-in ignored directories.
 func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -45,6 +48,7 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	}
 }
 
+// TestDiscoverRespectsGitignoreWithNegation exercises gitignore matching including negation.
 func TestDiscoverRespectsGitignoreWithNegation(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "bin/*\n!bin/keeper.go\n*.log\n")
@@ -75,6 +79,7 @@ func TestDiscoverRespectsGitignoreWithNegation(t *testing.T) {
 	}
 }
 
+// TestDiscoverGitignoreNestedOverride verifies nested .gitignore files override parent patterns.
 func TestDiscoverGitignoreNestedOverride(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "*.tmp\n")
@@ -108,6 +113,7 @@ func TestDiscoverGitignoreNestedOverride(t *testing.T) {
 	}
 }
 
+// TestDiscoverIncludeIgnoredBypassesGitignore verifies --include-ignored disables gitignore filtering.
 func TestDiscoverIncludeIgnoredBypassesGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
@@ -131,6 +137,7 @@ func TestDiscoverIncludeIgnoredBypassesGitignore(t *testing.T) {
 	}
 }
 
+// TestDiscoverIncludeIgnoredPreservesConfigIgnores verifies config-level ignores survive --include-ignored.
 func TestDiscoverIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
@@ -156,6 +163,7 @@ func TestDiscoverIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 }
 
+// TestDiscoverRootGitignoreOwnsFallbackDirectories verifies projects own vendor when .gitignore exists.
 func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "# project owns vendor\n")
@@ -177,6 +185,7 @@ func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
 	}
 }
 
+// TestDiscoverExplicitIgnoredInputDirectoryPrunes verifies explicit ignored input directories are pruned.
 func TestDiscoverExplicitIgnoredInputDirectoryPrunes(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "node_modules/pkg/index.go", "package pkg\n")
@@ -198,6 +207,7 @@ func TestDiscoverExplicitIgnoredInputDirectoryPrunes(t *testing.T) {
 	}
 }
 
+// TestDiscoverExplicitNonApplicationMetadataFileSkipped verifies metadata files are skipped explicitly.
 func TestDiscoverExplicitNonApplicationMetadataFileSkipped(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".codex/config.toml", "model = \"codex\"\n")
@@ -216,6 +226,7 @@ func TestDiscoverExplicitNonApplicationMetadataFileSkipped(t *testing.T) {
 	}
 }
 
+// TestDiscoverNoGitignoreFallsBackToHardcoded verifies fallback skips when no .gitignore is present.
 func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -239,6 +250,7 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	}
 }
 
+// TestDiscoverMalformedGitignore verifies malformed .gitignore files are surfaced as diagnostics.
 func TestDiscoverMalformedGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "*.log\n[bad\n")
@@ -259,6 +271,7 @@ func TestDiscoverMalformedGitignore(t *testing.T) {
 	}
 }
 
+// TestDiscoverRecordsMissingInputs verifies missing input paths are reported as missing.
 func TestDiscoverRecordsMissingInputs(t *testing.T) {
 	root := t.TempDir()
 	result, err := Discover(Options{Root: root, Paths: []string{"missing.go"}})
@@ -270,6 +283,7 @@ func TestDiscoverRecordsMissingInputs(t *testing.T) {
 	}
 }
 
+// writeFile writes contents to root/rel, creating parent directories as needed.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
@@ -281,6 +295,7 @@ func writeFile(t *testing.T, root, rel, contents string) {
 	}
 }
 
+// paths returns the relative path of each discovered file.
 func paths(files []File) []string {
 	out := make([]string, 0, len(files))
 	for _, file := range files {
@@ -289,6 +304,7 @@ func paths(files []File) []string {
 	return out
 }
 
+// skippedReasons formats skipped entries as "path:reason" strings for assertions.
 func skippedReasons(skipped []SkippedPath) []string {
 	out := make([]string, 0, len(skipped))
 	for _, item := range skipped {
@@ -297,6 +313,7 @@ func skippedReasons(skipped []SkippedPath) []string {
 	return out
 }
 
+// equal reports whether two string slices have identical contents in order.
 func equal(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -309,6 +326,7 @@ func equal(a, b []string) bool {
 	return true
 }
 
+// contains reports whether the slice includes the given value.
 func contains(values []string, value string) bool {
 	for _, current := range values {
 		if current == value {

@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file wires the default rule pack and the strict-config option helpers.
 package rule
 
 // Defaults returns the built-in registry without project configuration.
@@ -131,6 +133,7 @@ func boolOption(config Config, ruleID, key string, fallback bool) bool {
 	return boolValue
 }
 
+// boolPointer returns the address of the supplied bool, used for tri-state rule options.
 func boolPointer(value bool) *bool {
 	return &value
 }

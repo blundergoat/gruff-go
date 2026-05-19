@@ -1,7 +1,10 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the contextual-generic rule's size-gated detection logic.
 package rule
 
 import "testing"
 
+// TestContextualGenericIgnoresShortGenericRange confirms generic range names are tolerated in short loops.
 func TestContextualGenericIgnoresShortGenericRange(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -17,6 +20,7 @@ func Render(users []string) {
 	}
 }
 
+// TestContextualGenericFlagsLongGenericRange checks the rule emits a finding when the body crosses the line gate.
 func TestContextualGenericFlagsLongGenericRange(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -40,6 +44,7 @@ func Render(users []string) {
 	}
 }
 
+// TestContextualGenericHonoursConfiguredGenericNames verifies user-supplied generic name lists override defaults.
 func TestContextualGenericHonoursConfiguredGenericNames(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -63,6 +68,7 @@ func Render(records []string) {
 	}
 }
 
+// TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass exercises both the function-length and require-multiple gates.
 func TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -102,6 +108,7 @@ func Single(users []string) []string {
 	}
 }
 
+// TestContextualGenericSkipsTestAndGeneratedFiles ensures the rule ignores test and machine-generated files.
 func TestContextualGenericSkipsTestAndGeneratedFiles(t *testing.T) {
 	testUnit := parseOne(t, "pkg/file_test.go", `package pkg
 
@@ -131,6 +138,7 @@ func Render(users []string) {
 	}
 }
 
+// TestContextualGenericIsDefaultEnabled asserts the rule ships on by default and runs at parser capability.
 func TestContextualGenericIsDefaultEnabled(t *testing.T) {
 	definition := ContextualGenericRule{}.Definition()
 	if !definition.DefaultEnabled {

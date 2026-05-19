@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file implements the self-contained HTML report renderer.
 package report
 
 import (
@@ -25,6 +27,7 @@ type HTMLOptions struct {
 	Interactive bool
 }
 
+// Known values for HTMLOptions.EditorLink controlling the href scheme used for file location links.
 const (
 	editorLinkNone     = "none"
 	editorLinkVSCode   = "vscode"
@@ -41,11 +44,13 @@ func WriteHTML(writer io.Writer, report analysis.Report, opts HTMLOptions) error
 	return err
 }
 
+// htmlRenderer carries the report and options needed to render the HTML document.
 type htmlRenderer struct {
 	report analysis.Report
 	opts   HTMLOptions
 }
 
+// render returns the full HTML document as a string.
 func (r htmlRenderer) render() string {
 	var builder strings.Builder
 	builder.WriteString(`<!DOCTYPE html>` + "\n")
@@ -86,6 +91,7 @@ func (r htmlRenderer) render() string {
 	return builder.String()
 }
 
+// masthead renders the report header with brand wordmark and run metadata.
 func (r htmlRenderer) masthead() string {
 	var builder strings.Builder
 	builder.WriteString(`<header class="masthead">`)
@@ -104,6 +110,7 @@ func (r htmlRenderer) masthead() string {
 	return builder.String()
 }
 
+// diagnostics renders the diagnostics section, or an empty string when none are present.
 func (r htmlRenderer) diagnostics() string {
 	if len(r.report.Diagnostics) == 0 {
 		return ""
@@ -129,6 +136,7 @@ func (r htmlRenderer) diagnostics() string {
 	return builder.String()
 }
 
+// verdict renders the headline grade stamp and severity counts.
 func (r htmlRenderer) verdict() string {
 	composite := r.report.Score.Composite
 	gradeLetter := r.report.Score.Grade
@@ -162,6 +170,7 @@ func (r htmlRenderer) verdict() string {
 	return builder.String()
 }
 
+// pillars renders the per-pillar grade grid.
 func (r htmlRenderer) pillars() string {
 	var builder strings.Builder
 	builder.WriteString(`<section class="pillars">`)
@@ -182,6 +191,7 @@ func (r htmlRenderer) pillars() string {
 	return builder.String()
 }
 
+// pillarCard renders a single pillar's grade and severity breakdown.
 func (r htmlRenderer) pillarCard(detail scoring.PillarDetail) string {
 	tier := tierClass(detail.Grade)
 	var builder strings.Builder
@@ -200,6 +210,7 @@ func (r htmlRenderer) pillarCard(detail scoring.PillarDetail) string {
 	return builder.String()
 }
 
+// offenders renders the table of files sorted by penalty.
 func (r htmlRenderer) offenders() string {
 	var builder strings.Builder
 	builder.WriteString(`<section class="offenders">`)
@@ -222,6 +233,7 @@ func (r htmlRenderer) offenders() string {
 	return builder.String()
 }
 
+// offenderRow renders a single row of the top-offenders table.
 func (r htmlRenderer) offenderRow(file scoring.FileScore) string {
 	tier := tierClass(file.Grade)
 	var builder strings.Builder
@@ -235,6 +247,7 @@ func (r htmlRenderer) offenderRow(file scoring.FileScore) string {
 	return builder.String()
 }
 
+// distribution renders the cyclomatic complexity histogram section.
 func (r htmlRenderer) distribution() string {
 	distribution := r.report.Score.ComplexityDistribution
 	bins := []string{"1-5", "6-10", "11-15", "16-20", "21+"}
@@ -270,6 +283,7 @@ func (r htmlRenderer) distribution() string {
 	return builder.String()
 }
 
+// findings renders the flagged-findings list, with optional filter UI when Interactive is set.
 func (r htmlRenderer) findings() string {
 	findings := r.report.Findings
 	var builder strings.Builder
@@ -293,6 +307,7 @@ func (r htmlRenderer) findings() string {
 	return builder.String()
 }
 
+// findingRow renders a single finding entry with the data attributes used by the interactive filter.
 func (r htmlRenderer) findingRow(item finding.Finding) string {
 	tier := severityTierClass(item.Severity)
 	line := 0
@@ -321,6 +336,7 @@ func (r htmlRenderer) findingRow(item finding.Finding) string {
 	return builder.String()
 }
 
+// footer renders the report footer with tool version and schema identifiers.
 func (r htmlRenderer) footer() string {
 	var builder strings.Builder
 	builder.WriteString(`<footer class="footer">`)
@@ -331,6 +347,7 @@ func (r htmlRenderer) footer() string {
 	return builder.String()
 }
 
+// locationMarkup renders a file:line link or a focusable span depending on the editor-link option.
 func (r htmlRenderer) locationMarkup(file string, line int) string {
 	visible := file
 	if line > 0 {
@@ -352,6 +369,7 @@ func (r htmlRenderer) locationMarkup(file string, line int) string {
 	)
 }
 
+// editorHref builds the editor-specific URL scheme for opening file:line in the user's editor.
 func (r htmlRenderer) editorHref(file string, line int) string {
 	if r.opts.EditorLink == "" || r.opts.EditorLink == editorLinkNone {
 		return ""
@@ -375,6 +393,7 @@ func (r htmlRenderer) editorHref(file string, line int) string {
 	}
 }
 
+// absolutePath resolves a possibly-relative report path against the project root for editor links.
 func (r htmlRenderer) absolutePath(file string) string {
 	if filepath.IsAbs(file) {
 		return file

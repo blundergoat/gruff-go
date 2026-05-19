@@ -1,3 +1,5 @@
+// Package config YAML helpers parse the tiny subset of YAML used by .gruff-go.yaml.
+// The parser deliberately rejects features outside the documented configuration shape.
 package config
 
 import (
@@ -9,11 +11,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// yamlLine is one normalised input line with its indentation depth and trimmed text.
 type yamlLine struct {
 	indent int
 	text   string
 }
 
+// parseYAML converts the YAML body into a validated Config value.
 func parseYAML(data []byte, definitions []rule.Definition) (Config, error) {
 	lines := yamlLines(string(data))
 	if len(lines) == 0 {
@@ -37,6 +41,7 @@ func parseYAML(data []byte, definitions []rule.Definition) (Config, error) {
 	return decodeConfigPayload(encoded, definitions)
 }
 
+// yamlLines splits the input into trimmed, non-blank lines with indentation.
 func yamlLines(input string) []yamlLine {
 	out := []yamlLine{}
 	for _, raw := range strings.Split(input, "\n") {
@@ -54,6 +59,7 @@ func yamlLines(input string) []yamlLine {
 	return out
 }
 
+// parseYAMLBlock parses either a list or map block depending on the next line.
 func parseYAMLBlock(lines []yamlLine, index int, indent int) (any, int, error) {
 	if index >= len(lines) {
 		return map[string]any{}, index, nil
@@ -64,6 +70,7 @@ func parseYAMLBlock(lines []yamlLine, index int, indent int) (any, int, error) {
 	return parseYAMLMap(lines, index, indent)
 }
 
+// parseYAMLMap parses a mapping block at the given indent and returns the cursor.
 func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int, error) {
 	out := map[string]any{}
 	for index < len(lines) {
@@ -104,6 +111,7 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 	return out, index, nil
 }
 
+// parseYAMLList parses a sequence block of dash-prefixed scalar entries.
 func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) {
 	out := []any{}
 	for index < len(lines) {
@@ -121,6 +129,7 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 	return out, index, nil
 }
 
+// parseYAMLScalar converts a raw token into a string, bool, number, or null.
 func parseYAMLScalar(input string) any {
 	input = strings.TrimSpace(input)
 	if input == "[]" {
@@ -147,6 +156,7 @@ func parseYAMLScalar(input string) any {
 	return input
 }
 
+// parseYAMLInlineList parses a comma-separated inline list of scalars.
 func parseYAMLInlineList(input string) []any {
 	if strings.TrimSpace(input) == "" {
 		return []any{}
@@ -159,6 +169,7 @@ func parseYAMLInlineList(input string) []any {
 	return out
 }
 
+// unquoteYAML strips matching single or double quotes, returning success.
 func unquoteYAML(input string) (string, bool) {
 	if len(input) < 2 {
 		return "", false
@@ -173,6 +184,7 @@ func unquoteYAML(input string) (string, bool) {
 	return "", false
 }
 
+// stripYAMLComment removes any trailing `#`-prefixed comment outside quoted strings.
 func stripYAMLComment(input string) string {
 	var quote rune
 	for index, current := range input {

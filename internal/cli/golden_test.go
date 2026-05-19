@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// This file holds golden-file CLI tests that lock down rendered output.
 package cli
 
 import (
@@ -12,6 +14,7 @@ import (
 	"testing"
 )
 
+// TestGoldenAnalysisFormats compares analyse output against committed golden files.
 func TestGoldenAnalysisFormats(t *testing.T) {
 	cases := []struct {
 		name string
@@ -43,6 +46,7 @@ func TestGoldenAnalysisFormats(t *testing.T) {
 	}
 }
 
+// TestGoldenConfigLoading locks down summary output when a config file is loaded.
 func TestGoldenConfigLoading(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -63,6 +67,7 @@ rules:
 	assertGolden(t, "config-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestGoldenBaselineSuppression locks down output for baseline suppression flows.
 func TestGoldenBaselineSuppression(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -87,6 +92,7 @@ func TestGoldenBaselineSuppression(t *testing.T) {
 	assertGolden(t, "baseline-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestGoldenOptInExpansionRules locks down output when opt-in expansion rules are enabled.
 func TestGoldenOptInExpansionRules(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "expansion.go", expansionFixture())
@@ -111,6 +117,7 @@ rules:
 	assertGolden(t, "analyse-opt-in-expansion.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestGoldenCompositeRuleOutputs locks down output when composite rules fire.
 func TestGoldenCompositeRuleOutputs(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -140,6 +147,7 @@ func TestGoldenCompositeRuleOutputs(t *testing.T) {
 	}
 }
 
+// expansionFixture returns a Go source string that triggers expansion rule findings.
 func expansionFixture() string {
 	return `// Package sample is a test package.
 package sample
@@ -162,6 +170,7 @@ func Wide(a, b, c, d, e, f, g, h, i int) {
 `
 }
 
+// compositeFixture returns a Go source string that triggers composite rule findings.
 func compositeFixture() string {
 	return `// Package sample is a test package.
 package sample
@@ -177,6 +186,7 @@ func Hot(a bool, b bool) {
 `
 }
 
+// compositeConfig returns a YAML config enabling rules used by compositeFixture.
 func compositeConfig() string {
 	return `
 rules:
@@ -189,6 +199,7 @@ rules:
 `
 }
 
+// TestGoldenDiffMode locks down diff-mode output by setting up a temp git repo.
 func TestGoldenDiffMode(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatalf("git is required for diff-mode golden coverage: %v", err)
@@ -218,6 +229,7 @@ func risky(a bool) {}
 	assertGolden(t, "diff-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestAnalyseRespectsGitignoreByDefault confirms gitignored files are skipped by default.
 func TestAnalyseRespectsGitignoreByDefault(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n*.log\n")
@@ -244,6 +256,7 @@ func TestAnalyseRespectsGitignoreByDefault(t *testing.T) {
 	}
 }
 
+// TestAnalyseIncludeIgnoredBypassesGitignore confirms --include-ignored scans gitignored files.
 func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n")
@@ -266,6 +279,7 @@ func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 	}
 }
 
+// TestAnalyseIncludeIgnoredPreservesConfigIgnores confirms config ignore paths still apply.
 func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
@@ -305,12 +319,14 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 }
 
+// runGoldenCLI invokes Main with args and returns captured stdout, stderr, and exit code.
 func runGoldenCLI(args ...string) (string, string, int) {
 	var stdout, stderr bytes.Buffer
 	code := Main(args, &stdout, &stderr)
 	return stdout.String(), stderr.String(), code
 }
 
+// assertGolden compares got against the named golden file, honouring UPDATE_GOLDEN.
 func assertGolden(t *testing.T, name string, got string) {
 	t.Helper()
 	path := goldenPath(t, name)
@@ -330,6 +346,7 @@ func assertGolden(t *testing.T, name string, got string) {
 	}
 }
 
+// goldenPath returns the on-disk location of the named golden file.
 func goldenPath(t *testing.T, name string) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -339,6 +356,7 @@ func goldenPath(t *testing.T, name string) string {
 	return filepath.Join(filepath.Dir(file), "testdata", "golden", name)
 }
 
+// normalizeGoldenOutput rewrites tmp paths to <WORKDIR> so goldens stay stable across runs.
 func normalizeGoldenOutput(root string, value string) string {
 	value = normalizeLineEndings(value)
 	value = strings.ReplaceAll(value, root, "<WORKDIR>")
@@ -346,10 +364,12 @@ func normalizeGoldenOutput(root string, value string) string {
 	return value
 }
 
+// normalizeLineEndings rewrites CRLF into LF so goldens stay stable on Windows.
 func normalizeLineEndings(value string) string {
 	return strings.ReplaceAll(value, "\r\n", "\n")
 }
 
+// runGit invokes git inside root and fails the test if the command errors.
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)

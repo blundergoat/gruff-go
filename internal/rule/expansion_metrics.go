@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file holds structural metric rules (parameter count, nesting depth, exported-symbol comments).
 package rule
 
 import (
@@ -10,15 +12,18 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// Default thresholds for parameter-count and nesting-depth rules.
 const (
 	parameterCountThreshold = 8
 	nestingDepthThreshold   = 5
 )
 
+// ParameterCountRule flags functions and methods whose parameter list exceeds the maximum.
 type ParameterCountRule struct {
 	MaxParameters int
 }
 
+// maxParameters returns the effective parameter-count threshold for this rule.
 func (r ParameterCountRule) maxParameters() int {
 	if r.MaxParameters <= 0 {
 		return parameterCountThreshold
@@ -26,6 +31,7 @@ func (r ParameterCountRule) maxParameters() int {
 	return r.MaxParameters
 }
 
+// Definition returns the rule metadata for ParameterCountRule.
 func (r ParameterCountRule) Definition() Definition {
 	max := r.maxParameters()
 	return Definition{
@@ -42,6 +48,7 @@ func (r ParameterCountRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for every function whose parameter count exceeds the threshold.
 func (r ParameterCountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -70,6 +77,7 @@ func (r ParameterCountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 	return findings
 }
 
+// paramCount returns the total number of declared parameters, excluding the receiver.
 func paramCount(fn *ast.FuncDecl) int {
 	if fn.Type == nil || fn.Type.Params == nil {
 		return 0
@@ -85,10 +93,12 @@ func paramCount(fn *ast.FuncDecl) int {
 	return count
 }
 
+// NestingDepthRule flags functions whose maximum control-flow nesting exceeds the threshold.
 type NestingDepthRule struct {
 	MaxDepth int
 }
 
+// maxDepth returns the effective nesting-depth threshold for this rule.
 func (r NestingDepthRule) maxDepth() int {
 	if r.MaxDepth <= 0 {
 		return nestingDepthThreshold
@@ -96,6 +106,7 @@ func (r NestingDepthRule) maxDepth() int {
 	return r.MaxDepth
 }
 
+// Definition returns the rule metadata for NestingDepthRule.
 func (r NestingDepthRule) Definition() Definition {
 	max := r.maxDepth()
 	return Definition{
@@ -112,6 +123,7 @@ func (r NestingDepthRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for every function whose nesting depth exceeds the threshold.
 func (r NestingDepthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -140,6 +152,7 @@ func (r NestingDepthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 	return findings
 }
 
+// blockNestingDepth returns the deepest nesting depth reachable from the given block.
 func blockNestingDepth(block *ast.BlockStmt, depth int) int {
 	if block == nil {
 		return depth
@@ -153,6 +166,7 @@ func blockNestingDepth(block *ast.BlockStmt, depth int) int {
 	return best
 }
 
+// stmtNestingDepth returns the deepest nesting depth reachable from the given statement.
 func stmtNestingDepth(stmt ast.Stmt, depth int) int {
 	switch s := stmt.(type) {
 	case *ast.IfStmt:
@@ -187,6 +201,7 @@ func stmtNestingDepth(stmt ast.Stmt, depth int) int {
 	return depth
 }
 
+// clausesNestingDepth returns the deepest nesting depth across switch/select case bodies.
 func clausesNestingDepth(body *ast.BlockStmt, depth int) int {
 	if body == nil {
 		return depth
@@ -211,10 +226,12 @@ func clausesNestingDepth(body *ast.BlockStmt, depth int) int {
 	return best
 }
 
+// ExportedSymbolCommentRule flags exported declarations that lack a doc comment.
 type ExportedSymbolCommentRule struct {
 	IgnoreInternalPackages bool
 }
 
+// Definition returns the rule metadata for ExportedSymbolCommentRule.
 func (ExportedSymbolCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.exported-symbol-comment",
@@ -230,6 +247,7 @@ func (ExportedSymbolCommentRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for exported declarations in a unit that have no doc comment.
 func (r ExportedSymbolCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -247,6 +265,7 @@ func (r ExportedSymbolCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []fi
 	return findings
 }
 
+// isInternalPackagePath reports whether the file path lives under an internal/ directory.
 func isInternalPackagePath(path string) bool {
 	parts := strings.Split(path, "/")
 	for _, part := range parts[:len(parts)-1] {
@@ -257,6 +276,7 @@ func isInternalPackagePath(path string) bool {
 	return false
 }
 
+// exportedDeclFindings dispatches doc-comment checks for a single top-level declaration.
 func exportedDeclFindings(unit parser.Unit, decl ast.Decl) []finding.Finding {
 	switch d := decl.(type) {
 	case *ast.FuncDecl:
@@ -267,6 +287,7 @@ func exportedDeclFindings(unit parser.Unit, decl ast.Decl) []finding.Finding {
 	return nil
 }
 
+// exportedFuncFinding emits a finding when an exported function or method has no doc comment.
 func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	if !isExportedFunc(fn) || hasDoc(fn.Doc) {
 		return nil
@@ -281,6 +302,7 @@ func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	}}
 }
 
+// exportedGenDeclFindings emits findings for exported types, vars, and consts missing doc comments.
 func exportedGenDeclFindings(unit parser.Unit, decl *ast.GenDecl) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, spec := range decl.Specs {
@@ -316,6 +338,7 @@ func exportedGenDeclFindings(unit parser.Unit, decl *ast.GenDecl) []finding.Find
 	return findings
 }
 
+// isExportedFunc reports whether a function or method is externally visible.
 func isExportedFunc(fn *ast.FuncDecl) bool {
 	if !ast.IsExported(fn.Name.Name) {
 		return false
@@ -326,6 +349,7 @@ func isExportedFunc(fn *ast.FuncDecl) bool {
 	return true
 }
 
+// receiverTypeName extracts the type name of a method receiver field.
 func receiverTypeName(field *ast.Field) string {
 	switch expr := field.Type.(type) {
 	case *ast.Ident:
@@ -338,10 +362,12 @@ func receiverTypeName(field *ast.Field) string {
 	return ""
 }
 
+// hasDoc reports whether a comment group contains any non-whitespace text.
 func hasDoc(group *ast.CommentGroup) bool {
 	return group != nil && strings.TrimSpace(group.Text()) != ""
 }
 
+// funcKind returns "function" or "method" for use in user-facing messages.
 func funcKind(fn *ast.FuncDecl) string {
 	if fn.Recv != nil {
 		return "method"
@@ -349,6 +375,7 @@ func funcKind(fn *ast.FuncDecl) string {
 	return "function"
 }
 
+// valueKind maps a value-decl token to a user-friendly noun (const, var, value).
 func valueKind(tok token.Token) string {
 	switch tok {
 	case token.CONST:

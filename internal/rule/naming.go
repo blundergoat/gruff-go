@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the identifier-quality placeholder rule.
 package rule
 
 import (
@@ -24,10 +26,12 @@ var defaultPlaceholderNames = []string{
 	"stuff",
 }
 
+// IdentifierQualityRule flags local identifiers whose names match a configured placeholder list.
 type IdentifierQualityRule struct {
 	PlaceholderNames []string
 }
 
+// Definition describes the identifier-quality rule for the registry.
 func (r IdentifierQualityRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.identifier-quality",
@@ -43,6 +47,7 @@ func (r IdentifierQualityRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit walks a parsed unit and emits findings for placeholder-named local identifiers.
 func (r IdentifierQualityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -81,6 +86,7 @@ func (r IdentifierQualityRule) AnalyzeUnit(unit parser.Unit, _ Context) []findin
 	return findings
 }
 
+// placeholderSet returns the lowercased placeholder names the rule will match against.
 func (r IdentifierQualityRule) placeholderSet() map[string]bool {
 	source := r.PlaceholderNames
 	if len(source) == 0 {
@@ -97,6 +103,7 @@ func (r IdentifierQualityRule) placeholderSet() map[string]bool {
 	return out
 }
 
+// makeNamingFinding builds a placeholder-identifier finding anchored at the identifier's position.
 func makeNamingFinding(unit parser.Unit, ident *ast.Ident) finding.Finding {
 	position := unit.FileSet.Position(ident.NamePos)
 	return finding.Finding{

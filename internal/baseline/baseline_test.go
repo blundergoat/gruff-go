@@ -1,3 +1,5 @@
+// Package baseline tests exercise loading, applying, and rejecting baselines.
+// They cover fingerprint matching, stale-entry reporting, and parse failures.
 package baseline
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// TestApplySuppressesExactFingerprintMatches verifies exact fingerprint suppression.
 func TestApplySuppressesExactFingerprintMatches(t *testing.T) {
 	item := finding.Finding{
 		RuleID:   "size.file-length",
@@ -31,6 +34,7 @@ func TestApplySuppressesExactFingerprintMatches(t *testing.T) {
 	}
 }
 
+// TestApplyReportsStaleEntries verifies stale entries are counted when no finding matches.
 func TestApplyReportsStaleEntries(t *testing.T) {
 	file := File{
 		SchemaVersion: SchemaVersion,
@@ -46,6 +50,7 @@ func TestApplyReportsStaleEntries(t *testing.T) {
 	}
 }
 
+// TestBaselineSuppressesSensitiveFindingAcrossPreviewChanges confirms fingerprints ignore preview metadata.
 func TestBaselineSuppressesSensitiveFindingAcrossPreviewChanges(t *testing.T) {
 	rawSecret := "abcdefghijklmnopqrstuvwxyz123456"
 	redactedPreview := "auth_t...3456"
@@ -78,6 +83,7 @@ func TestBaselineSuppressesSensitiveFindingAcrossPreviewChanges(t *testing.T) {
 	}
 }
 
+// TestParseRejectsMalformedBaseline checks parser errors for invalid baseline inputs.
 func TestParseRejectsMalformedBaseline(t *testing.T) {
 	if _, err := Parse([]byte(`{"schemaVersion":`)); err == nil {
 		t.Fatal("expected malformed json error")

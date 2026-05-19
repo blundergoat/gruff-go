@@ -1,7 +1,10 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the naming.negated-boolean rule across scopes and prefixes.
 package rule
 
 import "testing"
 
+// TestNegatedBooleanFlagsExportedBoolFields confirms negated names on exported bool fields fire.
 func TestNegatedBooleanFlagsExportedBoolFields(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -22,6 +25,7 @@ type Options struct {
 	}
 }
 
+// TestNegatedBooleanFlagsBoolReturnFunction checks functions returning bool with negated names.
 func TestNegatedBooleanFlagsBoolReturnFunction(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -37,6 +41,7 @@ func Enabled() bool { return true }
 	}
 }
 
+// TestNegatedBooleanFlagsBoolParameters verifies negated bool parameter names trigger findings.
 func TestNegatedBooleanFlagsBoolParameters(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -51,6 +56,7 @@ func Configure(NoConfig bool, verbose bool, NoOp func()) {}
 	}
 }
 
+// TestNegatedBooleanRespectsAllowList ensures allow-listed identifiers are exempt.
 func TestNegatedBooleanRespectsAllowList(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -69,6 +75,7 @@ type Sample struct {
 	}
 }
 
+// TestNegatedBooleanScopeExportedHidesLocals confirms the default scope excludes locals.
 func TestNegatedBooleanScopeExportedHidesLocals(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -87,6 +94,7 @@ func Run() {
 	}
 }
 
+// TestNegatedBooleanIgnoresNonBoolTypes confirms only bool-typed declarations are inspected.
 func TestNegatedBooleanIgnoresNonBoolTypes(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -103,6 +111,7 @@ func DisableLogging() string { return "" }
 	}
 }
 
+// TestNegatedBooleanRequiresUppercaseAfterPrefix ensures the prefix must end at a word boundary.
 func TestNegatedBooleanRequiresUppercaseAfterPrefix(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -117,6 +126,7 @@ type Sample struct {
 	}
 }
 
+// TestNegatedBooleanIsDefaultEnabled asserts the rule ships enabled with parser capability.
 func TestNegatedBooleanIsDefaultEnabled(t *testing.T) {
 	if !(NegatedBooleanRule{}).Definition().DefaultEnabled {
 		t.Error("naming.negated-boolean must be default-enabled")

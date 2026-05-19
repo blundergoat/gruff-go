@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// This file exercises the analyse subcommand and related helpers.
 package cli
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
+// TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output.
 func TestAnalyseTextAndJSON(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -46,6 +49,7 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
+// TestAnalyseJSONDeterministicShape verifies that repeated scans yield identical JSON.
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "b.go", "package main\n")
@@ -77,6 +81,7 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	}
 }
 
+// TestListRulesAndDiagnostics covers list-rules output and diagnostic exit codes.
 func TestListRulesAndDiagnostics(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -103,6 +108,7 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	}
 }
 
+// TestAnalyseJSONIncludesFindingsAndScore asserts findings and score appear in JSON output.
 func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", `// Package sample is a test package.
@@ -154,6 +160,7 @@ func risky(a bool) {
 	}
 }
 
+// TestAnalyseHonorsConfigThresholdAndBaseline checks config thresholds and baseline suppression.
 func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -188,6 +195,7 @@ rules:
 	}
 }
 
+// TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt confirms config autoload and --no-config behaviour.
 func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -210,6 +218,7 @@ rules:
 	}
 }
 
+// TestAnalyseSummarySARIFAndGitHubFormats verifies non-empty output for alternative report formats.
 func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -228,6 +237,7 @@ func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 	}
 }
 
+// TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs ensures display filters affect rendering only.
 func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -246,6 +256,7 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	}
 }
 
+// complexFixture returns a Go source string that triggers complexity findings.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
@@ -276,6 +287,7 @@ func risky(a bool) {
 `
 }
 
+// writeFile is a test helper that creates a file beneath root with the given contents.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

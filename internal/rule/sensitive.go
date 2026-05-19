@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the sensitive-data.* rules that scan for embedded secrets.
 package rule
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// Regular expressions used by the sensitive-data rules to detect embedded secrets in source.
 var (
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN[ A-Z]*PRIVATE KEY-----`)
 	awsAccessPattern  = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
@@ -18,8 +21,10 @@ var (
 	connectionPattern = regexp.MustCompile(`(?i)\b(postgres|postgresql|mysql|mongodb|mongodb\+srv|redis|amqp|amqps)://[^:\s/@]+:[^@\s/]+@[^\s]+`)
 )
 
+// PrivateKeyRule flags PEM-encoded private keys embedded in source or text files.
 type PrivateKeyRule struct{}
 
+// Definition returns the rule metadata for PrivateKeyRule.
 func (PrivateKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.private-key",
@@ -34,12 +39,15 @@ func (PrivateKeyRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit scans the unit's source for PEM private-key headers.
 func (PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return scanLinesForSecret(unit, privateKeyPattern, "private key literal detected")
 }
 
+// AWSAccessKeyRule flags AWS access key identifiers (AKIA...) embedded in source.
 type AWSAccessKeyRule struct{}
 
+// Definition returns the rule metadata for AWSAccessKeyRule.
 func (AWSAccessKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.aws-access-key",
@@ -54,12 +62,15 @@ func (AWSAccessKeyRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit scans the unit's source for AWS access key identifiers.
 func (AWSAccessKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return scanLinesForSecret(unit, awsAccessPattern, "AWS access key id detected")
 }
 
+// JWTTokenRule flags JWT-shaped literals embedded in source files.
 type JWTTokenRule struct{}
 
+// Definition returns the rule metadata for JWTTokenRule.
 func (JWTTokenRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.jwt-token",
@@ -74,12 +85,15 @@ func (JWTTokenRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit scans the unit's source for JWT-like token literals.
 func (JWTTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return scanLinesForSecret(unit, jwtPattern, "JWT-like token literal detected")
 }
 
+// ConnectionStringRule flags database or queue connection URIs that embed credentials.
 type ConnectionStringRule struct{}
 
+// Definition returns the rule metadata for ConnectionStringRule.
 func (ConnectionStringRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.connection-string",
@@ -94,10 +108,12 @@ func (ConnectionStringRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit scans the unit's source for connection URIs containing embedded passwords.
 func (ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return scanLinesForSecret(unit, connectionPattern, "connection string with embedded password detected")
 }
 
+// scanLinesForSecret walks the unit source line by line, emitting a finding for each pattern match.
 func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string) []finding.Finding {
 	if unit.Source == "" {
 		return nil

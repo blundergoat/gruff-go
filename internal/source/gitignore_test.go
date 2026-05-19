@@ -1,3 +1,5 @@
+// Package source gitignore tests cover pattern semantics for the Matcher.
+// They write temp .gitignore trees and assert ignore decisions for varied paths.
 package source
 
 import (
@@ -6,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestMatcherSimplePattern verifies basic glob matching against gitignore patterns.
 func TestMatcherSimplePattern(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "*.log\n",
@@ -30,6 +33,7 @@ func TestMatcherSimplePattern(t *testing.T) {
 	}
 }
 
+// TestMatcherAnchoredPattern verifies that leading-slash patterns anchor to the root.
 func TestMatcherAnchoredPattern(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "/build\n",
@@ -44,6 +48,7 @@ func TestMatcherAnchoredPattern(t *testing.T) {
 	}
 }
 
+// TestMatcherDirectoryOnly verifies that trailing-slash patterns match directories only.
 func TestMatcherDirectoryOnly(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "logs/\n",
@@ -61,6 +66,7 @@ func TestMatcherDirectoryOnly(t *testing.T) {
 	}
 }
 
+// TestMatcherNegation verifies bang-prefixed negation rules re-include matched paths.
 func TestMatcherNegation(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "bin/*\n!bin/keep\n",
@@ -75,6 +81,7 @@ func TestMatcherNegation(t *testing.T) {
 	}
 }
 
+// TestMatcherNegationReincludesDirectoryDescendants verifies directory negation cascades to children.
 func TestMatcherNegationReincludesDirectoryDescendants(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "bin/*\n!bin/keep/\n",
@@ -89,6 +96,7 @@ func TestMatcherNegationReincludesDirectoryDescendants(t *testing.T) {
 	}
 }
 
+// TestMatcherNegationCannotReIncludeUnderExcludedDir matches git's negation precedence rules.
 func TestMatcherNegationCannotReIncludeUnderExcludedDir(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "secrets/\n!secrets/public.txt\n",
@@ -100,6 +108,7 @@ func TestMatcherNegationCannotReIncludeUnderExcludedDir(t *testing.T) {
 	}
 }
 
+// TestMatcherDoubleStar verifies inner double-star patterns match across directory levels.
 func TestMatcherDoubleStar(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "a/**/b\n",
@@ -124,6 +133,7 @@ func TestMatcherDoubleStar(t *testing.T) {
 	}
 }
 
+// TestMatcherTrailingDoubleStar verifies trailing double-star matches all descendants.
 func TestMatcherTrailingDoubleStar(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "vendor/**\n",
@@ -138,6 +148,7 @@ func TestMatcherTrailingDoubleStar(t *testing.T) {
 	}
 }
 
+// TestMatcherCommentsAndBlankLines verifies comments and blank lines are skipped during parsing.
 func TestMatcherCommentsAndBlankLines(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "# leading comment\n\n*.tmp\n   \n#trailing comment\n",
@@ -152,6 +163,7 @@ func TestMatcherCommentsAndBlankLines(t *testing.T) {
 	}
 }
 
+// TestMatcherEscapedTrailingWhitespace confirms backslash-escaped trailing spaces are preserved.
 func TestMatcherEscapedTrailingWhitespace(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "name\\ \n*.log\n",
@@ -169,6 +181,7 @@ func TestMatcherEscapedTrailingWhitespace(t *testing.T) {
 	}
 }
 
+// TestMatcherNestedOverride verifies nested .gitignore files override parent patterns.
 func TestMatcherNestedOverride(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore":           "*.log\n",
@@ -191,6 +204,7 @@ func TestMatcherNestedOverride(t *testing.T) {
 	}
 }
 
+// TestMatcherEmptyFile verifies an empty .gitignore matches nothing.
 func TestMatcherEmptyFile(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "",
@@ -202,6 +216,7 @@ func TestMatcherEmptyFile(t *testing.T) {
 	}
 }
 
+// TestMatcherMalformedPatternSkipsFile verifies malformed .gitignore files report parse errors.
 func TestMatcherMalformedPatternSkipsFile(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "*.log\n[bad\n",
@@ -217,6 +232,7 @@ func TestMatcherMalformedPatternSkipsFile(t *testing.T) {
 	}
 }
 
+// TestMatcherNoGitignore verifies a missing .gitignore matches nothing without errors.
 func TestMatcherNoGitignore(t *testing.T) {
 	root := t.TempDir()
 	m := NewMatcher(root)
@@ -229,6 +245,7 @@ func TestMatcherNoGitignore(t *testing.T) {
 	}
 }
 
+// TestMatcherCRLFLineEndings verifies CRLF-terminated rules are parsed correctly.
 func TestMatcherCRLFLineEndings(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "*.log\r\nbuild/\r\n",
@@ -243,6 +260,7 @@ func TestMatcherCRLFLineEndings(t *testing.T) {
 	}
 }
 
+// TestMatcherSource verifies Match reports the originating .gitignore file path.
 func TestMatcherSource(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore":     "*.log\n",
@@ -260,6 +278,7 @@ func TestMatcherSource(t *testing.T) {
 	}
 }
 
+// writeIgnoreTree materialises a temporary directory tree with the supplied files.
 func writeIgnoreTree(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()

@@ -1,4 +1,5 @@
 // Package source discovers analyzable Go and text/config source files.
+// It applies .gitignore filtering, fallback dependency skips, and project ignore patterns.
 package source
 
 import (
@@ -12,30 +13,36 @@ import (
 	"github.com/blundergoat/gruff-go/internal/pathfilter"
 )
 
+// FileType labels discovered files as Go source or generic text/config content.
 type FileType string
 
+// FileTypeGo and FileTypeText are the supported source classifications emitted by Discover.
 const (
 	FileTypeGo   FileType = "go"
 	FileTypeText FileType = "text"
 )
 
+// File represents a discovered source file with its repo-relative and absolute paths.
 type File struct {
 	Path    string   `json:"path"`
 	AbsPath string   `json:"-"`
 	Type    FileType `json:"type"`
 }
 
+// SkippedPath records a discovered path that was filtered out, with the reason code.
 type SkippedPath struct {
 	Path   string `json:"path"`
 	Reason string `json:"reason"`
 }
 
+// Result is the discovery output containing files, missing inputs, and skipped paths.
 type Result struct {
 	Files   []File        `json:"files"`
 	Missing []string      `json:"missing"`
 	Skipped []SkippedPath `json:"skipped"`
 }
 
+// Options configures a single Discover invocation.
 type Options struct {
 	Context        context.Context
 	Root           string
@@ -44,6 +51,7 @@ type Options struct {
 	IgnorePatterns []string
 }
 
+// Discover walks the configured paths and returns classified source files and skips.
 func Discover(options Options) (Result, error) {
 	ctx := options.Context
 	if ctx == nil {
@@ -79,6 +87,7 @@ func Discover(options Options) (Result, error) {
 	return walker.result, nil
 }
 
+// discoveryWalker holds the state used by Discover while traversing the filesystem.
 type discoveryWalker struct {
 	ctx             context.Context
 	rootAbs         string
@@ -89,6 +98,7 @@ type discoveryWalker struct {
 	result          Result
 }
 
+// newDiscoveryWalker constructs a walker rooted at rootAbs with gitignore handling enabled.
 func newDiscoveryWalker(ctx context.Context, rootAbs string, options Options) *discoveryWalker {
 	fallbackActive := !rootHasGitignore(rootAbs)
 	return &discoveryWalker{
@@ -101,6 +111,7 @@ func newDiscoveryWalker(ctx context.Context, rootAbs string, options Options) *d
 	}
 }
 
+// visitInput processes a single user-provided input path, file or directory.
 func (w *discoveryWalker) visitInput(input string) error {
 	if err := w.ctx.Err(); err != nil {
 		return err
@@ -148,6 +159,7 @@ func (w *discoveryWalker) visitInput(input string) error {
 	})
 }
 
+// visitDir decides whether to prune or descend into a directory.
 func (w *discoveryWalker) visitDir(current string) error {
 	rel := displayPath(w.rootAbs, current)
 	if w.gitignoreActive {
@@ -163,6 +175,7 @@ func (w *discoveryWalker) visitDir(current string) error {
 	return nil
 }
 
+// visitFile classifies a discovered file and records it as scanned or skipped.
 func (w *discoveryWalker) visitFile(path string) {
 	if w.gitignoreActive {
 		rel := displayPath(w.rootAbs, path)
@@ -174,12 +187,14 @@ func (w *discoveryWalker) visitFile(path string) {
 	w.addFile(path)
 }
 
+// flushParseErrors records gitignore parse errors as skipped entries.
 func (w *discoveryWalker) flushParseErrors() {
 	for _, badPath := range w.matcher.ParseErrors() {
 		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: badPath, Reason: "gitignore-parse-error"})
 	}
 }
 
+// normalize sorts and dedupes the discovery Result fields for determinism.
 func (w *discoveryWalker) normalize() {
 	slices.SortFunc(w.result.Files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
 	slices.Sort(w.result.Missing)
@@ -194,6 +209,7 @@ func (w *discoveryWalker) normalize() {
 	w.result.Skipped = dedupeSkipped(w.result.Skipped)
 }
 
+// ignoredDir returns the skip reason and true when the directory should be pruned.
 func (w *discoveryWalker) ignoredDir(rel string) (string, bool) {
 	if pathfilter.MatchesAny(w.options.IgnorePatterns, rel) {
 		return "config-ignore", true
@@ -210,6 +226,7 @@ func (w *discoveryWalker) ignoredDir(rel string) (string, bool) {
 	return "", false
 }
 
+// addFile applies file-level filters and appends accepted files to the Result.
 func (w *discoveryWalker) addFile(path string) {
 	rel := displayPath(w.rootAbs, path)
 	if pathfilter.MatchesAny(w.options.IgnorePatterns, rel) {
@@ -239,11 +256,13 @@ func (w *discoveryWalker) addFile(path string) {
 	w.result.Files = append(w.result.Files, File{Path: rel, AbsPath: path, Type: fileType})
 }
 
+// rootHasGitignore reports whether a .gitignore exists at the discovery root.
 func rootHasGitignore(rootAbs string) bool {
 	info, err := os.Stat(filepath.Join(rootAbs, ".gitignore"))
 	return err == nil && !info.IsDir()
 }
 
+// classify returns the FileType for a path based on its extension or name.
 func classify(path string) (FileType, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == ".go" {
@@ -260,6 +279,7 @@ func classify(path string) (FileType, bool) {
 	}
 }
 
+// alwaysIgnoredDir reports VCS and tool-metadata directories that are unconditionally skipped.
 func alwaysIgnoredDir(rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
 	for _, part := range parts {
@@ -273,6 +293,7 @@ func alwaysIgnoredDir(rel string) (string, bool) {
 	return "", false
 }
 
+// alwaysIgnoredFile reports files that live inside unconditionally skipped metadata directories.
 func alwaysIgnoredFile(rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
 	for _, part := range parts[:len(parts)-1] {
@@ -284,6 +305,7 @@ func alwaysIgnoredFile(rel string) (string, bool) {
 	return "", false
 }
 
+// fallbackIgnoredDir reports directories skipped when no project .gitignore exists.
 func fallbackIgnoredDir(rel string) (string, bool) {
 	parts := strings.Split(rel, "/")
 	for _, part := range parts {
@@ -299,10 +321,12 @@ func fallbackIgnoredDir(rel string) (string, bool) {
 	return "", false
 }
 
+// fallbackIgnoredFile is a placeholder for future filename-based fallback skips.
 func fallbackIgnoredFile(_ string) (string, bool) {
 	return "", false
 }
 
+// isGeneratedGo reports whether a Go file carries the generated-file marker comment.
 func isGeneratedGo(path string) bool {
 	// #nosec G304 -- scanner intentionally opens files selected by discovery.
 	file, err := os.Open(path)
@@ -331,6 +355,7 @@ func isGeneratedGo(path string) bool {
 	return false
 }
 
+// displayPath converts an absolute filesystem path into a repo-relative display form.
 func displayPath(rootAbs, path string) string {
 	rel, err := filepath.Rel(rootAbs, path)
 	if err != nil || strings.HasPrefix(rel, "..") {
@@ -339,10 +364,12 @@ func displayPath(rootAbs, path string) string {
 	return filepath.ToSlash(rel)
 }
 
+// slashClean normalises a path to slash-separated, cleaned form.
 func slashClean(path string) string {
 	return filepath.ToSlash(filepath.Clean(path))
 }
 
+// dedupeFiles removes adjacent duplicate entries from a sorted file slice.
 func dedupeFiles(files []File) []File {
 	if len(files) < 2 {
 		return files
@@ -359,6 +386,7 @@ func dedupeFiles(files []File) []File {
 	return out
 }
 
+// dedupeSkipped removes adjacent duplicate entries from a sorted skipped-paths slice.
 func dedupeSkipped(skipped []SkippedPath) []SkippedPath {
 	if len(skipped) < 2 {
 		return skipped

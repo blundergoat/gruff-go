@@ -54,16 +54,12 @@ rules:
     severity: notice
     options:
       ignoreInternalPackages: true
-  # Selected contract files should explain maintainer-facing boundaries and declarations.
+  # Every function, named type, const, and var requires an attached comment; every package needs a summary.
   docs.comment-rubric:
     enabled: true
     threshold: 2
-    severity: notice
+    severity: warning
     options:
-      includePaths:
-        - internal/analysis/report.go
-        - internal/config/config.go
-        - internal/rule/rule.go
       requirePackageSummary: true
       requireFunctionComments: true
       requireNamedTypeComments: true

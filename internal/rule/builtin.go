@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file defines the core builtin rule pack (size, complexity, docs, sensitive data).
 package rule
 
 import (
@@ -13,6 +15,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// Default thresholds and secret-detection patterns used by the builtin rule pack.
 const (
 	fileLengthThreshold     = 500
 	functionLengthThreshold = 80
@@ -21,12 +24,15 @@ const (
 	secretAssignmentPattern = `(?i)(?:^|[^A-Za-z0-9_-])((?:` + secretKeyPattern + `)\s*(?::=|=|:)\s*["']?(?:Bearer\s+)?[A-Za-z0-9_./+=-]{20,})`
 )
 
+// secretPattern is the compiled regex used by SensitiveDataRule to flag secret-like assignments.
 var secretPattern = regexp.MustCompile(secretAssignmentPattern)
 
+// FileLengthRule flags Go files whose line count exceeds the configured maximum.
 type FileLengthRule struct {
 	MaxLines int
 }
 
+// maxLines returns the effective file-length threshold for this rule.
 func (r FileLengthRule) maxLines() int {
 	if r.MaxLines <= 0 {
 		return fileLengthThreshold
@@ -34,6 +40,7 @@ func (r FileLengthRule) maxLines() int {
 	return r.MaxLines
 }
 
+// Definition returns the rule metadata for FileLengthRule.
 func (r FileLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
@@ -49,6 +56,7 @@ func (r FileLengthRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits one finding when a Go file's line count exceeds the threshold.
 func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	maxLines := r.maxLines()
 	if unit.File.Type != source.FileTypeGo || unit.LineCount <= maxLines {
@@ -68,10 +76,12 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	}}
 }
 
+// FunctionLengthRule flags Go functions whose body length exceeds the configured maximum.
 type FunctionLengthRule struct {
 	MaxLines int
 }
 
+// maxLines returns the effective per-function line threshold for this rule.
 func (r FunctionLengthRule) maxLines() int {
 	if r.MaxLines <= 0 {
 		return functionLengthThreshold
@@ -79,6 +89,7 @@ func (r FunctionLengthRule) maxLines() int {
 	return r.MaxLines
 }
 
+// Definition returns the rule metadata for FunctionLengthRule.
 func (r FunctionLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
@@ -94,6 +105,7 @@ func (r FunctionLengthRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits a finding for every function in the unit longer than the threshold.
 func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.File.Type != source.FileTypeGo {
 		return nil
@@ -120,10 +132,12 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 	return findings
 }
 
+// CyclomaticComplexityRule flags Go functions with cyclomatic complexity above the threshold.
 type CyclomaticComplexityRule struct {
 	MaxComplexity int
 }
 
+// maxComplexity returns the effective cyclomatic-complexity threshold for this rule.
 func (r CyclomaticComplexityRule) maxComplexity() int {
 	if r.MaxComplexity <= 0 {
 		return cyclomaticThreshold
@@ -131,6 +145,7 @@ func (r CyclomaticComplexityRule) maxComplexity() int {
 	return r.MaxComplexity
 }
 
+// Definition returns the rule metadata for CyclomaticComplexityRule.
 func (r CyclomaticComplexityRule) Definition() Definition {
 	maxComplexity := r.maxComplexity()
 	return Definition{
@@ -146,6 +161,7 @@ func (r CyclomaticComplexityRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for every function whose cyclomatic complexity exceeds the threshold.
 func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -174,8 +190,10 @@ func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []fin
 	return findings
 }
 
+// PackageCommentRule flags Go packages that lack a package-level comment in any file.
 type PackageCommentRule struct{}
 
+// Definition returns the rule metadata for PackageCommentRule.
 func (PackageCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.package-comment",
@@ -189,6 +207,7 @@ func (PackageCommentRule) Definition() Definition {
 	}
 }
 
+// AnalyzeProject emits one finding per Go package that has no package-level comment.
 func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	type packageState struct {
 		name       string
@@ -235,10 +254,12 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 	return findings
 }
 
+// SensitiveDataRule flags secret-like key/value assignments in Go and text/config files.
 type SensitiveDataRule struct {
 	PreviewAllowlist []string
 }
 
+// Definition returns the rule metadata for SensitiveDataRule.
 func (SensitiveDataRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.secret-pattern",
@@ -252,6 +273,7 @@ func (SensitiveDataRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit emits findings for every line that matches the secret-assignment pattern.
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
@@ -274,6 +296,7 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 	return findings
 }
 
+// cyclomaticComplexity counts the cyclomatic complexity of a function body.
 func cyclomaticComplexity(fn *ast.FuncDecl) int {
 	complexity := 1
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
@@ -298,6 +321,7 @@ func cyclomaticComplexity(fn *ast.FuncDecl) int {
 	return complexity
 }
 
+// functionName returns the rendered function or method name (Receiver.Name when applicable).
 func functionName(fn *ast.FuncDecl) string {
 	name := fn.Name.Name
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
@@ -313,10 +337,12 @@ func functionName(fn *ast.FuncDecl) string {
 	return name
 }
 
+// isGoTestFile reports whether the file path is a Go test file (_test.go suffix).
 func isGoTestFile(path string) bool {
 	return strings.HasSuffix(path, "_test.go")
 }
 
+// redact masks a secret-like value, keeping only enough characters for triage.
 func redact(value string) string {
 	if len(value) <= 12 {
 		return "[redacted]"

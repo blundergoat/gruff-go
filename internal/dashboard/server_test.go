@@ -1,3 +1,5 @@
+// Package dashboard server tests cover host gating, shutdown, and URL formatting.
+// They exercise the public Serve entrypoint and helpers.
 package dashboard
 
 import (
@@ -9,6 +11,7 @@ import (
 	"time"
 )
 
+// TestIsLoopbackHost verifies loopback detection for common host strings.
 func TestIsLoopbackHost(t *testing.T) {
 	loopback := []string{"127.0.0.1", "::1", "localhost", "LocalHost"}
 	for _, host := range loopback {
@@ -24,6 +27,7 @@ func TestIsLoopbackHost(t *testing.T) {
 	}
 }
 
+// TestServeRefusesPublicHostWithoutAllowPublic ensures non-loopback binds require opt-in.
 func TestServeRefusesPublicHostWithoutAllowPublic(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := Serve(context.Background(), &stdout, &stderr, Options{Host: "0.0.0.0", Port: 0})
@@ -35,6 +39,7 @@ func TestServeRefusesPublicHostWithoutAllowPublic(t *testing.T) {
 	}
 }
 
+// TestServeShutsDownOnContextCancel verifies the server stops cleanly on context cancel.
 func TestServeShutsDownOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var stdout, stderr bytes.Buffer
@@ -67,6 +72,7 @@ func TestServeShutsDownOnContextCancel(t *testing.T) {
 	}
 }
 
+// TestInitialURLEncodesDefaultState checks initialURL builds an http URL with form state.
 func TestInitialURLEncodesDefaultState(t *testing.T) {
 	got := initialURL("127.0.0.1", 8765, Options{ProjectRoot: "/repo", FailOn: "medium"})
 	if !strings.HasPrefix(got, "http://127.0.0.1:8765/?") {
@@ -77,6 +83,7 @@ func TestInitialURLEncodesDefaultState(t *testing.T) {
 	}
 }
 
+// ephemeralPort returns a free TCP port suitable for in-process server binding.
 func ephemeralPort(t *testing.T) int {
 	t.Helper()
 	port, err := pickEphemeralPort()

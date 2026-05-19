@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the naming.package-stutter rule.
 package rule
 
 import (
@@ -9,12 +11,15 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// defaultPackageStutterAllow lists exported identifiers permitted to repeat their package name.
 var defaultPackageStutterAllow = []string{"Config", "Finding"}
 
+// PackageStutterRule flags exported identifiers whose names redundantly include the package name.
 type PackageStutterRule struct {
 	AllowStutter []string
 }
 
+// Definition returns the rule metadata for PackageStutterRule.
 func (r PackageStutterRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-stutter",
@@ -33,6 +38,7 @@ func (r PackageStutterRule) Definition() Definition {
 	}
 }
 
+// AnalyzeProject scans every unit for exported declarations that stutter their package name.
 func (r PackageStutterRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	allow := r.allowSet()
 	var findings []finding.Finding
@@ -49,6 +55,7 @@ func (r PackageStutterRule) AnalyzeProject(units []parser.Unit, _ Context) []fin
 	return findings
 }
 
+// allowSet returns the configured allow list as a lookup set, defaulting if empty.
 func (r PackageStutterRule) allowSet() map[string]bool {
 	source := r.AllowStutter
 	if len(source) == 0 {
@@ -63,6 +70,7 @@ func (r PackageStutterRule) allowSet() map[string]bool {
 	return out
 }
 
+// scanUnitForStutter walks the declarations of a single unit looking for stuttered names.
 func scanUnitForStutter(unit parser.Unit, pkgLower string, allow map[string]bool) []finding.Finding {
 	var findings []finding.Finding
 	for _, decl := range unit.AST.Decls {
@@ -71,6 +79,7 @@ func scanUnitForStutter(unit parser.Unit, pkgLower string, allow map[string]bool
 	return findings
 }
 
+// stutterFindingsForDecl dispatches a declaration to the appropriate stutter inspector.
 func stutterFindingsForDecl(unit parser.Unit, decl ast.Decl, pkgLower string, allow map[string]bool) []finding.Finding {
 	switch d := decl.(type) {
 	case *ast.GenDecl:
@@ -81,6 +90,7 @@ func stutterFindingsForDecl(unit parser.Unit, decl ast.Decl, pkgLower string, al
 	return nil
 }
 
+// stutterFindingsForGenDecl examines type and exported value specs for package stutter.
 func stutterFindingsForGenDecl(unit parser.Unit, decl *ast.GenDecl, pkgLower string, allow map[string]bool) []finding.Finding {
 	var findings []finding.Finding
 	for _, spec := range decl.Specs {
@@ -103,6 +113,7 @@ func stutterFindingsForGenDecl(unit parser.Unit, decl *ast.GenDecl, pkgLower str
 	return findings
 }
 
+// stutterFindingsForFuncDecl checks top-level exported functions (skipping methods) for stutter.
 func stutterFindingsForFuncDecl(unit parser.Unit, decl *ast.FuncDecl, pkgLower string, allow map[string]bool) []finding.Finding {
 	if decl.Recv != nil || decl.Name == nil || !ast.IsExported(decl.Name.Name) {
 		return nil
@@ -113,6 +124,7 @@ func stutterFindingsForFuncDecl(unit parser.Unit, decl *ast.FuncDecl, pkgLower s
 	return nil
 }
 
+// stutterCheck evaluates a single identifier and returns a Finding when it stutters its package.
 func stutterCheck(unit parser.Unit, ident *ast.Ident, pkgLower string, allow map[string]bool) (finding.Finding, bool) {
 	if ident == nil {
 		return finding.Finding{}, false
@@ -134,6 +146,7 @@ func stutterCheck(unit parser.Unit, ident *ast.Ident, pkgLower string, allow map
 	}, true
 }
 
+// isPackageStutter reports whether identName begins with pkgLower followed by a word boundary.
 func isPackageStutter(identName, pkgLower string) bool {
 	if pkgLower == "" || identName == "" {
 		return false

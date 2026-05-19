@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// This file holds ANSI colour helpers used by the CLI output.
 package cli
 
 import (
@@ -10,12 +12,14 @@ import (
 // terminal.
 type ansiMode int
 
+// ansiMode constants enumerate the colour decisions the CLI can make.
 const (
 	ansiAuto ansiMode = iota
 	ansiOn
 	ansiOff
 )
 
+// ANSI escape sequence constants used to style CLI output text.
 const (
 	ansiReset  = "\x1b[0m"
 	ansiBold   = "\x1b[1m"
@@ -59,6 +63,7 @@ func ansiEnabled(writer io.Writer, mode ansiMode) bool {
 	return isTerminalWriter(writer)
 }
 
+// isTerminalWriter reports whether writer points at a character device.
 func isTerminalWriter(writer io.Writer) bool {
 	file, ok := writer.(*os.File)
 	if !ok {
@@ -71,10 +76,12 @@ func isTerminalWriter(writer io.Writer) bool {
 	return info.Mode()&os.ModeCharDevice != 0
 }
 
+// ansiStyler conditionally wraps text in ANSI escape sequences.
 type ansiStyler struct {
 	enabled bool
 }
 
+// yellow wraps text in the yellow ANSI escape when styling is enabled.
 func (s ansiStyler) yellow(text string) string {
 	if !s.enabled {
 		return text
@@ -82,6 +89,7 @@ func (s ansiStyler) yellow(text string) string {
 	return ansiYellow + text + ansiReset
 }
 
+// green wraps text in the green ANSI escape when styling is enabled.
 func (s ansiStyler) green(text string) string {
 	if !s.enabled {
 		return text
@@ -89,6 +97,7 @@ func (s ansiStyler) green(text string) string {
 	return ansiGreen + text + ansiReset
 }
 
+// bold wraps text in the bold ANSI escape when styling is enabled.
 func (s ansiStyler) bold(text string) string {
 	if !s.enabled {
 		return text

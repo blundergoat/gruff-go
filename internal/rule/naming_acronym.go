@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the acronym-case rule that enforces Go initialism casing.
 package rule
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// defaultAcronymNames lists the Go initialisms enforced by default.
 var defaultAcronymNames = []string{
 	"HTTP",
 	"URL",
@@ -39,11 +42,13 @@ var defaultAcronymNames = []string{
 	"OS",
 }
 
+// acronymSpec pairs a lowercased lookup form of an acronym with its canonical all-caps spelling.
 type acronymSpec struct {
 	lower     string
 	canonical string
 }
 
+// acronymIssue records a token from an identifier that mis-cases a configured acronym.
 type acronymIssue struct {
 	token     string
 	canonical string
@@ -56,6 +61,7 @@ type AcronymCaseRule struct {
 	AcceptedAbbreviations []string
 }
 
+// Definition describes the acronym-case rule for the registry.
 func (r AcronymCaseRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.acronym-case",
@@ -72,6 +78,7 @@ func (r AcronymCaseRule) Definition() Definition {
 	}
 }
 
+// AnalyzeUnit walks the unit and emits findings for identifiers that mis-case configured initialisms.
 func (r AcronymCaseRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || hasGeneratedHeader(unit.Source) {
 		return nil
@@ -124,6 +131,7 @@ func (r AcronymCaseRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Find
 	return findings
 }
 
+// acronymSpecs returns the deduplicated, canonicalised acronym specs the rule will enforce.
 func (r AcronymCaseRule) acronymSpecs() []acronymSpec {
 	source := r.Acronyms
 	if len(source) == 0 {
@@ -146,6 +154,7 @@ func (r AcronymCaseRule) acronymSpecs() []acronymSpec {
 	return specs
 }
 
+// firstAcronymIssue returns the first token in name that mis-cases a configured acronym, if any.
 func firstAcronymIssue(name string, specs []acronymSpec, accepted map[string]bool) (acronymIssue, bool) {
 	for _, token := range splitIdentifierTokens(name) {
 		lower := strings.ToLower(token)
@@ -162,6 +171,7 @@ func firstAcronymIssue(name string, specs []acronymSpec, accepted map[string]boo
 	return acronymIssue{}, false
 }
 
+// splitIdentifierTokens breaks an identifier into camel-case or snake-case sub-tokens.
 func splitIdentifierTokens(name string) []string {
 	runes := []rune(name)
 	tokens := []string{}
@@ -196,6 +206,7 @@ func splitIdentifierTokens(name string) []string {
 	return tokens
 }
 
+// hasGeneratedHeader reports whether the source's first lines mark it as machine-generated.
 func hasGeneratedHeader(source string) bool {
 	scanner := bufio.NewScanner(strings.NewReader(source))
 	for index := 0; index < 10 && scanner.Scan(); index++ {
@@ -207,6 +218,7 @@ func hasGeneratedHeader(source string) bool {
 	return false
 }
 
+// exactStringSet returns a set keyed by the unmodified, non-empty entries of values.
 func exactStringSet(values []string) map[string]bool {
 	out := make(map[string]bool, len(values))
 	for _, value := range values {
@@ -217,6 +229,7 @@ func exactStringSet(values []string) map[string]bool {
 	return out
 }
 
+// lowerStringSet returns a set keyed by trimmed, lowercased entries of values.
 func lowerStringSet(values []string) map[string]bool {
 	out := make(map[string]bool, len(values))
 	for _, value := range values {

@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the builtin rule pack and shared helpers.
 package rule
 
 import (
@@ -10,6 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// TestDefaultsListRules verifies the default registry exposes the expected rule IDs.
 func TestDefaultsListRules(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
@@ -65,6 +68,7 @@ func TestDefaultsListRules(t *testing.T) {
 	}
 }
 
+// TestSizeRules covers the file-length and function-length rules on long and short units.
 func TestSizeRules(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long.go", Type: source.FileTypeGo},
@@ -102,6 +106,7 @@ func TestSizeRules(t *testing.T) {
 	}
 }
 
+// TestCyclomaticComplexityRule confirms the rule fires for highly branching functions.
 func TestCyclomaticComplexityRule(t *testing.T) {
 	unit := parseOne(t, "complex.go", `// Package sample is a test package.
 package sample
@@ -136,6 +141,7 @@ func risky(a bool) {
 	}
 }
 
+// TestCyclomaticComplexityCases exercises the cyclomatic helper across control-flow shapes.
 func TestCyclomaticComplexityCases(t *testing.T) {
 	tests := []struct {
 		name string
@@ -178,6 +184,7 @@ func sample(a bool, b bool) {
 	}
 }
 
+// TestPackageCommentRule verifies the rule fires only on packages without a package comment.
 func TestPackageCommentRule(t *testing.T) {
 	withComment := parseOne(t, "with/comment.go", `// Package withcomment explains itself.
 package withcomment
@@ -191,6 +198,7 @@ package withcomment
 	}
 }
 
+// TestPackageCommentRuleSkipsExternalTestPackages ignores _test packages lacking a comment.
 func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
 	production := parseOne(t, "pkg/prod.go", `package pkg
 `)
@@ -206,6 +214,7 @@ func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
 	}
 }
 
+// TestSensitiveDataRule verifies the rule flags common secret-like assignment lines.
 func TestSensitiveDataRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -237,6 +246,7 @@ func TestSensitiveDataRule(t *testing.T) {
 	}
 }
 
+// TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig avoids false positives on configish lines.
 func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	tests := []struct {
 		name string
@@ -263,6 +273,7 @@ func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	}
 }
 
+// TestExpansionRules covers the expansion rule pack (package name, empty block, shell, skip).
 func TestExpansionRules(t *testing.T) {
 	packageUnit := parseOne(t, "bad/package.go", `// Package bad_name is a test package.
 package bad_name
@@ -315,6 +326,7 @@ func TestSkipped(t *testing.T) {
 	}
 }
 
+// TestExpansionRulesFireByDefault confirms expansion rules fire under Defaults() and can be disabled.
 func TestExpansionRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "empty.go", `// Package sample is a test package.
 package sample
@@ -340,6 +352,7 @@ func empty(a bool) {
 	}
 }
 
+// parseOne writes contents to a temp file and returns the parsed unit; used by rule tests.
 func parseOne(t *testing.T, rel string, contents string) parser.Unit {
 	t.Helper()
 	root := t.TempDir()

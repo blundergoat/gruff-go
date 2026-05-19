@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file covers test-file calibration for size-related rules.
 package rule
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// TestSizeRulesCalibrateTestFiles ensures size findings on _test.go files get softened severity.
 func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long_test.go", Type: source.FileTypeGo},
@@ -33,6 +36,7 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	}
 }
 
+// TestSizeRuleConfiguredSeverityOverridesTestCalibration verifies configured severity wins over calibration.
 func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	registry, err := DefaultsConfigured(Config{
 		Severities: map[string]finding.Severity{"size.file-length": finding.SeverityHigh},
@@ -54,6 +58,7 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	}
 }
 
+// assertCalibratedTestSizeFinding asserts the given finding was calibrated as expected for test files.
 func assertCalibratedTestSizeFinding(t *testing.T, ruleID string, item finding.Finding) {
 	t.Helper()
 	if item.RuleID == "" {

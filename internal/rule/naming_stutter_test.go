@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the naming.package-stutter rule across declaration kinds.
 package rule
 
 import (
@@ -6,6 +8,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// TestPackageStutterFlagsStutteredType confirms a type whose name repeats its package is flagged.
 func TestPackageStutterFlagsStutteredType(t *testing.T) {
 	unit := parseOne(t, "rule/registry.go", `package rule
 
@@ -18,6 +21,7 @@ type RuleRegistry struct{}
 	}
 }
 
+// TestPackageStutterAllowsDefaultExactMatch checks the default allow list permits finding.Finding.
 func TestPackageStutterAllowsDefaultExactMatch(t *testing.T) {
 	unit := parseOne(t, "finding/finding.go", `package finding
 
@@ -28,6 +32,7 @@ type Finding struct{}
 	}
 }
 
+// TestPackageStutterAllowsConfigConfig confirms the default allow list covers config.Config.
 func TestPackageStutterAllowsConfigConfig(t *testing.T) {
 	unit := parseOne(t, "config/config.go", `package config
 
@@ -38,6 +43,7 @@ type Config struct{}
 	}
 }
 
+// TestPackageStutterIgnoresNonStutter ensures unrelated identifier names do not trigger findings.
 func TestPackageStutterIgnoresNonStutter(t *testing.T) {
 	unit := parseOne(t, "config/parser.go", `package config
 
@@ -48,6 +54,7 @@ type Parser struct{}
 	}
 }
 
+// TestPackageStutterIgnoresExtendedWord confirms identifiers extending the package name as one word do not fire.
 func TestPackageStutterIgnoresExtendedWord(t *testing.T) {
 	unit := parseOne(t, "rule/rules.go", `package rule
 
@@ -58,6 +65,7 @@ type Rules struct{}
 	}
 }
 
+// TestPackageStutterFlagsConcatenatedPackageName verifies concatenated package names still stutter.
 func TestPackageStutterFlagsConcatenatedPackageName(t *testing.T) {
 	unit := parseOne(t, "httpserver/options.go", `package httpserver
 
@@ -70,6 +78,7 @@ type HttpServerOptions struct{}
 	}
 }
 
+// TestPackageStutterFlagsFunctions ensures exported functions are scanned alongside types.
 func TestPackageStutterFlagsFunctions(t *testing.T) {
 	unit := parseOne(t, "rule/build.go", `package rule
 
@@ -82,6 +91,7 @@ func RuleBuild() {}
 	}
 }
 
+// TestPackageStutterSkipsMethods asserts methods with receivers are not flagged as stutter.
 func TestPackageStutterSkipsMethods(t *testing.T) {
 	unit := parseOne(t, "rule/foo.go", `package rule
 
@@ -94,6 +104,7 @@ func (Holder) RuleApply() {}
 	}
 }
 
+// TestPackageStutterSkipsUnexported asserts unexported identifiers are excluded from checks.
 func TestPackageStutterSkipsUnexported(t *testing.T) {
 	unit := parseOne(t, "rule/foo.go", `package rule
 
@@ -104,6 +115,7 @@ type ruleInternal struct{}
 	}
 }
 
+// TestPackageStutterHonoursCustomAllow verifies the AllowStutter option suppresses the named identifier.
 func TestPackageStutterHonoursCustomAllow(t *testing.T) {
 	unit := parseOne(t, "rule/registry.go", `package rule
 
@@ -115,6 +127,7 @@ type RuleRegistry struct{}
 	}
 }
 
+// TestPackageStutterIsDefaultEnabled asserts the rule ships enabled with parser capability.
 func TestPackageStutterIsDefaultEnabled(t *testing.T) {
 	if !(PackageStutterRule{}).Definition().DefaultEnabled {
 		t.Error("naming.package-stutter must be default-enabled")

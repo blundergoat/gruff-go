@@ -1,7 +1,10 @@
+// Package finding tests assert fingerprint stability and identity coverage.
+// They guard the JSON payload shape and hash contract used by baselines.
 package finding
 
 import "testing"
 
+// TestFingerprintIsStableAndIdentityBased asserts identity-only fields drive the hash.
 func TestFingerprintIsStableAndIdentityBased(t *testing.T) {
 	finding := Finding{
 		RuleID:     "size.file-length",

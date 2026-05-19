@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the design composite rules and shared finding builders.
 package rule
 
 import (
@@ -7,6 +9,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// TestDesignGodFunctionRule verifies the god-function composite fires for the right symbols.
 func TestDesignGodFunctionRule(t *testing.T) {
 	evidence := []finding.Finding{
 		baseFinding("size.function-length", finding.PillarSize, "hot.go", "Hot", 10),
@@ -33,6 +36,7 @@ func TestDesignGodFunctionRule(t *testing.T) {
 	}
 }
 
+// TestDesignGodFunctionFingerprintIgnoresUnderlyingLineShifts asserts fingerprints stay stable.
 func TestDesignGodFunctionFingerprintIgnoresUnderlyingLineShifts(t *testing.T) {
 	rule := DesignGodFunctionRule{}
 	firstEvidence := []finding.Finding{
@@ -51,6 +55,7 @@ func TestDesignGodFunctionFingerprintIgnoresUnderlyingLineShifts(t *testing.T) {
 	}
 }
 
+// TestDesignHotspotFileRule verifies the hotspot composite groups findings per file.
 func TestDesignHotspotFileRule(t *testing.T) {
 	evidence := []finding.Finding{
 		baseFinding("size.function-length", finding.PillarSize, "hot.go", "Hot", 10),
@@ -81,6 +86,7 @@ func TestDesignHotspotFileRule(t *testing.T) {
 	}
 }
 
+// TestCompositeRulesFireByDefault confirms composite rules participate in the default registry.
 func TestCompositeRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "hot.go", `// Package sample is a test package.
 package sample
@@ -129,6 +135,7 @@ func Hot(a bool, b bool) {
 	}
 }
 
+// baseFinding builds a minimal finding fixture used across composite tests.
 func baseFinding(ruleID string, pillar finding.Pillar, file string, symbol string, line int) finding.Finding {
 	item := finding.Finding{
 		RuleID:     ruleID,

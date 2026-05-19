@@ -1,3 +1,5 @@
+// Package dashboard handler tests cover routing, scan execution, and form state.
+// They exercise the HTTP surface against in-memory test servers.
 package dashboard
 
 import (
@@ -16,6 +18,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
+// TestHandlerServesShellOnRoot verifies the root path returns the dashboard shell HTML.
 func TestHandlerServesShellOnRoot(t *testing.T) {
 	handler := NewHandler(Options{ProjectRoot: "/tmp/proj"})
 	server := httptest.NewServer(handler)
@@ -46,6 +49,7 @@ func TestHandlerServesShellOnRoot(t *testing.T) {
 	}
 }
 
+// TestHandlerScanRendersReportWithMetadata asserts /scan returns HTML with embedded metadata.
 func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 	tempDir := t.TempDir()
 	handler := NewHandler(Options{ProjectRoot: tempDir, FailOn: "medium"})
@@ -70,6 +74,7 @@ func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 	}
 }
 
+// TestHandlerScanMetadataCommandIncludesParityFlags verifies CLI parity flags appear in metadata.
 func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gitignore"), "ignored/\n")
@@ -108,6 +113,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	}
 }
 
+// TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory checks runScan preserves cwd.
 func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.T) {
 	originalWD, err := os.Getwd()
 	if err != nil {
@@ -147,6 +153,7 @@ rules:
 	}
 }
 
+// hasFinding reports whether the slice contains any finding with the given rule ID.
 func hasFinding(findings []finding.Finding, ruleID string) bool {
 	for _, item := range findings {
 		if item.RuleID == ruleID {
@@ -156,6 +163,7 @@ func hasFinding(findings []finding.Finding, ruleID string) bool {
 	return false
 }
 
+// TestRunScanRespectsCanceledContext checks runScan returns context.Canceled on cancel.
 func TestRunScanRespectsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -172,6 +180,7 @@ func TestRunScanRespectsCanceledContext(t *testing.T) {
 	}
 }
 
+// TestHandlerScanReturnsErrorDocOnInvalidProject ensures invalid projects produce an error page.
 func TestHandlerScanReturnsErrorDocOnInvalidProject(t *testing.T) {
 	handler := NewHandler(Options{})
 	server := httptest.NewServer(handler)
@@ -189,6 +198,7 @@ func TestHandlerScanReturnsErrorDocOnInvalidProject(t *testing.T) {
 	}
 }
 
+// writeFile writes a file in the test tree, creating directories as needed.
 func writeFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -199,6 +209,7 @@ func writeFile(t *testing.T, path string, content string) {
 	}
 }
 
+// TestHandlerRejectsPostOnRoot ensures the root path returns 405 for POST requests.
 func TestHandlerRejectsPostOnRoot(t *testing.T) {
 	handler := NewHandler(Options{})
 	server := httptest.NewServer(handler)
@@ -214,6 +225,7 @@ func TestHandlerRejectsPostOnRoot(t *testing.T) {
 	}
 }
 
+// TestHandlerUnknownPathIs404 ensures unrecognised routes return a 404 response.
 func TestHandlerUnknownPathIs404(t *testing.T) {
 	handler := NewHandler(Options{})
 	server := httptest.NewServer(handler)
@@ -229,6 +241,7 @@ func TestHandlerUnknownPathIs404(t *testing.T) {
 	}
 }
 
+// TestStateFromQueryAppliesDefaults verifies missing query keys fall back to option defaults.
 func TestStateFromQueryAppliesDefaults(t *testing.T) {
 	opts := Options{
 		ProjectRoot:  "/repo",
@@ -250,6 +263,7 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 	}
 }
 
+// TestStateFromQueryOverridesDefaults verifies explicit query values override defaults.
 func TestStateFromQueryOverridesDefaults(t *testing.T) {
 	opts := Options{ProjectRoot: "/repo", FailOn: "high"}
 	values := map[string][]string{
@@ -269,6 +283,7 @@ func TestStateFromQueryOverridesDefaults(t *testing.T) {
 	}
 }
 
+// TestBuildScanOptionsIncludeIgnoredFromQuery checks query state propagates IncludeIgnored.
 func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	state := report.DashboardState{
 		Project:        "/repo",
@@ -281,6 +296,7 @@ func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	}
 }
 
+// TestBuildScanOptionsIncludeIgnoredFromOptionsDefault checks Options default propagates.
 func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
 	state := report.DashboardState{Project: "/repo", FailOn: "medium"}
 	scan := buildScanOptions(Options{IncludeIgnored: true}, state)
@@ -289,6 +305,7 @@ func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
 	}
 }
 
+// TestStateFromQueryIncludeIgnoredOverride verifies includeIgnored=1 round-trips.
 func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 	values := map[string][]string{"includeIgnored": {"1"}}
 	state := stateFromQuery(Options{}, values)
@@ -297,6 +314,7 @@ func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 	}
 }
 
+// TestDisplayCommandIncludesKeyFlags ensures common CLI flags appear in the rendered command.
 func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	command := displayCommand(report.DashboardState{
 		Project:           "/repo",
@@ -327,6 +345,7 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	}
 }
 
+// extractScanMetadata pulls the gruff-dashboard-meta payload out of an HTML response.
 func extractScanMetadata(t *testing.T, html string) struct {
 	Type     string `json:"type"`
 	ExitCode int    `json:"exitCode"`
@@ -357,12 +376,14 @@ func extractScanMetadata(t *testing.T, html string) struct {
 	return payload
 }
 
+// dashboardComplexFixture returns Go source intentionally violating complexity rules.
 func dashboardComplexFixture() string {
 	return "// Package sample is a test package.\npackage sample\n\nfunc risky(a bool) {\n" +
 		strings.Repeat("\tif a {}\n", 21) +
 		"}\n"
 }
 
+// TestSplitPaths exercises comma-separated path normalisation cases.
 func TestSplitPaths(t *testing.T) {
 	cases := []struct {
 		input string
@@ -382,6 +403,7 @@ func TestSplitPaths(t *testing.T) {
 	}
 }
 
+// equalSlices reports whether two string slices have equal length and elements.
 func equalSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
