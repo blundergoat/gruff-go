@@ -4,7 +4,7 @@ An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scor
 
 ## Status
 
-`v0.1.0` is the first tagged release. The binary reports its version as `0.1.0`. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
+`v0.1.0` is the first release line. The binary reports its version as `0.1.0`. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Requirements
 
@@ -30,7 +30,13 @@ Or use `go run` without installing:
 go run ./cmd/gruff-go analyse .
 ```
 
-Once a release is published, `go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest` will be the convenient form.
+For a tagged install:
+
+```bash
+go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+```
+
+Use `@latest` only when you intentionally want the newest published release rather than a pinned build.
 
 ## Quick start
 
@@ -139,7 +145,7 @@ The schema, every option, and validation rules are documented in [`docs/configur
 
 ## Rule catalog
 
-`gruff-go` v0.1 ships **29 rules** across **9 pillars**. All rules are enabled by default; disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **30 rules** across **9 pillars**. The built-in pack enables 29 rules by default; `docs.config-field-comment` is opt-in for projects that want exported struct fields documented. Disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 See [`docs/rules.md`](docs/rules.md) for the full list with severities, thresholds, and remediation guidance.
 

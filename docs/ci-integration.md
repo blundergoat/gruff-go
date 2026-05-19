@@ -65,14 +65,14 @@ jobs:
           go-version: '1.25'
 
       - name: Install gruff-go
-        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest
+        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
 
       - name: Scan (diff-mode for PRs, full for push)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gruff-go analyse --baseline gruff-baseline.json . --diff-base origin/${{ github.base_ref }} --format github
+            gruff-go analyse --baseline gruff-baseline.json --diff-base origin/${{ github.base_ref }} --format github .
           else
-            gruff-go analyse --baseline gruff-baseline.json . --format github
+            gruff-go analyse --baseline gruff-baseline.json --format github .
           fi
 ```
 
@@ -119,7 +119,7 @@ gruff-go:
   image: golang:1.25
   stage: test
   script:
-    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest
+    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
     - gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif
   artifacts:
     when: always
@@ -148,7 +148,7 @@ jobs:
       - checkout
       - run:
           name: Install gruff-go
-          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest
+          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
       - run:
           name: Scan
           command: gruff-go analyse --baseline gruff-baseline.json .
@@ -172,7 +172,7 @@ pipeline {
     stages {
         stage('gruff-go') {
             steps {
-                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest'
+                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0'
                 sh 'gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif'
             }
             post {

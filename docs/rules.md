@@ -2,7 +2,7 @@
 
 `gruff-go` v0.1 ships **30 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
-Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels).
+Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
 ## Rule reference
 
@@ -25,7 +25,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
-| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
+| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods and context accessors with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | low | parser | — | Identifiers, doc comments, and struct tags containing common programming misspellings. |
 | [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | — | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
@@ -39,11 +39,11 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | — | PEM-encoded private keys embedded in source. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
 | [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
-| [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the line-count threshold. |
+| [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | — | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
-| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | — | Test functions that contain code but never reach a failure call. |
-| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | — | Tests that call `t.Skip*`. |
+| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | — | Test functions that contain code but never reach a failure call or recognised assertion helper. |
+| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | — | Unconditional or debt-marked tests that call `t.Skip*`. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
 
@@ -190,7 +190,7 @@ The rule is default-disabled and intended for user-facing configuration schema t
 rules:
   docs.config-field-comment:
     enabled: true
-    severity: notice
+    severity: low
     options:
       includePaths:
         - internal/config/config.go
@@ -298,7 +298,7 @@ rules:
 - **Tags:** `go-style`, `naming`, `opt-in`
 - **Options:** `excludePaths []string`, `excludeNames []string`
 
-Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context. Package-level functions are not flagged.
+Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. It also flags package-level context accessors whose only parameter is `context.Context` and whose result shape is one value or `(T, error)`, such as `GetLogger(ctx)`. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context.
 
 ```yaml
 rules:
@@ -494,6 +494,8 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 
 Flags database / queue / cache connection URIs that embed a username and password in the URL — `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
 
+Obvious dev/test placeholders are skipped only when both halves match: the host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the embedded password contains a placeholder token such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. Real-looking credentials at local hosts still fire.
+
 **Remediation.** Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.
 
 ### `sensitive-data.jwt-token`
@@ -532,6 +534,8 @@ Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedd
 
 Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, `bearer = "…"`, and `authorization = "Bearer …"`.
 
+All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`.
+
 Add documented dummies to `allowlists.secretPreviews` so example values in tests and READMEs aren't flagged.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
@@ -558,7 +562,9 @@ Flags Go files that exceed the configured line-count threshold. Long files frequ
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions that exceed the configured line-count threshold. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
+Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
+
+`_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
 
 **Remediation.** Extract cohesive helper functions or split independent branches.
 
@@ -600,7 +606,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 
 Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call — `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
 
-The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It does not currently model helper-function indirection, so a test whose only assertion lives in a separate helper will be flagged. When that happens, either inline the assertion or document the convention in the helper's name (a future iteration may grow option-driven helper allowlists).
+The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when the testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`. A `MustX()` call that does not receive `t`, `b`, or `f` is still treated as a non-assertion helper.
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
 
@@ -613,7 +619,7 @@ The rule walks the function body looking for those methods on the test function'
 - **Capability:** parser
 - **Tags:** `opt-in`, `tests`
 
-Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow`. Skipped tests are easy to forget and often hide real regressions.
+Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
 
 **Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
 
@@ -636,9 +642,8 @@ rules:
   size.parameter-count:
     threshold: 6
 
-  # Per-rule options (rule-specific opaque map).
+  # Raise a medium default rule to high severity.
   security.shell-command:
     enabled: true
-    options:
-      allowList: ["git", "go"]
+    severity: high
 ```
