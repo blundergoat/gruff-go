@@ -97,7 +97,10 @@ func (p Pillar) Valid() bool {
 
 // Location pins a finding to a span of source lines and columns.
 type Location struct {
-	Line    int `json:"line,omitempty"`
-	Column  int `json:"column,omitempty"`
+	// Line is the 1-based start line within the source file; zero when unknown.
+	Line int `json:"line,omitempty"`
+	// Column is the 1-based start column within Line; zero when unknown.
+	Column int `json:"column,omitempty"`
+	// EndLine is the inclusive 1-based end line of the span; zero or less than Line means single-line.
 	EndLine int `json:"endLine,omitempty"`
 }

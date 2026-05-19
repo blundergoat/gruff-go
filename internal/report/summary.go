@@ -149,8 +149,10 @@ func writeTopOffenders(writer io.Writer, offenders []scoring.FileScore, top int)
 
 // ruleCount pairs a rule ID with the number of times it fired in the report.
 type ruleCount struct {
+	// RuleID identifies the rule the count applies to.
 	RuleID string
-	Count  int
+	// Count is the number of findings emitted by RuleID in the report.
+	Count int
 }
 
 // computeTopRules returns the top rule IDs by finding count, capped at top entries.

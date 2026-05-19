@@ -16,6 +16,7 @@ var defaultPackageStutterAllow = []string{"Config", "Finding"}
 
 // PackageStutterRule flags exported identifiers whose names redundantly include the package name.
 type PackageStutterRule struct {
+	// AllowStutter lists exported identifier names exempt from the stutter check (Config, Finding, ...).
 	AllowStutter []string
 }
 

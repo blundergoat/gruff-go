@@ -29,6 +29,7 @@ var secretPattern = regexp.MustCompile(secretAssignmentPattern)
 
 // FileLengthRule flags Go files whose line count exceeds the configured maximum.
 type FileLengthRule struct {
+	// MaxLines is the per-file line cap; files whose line count exceeds it produce a finding.
 	MaxLines int
 }
 
@@ -78,6 +79,7 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 
 // FunctionLengthRule flags Go functions whose body length exceeds the configured maximum.
 type FunctionLengthRule struct {
+	// MaxLines is the per-function line cap; functions longer than this trigger a finding.
 	MaxLines int
 }
 
@@ -134,6 +136,7 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 
 // CyclomaticComplexityRule flags Go functions with cyclomatic complexity above the threshold.
 type CyclomaticComplexityRule struct {
+	// MaxComplexity is the per-function branch-count cap; functions above this fire a finding.
 	MaxComplexity int
 }
 
@@ -256,6 +259,7 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 
 // SensitiveDataRule flags secret-like key/value assignments in Go and text/config files.
 type SensitiveDataRule struct {
+	// PreviewAllowlist lists file path globs whose findings may include a redacted preview of the matched literal.
 	PreviewAllowlist []string
 }
 

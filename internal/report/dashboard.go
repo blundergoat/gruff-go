@@ -12,15 +12,25 @@ import (
 
 // DashboardState describes the form state rendered into the dashboard shell.
 type DashboardState struct {
-	Project           string
-	Paths             string
-	ScanScope         string
-	FailOn            string
-	Config            string
-	Baseline          string
-	SkipBaseline      string
-	SkipConfig        string
-	IncludeIgnored    string
+	// Project is the currently selected project root path.
+	Project string
+	// Paths is the comma-separated list of discovery paths under Project.
+	Paths string
+	// ScanScope selects "full" or "diff" scan mode for the next run.
+	ScanScope string
+	// FailOn is the severity threshold used for the scan exit code ("info", "low", "medium", "high", "critical").
+	FailOn string
+	// Config is the configured .gruff-go.yaml path.
+	Config string
+	// Baseline is the configured baseline file path.
+	Baseline string
+	// SkipBaseline is "1" when baseline application is disabled, empty otherwise.
+	SkipBaseline string
+	// SkipConfig is "1" when config loading is disabled, empty otherwise.
+	SkipConfig string
+	// IncludeIgnored is "1" when gitignore filtering is disabled, empty otherwise.
+	IncludeIgnored string
+	// ReportInteractive is "1" when interactive findings rendering is enabled, empty otherwise.
 	ReportInteractive string
 }
 
@@ -38,10 +48,14 @@ func WriteDashboardError(writer io.Writer, message, detail string, exitCode, dur
 
 // ScanMetadata is the payload posted from the iframe back to the dashboard shell.
 type ScanMetadata struct {
-	ExitCode    int    `json:"exitCode"`
-	DurationMs  int    `json:"durationMs"`
+	// ExitCode is the process exit code the scan would have produced on the CLI.
+	ExitCode int `json:"exitCode"`
+	// DurationMs is the wall-clock duration of the scan in milliseconds.
+	DurationMs int `json:"durationMs"`
+	// ProjectRoot is the absolute path the scan was rooted at.
 	ProjectRoot string `json:"projectRoot"`
-	Command     string `json:"command"`
+	// Command is the CLI command line that reproduces the scan.
+	Command string `json:"command"`
 }
 
 // InjectScanMetadata adds the postMessage hand-off script to the rendered report HTML.

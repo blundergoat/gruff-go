@@ -18,23 +18,32 @@ const SchemaVersion = "gruff-go.baseline.v0.1"
 
 // File is the persisted baseline document containing accepted findings.
 type File struct {
-	SchemaVersion string  `json:"schemaVersion"`
-	Findings      []Entry `json:"findings"`
+	// SchemaVersion identifies the on-disk baseline schema; must match SchemaVersion.
+	SchemaVersion string `json:"schemaVersion"`
+	// Findings lists the accepted finding identities suppressed by Apply.
+	Findings []Entry `json:"findings"`
 }
 
 // Entry is a single accepted finding identified by rule, file, and fingerprint.
 type Entry struct {
-	RuleID      string `json:"ruleId"`
-	File        string `json:"file"`
+	// RuleID is the rule whose finding is suppressed.
+	RuleID string `json:"ruleId"`
+	// File is the repo-relative path the suppressed finding targets.
+	File string `json:"file"`
+	// Fingerprint is the stable identity hash of the suppressed finding.
 	Fingerprint string `json:"fingerprint"`
 }
 
 // ApplyResult summarises how a baseline affected a set of findings.
 type ApplyResult struct {
-	Findings           []finding.Finding
+	// Findings holds the surviving findings after baseline suppression.
+	Findings []finding.Finding
+	// SuppressedFindings is the count of findings hidden by matching baseline entries.
 	SuppressedFindings int
-	StaleEntries       int
-	Entries            int
+	// StaleEntries is the count of baseline entries that did not match any current finding.
+	StaleEntries int
+	// Entries is the total number of entries the baseline contained.
+	Entries int
 }
 
 // FromFindings builds a baseline File from the supplied findings, sorted deterministically.

@@ -37,18 +37,31 @@ var commentRubricStopwords = map[string]bool{
 
 // CommentRubricRule enforces maintainer-oriented comments for selected declaration kinds.
 type CommentRubricRule struct {
-	MinPackageCommentLines   int
-	MinWordsBeyondSymbol     int
-	IncludePaths             []string
-	ExcludePaths             []string
-	RequirePackageSummary    bool
-	RequireFunctionComments  bool
+	// MinPackageCommentLines sets the minimum non-empty line count required on each package summary.
+	MinPackageCommentLines int
+	// MinWordsBeyondSymbol rejects paraphrase boilerplate by requiring the comment to add this many
+	// substantive tokens beyond the symbol's own identifier set.
+	MinWordsBeyondSymbol int
+	// IncludePaths restricts enforcement to file paths matching at least one of the supplied globs.
+	IncludePaths []string
+	// ExcludePaths skips enforcement for file paths matching any of the supplied globs.
+	ExcludePaths []string
+	// RequirePackageSummary turns on the per-package summary check that fires when the package doc is missing or too short.
+	RequirePackageSummary bool
+	// RequireFunctionComments turns on doc-comment enforcement for every top-level function and method.
+	RequireFunctionComments bool
+	// RequireNamedTypeComments turns on doc-comment enforcement for every top-level named type declaration.
 	RequireNamedTypeComments bool
-	RequireStructComments    bool
+	// RequireStructComments turns on doc-comment enforcement for struct types specifically.
+	RequireStructComments bool
+	// RequireInterfaceComments turns on doc-comment enforcement for interface types specifically.
 	RequireInterfaceComments bool
-	RequireConstComments     bool
-	RequireVarComments       bool
-	IgnoreTests              bool
+	// RequireConstComments turns on doc-comment enforcement for package-scope const declarations.
+	RequireConstComments bool
+	// RequireVarComments turns on doc-comment enforcement for package-scope var declarations.
+	RequireVarComments bool
+	// IgnoreTests skips the entire rubric on Go test files (_test.go suffix) when true.
+	IgnoreTests bool
 }
 
 // minPackageCommentLines returns the configured minimum package summary lines, falling back to the default.

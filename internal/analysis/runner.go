@@ -18,16 +18,26 @@ import (
 
 // Options configures a single Analyze invocation.
 type Options struct {
-	Context        context.Context
-	Root           string
-	Paths          []string
-	Format         string
-	FailOn         finding.Severity
-	Registry       rule.Registry
-	IgnorePaths    []string
+	// Context cancels the analysis pipeline; nil defaults to context.Background.
+	Context context.Context
+	// Root is the absolute or relative directory walked for source discovery; empty means current working directory.
+	Root string
+	// Paths limits discovery to these explicit roots under Root; empty means scan the whole project.
+	Paths []string
+	// Format selects the report renderer ("text", "json", "html", "sarif", "github"); empty defaults to "text".
+	Format string
+	// FailOn is the severity threshold that drives the process exit code.
+	FailOn finding.Severity
+	// Registry supplies the rules invoked against parsed units.
+	Registry rule.Registry
+	// IgnorePaths lists path patterns suppressed from discovery, merged on top of gitignore handling.
+	IgnorePaths []string
+	// IncludeIgnored disables gitignore and metadata directory pruning when true.
 	IncludeIgnored bool
-	BaselinePath   string
-	DiffBase       string
+	// BaselinePath points at an optional baseline file used to suppress previously accepted findings.
+	BaselinePath string
+	// DiffBase enables changed-lines-only mode against this git revision when non-empty.
+	DiffBase string
 }
 
 // Analyze runs discovery, parsing, and rules against the configured root.

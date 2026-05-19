@@ -13,42 +13,66 @@ import (
 
 // Score is the top-level scoring payload rendered into the analysis report.
 type Score struct {
-	Composite                   int            `json:"composite"`
-	Grade                       string         `json:"grade"`
-	Pillars                     map[string]int `json:"pillars"`
-	PillarDetails               []PillarDetail `json:"pillarDetails"`
-	Coverage                    ScoreCoverage  `json:"coverage"`
-	TopOffender                 []FileScore    `json:"topOffenders"`
-	ComplexityDistribution      map[string]int `json:"complexityDistribution"`
-	ComplexityDistributionScope string         `json:"complexityDistributionScope"`
+	// Composite is the 0-100 overall quality score averaged across contributing pillars.
+	Composite int `json:"composite"`
+	// Grade is the letter grade derived from Composite.
+	Grade string `json:"grade"`
+	// Pillars maps each contributing pillar name to its 0-100 score.
+	Pillars map[string]int `json:"pillars"`
+	// PillarDetails is the sorted per-pillar breakdown including severity counts.
+	PillarDetails []PillarDetail `json:"pillarDetails"`
+	// Coverage describes which pillars contributed and any associated caveat.
+	Coverage ScoreCoverage `json:"coverage"`
+	// TopOffender lists the highest-penalty files in descending order.
+	TopOffender []FileScore `json:"topOffenders"`
+	// ComplexityDistribution buckets cyclomatic complexity findings by range.
+	ComplexityDistribution map[string]int `json:"complexityDistribution"`
+	// ComplexityDistributionScope labels how ComplexityDistribution was built (e.g. "finding-only").
+	ComplexityDistributionScope string `json:"complexityDistributionScope"`
 }
 
 // ScoreCoverage describes which pillars contributed to the composite score and a caveat.
 type ScoreCoverage struct {
+	// ContributingPillars lists, sorted, the pillar names that produced score-impacting findings.
 	ContributingPillars []string `json:"contributingPillars"`
-	Caveat              string   `json:"caveat,omitempty"`
+	// Caveat is an optional sentence explaining limited coverage of the score.
+	Caveat string `json:"caveat,omitempty"`
 }
 
 // PillarDetail breaks down findings and grade for a single quality pillar.
 type PillarDetail struct {
-	Pillar   string `json:"pillar"`
-	Score    int    `json:"score"`
-	Grade    string `json:"grade"`
-	Findings int    `json:"findings"`
-	Critical int    `json:"critical"`
-	High     int    `json:"high"`
-	Medium   int    `json:"medium"`
-	Low      int    `json:"low"`
-	Info     int    `json:"info"`
+	// Pillar is the pillar name (e.g. "complexity", "documentation").
+	Pillar string `json:"pillar"`
+	// Score is the 0-100 score for this pillar.
+	Score int `json:"score"`
+	// Grade is the letter grade derived from Score.
+	Grade string `json:"grade"`
+	// Findings is the total number of findings counted against this pillar.
+	Findings int `json:"findings"`
+	// Critical is the count of critical-severity findings in this pillar.
+	Critical int `json:"critical"`
+	// High is the count of high-severity findings in this pillar.
+	High int `json:"high"`
+	// Medium is the count of medium-severity findings in this pillar.
+	Medium int `json:"medium"`
+	// Low is the count of low-severity findings in this pillar.
+	Low int `json:"low"`
+	// Info is the count of info-severity findings in this pillar.
+	Info int `json:"info"`
 }
 
 // FileScore reports the penalty, finding count, and grade for a single file.
 type FileScore struct {
-	File          string `json:"file"`
-	Penalty       int    `json:"penalty"`
-	Findings      int    `json:"findings"`
-	Grade         string `json:"grade"`
-	MaxCyclomatic *int   `json:"maxCyclomatic,omitempty"`
+	// File is the repo-relative path of the source file.
+	File string `json:"file"`
+	// Penalty is the summed score penalty across all findings in File.
+	Penalty int `json:"penalty"`
+	// Findings is the total number of findings emitted against File.
+	Findings int `json:"findings"`
+	// Grade is the letter grade derived from the file's penalty.
+	Grade string `json:"grade"`
+	// MaxCyclomatic is the highest cyclomatic complexity recorded for File, omitted when no complexity finding fired.
+	MaxCyclomatic *int `json:"maxCyclomatic,omitempty"`
 }
 
 // complexityCyclomaticRuleID is the rule whose findings feed the complexity histogram.

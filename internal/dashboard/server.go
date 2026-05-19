@@ -29,23 +29,40 @@ const DefaultScanTimeout = 120 * time.Second
 
 // Options configures a dashboard server.
 type Options struct {
-	Host              string
-	Port              int
-	ScanTimeout       time.Duration
-	ProjectRoot       string
-	Paths             []string
-	ConfigPath        string
-	SkipConfig        bool
-	BaselinePath      string
-	SkipBaseline      bool
-	IncludeIgnored    bool
-	DiffMode          bool
-	FailOn            string
+	// Host is the bind host; empty defaults to DefaultHost (loopback).
+	Host string
+	// Port is the TCP listener port; zero or negative defaults to DefaultPort.
+	Port int
+	// ScanTimeout caps the wall-clock duration of a single scan; zero disables the deadline.
+	ScanTimeout time.Duration
+	// ProjectRoot is the default project directory used by scans when the query omits one.
+	ProjectRoot string
+	// Paths are the default discovery paths under ProjectRoot used by initial scans.
+	Paths []string
+	// ConfigPath is the default .gruff-go.yaml location consumed by scans.
+	ConfigPath string
+	// SkipConfig disables config file loading when true.
+	SkipConfig bool
+	// BaselinePath is the default baseline file used by scans.
+	BaselinePath string
+	// SkipBaseline disables baseline application when true.
+	SkipBaseline bool
+	// IncludeIgnored disables gitignore filtering when true.
+	IncludeIgnored bool
+	// DiffMode enables changed-lines-only scans by default when true.
+	DiffMode bool
+	// FailOn is the default severity threshold used for scan exit codes.
+	FailOn string
+	// ReportInteractive renders the interactive findings UI when true.
 	ReportInteractive bool
-	EditorLink        string
-	AllowPublic       bool
-	Registry          rule.Registry
-	IgnorePaths       []string
+	// EditorLink is the editor URL template used to deep-link findings (e.g. "vscode://file/{path}:{line}").
+	EditorLink string
+	// AllowPublic permits binding to non-loopback hosts; required to expose the dashboard beyond localhost.
+	AllowPublic bool
+	// Registry supplies the rules used by scan handlers.
+	Registry rule.Registry
+	// IgnorePaths lists path patterns suppressed from discovery on every scan.
+	IgnorePaths []string
 }
 
 // Serve binds the dashboard listener and processes HTTP clients until shut down.

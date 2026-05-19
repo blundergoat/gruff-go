@@ -86,8 +86,10 @@ func (DesignGodFunctionRule) AnalyzeFindings(findings []finding.Finding, _ Conte
 
 // DesignHotspotFileRule flags files whose findings cross multiple quality pillars.
 type DesignHotspotFileRule struct {
+	// MinFindings is the minimum count of underlying findings a file needs before the composite fires.
 	MinFindings int
-	MinPillars  int
+	// MinPillars is the minimum number of distinct quality pillars those findings must span.
+	MinPillars int
 }
 
 // minFindings returns the effective minimum-finding threshold for the hotspot rule.

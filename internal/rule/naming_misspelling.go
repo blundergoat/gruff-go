@@ -58,7 +58,9 @@ var defaultMisspellingDictionary = map[string]string{
 
 // MisspellingRule flags identifiers, comments, and struct tags containing common programming misspellings.
 type MisspellingRule struct {
-	Extra  map[string]string
+	// Extra extends the built-in misspelling dictionary with project-specific wrong-to-right token pairs.
+	Extra map[string]string
+	// Ignore lists tokens that look like misspellings but should be accepted (proper nouns, vendor terms).
 	Ignore []string
 }
 

@@ -20,9 +20,12 @@ var defaultNegatedBooleanAllowList = []string{"NoOp", "Notify", "Notice", "Now",
 
 // NegatedBooleanRule flags boolean identifiers whose names start with negation prefixes.
 type NegatedBooleanRule struct {
-	Prefixes  []string
+	// Prefixes overrides the default negation prefixes (No, Not, Disable, ...) the rule treats as suspect.
+	Prefixes []string
+	// AllowList enumerates identifier names that look negated but are accepted verbatim (NoOp, Notify, ...).
 	AllowList []string
-	Scope     string
+	// Scope selects which identifier visibility the rule inspects: "exported", "locals", or "all".
+	Scope string
 }
 
 // Definition declares the naming.negated-boolean rule that flags No/Not/Disable/Disallow/Without/Suppress prefixes on exported booleans by default.

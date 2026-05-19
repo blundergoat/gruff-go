@@ -26,11 +26,16 @@ const (
 
 // ContextualGenericRule flags generic range or accumulator names only when the surrounding context is large.
 type ContextualGenericRule struct {
-	GenericNames     []string
-	MinBodyLines     int
+	// GenericNames overrides the default set of range identifiers (item, value, entry, ...) the rule watches for in long loops.
+	GenericNames []string
+	// MinBodyLines is the loop-body line threshold below which generic range names are tolerated.
+	MinBodyLines int
+	// AccumulatorNames overrides the default accumulator identifiers (out, result) the rule watches for in long functions.
 	AccumulatorNames []string
+	// MinFunctionLines is the function-length threshold below which generic accumulator names are tolerated.
 	MinFunctionLines int
-	RequireMultiple  *bool
+	// RequireMultiple, when non-nil, controls whether accumulator findings only emit if two or more generic names appear in the same function.
+	RequireMultiple *bool
 }
 
 // contextualGenericContext carries the resolved configuration for one analyser invocation.

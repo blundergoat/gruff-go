@@ -56,8 +56,11 @@ type acronymIssue struct {
 
 // AcronymCaseRule flags mixed-case Go initialisms such as HttpClient.
 type AcronymCaseRule struct {
-	Acronyms              []string
-	Allow                 []string
+	// Acronyms overrides the default initialism list (HTTP, URL, ID, ...) the rule enforces.
+	Acronyms []string
+	// Allow lists identifiers that are exempt from acronym-case checking by exact name match.
+	Allow []string
+	// AcceptedAbbreviations lists project-specific abbreviations whose lowercase form should not be flagged as a mis-cased initialism.
 	AcceptedAbbreviations []string
 }
 

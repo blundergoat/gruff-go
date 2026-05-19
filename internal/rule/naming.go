@@ -28,6 +28,7 @@ var defaultPlaceholderNames = []string{
 
 // IdentifierQualityRule flags local identifiers whose names match a configured placeholder list.
 type IdentifierQualityRule struct {
+	// PlaceholderNames overrides the default placeholder list (foo, bar, tmp, ...) the rule treats as low-quality identifiers.
 	PlaceholderNames []string
 }
 

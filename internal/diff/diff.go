@@ -16,14 +16,19 @@ import (
 
 // ChangedLines describes the set of lines per file altered relative to a git base.
 type ChangedLines struct {
-	Base         string
-	LinesByFile  map[string]map[int]struct{}
+	// Base is the git revision the diff was computed against.
+	Base string
+	// LinesByFile maps repo-relative file paths to the set of line numbers that changed.
+	LinesByFile map[string]map[int]struct{}
+	// ChangedFiles is the sorted list of files present in LinesByFile.
 	ChangedFiles []string
 }
 
 // FilterResult is the outcome of filtering findings against a ChangedLines set.
 type FilterResult struct {
-	Findings         []finding.Finding
+	// Findings holds the findings that overlap the changed-line set.
+	Findings []finding.Finding
+	// FilteredFindings is the count of findings dropped because they do not overlap the diff.
 	FilteredFindings int
 }
 

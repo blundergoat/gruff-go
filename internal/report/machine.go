@@ -72,103 +72,148 @@ func WriteGitHub(writer io.Writer, report analysis.Report) error {
 
 // sarifLog is the top-level SARIF document envelope.
 type sarifLog struct {
-	Version string     `json:"version"`
-	Schema  string     `json:"$schema"`
-	Runs    []sarifRun `json:"runs"`
+	// Version is the SARIF specification version string (e.g. "2.1.0").
+	Version string `json:"version"`
+	// Schema is the URI of the SARIF JSON schema the document conforms to.
+	Schema string `json:"$schema"`
+	// Runs lists each analyser run contained in the log.
+	Runs []sarifRun `json:"runs"`
 }
 
 // sarifRun captures a single analyser run within the SARIF log.
 type sarifRun struct {
-	Tool       sarifTool          `json:"tool"`
-	Results    []sarifResult      `json:"results"`
+	// Tool describes the analyser tool that produced the run.
+	Tool sarifTool `json:"tool"`
+	// Results is the list of per-finding SARIF results emitted by the run.
+	Results []sarifResult `json:"results"`
+	// Properties carries gruff-specific run-level metadata.
 	Properties sarifRunProperties `json:"properties"`
 }
 
 // sarifTool describes the analyser tool block in a SARIF run.
 type sarifTool struct {
+	// Driver names the underlying analyser implementation and rule set.
 	Driver sarifDriver `json:"driver"`
 }
 
 // sarifDriver names the analyser tool and lists the rules it can emit.
 type sarifDriver struct {
-	Name            string      `json:"name"`
-	SemanticVersion string      `json:"semanticVersion,omitempty"`
-	Rules           []sarifRule `json:"rules"`
+	// Name is the analyser product name (gruff-go).
+	Name string `json:"name"`
+	// SemanticVersion is the analyser semantic version, omitted when empty.
+	SemanticVersion string `json:"semanticVersion,omitempty"`
+	// Rules is the catalogue of rules the analyser can emit findings for.
+	Rules []sarifRule `json:"rules"`
 }
 
 // sarifRule mirrors the SARIF reportingDescriptor object for a single rule.
 type sarifRule struct {
-	ID                   string                    `json:"id"`
-	Name                 string                    `json:"name"`
-	ShortDescription     sarifText                 `json:"shortDescription"`
-	FullDescription      sarifText                 `json:"fullDescription"`
-	Help                 sarifText                 `json:"help"`
-	Properties           sarifRuleProperty         `json:"properties"`
+	// ID is the rule identifier referenced by results.
+	ID string `json:"id"`
+	// Name is the human-readable rule title.
+	Name string `json:"name"`
+	// ShortDescription is the brief rule summary string.
+	ShortDescription sarifText `json:"shortDescription"`
+	// FullDescription is the long-form rule description.
+	FullDescription sarifText `json:"fullDescription"`
+	// Help is the remediation guidance for the rule.
+	Help sarifText `json:"help"`
+	// Properties carries gruff-specific rule metadata.
+	Properties sarifRuleProperty `json:"properties"`
+	// DefaultConfiguration is the rule's default SARIF level configuration.
 	DefaultConfiguration sarifDefaultConfiguration `json:"defaultConfiguration"`
 }
 
 // sarifDefaultConfiguration mirrors the SARIF defaultConfiguration object on a rule.
 type sarifDefaultConfiguration struct {
+	// Level is the SARIF severity level ("note", "warning", or "error").
 	Level string `json:"level"`
 }
 
 // sarifRuleProperty carries the gruff-specific rule metadata under SARIF properties.
 type sarifRuleProperty struct {
-	Pillar           finding.Pillar     `json:"pillar"`
-	SecondaryPillars []finding.Pillar   `json:"secondaryPillars,omitempty"`
-	DefaultSeverity  finding.Severity   `json:"defaultSeverity"`
-	Confidence       finding.Confidence `json:"confidence"`
-	Capability       rule.Capability    `json:"capability"`
-	DefaultEnabled   bool               `json:"defaultEnabled"`
-	Tags             []string           `json:"tags,omitempty"`
-	Thresholds       map[string]float64 `json:"thresholds,omitempty"`
-	Options          map[string]any     `json:"options,omitempty"`
+	// Pillar is the primary quality category the rule belongs to.
+	Pillar finding.Pillar `json:"pillar"`
+	// SecondaryPillars lists any additional quality categories the rule touches.
+	SecondaryPillars []finding.Pillar `json:"secondaryPillars,omitempty"`
+	// DefaultSeverity is the rule's default gruff severity.
+	DefaultSeverity finding.Severity `json:"defaultSeverity"`
+	// Confidence is the rule's reported certainty tier.
+	Confidence finding.Confidence `json:"confidence"`
+	// Capability tags the rule's analysis capability (parser-only, semantic, etc.).
+	Capability rule.Capability `json:"capability"`
+	// DefaultEnabled reports whether the rule fires under the default policy.
+	DefaultEnabled bool `json:"defaultEnabled"`
+	// Tags lists the rule's free-form classification tags.
+	Tags []string `json:"tags,omitempty"`
+	// Thresholds exposes the rule's configurable numeric thresholds.
+	Thresholds map[string]float64 `json:"thresholds,omitempty"`
+	// Options exposes any additional rule-specific configuration values.
+	Options map[string]any `json:"options,omitempty"`
 }
 
 // sarifText is the SARIF multi-format string container used for messages and descriptions.
 type sarifText struct {
+	// Text is the plain-text message body.
 	Text string `json:"text"`
 }
 
 // sarifResult mirrors a single SARIF result entry corresponding to one finding.
 type sarifResult struct {
-	RuleID              string            `json:"ruleId"`
-	RuleIndex           *int              `json:"ruleIndex,omitempty"`
-	Level               string            `json:"level"`
-	Message             sarifText         `json:"message"`
-	Locations           []sarifLocation   `json:"locations"`
+	// RuleID identifies the rule that produced the result.
+	RuleID string `json:"ruleId"`
+	// RuleIndex is the zero-based index into the driver Rules list, omitted when unknown.
+	RuleIndex *int `json:"ruleIndex,omitempty"`
+	// Level is the SARIF severity level for the result.
+	Level string `json:"level"`
+	// Message is the rule's human-readable finding message.
+	Message sarifText `json:"message"`
+	// Locations lists the source spans the result is anchored to.
+	Locations []sarifLocation `json:"locations"`
+	// PartialFingerprints carries identity hashes used to deduplicate the result.
 	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
-	Properties          map[string]any    `json:"properties"`
+	// Properties carries gruff-specific finding metadata.
+	Properties map[string]any `json:"properties"`
 }
 
 // sarifRunProperties carries gruff-go metadata at the SARIF run level.
 type sarifRunProperties struct {
+	// GruffSchemaVersion echoes the gruff-go report schema version.
 	GruffSchemaVersion string `json:"gruffSchemaVersion"`
-	Score              int    `json:"score"`
-	Grade              string `json:"grade"`
+	// Score is the composite quality score for the run.
+	Score int `json:"score"`
+	// Grade is the letter grade derived from Score.
+	Grade string `json:"grade"`
 }
 
 // sarifLocation wraps a physical location reference for a SARIF result.
 type sarifLocation struct {
+	// PhysicalLocation describes the file and span the result points at.
 	PhysicalLocation sarifPhysicalLocation `json:"physicalLocation"`
 }
 
 // sarifPhysicalLocation captures the file artefact and optional region of a SARIF location.
 type sarifPhysicalLocation struct {
+	// ArtifactLocation references the source file URI.
 	ArtifactLocation sarifArtifactLocation `json:"artifactLocation"`
-	Region           *sarifRegion          `json:"region,omitempty"`
+	// Region narrows the location to a span; nil when the result targets the whole file.
+	Region *sarifRegion `json:"region,omitempty"`
 }
 
 // sarifArtifactLocation references the source artefact for a SARIF location.
 type sarifArtifactLocation struct {
+	// URI is the slash-normalised path of the referenced source file.
 	URI string `json:"uri"`
 }
 
 // sarifRegion describes the line and column span associated with a SARIF result.
 type sarifRegion struct {
-	StartLine   int `json:"startLine,omitempty"`
+	// StartLine is the 1-based start line of the span; zero when unknown.
+	StartLine int `json:"startLine,omitempty"`
+	// StartColumn is the 1-based start column within StartLine; zero when unknown.
 	StartColumn int `json:"startColumn,omitempty"`
-	EndLine     int `json:"endLine,omitempty"`
+	// EndLine is the inclusive 1-based end line of the span; zero for single-line spans.
+	EndLine int `json:"endLine,omitempty"`
 }
 
 // sarifRules converts gruff rule definitions into SARIF reportingDescriptor entries.

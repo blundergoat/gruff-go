@@ -20,6 +20,7 @@ const (
 
 // ParameterCountRule flags functions and methods whose parameter list exceeds the maximum.
 type ParameterCountRule struct {
+	// MaxParameters is the per-function parameter cap (excluding the receiver) before a finding is emitted.
 	MaxParameters int
 }
 
@@ -95,6 +96,7 @@ func paramCount(fn *ast.FuncDecl) int {
 
 // NestingDepthRule flags functions whose maximum control-flow nesting exceeds the threshold.
 type NestingDepthRule struct {
+	// MaxDepth is the per-function control-flow nesting cap; function literals reset the count.
 	MaxDepth int
 }
 
@@ -228,6 +230,7 @@ func clausesNestingDepth(body *ast.BlockStmt, depth int) int {
 
 // ExportedSymbolCommentRule flags exported declarations that lack a doc comment.
 type ExportedSymbolCommentRule struct {
+	// IgnoreInternalPackages skips files living under any internal/ directory when true.
 	IgnoreInternalPackages bool
 }
 

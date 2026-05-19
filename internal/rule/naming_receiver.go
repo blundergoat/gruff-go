@@ -30,7 +30,9 @@ type receiverGroup struct {
 
 // ReceiverConsistencyRule flags inconsistent method receiver names or forms.
 type ReceiverConsistencyRule struct {
-	AllowMixed   []string
+	// AllowMixed lists receiver type names that may deliberately mix pointer and value forms without firing.
+	AllowMixed []string
+	// InspectGroup selects which axis the rule checks: "name", "pointer", or "both".
 	InspectGroup string
 }
 

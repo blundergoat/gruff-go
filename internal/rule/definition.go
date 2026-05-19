@@ -26,19 +26,32 @@ const (
 
 // Definition is the static description of a rule registered with the scanner.
 type Definition struct {
-	ID               string             `json:"id"`
-	Title            string             `json:"title"`
-	Description      string             `json:"description"`
-	Pillar           finding.Pillar     `json:"pillar"`
-	SecondaryPillars []finding.Pillar   `json:"secondaryPillars,omitempty"`
-	Severity         finding.Severity   `json:"severity"`
-	Confidence       finding.Confidence `json:"confidence"`
-	Capability       Capability         `json:"capability"`
-	DefaultEnabled   bool               `json:"defaultEnabled"`
-	Thresholds       map[string]float64 `json:"thresholds,omitempty"`
-	Options          map[string]any     `json:"options,omitempty"`
-	Tags             []string           `json:"tags,omitempty"`
-	Remediation      string             `json:"remediation,omitempty"`
+	// ID is the kebab-case dotted rule identifier validated against ruleIDPattern (e.g. "naming.acronym-case").
+	ID string `json:"id"`
+	// Title is the short human-readable label shown in catalogues and reports.
+	Title string `json:"title"`
+	// Description is the one-paragraph explanation rendered for users that documents what the rule catches.
+	Description string `json:"description"`
+	// Pillar is the primary quality category (naming, size, complexity, etc.) this rule contributes findings to.
+	Pillar finding.Pillar `json:"pillar"`
+	// SecondaryPillars are additional categories a composite or cross-cutting rule also touches.
+	SecondaryPillars []finding.Pillar `json:"secondaryPillars,omitempty"`
+	// Severity is the default severity level emitted on findings, before any config override.
+	Severity finding.Severity `json:"severity"`
+	// Confidence reflects how reliably this rule flags a real issue versus a false positive.
+	Confidence finding.Confidence `json:"confidence"`
+	// Capability declares which analyser layer (parser, type, ssa, dataflow) the rule needs to run.
+	Capability Capability `json:"capability"`
+	// DefaultEnabled selects whether the rule fires under the default policy when no config overrides apply.
+	DefaultEnabled bool `json:"defaultEnabled"`
+	// Thresholds exposes named numeric knobs (line caps, counts) that callers may override via config.
+	Thresholds map[string]float64 `json:"thresholds,omitempty"`
+	// Options exposes named non-numeric knobs (lists, allow-lists, modes) that callers may override via config.
+	Options map[string]any `json:"options,omitempty"`
+	// Tags categorise the rule for documentation and filtering (e.g. "go-style", "opt-in").
+	Tags []string `json:"tags,omitempty"`
+	// Remediation is the actionable guidance copied onto each finding to tell users how to fix it.
+	Remediation string `json:"remediation,omitempty"`
 }
 
 // Validate checks the definition fields are consistent and applies defaults.

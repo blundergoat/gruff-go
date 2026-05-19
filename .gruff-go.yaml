@@ -68,14 +68,10 @@ rules:
       requireVarComments: true
       ignoreTests: false
       minWordsBeyondSymbol: 3
-  # Exported fields on user-facing schema types must carry doc comments (M29).
+  # Every exported struct field must carry a doc comment (M29).
   docs.config-field-comment:
     enabled: true
     severity: warning
-    options:
-      includePaths:
-        - internal/config/config.go
-        - internal/analysis/report.go
   # Package comments give godoc users a clear entry point for each package.
   docs.package-comment:
     enabled: true

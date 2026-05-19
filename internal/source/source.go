@@ -24,30 +24,43 @@ const (
 
 // File represents a discovered source file with its repo-relative and absolute paths.
 type File struct {
-	Path    string   `json:"path"`
-	AbsPath string   `json:"-"`
-	Type    FileType `json:"type"`
+	// Path is the slash-normalised path relative to the discovery root.
+	Path string `json:"path"`
+	// AbsPath is the absolute filesystem path used for file IO; not serialised to JSON.
+	AbsPath string `json:"-"`
+	// Type classifies the file as Go source or generic text/config content.
+	Type FileType `json:"type"`
 }
 
 // SkippedPath records a discovered path that was filtered out, with the reason code.
 type SkippedPath struct {
-	Path   string `json:"path"`
+	// Path is the slash-normalised path relative to the discovery root.
+	Path string `json:"path"`
+	// Reason is the short identifier explaining why the path was skipped (e.g. "gitignored", "generated").
 	Reason string `json:"reason"`
 }
 
 // Result is the discovery output containing files, missing inputs, and skipped paths.
 type Result struct {
-	Files   []File        `json:"files"`
-	Missing []string      `json:"missing"`
+	// Files is the sorted, deduped list of accepted source files.
+	Files []File `json:"files"`
+	// Missing lists user-provided input paths that did not exist on disk.
+	Missing []string `json:"missing"`
+	// Skipped lists paths excluded from analysis with their reasons.
 	Skipped []SkippedPath `json:"skipped"`
 }
 
 // Options configures a single Discover invocation.
 type Options struct {
-	Context        context.Context
-	Root           string
-	Paths          []string
+	// Context cancels discovery; nil defaults to context.Background.
+	Context context.Context
+	// Root is the directory walked for discovery; empty means current working directory.
+	Root string
+	// Paths limits discovery to these explicit roots under Root; empty means scan everything under Root.
+	Paths []string
+	// IncludeIgnored disables gitignore and metadata pruning when true.
 	IncludeIgnored bool
+	// IgnorePatterns are config-supplied path patterns merged on top of gitignore handling.
 	IgnorePatterns []string
 }
 

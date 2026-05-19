@@ -14,17 +14,24 @@ import (
 
 // Context carries run-level information shared with rule implementations.
 type Context struct {
+	// Root is the project root directory that file paths are reported relative to.
 	Root string
 }
 
 // Config carries rule enablement and override values derived from config files.
 type Config struct {
-	Enabled                       map[string]bool
-	Thresholds                    map[string]map[string]float64
-	Severities                    map[string]finding.Severity
-	Options                       map[string]map[string]any
+	// Enabled overrides the default enablement state of named rules; map key is the rule ID.
+	Enabled map[string]bool
+	// Thresholds carries per-rule numeric overrides keyed by rule ID then threshold name.
+	Thresholds map[string]map[string]float64
+	// Severities overrides the default severity of named rules; map key is the rule ID.
+	Severities map[string]finding.Severity
+	// Options carries per-rule non-numeric overrides keyed by rule ID then option name.
+	Options map[string]map[string]any
+	// SensitiveDataPreviewAllowlist lists file path globs allowed to include redacted secret previews.
 	SensitiveDataPreviewAllowlist []string
-	AcceptedAbbreviations         []string
+	// AcceptedAbbreviations lists project-specific abbreviations the acronym-case rule should tolerate.
+	AcceptedAbbreviations []string
 }
 
 // UnitRule analyzes one parsed source unit at a time.

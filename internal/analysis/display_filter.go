@@ -10,9 +10,13 @@ import (
 
 // DisplayFilter selects which findings are rendered without changing scoring.
 type DisplayFilter struct {
-	IncludeRules   []string
-	ExcludeRules   []string
+	// IncludeRules limits rendering to findings whose RuleID is in this allow list; empty means no allow list.
+	IncludeRules []string
+	// ExcludeRules hides findings whose RuleID is in this deny list.
+	ExcludeRules []string
+	// IncludePillars limits rendering to findings whose Pillar is in this allow list; empty means no allow list.
 	IncludePillars []finding.Pillar
+	// ExcludePillars hides findings whose Pillar is in this deny list.
 	ExcludePillars []finding.Pillar
 }
 

@@ -15,7 +15,9 @@ import (
 
 // GetPrefixRule flags receiver methods that use a Go-style discouraged Get prefix.
 type GetPrefixRule struct {
+	// ExcludePaths skips enforcement for file paths matching any of the supplied globs.
 	ExcludePaths []string
+	// ExcludeNames lists method names that are exempt from the Get-prefix check by exact match.
 	ExcludeNames []string
 }
 

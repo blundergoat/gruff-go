@@ -18,7 +18,9 @@ import (
 // every struct produces noise on obvious fields (`Name string`, `Path string`). The rule is meant to
 // be opted-in for user-facing configuration schema types so maintainers document each knob.
 type ConfigFieldCommentRule struct {
+	// IncludePaths restricts enforcement to file paths matching at least one of the supplied globs.
 	IncludePaths []string
+	// ExcludePaths skips enforcement for file paths matching any of the supplied globs.
 	ExcludePaths []string
 }
 
