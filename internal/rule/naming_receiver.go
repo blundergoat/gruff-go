@@ -34,7 +34,7 @@ type ReceiverConsistencyRule struct {
 	InspectGroup string
 }
 
-// Definition returns the rule metadata for ReceiverConsistencyRule.
+// Definition declares the naming.receiver-consistency rule that flags methods on one type that mix receiver names or pointer/value forms.
 func (r ReceiverConsistencyRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.receiver-consistency",

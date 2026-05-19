@@ -24,7 +24,7 @@ var (
 // PrivateKeyRule flags PEM-encoded private keys embedded in source or text files.
 type PrivateKeyRule struct{}
 
-// Definition returns the rule metadata for PrivateKeyRule.
+// Definition declares the sensitive-data.private-key rule that flags PEM-formatted private key headers as critical sensitive-data findings.
 func (PrivateKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.private-key",
@@ -47,7 +47,7 @@ func (PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 // AWSAccessKeyRule flags AWS access key identifiers (AKIA...) embedded in source.
 type AWSAccessKeyRule struct{}
 
-// Definition returns the rule metadata for AWSAccessKeyRule.
+// Definition declares the sensitive-data.aws-access-key rule that flags AKIA-prefixed access key identifiers with high severity and high confidence.
 func (AWSAccessKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.aws-access-key",
@@ -70,7 +70,7 @@ func (AWSAccessKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 // JWTTokenRule flags JWT-shaped literals embedded in source files.
 type JWTTokenRule struct{}
 
-// Definition returns the rule metadata for JWTTokenRule.
+// Definition declares the sensitive-data.jwt-token rule that flags base64url three-segment JWT literals with high severity and medium confidence.
 func (JWTTokenRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.jwt-token",
@@ -93,7 +93,7 @@ func (JWTTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 // ConnectionStringRule flags database or queue connection URIs that embed credentials.
 type ConnectionStringRule struct{}
 
-// Definition returns the rule metadata for ConnectionStringRule.
+// Definition declares the sensitive-data.connection-string rule that flags database/queue URIs whose user:password credentials are embedded in the URL.
 func (ConnectionStringRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.connection-string",

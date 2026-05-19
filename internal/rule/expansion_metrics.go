@@ -31,7 +31,7 @@ func (r ParameterCountRule) maxParameters() int {
 	return r.MaxParameters
 }
 
-// Definition returns the rule metadata for ParameterCountRule.
+// Definition declares the size.parameter-count rule with a default maximum of 8 non-receiver parameters and low severity.
 func (r ParameterCountRule) Definition() Definition {
 	max := r.maxParameters()
 	return Definition{
@@ -106,7 +106,7 @@ func (r NestingDepthRule) maxDepth() int {
 	return r.MaxDepth
 }
 
-// Definition returns the rule metadata for NestingDepthRule.
+// Definition declares the complexity.nesting-depth rule with a default maximum of 5 control-flow levels under the complexity pillar.
 func (r NestingDepthRule) Definition() Definition {
 	max := r.maxDepth()
 	return Definition{
@@ -231,7 +231,7 @@ type ExportedSymbolCommentRule struct {
 	IgnoreInternalPackages bool
 }
 
-// Definition returns the rule metadata for ExportedSymbolCommentRule.
+// Definition declares the docs.exported-symbol-comment rule that flags undocumented exported declarations and skips internal packages by default.
 func (ExportedSymbolCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.exported-symbol-comment",

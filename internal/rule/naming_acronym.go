@@ -61,7 +61,7 @@ type AcronymCaseRule struct {
 	AcceptedAbbreviations []string
 }
 
-// Definition describes the acronym-case rule for the registry.
+// Definition declares the naming.acronym-case rule that enforces consistent casing for HTTP, URL, ID, JSON, and the rest of the Go initialism set.
 func (r AcronymCaseRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.acronym-case",

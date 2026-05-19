@@ -49,7 +49,7 @@ type accumulatorDecl struct {
 	functionLines int
 }
 
-// Definition describes the contextual-generic rule for the registry.
+// Definition declares the naming.contextual-generic rule with default size gates of 15 body lines and 50 function lines before generic names like item or value are flagged.
 func (r ContextualGenericRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.contextual-generic",

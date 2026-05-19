@@ -182,7 +182,7 @@ func ExportedTestHelper() {}
 	}
 }
 
-// TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages option.
+// TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages=true option, asserting an internal/service export is silenced while a public pkg/api export still surfaces.
 func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 
@@ -214,7 +214,7 @@ func VisibleOutsideModule() {}
 	}
 }
 
-// TestExportedSymbolCommentRuleCanIncludeInternalPackages verifies opt-in for internal packages.
+// TestExportedSymbolCommentRuleCanIncludeInternalPackages exercises ignoreInternalPackages=false, asserting an undocumented internal/service export does report a finding once the opt-out is disabled.
 func TestExportedSymbolCommentRuleCanIncludeInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 

@@ -55,6 +55,7 @@ rules:
     options:
       ignoreInternalPackages: true
   # Every function, named type, const, and var requires an attached comment; every package needs a summary.
+  # minWordsBeyondSymbol: 3 rejects paraphrase boilerplate after stopword filtering (M26).
   docs.comment-rubric:
     enabled: true
     threshold: 2
@@ -66,6 +67,15 @@ rules:
       requireConstComments: true
       requireVarComments: true
       ignoreTests: false
+      minWordsBeyondSymbol: 3
+  # Exported fields on user-facing schema types must carry doc comments (M29).
+  docs.config-field-comment:
+    enabled: true
+    severity: warning
+    options:
+      includePaths:
+        - internal/config/config.go
+        - internal/analysis/report.go
   # Package comments give godoc users a clear entry point for each package.
   docs.package-comment:
     enabled: true

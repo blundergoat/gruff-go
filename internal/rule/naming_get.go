@@ -19,7 +19,7 @@ type GetPrefixRule struct {
 	ExcludeNames []string
 }
 
-// Definition describes the get-prefix rule for the registry.
+// Definition declares the naming.get-prefix rule that flags zero-argument accessor methods whose names begin with Get.
 func (r GetPrefixRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.get-prefix",

@@ -31,7 +31,7 @@ type IdentifierQualityRule struct {
 	PlaceholderNames []string
 }
 
-// Definition describes the identifier-quality rule for the registry.
+// Definition declares the naming.identifier-quality rule that fires when local variables match the configured placeholderNames list.
 func (r IdentifierQualityRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.identifier-quality",

@@ -25,57 +25,84 @@ var defaultConfigFiles = []string{".gruff-go.yaml"}
 
 // Config is the canonical in-memory representation of gruff config.
 type Config struct {
-	SchemaVersion         string                `json:"schemaVersion,omitempty"`
-	Select                []string              `json:"select,omitempty"`
-	ExcludeRules          []string              `json:"excludeRules,omitempty"`
-	IgnorePaths           []string              `json:"ignorePaths,omitempty"`
-	AcceptedAbbreviations []string              `json:"acceptedAbbreviations,omitempty"`
-	Rules                 map[string]RuleConfig `json:"rules,omitempty"`
-	SensitiveData         SensitiveDataConfig   `json:"sensitiveData,omitempty"`
-	Paths                 PathsConfig           `json:"paths,omitempty"`
-	Allowlists            AllowlistsConfig      `json:"allowlists,omitempty"`
-	Selection             SelectionConfig       `json:"selection,omitempty"`
-	MinimumGoVersion      string                `json:"minimumGoVersion,omitempty"`
+	// SchemaVersion identifies the gruff-go config schema this file targets.
+	SchemaVersion string `json:"schemaVersion,omitempty"`
+	// Select restricts the active rule set to the listed rule IDs (or aliases).
+	Select []string `json:"select,omitempty"`
+	// ExcludeRules disables the named rule IDs even when they would otherwise run.
+	ExcludeRules []string `json:"excludeRules,omitempty"`
+	// IgnorePaths lists glob patterns the discovery layer skips entirely.
+	IgnorePaths []string `json:"ignorePaths,omitempty"`
+	// AcceptedAbbreviations is the project-wide allowlist for identifier abbreviations.
+	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
+	// Rules holds per-rule overrides for enablement, thresholds, severity, and options.
+	Rules map[string]RuleConfig `json:"rules,omitempty"`
+	// SensitiveData carries policy for the sensitive-data.* rule family.
+	SensitiveData SensitiveDataConfig `json:"sensitiveData,omitempty"`
+	// Paths nests path-scoped policy (currently the canonical `ignore` list).
+	Paths PathsConfig `json:"paths,omitempty"`
+	// Allowlists nests project-wide allowlists folded into top-level fields by Normalized.
+	Allowlists AllowlistsConfig `json:"allowlists,omitempty"`
+	// Selection nests rule/pillar selection policy folded into Select/ExcludeRules by Normalized.
+	Selection SelectionConfig `json:"selection,omitempty"`
+	// MinimumGoVersion documents the minimum Go toolchain version this config supports.
+	MinimumGoVersion string `json:"minimumGoVersion,omitempty"`
 }
 
 // RuleConfig stores per-rule overrides from `.gruff-go.yaml`.
 type RuleConfig struct {
-	Enabled    *bool              `json:"enabled,omitempty"`
-	Threshold  *float64           `json:"threshold,omitempty"`
+	// Enabled toggles the rule on or off; nil means honour the registry default.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Threshold sets a single primary numeric threshold for the rule.
+	Threshold *float64 `json:"threshold,omitempty"`
+	// Thresholds sets named numeric thresholds when the rule has more than one knob.
 	Thresholds map[string]float64 `json:"thresholds,omitempty"`
-	Options    map[string]any     `json:"options,omitempty"`
-	Severity   string             `json:"severity,omitempty"`
+	// Options carries rule-specific configuration values keyed by option name.
+	Options map[string]any `json:"options,omitempty"`
+	// Severity overrides the rule's default severity using a gruff-family alias or canonical level.
+	Severity string `json:"severity,omitempty"`
 }
 
 // PathsConfig stores source discovery path policy.
 type PathsConfig struct {
+	// Ignore lists glob patterns the discovery layer skips; Normalized folds this into top-level IgnorePaths.
 	Ignore []string `json:"ignore,omitempty"`
 }
 
 // AllowlistsConfig stores explicit project acceptances for noisy signals.
 type AllowlistsConfig struct {
+	// AcceptedAbbreviations is the gruff-family alias folded into Config.AcceptedAbbreviations.
 	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
-	SecretPreviews        []string `json:"secretPreviews,omitempty"`
+	// SecretPreviews lists path patterns where the sensitive-data rules may emit the matched preview.
+	SecretPreviews []string `json:"secretPreviews,omitempty"`
 }
 
 // SelectionConfig stores rule and pillar allowlist/denylist policy.
 type SelectionConfig struct {
-	Tiers          []string `json:"tiers,omitempty"`
-	Pillars        []string `json:"pillars,omitempty"`
-	Rules          []string `json:"rules,omitempty"`
+	// Tiers names rule tier labels reserved for future selection grouping.
+	Tiers []string `json:"tiers,omitempty"`
+	// Pillars selects rules by quality pillar (documentation, naming, size, etc.).
+	Pillars []string `json:"pillars,omitempty"`
+	// Rules is the gruff-family alias for the top-level Select field.
+	Rules []string `json:"rules,omitempty"`
+	// ExcludePillars disables every rule that belongs to one of the listed pillars.
 	ExcludePillars []string `json:"excludePillars,omitempty"`
-	ExcludeRules   []string `json:"excludeRules,omitempty"`
+	// ExcludeRules is the gruff-family alias for the top-level ExcludeRules field.
+	ExcludeRules []string `json:"excludeRules,omitempty"`
 }
 
 // SensitiveDataConfig stores sensitive-data rule preview exceptions.
 type SensitiveDataConfig struct {
+	// PreviewAllowlist lists path patterns where the sensitive-data rules may emit the matched secret preview.
 	PreviewAllowlist []string `json:"previewAllowlist,omitempty"`
 }
 
 // Loaded returns parsed config together with the file path that supplied it.
 type Loaded struct {
+	// Config is the parsed and normalized configuration payload.
 	Config Config
-	Path   string
+	// Path is the absolute filesystem location the configuration was read from.
+	Path string
 }
 
 // LoadAuto resolves the configured path and parses config unless disabled.

@@ -19,7 +19,7 @@ type PackageStutterRule struct {
 	AllowStutter []string
 }
 
-// Definition returns the rule metadata for PackageStutterRule.
+// Definition declares the naming.package-stutter rule, with default allowStutter exemptions for Config and Finding under the naming pillar.
 func (r PackageStutterRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-stutter",

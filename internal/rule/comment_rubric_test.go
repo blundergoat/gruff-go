@@ -367,6 +367,32 @@ var (
 	}
 }
 
+// TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase confirms common English
+// fillers (the, for, of, is, …) are excluded from the substantive-token count so that paraphrase
+// boilerplate like `// Definition returns the rule metadata for FooRule.` is rejected at N=3.
+func TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase(t *testing.T) {
+	// Symbol tokens after qualification: {foo, rule, definition}.
+	// Comment tokens before stopword filter: {definition, returns, the, rule, metadata, for, foo}.
+	// After symbol subtraction: {returns, the, metadata, for}.
+	// After stopword subtraction (the, for): {returns, metadata} = 2 unique tokens. N=3 rejects.
+	unit := parseOne(t, "fns.go", `package sample
+
+// Definition returns the rule metadata for FooRule.
+func (FooRule) Definition() string { return "" }
+`)
+	rule := CommentRubricRule{
+		RequireFunctionComments: true,
+		MinWordsBeyondSymbol:    3,
+	}
+	findings := rule.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("findings = %#v, want one rejection of the paraphrase boilerplate", findings)
+	}
+	if findings[0].Symbol != "FooRule.Definition" {
+		t.Fatalf("finding = %#v, want FooRule.Definition", findings[0])
+	}
+}
+
 // commentRubricTestScopingTestUnit parses the canonical _test.go fixture for M27 scoping tests.
 func commentRubricTestScopingTestUnit(t *testing.T) parser.Unit {
 	t.Helper()

@@ -18,7 +18,7 @@ const (
 // DesignGodFunctionRule flags functions that combine both size and complexity findings.
 type DesignGodFunctionRule struct{}
 
-// Definition returns the rule metadata for DesignGodFunctionRule.
+// Definition declares the design.god-function composite, which fires when one symbol already carries both size and complexity findings.
 func (DesignGodFunctionRule) Definition() Definition {
 	return Definition{
 		ID:               "design.god-function",
@@ -106,7 +106,7 @@ func (r DesignHotspotFileRule) minPillars() int {
 	return r.MinPillars
 }
 
-// Definition returns the rule metadata for DesignHotspotFileRule.
+// Definition declares the design.hotspot-file composite, gated by default thresholds of 3 findings spanning at least 2 quality pillars.
 func (r DesignHotspotFileRule) Definition() Definition {
 	minFindings := r.minFindings()
 	minPillars := r.minPillars()

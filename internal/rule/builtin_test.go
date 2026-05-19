@@ -207,7 +207,7 @@ package withcomment
 	}
 }
 
-// TestPackageCommentRuleSkipsExternalTestPackages ignores _test packages lacking a comment.
+// TestPackageCommentRuleSkipsExternalTestPackages confirms that an external xxx_test package without its own summary is not reported, while the sibling production package without one still produces a finding.
 func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
 	production := parseOne(t, "pkg/prod.go", `package pkg
 `)

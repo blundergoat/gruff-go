@@ -40,7 +40,7 @@ func (r FileLengthRule) maxLines() int {
 	return r.MaxLines
 }
 
-// Definition returns the rule metadata for FileLengthRule.
+// Definition declares the size.file-length rule with a default 500-line cap, medium severity, and high confidence.
 func (r FileLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
@@ -89,7 +89,7 @@ func (r FunctionLengthRule) maxLines() int {
 	return r.MaxLines
 }
 
-// Definition returns the rule metadata for FunctionLengthRule.
+// Definition declares the size.function-length rule with a default 80-line body cap, medium severity, and high confidence.
 func (r FunctionLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
@@ -145,7 +145,7 @@ func (r CyclomaticComplexityRule) maxComplexity() int {
 	return r.MaxComplexity
 }
 
-// Definition returns the rule metadata for CyclomaticComplexityRule.
+// Definition declares the complexity.cyclomatic rule with a default branch threshold of 20 under the complexity pillar.
 func (r CyclomaticComplexityRule) Definition() Definition {
 	maxComplexity := r.maxComplexity()
 	return Definition{
@@ -193,7 +193,7 @@ func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []fin
 // PackageCommentRule flags Go packages that lack a package-level comment in any file.
 type PackageCommentRule struct{}
 
-// Definition returns the rule metadata for PackageCommentRule.
+// Definition declares the docs.package-comment rule that emits one low-severity finding per Go package missing a package-level summary.
 func (PackageCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.package-comment",
@@ -259,7 +259,7 @@ type SensitiveDataRule struct {
 	PreviewAllowlist []string
 }
 
-// Definition returns the rule metadata for SensitiveDataRule.
+// Definition declares the sensitive-data.secret-pattern rule that flags secret-like key/value assignments with high severity.
 func (SensitiveDataRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.secret-pattern",

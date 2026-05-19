@@ -9,7 +9,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestApplySuppressesExactFingerprintMatches verifies exact fingerprint suppression.
+// TestApplySuppressesExactFingerprintMatches asserts that Apply hides a finding whose fingerprint already lives in the baseline while keeping a sibling whose location differs by one line.
 func TestApplySuppressesExactFingerprintMatches(t *testing.T) {
 	item := finding.Finding{
 		RuleID:   "size.file-length",

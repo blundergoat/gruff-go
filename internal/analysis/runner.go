@@ -138,7 +138,7 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 	return diagnostics
 }
 
-// diagnosticsFromParser converts parser diagnostics into analysis diagnostics.
+// diagnosticsFromParser lifts each parser-stage diagnostic into the unified analysis Diagnostic shape, stamping every entry with stage "parse" and severity high so callers can surface broken syntax without a separate code path.
 func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	diagnostics := []Diagnostic{}
 	for _, item := range parseDiagnostics {

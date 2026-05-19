@@ -296,7 +296,7 @@ func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	}
 }
 
-// TestBuildScanOptionsIncludeIgnoredFromOptionsDefault checks Options default propagates.
+// TestBuildScanOptionsIncludeIgnoredFromOptionsDefault confirms that when the dashboard state leaves IncludeIgnored unset, the dashboard Options.IncludeIgnored default is the fallback honoured by buildScanOptions.
 func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
 	state := report.DashboardState{Project: "/repo", FailOn: "medium"}
 	scan := buildScanOptions(Options{IncludeIgnored: true}, state)

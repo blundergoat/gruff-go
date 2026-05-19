@@ -22,7 +22,7 @@ type ConfigFieldCommentRule struct {
 	ExcludePaths []string
 }
 
-// Definition describes the config-field-comment rule for the registry.
+// Definition declares the docs.config-field-comment opt-in rule that requires doc comments on exported struct fields inside includePaths.
 func (r ConfigFieldCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.config-field-comment",

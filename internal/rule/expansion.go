@@ -16,7 +16,7 @@ import (
 // PackageNameUnderscoreRule flags Go package names that contain underscores.
 type PackageNameUnderscoreRule struct{}
 
-// Definition returns the rule metadata for PackageNameUnderscoreRule.
+// Definition declares the naming.package-underscore rule under the naming pillar with low severity and high confidence.
 func (PackageNameUnderscoreRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-underscore",
@@ -69,7 +69,7 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 // EmptyBlockRule flags empty control-flow blocks that indicate unfinished or dead code.
 type EmptyBlockRule struct{}
 
-// Definition returns the rule metadata for EmptyBlockRule.
+// Definition declares the dead-code.empty-block rule that flags empty if/for/switch/select bodies under the dead-code pillar.
 func (EmptyBlockRule) Definition() Definition {
 	return Definition{
 		ID:             "dead-code.empty-block",
@@ -109,7 +109,7 @@ func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 // ShellCommandRule flags exec.Command calls that invoke a shell interpreter.
 type ShellCommandRule struct{}
 
-// Definition returns the rule metadata for ShellCommandRule.
+// Definition declares the security.shell-command rule that flags exec.Command sh/-c style invocations with medium severity.
 func (ShellCommandRule) Definition() Definition {
 	return Definition{
 		ID:               "security.shell-command",
@@ -150,7 +150,7 @@ func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 // SkippedTestRule flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.
 type SkippedTestRule struct{}
 
-// Definition returns the rule metadata for SkippedTestRule.
+// Definition declares the test-quality.skipped-test rule that fires when t.Skip, t.Skipf, or t.SkipNow appears in any _test.go file.
 func (SkippedTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.skipped-test",

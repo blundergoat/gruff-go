@@ -21,6 +21,20 @@ const (
 	commentRubricMinPackageCommentLines = 1
 )
 
+// commentRubricStopwords lists common English fillers that do not count toward
+// `minWordsBeyondSymbol`. The set is intentionally minimal: articles, low-content prepositions,
+// and basic copulas. Verbs like "returns", "describes", and "reports" are NOT stopwords because
+// they carry the intent of a doc comment.
+var commentRubricStopwords = map[string]bool{
+	"a": true, "an": true, "the": true,
+	"and": true, "or": true, "but": true,
+	"of": true, "in": true, "on": true, "at": true, "by": true, "for": true,
+	"to": true, "from": true, "with": true, "as": true, "into": true, "onto": true,
+	"is": true, "are": true, "was": true, "were": true, "be": true, "been": true, "being": true,
+	"it": true, "its": true, "this": true, "that": true, "these": true, "those": true,
+	"not": true, "no": true,
+}
+
 // CommentRubricRule enforces maintainer-oriented comments for selected declaration kinds.
 type CommentRubricRule struct {
 	MinPackageCommentLines   int
@@ -45,7 +59,7 @@ func (r CommentRubricRule) minPackageCommentLines() int {
 	return r.MinPackageCommentLines
 }
 
-// Definition describes the comment-rubric rule for the registry.
+// Definition declares the docs.comment-rubric opt-in policy bundle covering package summaries, function comments, named types, and the minWordsBeyondSymbol substantive-token threshold.
 func (r CommentRubricRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.comment-rubric",
@@ -301,16 +315,19 @@ func hasUsefulValueComment(decl *ast.GenDecl, spec *ast.ValueSpec, symbol string
 	return hasUsefulDeclarationComment(decl.Doc, symbol, minWordsBeyondSymbol)
 }
 
-// commentTokensBeyondSymbol returns the count of unique comment tokens that do not appear in the
-// symbol's tokenised identifier set. Both inputs are first split on non-alphanumeric runs (so a
-// qualified method name like "Receiver.Method" contributes both sides to the symbol set), then each
-// word is routed through splitIdentifierTokens for camel-case-aware sub-token matching.
+// commentTokensBeyondSymbol returns the count of unique substantive comment tokens that do not
+// appear in the symbol's tokenised identifier set. Common English stopwords (see
+// commentRubricStopwords) are excluded so that filler words like "the" and "for" cannot push a
+// paraphrase comment over the `minWordsBeyondSymbol` bar. Both inputs are first split on
+// non-alphanumeric runs (so a qualified method name like "Receiver.Method" contributes both sides
+// to the symbol set), then each word is routed through splitIdentifierTokens for camel-case-aware
+// sub-token matching.
 func commentTokensBeyondSymbol(comment, symbol string) int {
 	symbolTokens := identifierTokenSet(symbol)
 	seen := map[string]bool{}
 	count := 0
 	for _, token := range identifierTokens(comment) {
-		if symbolTokens[token] || seen[token] {
+		if commentRubricStopwords[token] || symbolTokens[token] || seen[token] {
 			continue
 		}
 		seen[token] = true

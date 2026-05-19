@@ -14,7 +14,7 @@ import (
 // EmptyTestRule flags Go test functions whose body contains no executable statements.
 type EmptyTestRule struct{}
 
-// Definition returns the rule metadata for EmptyTestRule.
+// Definition declares the test-quality.empty-test rule that fires on Test/Benchmark/Fuzz functions whose body holds zero statements.
 func (EmptyTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.empty-test",
@@ -56,7 +56,7 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 // NoFailurePathTestRule flags Go test functions whose bodies cannot reach a failure call.
 type NoFailurePathTestRule struct{}
 
-// Definition returns the rule metadata for NoFailurePathTestRule.
+// Definition declares the test-quality.no-failure-path rule that fires when a Go test body never reaches t.Error/Errorf/Fatal/Fatalf/Fail/FailNow.
 func (NoFailurePathTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.no-failure-path",

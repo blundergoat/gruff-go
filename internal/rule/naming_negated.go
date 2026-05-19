@@ -25,7 +25,7 @@ type NegatedBooleanRule struct {
 	Scope     string
 }
 
-// Definition returns the rule metadata for NegatedBooleanRule.
+// Definition declares the naming.negated-boolean rule that flags No/Not/Disable/Disallow/Without/Suppress prefixes on exported booleans by default.
 func (r NegatedBooleanRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.negated-boolean",

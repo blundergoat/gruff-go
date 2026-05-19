@@ -227,7 +227,7 @@ func assertExpansionRuleEnablement(t *testing.T, options rule.Config) {
 	}
 }
 
-// assertExpansionRuleThresholds checks expansion rule thresholds and severities.
+// assertExpansionRuleThresholds verifies parsed numeric thresholds and severity aliases for the size, complexity, naming, and docs expansion rules against expected values like maxDepth=6 and minBodyLines=9.
 func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 	t.Helper()
 	if options.Thresholds["size.parameter-count"]["maxParameters"] != 8 {

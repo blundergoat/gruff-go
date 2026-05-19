@@ -62,7 +62,7 @@ type MisspellingRule struct {
 	Ignore []string
 }
 
-// Definition returns the rule metadata for MisspellingRule.
+// Definition declares the naming.misspelling rule with a built-in dictionary of common programming typos plus an extensible `extra` map and `ignore` allowlist.
 func (r MisspellingRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.misspelling",
