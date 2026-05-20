@@ -75,6 +75,55 @@ func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	}
 }
 
+// TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence confirms
+// that composite findings (carrying an underlyingFingerprints metadata slice)
+// are dropped when none of their underlying fingerprints survive the diff
+// filter. Without this prune, composites would stay in --diff-base reports
+// even when the size/complexity evidence they composed has been filtered out.
+func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testing.T) {
+	survivingEvidence := finding.Finding{
+		RuleID:      "size.function-length",
+		File:        "hot.go",
+		Symbol:      "Hot",
+		Fingerprint: "ev-1",
+		Location:    &finding.Location{Line: 10},
+	}
+	survivingComposite := finding.Finding{
+		RuleID: "design.god-function",
+		File:   "hot.go",
+		Symbol: "Hot",
+		Metadata: map[string]any{
+			"underlyingFingerprints": []string{"ev-1"},
+		},
+	}
+	orphanComposite := finding.Finding{
+		RuleID: "design.god-function",
+		File:   "cold.go",
+		Symbol: "Cold",
+		Metadata: map[string]any{
+			"underlyingFingerprints": []string{"ev-cold-not-present"},
+		},
+	}
+
+	kept, pruned := pruneOrphanedComposites([]finding.Finding{
+		survivingEvidence,
+		survivingComposite,
+		orphanComposite,
+	})
+
+	if pruned != 1 {
+		t.Fatalf("pruned = %d, want 1 orphan composite removed", pruned)
+	}
+	if len(kept) != 2 {
+		t.Fatalf("kept = %#v, want survivingEvidence and survivingComposite only", kept)
+	}
+	for _, item := range kept {
+		if item.File == "cold.go" {
+			t.Fatalf("orphan composite for cold.go should have been pruned; got %#v", item)
+		}
+	}
+}
+
 // findingRule is a test rule that always emits one finding per unit.
 type findingRule struct{}
 

@@ -333,6 +333,33 @@ func TestSkipped(t *testing.T) {
 	if len(skipFindings) != 1 {
 		t.Fatalf("skip findings = %#v, want one", skipFindings)
 	}
+
+	// Confirm Skip-named calls on non-testing receivers do not produce
+	// findings. Without the receiver-type check the matcher would treat any
+	// .Skip()/.Skipf()/.SkipNow() selector as a testing skip, false-flagging
+	// queue clients, table iterators, and similar third-party APIs.
+	thirdPartyUnit := parseOne(t, "third_party_test.go", `// Package sample is a test package.
+package sample
+
+import "testing"
+
+type Iter struct{}
+
+func (Iter) Skip()         {}
+func (Iter) Skipf(string)  {}
+func (Iter) SkipNow()      {}
+
+func TestThirdPartySkipIgnored(t *testing.T) {
+	iter := Iter{}
+	iter.Skip()
+	iter.Skipf("x")
+	iter.SkipNow()
+}
+`)
+	got := SkippedTestRule{}.AnalyzeUnit(thirdPartyUnit, Context{})
+	if len(got) != 0 {
+		t.Fatalf("third-party .Skip() calls must not be flagged; got %#v", got)
+	}
 }
 
 // TestExpansionRulesFireByDefault confirms expansion rules fire under Defaults() and can be disabled.

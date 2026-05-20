@@ -180,15 +180,35 @@ func isReceiverFailureCall(call *ast.CallExpr, receivers map[string]bool) bool {
 }
 
 // isAssertionHelperCall reports whether the call looks like a third-party
-// assertion helper that will fail the test on its own. The function name must
-// begin with a known assertion prefix AND one of its arguments must be a
-// testing receiver — both halves are needed to avoid catching unrelated
-// `Must*`/`Check*` helpers that have nothing to do with testing.
+// assertion helper that will fail the test on its own. Two patterns count:
+//
+//   - Bare or selector calls whose function name begins with a known assertion
+//     prefix (`AssertX`, `RequireX`, `ExpectX`, `MustX`, `CheckX`).
+//   - Selector calls whose package qualifier names a well-known assertion
+//     library (`assert.X`, `require.X`, `expect.X`, `must.X`, `check.X`) —
+//     this covers testify-style `require.NoError(t, err)` and `assert.Equal`
+//     where the function name itself does not carry an assertion prefix.
+//
+// In both cases at least one argument must be a known testing receiver, so
+// unrelated `MustX` calls (`json.MustDecode`) and library calls that happen
+// to live in an `assert` package but do not take a `*testing.T` are not
+// mistaken for assertion helpers.
 func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool) bool {
-	name := callFunctionName(call)
-	if !hasAssertionHelperPrefix(name) {
+	if !callPassesTestingReceiver(call, receivers) {
 		return false
 	}
+	if hasAssertionHelperPrefix(callFunctionName(call)) {
+		return true
+	}
+	if hasAssertionLibrarySelector(call) {
+		return true
+	}
+	return false
+}
+
+// callPassesTestingReceiver reports whether any argument of call is a
+// known testing receiver identifier.
+func callPassesTestingReceiver(call *ast.CallExpr, receivers map[string]bool) bool {
 	for _, arg := range call.Args {
 		ident, ok := arg.(*ast.Ident)
 		if !ok {
@@ -197,6 +217,26 @@ func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool) bool {
 		if receivers[ident.Name] {
 			return true
 		}
+	}
+	return false
+}
+
+// hasAssertionLibrarySelector recognises calls of the form `assert.X(...)`,
+// `require.X(...)`, `expect.X(...)`, `must.X(...)`, or `check.X(...)`. These
+// cover testify and similar libraries where the assertion prefix lives on the
+// package qualifier, not the method name.
+func hasAssertionLibrarySelector(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	switch ident.Name {
+	case "assert", "require", "expect", "must", "check":
+		return true
 	}
 	return false
 }

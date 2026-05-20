@@ -276,6 +276,61 @@ func TestUnrelatedHelper(t *testing.T) {
 	}
 }
 
+// TestNoFailurePathRuleAcceptsTestifyStyleSelectorHelpers confirms calls of
+// the form `require.NoError(t, err)`, `assert.Equal(t, ...)`, etc. are
+// recognised as a failure path even though the function name itself does not
+// carry an Assert/Require/Expect/Must/Check prefix. The recogniser keys on
+// the package qualifier (assert/require/expect/must/check) AND on the call
+// passing a known testing receiver so unrelated `assert.Something(value)`
+// helpers in non-test contexts are not mistaken for assertions.
+func TestNoFailurePathRuleAcceptsTestifyStyleSelectorHelpers(t *testing.T) {
+	unit := parseOne(t, "pkg/sample_test.go", `package pkg
+
+import "testing"
+
+func TestRequireNoError(t *testing.T) {
+	require.NoError(t, nil)
+}
+
+func TestAssertEqual(t *testing.T) {
+	assert.Equal(t, 1, 1)
+}
+
+func TestExpectMatch(t *testing.T) {
+	expect.Match(t, "abc")
+}
+
+func TestMustOK(t *testing.T) {
+	must.OK(t, nil)
+}
+
+func TestCheckLen(t *testing.T) {
+	check.Len(t, []int{1, 2})
+}
+
+// Should still fire: assert.Something but no testing receiver argument.
+func TestNonTestingAssertCallStillFires(t *testing.T) {
+	_ = 1
+	assert.Something("not a t value")
+}
+`)
+	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.Symbol] = true
+	}
+	if !got["TestNonTestingAssertCallStillFires"] {
+		t.Fatalf("non-testing assert call should still fire, got %#v", got)
+	}
+	for _, accepted := range []string{
+		"TestRequireNoError", "TestAssertEqual", "TestExpectMatch", "TestMustOK", "TestCheckLen",
+	} {
+		if got[accepted] {
+			t.Errorf("%s should be accepted as having a failure path via the assertion-library selector", accepted)
+		}
+	}
+}
+
 // TestNoFailurePathRuleHandlesFuzzCallbackBodies confirms the rule does not
 // misfire on idiomatic fuzz tests, which put their assertions inside the
 // callback passed to f.Fuzz. The inner *testing.T parameter is the only handle

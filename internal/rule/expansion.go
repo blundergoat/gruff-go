@@ -177,15 +177,23 @@ func (SkippedTestRule) Definition() Definition {
 // since that pattern is the standard way to guard integration tests on missing
 // infrastructure. Skips inside a conditional are still flagged when their message
 // includes a TODO/FIXME-style marker so debt is not hidden behind a runtime check.
+//
+// Skip calls are only counted when invoked on a name that this file declared as
+// a *testing.T/B/F parameter. Third-party APIs that happen to expose a method
+// named Skip/Skipf/SkipNow (queue clients, table iterators, fuzzers from other
+// libraries) live in test files too, and matching purely on the selector name
+// produces systematic false positives there.
 func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
 	}
+	testingPackages := testingPackageNames(unit.AST)
+	testingReceivers := collectFileTestingReceivers(unit.AST, testingPackages)
 	conditionalRegions := conditionalBodyRanges(unit.AST)
 	findings := []finding.Finding{}
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !isTestingSkipCall(call) {
+		if !ok || !isTestingSkipCall(call, testingReceivers) {
 			return true
 		}
 		conditional := isPosInsideAny(call.Pos(), call.End(), conditionalRegions)
@@ -201,6 +209,25 @@ func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 		return true
 	})
 	return findings
+}
+
+// collectFileTestingReceivers gathers every parameter name across the file's
+// function declarations and nested function literals whose declared type is
+// *testing.T/B/F. The skipped-test rule only treats Skip/Skipf/SkipNow calls
+// on these names as testing skips.
+func collectFileTestingReceivers(file *ast.File, testingPackages map[string]bool) map[string]bool {
+	receivers := map[string]bool{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Type == nil || fn.Type.Params == nil {
+			continue
+		}
+		collectTestingFieldNames(fn.Type.Params.List, testingPackages, receivers)
+		if fn.Body != nil {
+			collectNestedTestingReceivers(fn.Body, testingPackages, receivers)
+		}
+	}
+	return receivers
 }
 
 // posRange is a half-open byte/position interval [start, end] inclusive on both
@@ -345,18 +372,25 @@ func isShellInterpreter(value string) bool {
 	}
 }
 
-// isTestingSkipCall reports whether the call is a testing.Skip variant.
-func isTestingSkipCall(call *ast.CallExpr) bool {
+// isTestingSkipCall reports whether the call is a Skip variant invoked on a
+// known testing receiver name. The receiver set is built from the enclosing
+// file's *testing.T/B/F parameter names; selectors on other receivers do not
+// count, so a third-party API's `.Skip()` method is not misreported.
+func isTestingSkipCall(call *ast.CallExpr, testingReceivers map[string]bool) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
 	}
 	switch selector.Sel.Name {
 	case "Skip", "Skipf", "SkipNow":
-		return true
 	default:
 		return false
 	}
+	ident, ok := selector.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return testingReceivers[ident.Name]
 }
 
 // stringLiteral returns the unquoted contents of a basic string literal.

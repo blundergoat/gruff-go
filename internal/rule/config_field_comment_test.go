@@ -51,6 +51,24 @@ type Config struct {
 	}
 }
 
+// TestConfigFieldCommentRuleInlineCommentPasses confirms a same-line trailing
+// comment counts as field documentation. Go's AST attaches `// inline` after a
+// field declaration to field.Comment rather than field.Doc, and the rule used
+// to only check field.Doc — false-flagging every project that prefers trailing
+// inline docs in its config structs.
+func TestConfigFieldCommentRuleInlineCommentPasses(t *testing.T) {
+	unit := parseOne(t, "internal/config/config.go", `package config
+
+type Config struct {
+	Port    int    // TCP port used by the server
+	Address string // bind address for the listener
+}
+`)
+	if findings := configFieldRuleScoped().AnalyzeUnit(unit, Context{}); len(findings) != 0 {
+		t.Fatalf("findings = %#v, want none for inline-commented fields", findings)
+	}
+}
+
 // TestConfigFieldCommentRuleUnexportedFieldExempt confirms unexported fields are never flagged.
 func TestConfigFieldCommentRuleUnexportedFieldExempt(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config

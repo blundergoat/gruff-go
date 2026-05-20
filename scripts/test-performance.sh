@@ -334,6 +334,14 @@ run_sweep() {
   local timestamp; timestamp=$(date -u +%Y%m%dT%H%M%SZ)
   local sweep_out="$RESULTS_DIR/sweep-$timestamp.json"
   local rows_json="["
+  # Per-run stash file. The previous shared /tmp/gruff-sweep-stash.jsonl was
+  # appended-to across runs, so an aborted sweep (or two concurrent runs)
+  # poisoned the next aggregation with stale rows. Scope the file to this run
+  # and remove it via trap so the next sweep always starts clean.
+  local sweep_stash; sweep_stash=$(mktemp "$RESULTS_DIR/sweep-stash-XXXXXX.jsonl")
+  # Expand sweep_stash now, not at trap time, so the path is captured.
+  # shellcheck disable=SC2064
+  trap "rm -f '$sweep_stash'" RETURN
 
   # ----- formats -----
   log "${C_DIM}-- formats --${C_OFF}"
@@ -342,9 +350,9 @@ run_sweep() {
   for fmt in summary-json text json sarif html; do
     local raw; raw=$(hyperfine_run "sweep-fmt-$fmt" "$CORPUS_DIR/medium" "$BIN analyse --no-config --format $fmt .")
     local rss; rss=$(peak_rss_kb "$BIN" analyse --no-config --format "$fmt" "$CORPUS_DIR/medium")
-    python3 - "$fmt" "$raw" "$rss" "$sweep_out" "$rows_json" <<'PY'
+    python3 - "$fmt" "$raw" "$rss" "$sweep_out" "$sweep_stash" <<'PY'
 import json, sys, os
-fmt, raw, rss, out, _ = sys.argv[1:6]
+fmt, raw, rss, out, stash = sys.argv[1:6]
 d = json.load(open(raw))
 times = sorted(d["results"][0]["times"])
 median = times[len(times)//2] * 1000
@@ -352,7 +360,7 @@ stddev = d["results"][0]["stddev"] * 1000
 print(f"{fmt:<14}  {median:12.1f}  {stddev:12.1f}  {rss:>12}")
 # stash a structured record for later aggregation
 rec = {"dim": "format", "name": fmt, "median_ms": median, "stddev_ms": stddev, "peak_rss_kb": rss}
-with open("/tmp/gruff-sweep-stash.jsonl", "a") as fh:
+with open(stash, "a") as fh:
     fh.write(json.dumps(rec) + "\n")
 PY
   done
@@ -365,29 +373,29 @@ PY
   # Project config applied to the medium corpus, so this is a same-input comparison
   # against --no-config below. We point --config at the repo's .gruff-go.yaml.
   local raw; raw=$(hyperfine_run "sweep-ruleset-config" "$CORPUS_DIR/medium" "$BIN analyse --config $REPO_ROOT/.gruff-go.yaml --format summary-json .")
-  python3 - "config-default" "$raw" <<'PY'
+  python3 - "config-default" "$raw" "$sweep_stash" <<'PY'
 import json, sys
-name, raw = sys.argv[1], sys.argv[2]
+name, raw, stash = sys.argv[1], sys.argv[2], sys.argv[3]
 d = json.load(open(raw))
 times = sorted(d["results"][0]["times"])
 median = times[len(times)//2] * 1000
 stddev = d["results"][0]["stddev"] * 1000
 print(f"{name:<30}  {median:12.1f}  {stddev:12.1f}")
-with open("/tmp/gruff-sweep-stash.jsonl", "a") as fh:
+with open(stash, "a") as fh:
     fh.write(json.dumps({"dim": "ruleset", "name": name, "median_ms": median, "stddev_ms": stddev}) + "\n")
 PY
 
   # All default-enabled rules (no config).
   raw=$(hyperfine_run "sweep-ruleset-noconfig" "$CORPUS_DIR/medium" "$BIN analyse --no-config --format summary-json .")
-  python3 - "no-config" "$raw" <<'PY'
+  python3 - "no-config" "$raw" "$sweep_stash" <<'PY'
 import json, sys
-name, raw = sys.argv[1], sys.argv[2]
+name, raw, stash = sys.argv[1], sys.argv[2], sys.argv[3]
 d = json.load(open(raw))
 times = sorted(d["results"][0]["times"])
 median = times[len(times)//2] * 1000
 stddev = d["results"][0]["stddev"] * 1000
 print(f"{name:<30}  {median:12.1f}  {stddev:12.1f}")
-with open("/tmp/gruff-sweep-stash.jsonl", "a") as fh:
+with open(stash, "a") as fh:
     fh.write(json.dumps({"dim": "ruleset", "name": name, "median_ms": median, "stddev_ms": stddev}) + "\n")
 PY
 
@@ -400,15 +408,15 @@ PY
     write_single_rule_config "$rule_config" "$rid"
     raw=$(hyperfine_run "sweep-rule-$rid" "$CORPUS_DIR/medium" "$BIN analyse --config $rule_config --format summary-json .")
     rm -f "$rule_config"
-    python3 - "$rid" "$raw" <<'PY'
+    python3 - "$rid" "$raw" "$sweep_stash" <<'PY'
 import json, sys
-name, raw = sys.argv[1], sys.argv[2]
+name, raw, stash = sys.argv[1], sys.argv[2], sys.argv[3]
 d = json.load(open(raw))
 times = sorted(d["results"][0]["times"])
 median = times[len(times)//2] * 1000
 stddev = d["results"][0]["stddev"] * 1000
 print(f"{('rule:'+name):<30}  {median:12.1f}  {stddev:12.1f}")
-with open("/tmp/gruff-sweep-stash.jsonl", "a") as fh:
+with open(stash, "a") as fh:
     fh.write(json.dumps({"dim": "rule", "name": name, "median_ms": median, "stddev_ms": stddev}) + "\n")
 PY
   done
@@ -431,25 +439,25 @@ PY
       printf '%-20s  %12s  %12s\n' "$case_name" "TIMEOUT" "-"
       continue
     fi
-    python3 - "$case_name" "$raw" <<'PY'
+    python3 - "$case_name" "$raw" "$sweep_stash" <<'PY'
 import json, sys
-name, raw = sys.argv[1], sys.argv[2]
+name, raw, stash = sys.argv[1], sys.argv[2], sys.argv[3]
 d = json.load(open(raw))
 times = sorted(d["results"][0]["times"])
 median = times[len(times)//2] * 1000
 stddev = d["results"][0]["stddev"] * 1000
 print(f"{name:<20}  {median:12.1f}  {stddev:12.1f}")
-with open("/tmp/gruff-sweep-stash.jsonl", "a") as fh:
+with open(stash, "a") as fh:
     fh.write(json.dumps({"dim": "pathological", "name": name, "median_ms": median, "stddev_ms": stddev}) + "\n")
 PY
   done
 
   # ----- aggregate into one file + highlight outliers -----
-  python3 - "$sweep_out" <<'PY'
+  python3 - "$sweep_out" "$sweep_stash" <<'PY'
 import json, os, sys, datetime
 out = sys.argv[1]
+src = sys.argv[2]
 recs = []
-src = "/tmp/gruff-sweep-stash.jsonl"
 if os.path.exists(src):
     with open(src) as fh:
         for line in fh:

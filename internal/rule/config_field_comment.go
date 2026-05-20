@@ -96,6 +96,13 @@ func (r ConfigFieldCommentRule) structFieldFindings(unit parser.Unit, typeSpec *
 			if hasUsefulDeclarationComment(field.Doc, name.Name, 0) {
 				continue
 			}
+			// Trailing inline comments live in field.Comment, not field.Doc:
+			//   Port int // TCP port used by the server
+			// Treat either form as sufficient documentation; otherwise the
+			// rule misreports every project that prefers same-line field docs.
+			if hasUsefulDeclarationComment(field.Comment, name.Name, 0) {
+				continue
+			}
 			position := unit.FileSet.Position(name.NamePos)
 			symbol := typeSpec.Name.Name + "." + name.Name
 			findings = append(findings, finding.Finding{

@@ -165,9 +165,11 @@ func TestRangeGuard(t *testing.T) {
 		if fn == nil {
 			t.Fatalf("test fixture missing %s", sym)
 		}
+		testingPackages := testingPackageNames(unit.AST)
+		testingReceivers := collectFileTestingReceivers(unit.AST, testingPackages)
 		var skipPos int
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			if call, ok := node.(*ast.CallExpr); ok && isTestingSkipCall(call) {
+			if call, ok := node.(*ast.CallExpr); ok && isTestingSkipCall(call, testingReceivers) {
 				skipPos = unit.FileSet.Position(call.Pos()).Line
 				return false
 			}
