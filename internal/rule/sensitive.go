@@ -53,7 +53,7 @@ func (PrivateKeyRule) Definition() Definition {
 		Severity:       finding.SeverityCritical,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "secrets"},
+		Tags:           []string{"secrets"},
 		Remediation:    "Remove the key and load it from a secret manager or environment-specific runtime configuration.",
 	}
 }
@@ -76,7 +76,7 @@ func (AWSAccessKeyRule) Definition() Definition {
 		Severity:       finding.SeverityHigh,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "secrets"},
+		Tags:           []string{"secrets"},
 		Remediation:    "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them.",
 	}
 }
@@ -99,7 +99,7 @@ func (JWTTokenRule) Definition() Definition {
 		Severity:       finding.SeverityHigh,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "secrets"},
+		Tags:           []string{"secrets"},
 		Remediation:    "Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control.",
 	}
 }
@@ -122,7 +122,7 @@ func (ConnectionStringRule) Definition() Definition {
 		Severity:       finding.SeverityHigh,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "secrets"},
+		Tags:           []string{"secrets"},
 		Remediation:    "Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.",
 	}
 }

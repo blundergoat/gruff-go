@@ -92,8 +92,8 @@ func TestGoldenBaselineSuppression(t *testing.T) {
 	assertGolden(t, "baseline-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
-// TestGoldenOptInExpansionRules locks down output when opt-in expansion rules are enabled.
-func TestGoldenOptInExpansionRules(t *testing.T) {
+// TestGoldenConfiguredExpansionRules locks down output when expansion rules are configured explicitly.
+func TestGoldenConfiguredExpansionRules(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "expansion.go", expansionFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
@@ -114,7 +114,7 @@ rules:
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	assertGolden(t, "analyse-opt-in-expansion.golden", normalizeGoldenOutput(root, stdout))
+	assertGolden(t, "analyse-configured-expansion.golden", normalizeGoldenOutput(root, stdout))
 }
 
 // TestGoldenCompositeRuleOutputs locks down output when composite rules fire.

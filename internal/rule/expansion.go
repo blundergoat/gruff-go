@@ -31,7 +31,7 @@ func (PackageNameUnderscoreRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
-		Tags:           []string{"go-style", "opt-in"},
+		Tags:           []string{"go-style"},
 		Remediation:    "Rename the package to a short lowercase name without underscores.",
 	}
 }
@@ -84,7 +84,6 @@ func (EmptyBlockRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in"},
 		Remediation:    "Remove the empty block or add the intended implementation.",
 	}
 }
@@ -125,7 +124,7 @@ func (ShellCommandRule) Definition() Definition {
 		Severity:         finding.SeverityMedium,
 		Confidence:       finding.ConfidenceMedium,
 		DefaultEnabled:   true,
-		Tags:             []string{"opt-in", "security"},
+		Tags:             []string{"security"},
 		Remediation:      "Call the target executable directly and pass arguments without shell interpretation.",
 	}
 }
@@ -165,7 +164,7 @@ func (SkippedTestRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "tests"},
+		Tags:           []string{"tests"},
 		Remediation:    "Remove the skip or document and track the condition outside the test body.",
 	}
 }

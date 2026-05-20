@@ -74,7 +74,7 @@ func (r ContextualGenericRule) Definition() Definition {
 			"accumulatorNames": defaultContextualAccumulatorNames,
 			"requireMultiple":  true,
 		},
-		Tags:        []string{"naming", "opt-in"},
+		Tags:        []string{"naming"},
 		Remediation: "Rename long-loop values and long-function accumulators to describe the data role they carry.",
 	}
 }

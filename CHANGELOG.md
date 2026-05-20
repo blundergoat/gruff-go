@@ -4,36 +4,14 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
-### Fixed
-
-- `internal/source` gitignore matcher: a trailing `**` segment no longer matches the parent directory itself, so `foo/**` now targets descendants only and lets `!foo/a` negations re-include children of an otherwise-ignored directory.
-- `internal/source` discovery: an explicit input file outside the discovery root is no longer matched against the project's `.gitignore` rules; previously `displayPath` fell back to the absolute path and the matcher silently dropped unrelated external files.
-- `internal/source` discovery: the hardcoded dependency-skip fallback (`vendor`, `node_modules`, `dist`, …) is now gated per-subtree on the `.gitignore` chain. A monorepo subtree that owns its own `.gitignore` is no longer silently overridden by the rootless fallback; the fallback still applies to subtrees that lack any `.gitignore` in their ancestor chain.
-- `test-quality.no-failure-path`: failure calls inside fuzz callbacks (`f.Fuzz(func(t *testing.T, ...){ t.Fatal(...) })`) are now recognised. Testing receivers declared on nested function literals are added to the receiver set alongside the outer test function's parameters.
-- `test-quality.no-failure-path`: testify-style selector helpers (`require.NoError(t, err)`, `assert.Equal(t, …)`, `expect`/`must`/`check`) are now recognised as assertions even though their function names do not carry an `Assert*/Require*/Expect*/Must*/Check*` prefix. Matching requires the call to also pass a known testing receiver argument so unrelated `assert.Something(value)` calls remain in scope.
-- `test-quality.skipped-test`: `Skip`/`Skipf`/`SkipNow` are only flagged when invoked on a name the file declares as a `*testing.T/B/F` parameter. Third-party APIs that happen to expose a method named `Skip` in test files are no longer misreported.
-- `naming.receiver-consistency`: receiver groups are now keyed by package directory in addition to type name, so methods on two unrelated types named e.g. `Service` in different packages no longer merge into one bucket and produce false dominant-receiver findings.
-- `docs.comment-rubric` `requirePackageSummary`: the missing-summary check is aggregated per package directory. A multi-file package whose summary lives in `doc.go` (or any single file) no longer triggers a "package summary is missing" finding on every other file in the same package.
-- `docs.config-field-comment`: trailing same-line comments (`Port int // TCP port used by …`) are now accepted as field documentation. Previously only `// Above` doc comments stored in `field.Doc` counted, false-flagging projects that prefer inline field docs.
-- `design.god-function` / `design.hotspot-file`: composite findings (which stay line-stable to keep baseline matching across underlying code shifts) are now pruned in `--diff-base` scans when none of their recorded underlying fingerprints survive the diff filter. Previously the composites stayed in the diff-only report even when the size/complexity evidence they composed had been filtered out.
-- `scripts/test-performance.sh`: the sweep results stash is now scoped to a per-run mktemp file and removed on function exit. The previous shared `/tmp/gruff-sweep-stash.jsonl` was appended to across runs, so an aborted or concurrent sweep poisoned the next baseline with stale rows.
-
-### Added
-
-- `gruff-go report --include-ignored` brings the `report` subcommand to flag parity with `analyse`, `baseline`, `summary`, and the dashboard.
-
-### Changed
-
-- Release documentation now pins v0.1.0 install examples, documents the 30-rule catalogue accurately, and aligns CI/config snippets with the current CLI.
-- ADR-007 explicitly carves out `docs.config-field-comment` as the lone `defaultEnabled: false` rule: its scoping options default to empty and the per-field check is not a no-op without configuration, so defaulting it on would swamp adopters with findings on every exported field. Other documentation surfaces (`ADR-003`, `ADR-004`, `.goat-flow/architecture.md`, `docs/dashboard.md`, `.goat-flow/footguns/setup.md`) realign with the current `analysis.Analyze` entrypoint, default-on rule policy, and per-subtree gitignore fallback.
-
-## [0.1.0] - 2026-05-19
+## [0.1.0] - 2026-05-20
 
 First release. The binary reports `0.1.0`. Schemas `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, and `gruff-go.baseline.v0.1` are stable within the `0.1.x` line.
 
 ### Added
 
 - **CLI** (`gruff-go`) with subcommands `analyse`, `baseline`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Exit codes: `0` clean, `1` findings at/above `--min-severity`, `2` diagnostics or invalid input.
+- **Report include-ignored parity.** `gruff-go report --include-ignored` brings the `report` subcommand to flag parity with `analyse`, `baseline`, `summary`, and the dashboard.
 - **Parser-only analysis pipeline.** `internal/source` discovers files, respects project `.gitignore` rules by default, records ignored files in `paths.skipped`, and skips generated files; `internal/parser` parses Go with `go/parser`; `internal/rule` dispatches rules deterministically; `internal/scoring` produces severity/confidence-weighted scores. No type-loader dependency; type-aware rules are deferred. See [`.goat-flow/decisions/ADR-001`](.goat-flow/decisions/ADR-001-parser-only-scanner-pipeline.md).
 - **Rule catalogue (30 rules across 9 pillars).** The built-in pack ships 29 default-enabled rules plus the opt-in `docs.config-field-comment` rule for configuration-style struct fields; projects opt out per-rule with `rules.<id>.enabled: false`. Grouped by pillar:
   - **complexity** — `complexity.cyclomatic`, `complexity.nesting-depth`.
@@ -60,8 +38,25 @@ First release. The binary reports `0.1.0`. Schemas `gruff-go.analysis.v0.1`, `gr
 - **Repository hygiene.** `Makefile` `check` target wraps `go fmt`, `go vet`, `go test ./...`. Strict `gofmt` / `go vet ./...` / `make check` gates kept clean throughout v0.1 work. Self-dogfood (`go run ./cmd/gruff-go analyse .`) returns grade A with zero findings.
 - **Release tooling.** `scripts/bump-version.sh <new-version>` updates every in-tree version literal (CLI const, analysis report, SARIF driver assertion, `package.json`) and regenerates the CLI golden snapshots in one shot, then prints a sanity-sweep of any remaining stale references.
 
+### Fixed
+
+- `internal/source` gitignore matcher: a trailing `**` segment no longer matches the parent directory itself, so `foo/**` now targets descendants only and lets `!foo/a` negations re-include children of an otherwise-ignored directory.
+- `internal/source` discovery: an explicit input file outside the discovery root is no longer matched against the project's `.gitignore` rules; previously `displayPath` fell back to the absolute path and the matcher silently dropped unrelated external files.
+- `internal/source` discovery: the hardcoded dependency-skip fallback (`vendor`, `node_modules`, `dist`, …) is now gated per-subtree on the `.gitignore` chain. A monorepo subtree that owns its own `.gitignore` is no longer silently overridden by the rootless fallback; the fallback still applies to subtrees that lack any `.gitignore` in their ancestor chain.
+- `test-quality.no-failure-path`: failure calls inside fuzz callbacks (`f.Fuzz(func(t *testing.T, ...){ t.Fatal(...) })`) are now recognised. Testing receivers declared on nested function literals are added to the receiver set alongside the outer test function's parameters.
+- `test-quality.no-failure-path`: testify-style selector helpers (`require.NoError(t, err)`, `assert.Equal(t, …)`, `expect`/`must`/`check`) are now recognised as assertions even though their function names do not carry an `Assert*/Require*/Expect*/Must*/Check*` prefix. Matching requires the call to also pass a known testing receiver argument so unrelated `assert.Something(value)` calls remain in scope.
+- `test-quality.skipped-test`: `Skip`/`Skipf`/`SkipNow` are only flagged when invoked on a name the file declares as a `*testing.T/B/F` parameter. Third-party APIs that happen to expose a method named `Skip` in test files are no longer misreported.
+- `naming.receiver-consistency`: receiver groups are now keyed by package directory in addition to type name, so methods on two unrelated types named e.g. `Service` in different packages no longer merge into one bucket and produce false dominant-receiver findings.
+- `docs.comment-rubric` `requirePackageSummary`: the missing-summary check is aggregated per package directory. A multi-file package whose summary lives in `doc.go` (or any single file) no longer triggers a "package summary is missing" finding on every other file in the same package.
+- `docs.config-field-comment`: trailing same-line comments (`Port int // TCP port used by …`) are now accepted as field documentation. Previously only `// Above` doc comments stored in `field.Doc` counted, false-flagging projects that prefer inline field docs.
+- `design.god-function` / `design.hotspot-file`: composite findings (which stay line-stable to keep baseline matching across underlying code shifts) are now pruned in `--diff-base` scans when none of their recorded underlying fingerprints survive the diff filter. Previously the composites stayed in the diff-only report even when the size/complexity evidence they composed had been filtered out.
+- `scripts/test-performance.sh`: the sweep results stash is now scoped to a per-run mktemp file and removed on function exit. The previous shared `/tmp/gruff-sweep-stash.jsonl` was appended to across runs, so an aborted or concurrent sweep poisoned the next baseline with stale rows.
+- Rule metadata no longer carries legacy `opt-in` tags on default-enabled rules. The live catalogue still marks `docs.config-field-comment` as the single opt-in/default-disabled rule.
+
 ### Changed
 
+- Release documentation now pins v0.1.0 install examples, documents the 30-rule catalogue accurately, and aligns CI/config snippets with the current CLI.
+- ADR-007 explicitly carves out `docs.config-field-comment` as the lone `defaultEnabled: false` rule: its scoping options default to empty and the per-field check is not a no-op without configuration, so defaulting it on would swamp adopters with findings on every exported field. Other documentation surfaces (`ADR-003`, `ADR-004`, `.goat-flow/architecture.md`, `docs/dashboard.md`, `.goat-flow/footguns/setup.md`) realign with the current `analysis.Analyze` entrypoint, default-on rule policy, and per-subtree gitignore fallback.
 - **Default policy: broad by default, with one explicit opt-in documentation rule.** ADR-002's narrow 5-rule pack (`complexity.cyclomatic`, `docs.package-comment`, `sensitive-data.secret-pattern`, `size.file-length`, `size.function-length`) is superseded by [ADR-007](.goat-flow/decisions/ADR-007-comprehensive-default-rule-pack.md). Adopters now get 29 of the 30 shipped rules out of the box; `docs.config-field-comment` remains default-disabled because broad struct-field enforcement is only appropriate for selected configuration/API files. Disable any rule via `rules.<id>.enabled: false`. Severity discipline keeps default `--min-severity medium` CI gates stable — most flipped rules are `low` severity (naming.*, test-quality.*, dead-code.empty-block, docs.*, size.parameter-count, design composites) and appear in reports without flipping exit code. Fingerprints, baseline schema, exit-code semantics, JSON schema version, and rule IDs are unchanged.
 - **Threshold defaults moved toward industry-mainstream values.** `complexity.nesting-depth` `maxDepth` `4 → 5` (matches `nestif`); `size.parameter-count` `maxParameters` `5 → 8` (matches revive `argument-limit`); `size.file-length` `maxLines` `400 → 500`. Calibration on a real Go corpus showed `400` was dominated by line-count findings while the production handler size signal is preserved at `500`. Projects pinning the older thresholds in `.gruff-go.yaml` keep the stricter policy.
 - **Test-file size downranking.** Default `size.file-length` and `size.function-length` findings in `_test.go` files keep the same thresholds, messages, metadata, and fingerprints, but report as `low` severity / `medium` confidence under medium severity. Explicit non-medium config severity overrides still apply to test files.

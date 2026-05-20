@@ -29,7 +29,7 @@ func (DesignGodFunctionRule) Definition() Definition {
 		Severity:         finding.SeverityLow,
 		Confidence:       finding.ConfidenceHigh,
 		DefaultEnabled:   true,
-		Tags:             []string{"composite", "opt-in"},
+		Tags:             []string{"composite"},
 		Remediation:      "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
 	}
 }
@@ -124,7 +124,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 			"minFindings": float64(minFindings),
 			"minPillars":  float64(minPillars),
 		},
-		Tags:        []string{"composite", "opt-in"},
+		Tags:        []string{"composite"},
 		Remediation: "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
 	}
 }

@@ -44,7 +44,6 @@ func (r ParameterCountRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxParameters": float64(max)},
-		Tags:           []string{"opt-in"},
 		Remediation:    "Group related parameters into a struct, accept an options type, or split the function.",
 	}
 }
@@ -120,7 +119,6 @@ func (r NestingDepthRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxDepth": float64(max)},
-		Tags:           []string{"opt-in"},
 		Remediation:    "Extract nested branches into named helpers or return early on guard conditions.",
 	}
 }
@@ -245,7 +243,6 @@ func (ExportedSymbolCommentRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Options:        map[string]any{"ignoreInternalPackages": true},
-		Tags:           []string{"opt-in"},
 		Remediation:    "Add a Go-style doc comment that begins with the symbol name.",
 	}
 }

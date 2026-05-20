@@ -110,7 +110,7 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `composite`, `opt-in`
+- **Tags:** `composite`
 - **Scoring:** score-neutral
 
 Flags functions that already have at least one size finding and at least one complexity finding on the same file and symbol. The composite finding has no source line so its fingerprint remains stable when the function body shifts but the file and symbol identity stay the same.
@@ -125,7 +125,7 @@ Flags functions that already have at least one size finding and at least one com
 - **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `composite`, `opt-in`
+- **Tags:** `composite`
 - **Scoring:** score-neutral
 
 Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules, so a god-function finding will not itself create a hotspot-file finding.
@@ -140,7 +140,7 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 - **Threshold:** `minPackageCommentLines` (default `1`)
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `comments`, `documentation`, `opt-in`, `rubric`
+- **Tags:** `comments`, `documentation`, `rubric`
 - **Options:** `includePaths []string`, `excludePaths []string`, `minWordsBeyondSymbol int` (default `0`), `requirePackageSummary bool`, `requireFunctionComments bool`, `requireNamedTypeComments bool`, `requireStructComments bool`, `requireInterfaceComments bool`, `requireConstComments bool`, `requireVarComments bool`, `ignoreTests bool`
 
 Flags files that opt into a stricter maintainer-comment rubric. The rule can require a package summary with enough non-empty lines, plus directly attached comments for functions, named type declarations, package-scope constants, and package-scope variables. Local `const` and `var` declarations are not enforced.
@@ -233,7 +233,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `go-style`, `naming`, `opt-in`
+- **Tags:** `go-style`, `naming`
 - **Options:** `acronyms []string` — default `[HTTP, URL, JSON, ID, XML, API, JWT, AWS, OAUTH, CSS, HTML, YAML, SARIF, ASCII, SQL, CLI, TCP, UDP, TLS, SSL, DNS, IP, GPU, CPU, OS]`; `allow []string` — exact identifiers to skip
 
 Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Correct all-caps forms such as `HTTPClient`, `URLParser`, `JSONReport`, and `IDGenerator` pass; lowercase initialisms in unexported names such as `urlParser` also pass.
@@ -262,7 +262,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `naming`, `opt-in`
+- **Tags:** `naming`
 - **Thresholds:** `minBodyLines: 15`, `minFunctionLines: 50`
 - **Options:**
   - `genericNames []string` — range value names to check. Default: `[item, value, entry, elem, v]`
@@ -295,7 +295,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `go-style`, `naming`, `opt-in`
+- **Tags:** `go-style`, `naming`
 - **Options:** `excludePaths []string`, `excludeNames []string`
 
 Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. It also flags package-level context accessors whose only parameter is `context.Context` and whose result shape is one value or `(T, error)`, such as `GetLogger(ctx)`. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context.
@@ -318,7 +318,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `opt-in`, `naming`
+- **Tags:** `naming`
 - **Options:** `placeholderNames []string` — default `[foo, bar, baz, tmp, temp, obj, todo, thing, stuff]`
 
 Flags local `:=` assignments, `var` declarations, and `const` declarations in non-test files whose name matches a configurable list of placeholder tokens. Test files are skipped because disposable identifier names are often appropriate there.
@@ -341,7 +341,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `naming`, `opt-in`
+- **Tags:** `naming`
 - **Options:**
   - `extra map[string]string` — additional `wrong → right` pairs to add to the built-in dictionary
   - `ignore []string` — tokens to suppress (lowercased)
@@ -370,7 +370,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `go-style`, `naming`, `opt-in`
+- **Tags:** `go-style`, `naming`
 - **Options:**
   - `prefixes []string` — default `[No, Not, Disable, Disallow, Without, Suppress]`
   - `allowList []string` — default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook]` (English words that begin with a prefix but are not negations)
@@ -402,7 +402,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `go-style`, `naming`, `opt-in`
+- **Tags:** `go-style`, `naming`
 - **Options:**
   - `allowStutter []string` — identifiers (PascalCase form) to exempt from the stutter check. Default: `[Config, Finding]`.
 
@@ -428,7 +428,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `go-style`, `opt-in`
+- **Tags:** `go-style`
 
 Flags Go package names that use underscores instead of short lowercase words (the Go convention favours `oauth2`, not `o_auth_2`).
 
@@ -441,7 +441,7 @@ Flags Go package names that use underscores instead of short lowercase words (th
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `go-style`, `naming`, `opt-in`
+- **Tags:** `go-style`, `naming`
 - **Options:** `allowMixed []string` — receiver type names allowed to mix pointer/value receiver forms; `inspectGroup string` — `both` (default), `name`, or `pointer`
 
 Flags methods on the same receiver type that use inconsistent receiver names or pointer/value forms. The rule groups methods across the scanned project by receiver type name, strips leading `*`, and reports methods that use the minority receiver name or form.
@@ -464,7 +464,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `opt-in`, `security`
+- **Tags:** `security`
 
 Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, etc.) with a command string argument. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
 
@@ -477,7 +477,7 @@ Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`,
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `opt-in`, `secrets`
+- **Tags:** `secrets`
 
 Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. The finding's `preview` metadata is redacted via the shared `redact()` helper; the raw key never reaches text / JSON / SARIF / GitHub / HTML output (asserted by `internal/report/sensitive_redaction_test.go`).
 
@@ -490,7 +490,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `opt-in`, `secrets`
+- **Tags:** `secrets`
 
 Flags database / queue / cache connection URIs that embed a username and password in the URL — `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
 
@@ -505,7 +505,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the host 
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `opt-in`, `secrets`
+- **Tags:** `secrets`
 
 Flags JWT-shaped literals — three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
@@ -518,7 +518,7 @@ Flags JWT-shaped literals — three base64url segments separated by dots, the fi
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `opt-in`, `secrets`
+- **Tags:** `secrets`
 
 Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. The most severe of the sensitive-data rules — a leaked private key is almost always a real incident.
 
@@ -576,7 +576,6 @@ Flags Go functions that exceed the configured code-line threshold. Blank lines, 
 - **Threshold:** `maxParameters` (default `8`)
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `opt-in`
 
 Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count).
 
@@ -589,7 +588,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `opt-in`, `tests`
+- **Tags:** `tests`
 
 Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body contains no executable statements. An empty test is either an unfinished scaffold left behind by IDE generators or a stub waiting for content — both should be removed or filled in before the build is considered green.
 
@@ -602,7 +601,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `opt-in`, `tests`
+- **Tags:** `tests`
 
 Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call — `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
 
@@ -617,7 +616,7 @@ The rule walks the function body looking for those methods on the test function'
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `opt-in`, `tests`
+- **Tags:** `tests`
 
 Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
 

@@ -73,7 +73,7 @@ func (r CommentRubricRule) minPackageCommentLines() int {
 	return r.MinPackageCommentLines
 }
 
-// Definition declares the docs.comment-rubric opt-in policy bundle covering package summaries, function comments, named types, and the minWordsBeyondSymbol substantive-token threshold.
+// Definition declares the docs.comment-rubric path-scoped policy bundle covering package summaries, function comments, named types, and the minWordsBeyondSymbol substantive-token threshold.
 func (r CommentRubricRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.comment-rubric",
@@ -99,7 +99,7 @@ func (r CommentRubricRule) Definition() Definition {
 			"requireStructComments":    false,
 			"requireVarComments":       false,
 		},
-		Tags:        []string{"comments", "documentation", "opt-in", "rubric"},
+		Tags:        []string{"comments", "documentation", "rubric"},
 		Remediation: "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When minWordsBeyondSymbol is set, the comment must add at least that many tokens beyond the symbol's own identifier tokens; replace name-restatement summaries with substantive context.",
 	}
 }

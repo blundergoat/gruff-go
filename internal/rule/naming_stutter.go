@@ -31,7 +31,7 @@ func (r PackageStutterRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,
-		Tags:           []string{"go-style", "naming", "opt-in"},
+		Tags:           []string{"go-style", "naming"},
 		Options: map[string]any{
 			"allowStutter": defaultPackageStutterAllow,
 		},

@@ -32,7 +32,7 @@ func (r GetPrefixRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,
-		Tags:           []string{"go-style", "naming", "opt-in"},
+		Tags:           []string{"go-style", "naming"},
 		Options:        map[string]any{"excludePaths": []string{}, "excludeNames": []string{}},
 		Remediation:    "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit.",
 	}

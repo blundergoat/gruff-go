@@ -48,7 +48,7 @@ type Definition struct {
 	Thresholds map[string]float64 `json:"thresholds,omitempty"`
 	// Options exposes named non-numeric knobs (lists, allow-lists, modes) that callers may override via config.
 	Options map[string]any `json:"options,omitempty"`
-	// Tags categorise the rule for documentation and filtering (e.g. "go-style", "opt-in").
+	// Tags categorise the rule for documentation and filtering (e.g. "go-style", "secrets").
 	Tags []string `json:"tags,omitempty"`
 	// Remediation is the actionable guidance copied onto each finding to tell users how to fix it.
 	Remediation string `json:"remediation,omitempty"`

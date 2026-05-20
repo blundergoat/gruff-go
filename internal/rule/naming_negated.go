@@ -39,7 +39,7 @@ func (r NegatedBooleanRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,
-		Tags:           []string{"go-style", "naming", "opt-in"},
+		Tags:           []string{"go-style", "naming"},
 		Options: map[string]any{
 			"prefixes":  defaultNegatedBooleanPrefixes,
 			"allowList": defaultNegatedBooleanAllowList,

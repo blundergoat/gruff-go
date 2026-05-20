@@ -24,7 +24,7 @@ func (EmptyTestRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "tests"},
+		Tags:           []string{"tests"},
 		Remediation:    "Add an assertion that exercises the behaviour the test name claims, or remove the empty test.",
 	}
 }
@@ -66,7 +66,7 @@ func (NoFailurePathTestRule) Definition() Definition {
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Tags:           []string{"opt-in", "tests"},
+		Tags:           []string{"tests"},
 		Remediation:    "Add an assertion or document why the test cannot fail.",
 	}
 }

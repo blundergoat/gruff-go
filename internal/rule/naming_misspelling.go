@@ -75,7 +75,7 @@ func (r MisspellingRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,
-		Tags:           []string{"naming", "opt-in"},
+		Tags:           []string{"naming"},
 		Options: map[string]any{
 			"extra":  map[string]any{},
 			"ignore": []string{},
