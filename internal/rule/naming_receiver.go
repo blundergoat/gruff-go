@@ -5,6 +5,7 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"path"
 	"slices"
 	"strings"
 
@@ -14,11 +15,12 @@ import (
 
 // receiverMethod captures one method's receiver name and pointer/value form for cross-method comparison.
 type receiverMethod struct {
-	unit     parser.Unit
-	function *ast.FuncDecl
-	typeName string
-	name     string
-	form     string
+	unit       parser.Unit
+	function   *ast.FuncDecl
+	packageDir string
+	typeName   string
+	name       string
+	form       string
 }
 
 // receiverGroup aggregates the methods declared on a single named type plus tallies of receiver names and forms.
@@ -63,7 +65,9 @@ func (r ReceiverConsistencyRule) AnalyzeProject(units []parser.Unit, _ Context) 
 	return findings
 }
 
-// collectReceiverGroups buckets methods across units by their receiver type.
+// collectReceiverGroups buckets methods across units by their receiver type,
+// scoped per package directory so two unrelated types named e.g. "Service" in
+// different packages do not pollute each other's dominant receiver tally.
 func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 	groups := map[string]*receiverGroup{}
 	for _, unit := range units {
@@ -79,10 +83,11 @@ func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 			if !ok {
 				continue
 			}
-			group := groups[method.typeName]
+			key := receiverGroupKey(method.packageDir, method.typeName)
+			group := groups[key]
 			if group == nil {
 				group = &receiverGroup{names: map[string]int{}, forms: map[string]int{}}
-				groups[method.typeName] = group
+				groups[key] = group
 			}
 			group.methods = append(group.methods, method)
 			if method.name != "" {
@@ -94,10 +99,21 @@ func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 	return groups
 }
 
+// receiverGroupKey produces the per-package, per-type bucket key. Package dir
+// is preserved so the joined key cannot collide across directories whose names
+// happen to differ only by a literal "\x00".
+func receiverGroupKey(packageDir, typeName string) string {
+	return packageDir + "\x00" + typeName
+}
+
 // receiverConsistencyFindings emits findings for every receiver group whose conventions diverge.
 func receiverConsistencyFindings(groups map[string]*receiverGroup, inspectName bool, inspectPointer bool, allowMixed map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
-	for typeName, group := range groups {
+	for _, group := range groups {
+		if len(group.methods) == 0 {
+			continue
+		}
+		typeName := group.methods[0].typeName
 		findings = append(findings, receiverGroupFindings(typeName, group, inspectName, inspectPointer, allowMixed)...)
 	}
 	return findings
@@ -138,7 +154,14 @@ func receiverMethodFromFunc(unit parser.Unit, fn *ast.FuncDecl) (receiverMethod,
 	if pointer {
 		form = "pointer"
 	}
-	return receiverMethod{unit: unit, function: fn, typeName: typeName, name: name, form: form}, true
+	return receiverMethod{
+		unit:       unit,
+		function:   fn,
+		packageDir: path.Dir(unit.File.Path),
+		typeName:   typeName,
+		name:       name,
+		form:       form,
+	}, true
 }
 
 // receiverType resolves a receiver expression to its underlying type name and pointer flag.

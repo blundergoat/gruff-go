@@ -107,21 +107,42 @@ type discoveryWalker struct {
 	options         Options
 	matcher         *Matcher
 	gitignoreActive bool
-	fallbackActive  bool
 	result          Result
 }
 
 // newDiscoveryWalker constructs a walker rooted at rootAbs with gitignore handling enabled.
 func newDiscoveryWalker(ctx context.Context, rootAbs string, options Options) *discoveryWalker {
-	fallbackActive := !rootHasGitignore(rootAbs)
 	return &discoveryWalker{
 		ctx:             ctx,
 		rootAbs:         rootAbs,
 		options:         options,
 		matcher:         NewMatcher(rootAbs),
 		gitignoreActive: !options.IncludeIgnored,
-		fallbackActive:  fallbackActive,
 	}
+}
+
+// fallbackAppliesAt reports whether the hardcoded dependency-skip fallback
+// (vendor/node_modules/dist/...) should apply at rel. The fallback is a zero-
+// configuration default for repositories that ship no .gitignore at all; once
+// any .gitignore appears in the ancestor chain the project has expressed its
+// own intent, so the fallback steps aside instead of overriding it.
+func (w *discoveryWalker) fallbackAppliesAt(rel string) bool {
+	parent := parentSlashDir(rel)
+	return !w.matcher.HasGitignoreInChain(parent)
+}
+
+// parentSlashDir returns the slash-separated parent directory of rel, or "" if
+// rel has no parent. Mirrors path.Dir but returns "" instead of "." for the
+// top level so it lines up with the Matcher's "" root convention.
+func parentSlashDir(rel string) string {
+	if rel == "" || rel == "." {
+		return ""
+	}
+	idx := strings.LastIndex(rel, "/")
+	if idx <= 0 {
+		return ""
+	}
+	return rel[:idx]
 }
 
 // visitInput processes a single user-provided input path, file or directory.
@@ -175,7 +196,7 @@ func (w *discoveryWalker) visitInput(input string) error {
 // visitDir decides whether to prune or descend into a directory.
 func (w *discoveryWalker) visitDir(current string) error {
 	rel := displayPath(w.rootAbs, current)
-	if w.gitignoreActive {
+	if w.gitignoreActive && pathUnderRoot(w.rootAbs, current) {
 		if ignored, _ := w.matcher.Match(rel, true); ignored {
 			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "gitignored"})
 			return filepath.SkipDir
@@ -190,7 +211,7 @@ func (w *discoveryWalker) visitDir(current string) error {
 
 // visitFile classifies a discovered file and records it as scanned or skipped.
 func (w *discoveryWalker) visitFile(path string) {
-	if w.gitignoreActive {
+	if w.gitignoreActive && pathUnderRoot(w.rootAbs, path) {
 		rel := displayPath(w.rootAbs, path)
 		if ignored, _ := w.matcher.Match(rel, false); ignored {
 			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "gitignored"})
@@ -233,7 +254,7 @@ func (w *discoveryWalker) ignoredDir(rel string) (string, bool) {
 	if reason, ignored := alwaysIgnoredDir(rel); ignored {
 		return reason, true
 	}
-	if w.fallbackActive {
+	if w.fallbackAppliesAt(rel) {
 		return fallbackIgnoredDir(rel)
 	}
 	return "", false
@@ -251,7 +272,7 @@ func (w *discoveryWalker) addFile(path string) {
 			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
 			return
 		}
-		if w.fallbackActive {
+		if w.fallbackAppliesAt(rel) {
 			if reason, ignored := fallbackIgnoredFile(rel); ignored {
 				w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
 				return
@@ -269,10 +290,19 @@ func (w *discoveryWalker) addFile(path string) {
 	w.result.Files = append(w.result.Files, File{Path: rel, AbsPath: path, Type: fileType})
 }
 
-// rootHasGitignore reports whether a .gitignore exists at the discovery root.
-func rootHasGitignore(rootAbs string) bool {
-	info, err := os.Stat(filepath.Join(rootAbs, ".gitignore"))
-	return err == nil && !info.IsDir()
+// pathUnderRoot reports whether path lives inside rootAbs. Used to gate the
+// repository .gitignore matcher so explicit inputs outside the discovery root
+// (for example an absolute /tmp path passed alongside an in-repo target) are
+// not silently dropped by unrelated rules from the project's .gitignore.
+func pathUnderRoot(rootAbs, path string) bool {
+	rel, err := filepath.Rel(rootAbs, path)
+	if err != nil {
+		return false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
 }
 
 // classify returns the FileType for a path based on its extension or name.

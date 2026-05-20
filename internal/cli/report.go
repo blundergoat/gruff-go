@@ -30,6 +30,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -57,13 +58,14 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:        flags.Args(),
-		Format:       *format,
-		FailOn:       failOn,
-		Registry:     registry,
-		IgnorePaths:  ignorePaths,
-		BaselinePath: *baselinePath,
-		DiffBase:     *diffBase,
+		Paths:          flags.Args(),
+		Format:         *format,
+		FailOn:         failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
+		BaselinePath:   *baselinePath,
+		DiffBase:       *diffBase,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

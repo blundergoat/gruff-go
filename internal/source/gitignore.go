@@ -78,6 +78,20 @@ func (m *Matcher) hasRulesInChain(dir string) bool {
 	return false
 }
 
+// HasGitignoreInChain reports whether any directory between the matcher root
+// and dir has a .gitignore file. Discovery uses this to gate the hardcoded
+// dependency-skip fallback per-subtree, so a monorepo whose subtree manages
+// its own .gitignore is not silently overridden by the vendor/node_modules
+// fallback inherited from the rootless parent.
+func (m *Matcher) HasGitignoreInChain(dir string) bool {
+	for _, ancestor := range dirChain(dir) {
+		if m.load(ancestor) != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseErrors returns the relative paths of .gitignore files that failed to
 // parse during loading. The matcher silently skips a malformed file's rules;
 // callers can surface ParseErrors as discovery diagnostics.
@@ -228,11 +242,15 @@ func (r ignoreRule) match(rel string) bool {
 }
 
 // matchSegmentsAt recursively matches pattern segments against path segments.
+// A terminal ** requires at least one remaining path segment so that "foo/**"
+// targets descendants of foo rather than foo itself; without that constraint a
+// later "!foo/a" negation cannot re-include children of a directory whose
+// parent matched only via the trailing **.
 func matchSegmentsAt(pat []string, pi int, seg []string, si int) bool {
 	for pi < len(pat) {
 		if pat[pi] == "**" {
 			if pi == len(pat)-1 {
-				return true
+				return si < len(seg)
 			}
 			for k := si; k <= len(seg); k++ {
 				if matchSegmentsAt(pat, pi+1, seg, k) {

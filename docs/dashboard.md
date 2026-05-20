@@ -136,4 +136,4 @@ See [`output-formats.md`](output-formats.md) for the standalone behaviour of the
 
 ## Concurrency model
 
-Each `/scan` request passes an explicit project root and context into `analysis.Run`; the dashboard does not change the process working directory. This keeps concurrent requests isolated at the scan-root/config layer. The server still handles scans inline per request and does not provide a queued multi-scan workflow.
+Each `/scan` request passes an explicit project root and context into `analysis.Analyze`; the dashboard does not change the process working directory. This keeps concurrent requests isolated at the scan-root/config layer. The server still handles scans inline per request and does not provide a queued multi-scan workflow.

@@ -148,6 +148,30 @@ func TestMatcherTrailingDoubleStar(t *testing.T) {
 	}
 }
 
+// TestMatcherTrailingDoubleStarDoesNotMatchParentDir verifies that "foo/**"
+// targets descendants of foo and not foo itself, matching git's semantics. The
+// regression: a terminal ** branch used to short-circuit to true, which made
+// "!foo/a" negations fail because the ancestor walk re-ignored foo.
+func TestMatcherTrailingDoubleStarDoesNotMatchParentDir(t *testing.T) {
+	root := writeIgnoreTree(t, map[string]string{
+		".gitignore": "foo/**\n!foo/a\n",
+	})
+	m := NewMatcher(root)
+
+	if got, _ := m.Match("foo", true); got {
+		t.Fatalf("foo itself should not be matched by foo/**")
+	}
+	if got, _ := m.Match("foo/b", false); !got {
+		t.Fatalf("foo/b should be matched by foo/**")
+	}
+	if got, _ := m.Match("foo/a", false); got {
+		t.Fatalf("foo/a should be re-included by !foo/a (was being re-ignored via the foo ancestor)")
+	}
+	if got, _ := m.Match("foo/sub/c", false); !got {
+		t.Fatalf("foo/sub/c should be matched by foo/** at depth")
+	}
+}
+
 // TestMatcherCommentsAndBlankLines verifies comments and blank lines are skipped during parsing.
 func TestMatcherCommentsAndBlankLines(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{

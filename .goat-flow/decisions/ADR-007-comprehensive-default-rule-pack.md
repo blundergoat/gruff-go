@@ -24,7 +24,7 @@ Two thresholds also drifted from common Go-tool defaults:
 
 ## Decision
 
-Flip every shipped rule to `defaultEnabled: true`. Adopters get the full 25-rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override.
+Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override. The current catalogue ships 30 rules (`list-rules --format json` is the source of truth); the number grows as new rule families land.
 
 Two threshold adjustments toward industry-mainstream values:
 
@@ -38,6 +38,8 @@ Three thresholds stay where calibration evidence already placed them:
 - `size.file-length` `maxLines` stays at **500** (recently calibrated; no industry default).
 
 One special case: `docs.comment-rubric` is path-scoped via `includePaths`. Default-on is a no-op for projects that don't configure paths, so flipping it on costs nothing and removes an awkward inconsistency in the policy table.
+
+One deliberate exception: `docs.config-field-comment` stays `defaultEnabled: false`. Its scoping options (`includePaths`/`excludePaths`) default to empty, which under its current `appliesToPath` semantics means the rule applies to every file — and the per-field check fires on every undocumented exported struct field. Unlike `docs.comment-rubric`, the rule is not a no-op without configuration, so defaulting it on would swamp adopters with documentation findings on every exported field across the codebase. The carve-out is recorded here so the rule's `DefaultEnabled: false` flag does not appear to contradict the rest of this ADR.
 
 ## Dogfood Evidence
 

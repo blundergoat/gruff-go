@@ -26,9 +26,9 @@ hallucination-risk: high
 Evidence:
 - `internal/cli/cli.go` (search: `output format: text, json, summary-json, sarif, github, or html`)
 - `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff-go.yaml"}`)
-- Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed five default-enabled rules, four opt-in rules, and exited 0.
+- Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed the catalogue and exited 0. [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) (2026-05-18) subsequently flipped every shipped rule to `defaultEnabled: true` except the deliberate `docs.config-field-comment` carve-out called out in that ADR.
 
-The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a small opt-in expansion pack. CI wiring, trend storage, broad calibrated rule families beyond the expansion pack, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
+The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, and gitignore-respecting discovery (`--include-ignored` to bypass). Per ADR-007 the rule catalogue ships entirely default-on, so the previous "small opt-in expansion pack" framing is superseded — projects opt *out* of individual rules instead of opting in. CI wiring, trend storage, deeper calibrated rule families, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
 
 ## Resolved Entries
 

@@ -35,20 +35,6 @@ func defaultUnitRules(config Config) []UnitRule {
 		SkippedTestRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
 		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
-		CommentRubricRule{
-			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
-			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),
-			IncludePaths:             stringSliceOption(config, "docs.comment-rubric", "includePaths"),
-			ExcludePaths:             stringSliceOption(config, "docs.comment-rubric", "excludePaths"),
-			RequirePackageSummary:    boolOption(config, "docs.comment-rubric", "requirePackageSummary", false),
-			RequireFunctionComments:  boolOption(config, "docs.comment-rubric", "requireFunctionComments", false),
-			RequireNamedTypeComments: boolOption(config, "docs.comment-rubric", "requireNamedTypeComments", false),
-			RequireStructComments:    boolOption(config, "docs.comment-rubric", "requireStructComments", false),
-			RequireInterfaceComments: boolOption(config, "docs.comment-rubric", "requireInterfaceComments", false),
-			RequireConstComments:     boolOption(config, "docs.comment-rubric", "requireConstComments", false),
-			RequireVarComments:       boolOption(config, "docs.comment-rubric", "requireVarComments", false),
-			IgnoreTests:              boolOption(config, "docs.comment-rubric", "ignoreTests", false),
-		},
 		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
 		ConfigFieldCommentRule{
 			IncludePaths: stringSliceOption(config, "docs.config-field-comment", "includePaths"),
@@ -98,6 +84,20 @@ func defaultProjectRules(config Config) []ProjectRule {
 		ReceiverConsistencyRule{
 			AllowMixed:   stringSliceOption(config, "naming.receiver-consistency", "allowMixed"),
 			InspectGroup: stringOption(config, "naming.receiver-consistency", "inspectGroup", "both"),
+		},
+		CommentRubricRule{
+			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
+			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),
+			IncludePaths:             stringSliceOption(config, "docs.comment-rubric", "includePaths"),
+			ExcludePaths:             stringSliceOption(config, "docs.comment-rubric", "excludePaths"),
+			RequirePackageSummary:    boolOption(config, "docs.comment-rubric", "requirePackageSummary", false),
+			RequireFunctionComments:  boolOption(config, "docs.comment-rubric", "requireFunctionComments", false),
+			RequireNamedTypeComments: boolOption(config, "docs.comment-rubric", "requireNamedTypeComments", false),
+			RequireStructComments:    boolOption(config, "docs.comment-rubric", "requireStructComments", false),
+			RequireInterfaceComments: boolOption(config, "docs.comment-rubric", "requireInterfaceComments", false),
+			RequireConstComments:     boolOption(config, "docs.comment-rubric", "requireConstComments", false),
+			RequireVarComments:       boolOption(config, "docs.comment-rubric", "requireVarComments", false),
+			IgnoreTests:              boolOption(config, "docs.comment-rubric", "ignoreTests", false),
 		},
 	}
 }

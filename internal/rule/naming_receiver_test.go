@@ -98,6 +98,30 @@ func (c *Client) Close() {}
 	}
 }
 
+// TestReceiverConsistencyIsolatesByPackage ensures two same-named types in
+// different packages do not get merged into one receiver group. Each package
+// is internally consistent, so the rule should emit no findings.
+func TestReceiverConsistencyIsolatesByPackage(t *testing.T) {
+	unitA := parseOne(t, "pkg/a/file.go", `package a
+
+type Service struct{}
+
+func (s *Service) Start() {}
+func (s *Service) Stop() {}
+`)
+	unitB := parseOne(t, "pkg/b/file.go", `package b
+
+type Service struct{}
+
+func (svc *Service) Start() {}
+func (svc *Service) Stop() {}
+`)
+	findings := ReceiverConsistencyRule{}.AnalyzeProject([]parser.Unit{unitA, unitB}, Context{})
+	if len(findings) != 0 {
+		t.Fatalf("same type name in different packages must not merge, got %#v", findings)
+	}
+}
+
 // TestReceiverConsistencyIsDefaultEnabled asserts the rule ships enabled with parser capability.
 func TestReceiverConsistencyIsDefaultEnabled(t *testing.T) {
 	if !(ReceiverConsistencyRule{}).Definition().DefaultEnabled {

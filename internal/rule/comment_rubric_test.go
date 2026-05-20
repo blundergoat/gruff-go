@@ -19,7 +19,7 @@ func TestCommentRubricRulePackageSummary(t *testing.T) {
 
 	missing := parseOne(t, "missing.go", `package sample
 `)
-	findings := rule.AnalyzeUnit(missing, Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{missing}, Context{})
 	if len(findings) != 1 || findings[0].Message != "package summary is missing" {
 		t.Fatalf("missing findings = %#v, want one missing package summary finding", findings)
 	}
@@ -27,7 +27,7 @@ func TestCommentRubricRulePackageSummary(t *testing.T) {
 	short := parseOne(t, "short.go", `// Package sample explains too little.
 package sample
 `)
-	findings = rule.AnalyzeUnit(short, Context{})
+	findings = rule.AnalyzeProject([]parser.Unit{short}, Context{})
 	if len(findings) != 1 || findings[0].Metadata["lines"] != 1 || findings[0].Metadata["threshold"] != 2 {
 		t.Fatalf("short findings = %#v, want one line-threshold package summary finding", findings)
 	}
@@ -36,8 +36,23 @@ package sample
 // It provides enough context for future maintainers to understand ownership.
 package sample
 `)
-	if findings := rule.AnalyzeUnit(ok, Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{ok}, Context{}); len(findings) != 0 {
 		t.Fatalf("ok findings = %#v, want none", findings)
+	}
+
+	// New: a multi-file package whose summary lives in doc.go produces no
+	// findings on the other in-package files (the pre-fix behavior emitted
+	// "package summary is missing" once per undocumented file).
+	docFile := parseOne(t, "internal/sample/doc.go", `// Package sample explains the maintenance boundary for this test fixture.
+// It provides enough context for future maintainers to understand ownership.
+package sample
+`)
+	siblingA := parseOne(t, "internal/sample/a.go", `package sample
+`)
+	siblingB := parseOne(t, "internal/sample/b.go", `package sample
+`)
+	if findings := rule.AnalyzeProject([]parser.Unit{siblingA, docFile, siblingB}, Context{}); len(findings) != 0 {
+		t.Fatalf("multi-file package findings = %#v, want none when one file supplies the summary", findings)
 	}
 }
 
@@ -61,7 +76,7 @@ type Worker struct{}
 
 func (Worker) MissingMethod() {}
 `)
-	findings := CommentRubricRule{RequireFunctionComments: true}.AnalyzeUnit(unit, Context{})
+	findings := CommentRubricRule{RequireFunctionComments: true}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	got := findingSymbols(findings)
 	want := []string{"Restated", "Missing", "Worker.MissingMethod"}
 	if len(got) != len(want) {
@@ -96,7 +111,7 @@ type (
 	GroupedAlias string
 )
 `)
-	findings := CommentRubricRule{RequireNamedTypeComments: true}.AnalyzeUnit(unit, Context{})
+	findings := CommentRubricRule{RequireNamedTypeComments: true}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	got := findingSymbols(findings)
 	want := []string{"RestatedStruct", "MissingStruct", "MissingInterface", "MissingAlias"}
 	if len(got) != len(want) {
@@ -108,11 +123,11 @@ type (
 		}
 	}
 
-	structOnly := CommentRubricRule{RequireStructComments: true}.AnalyzeUnit(unit, Context{})
+	structOnly := CommentRubricRule{RequireStructComments: true}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if got := findingSymbols(structOnly); len(got) != 2 || !got["RestatedStruct"] || !got["MissingStruct"] {
 		t.Fatalf("struct-only findings = %#v, want RestatedStruct and MissingStruct", structOnly)
 	}
-	interfaceOnly := CommentRubricRule{RequireInterfaceComments: true}.AnalyzeUnit(unit, Context{})
+	interfaceOnly := CommentRubricRule{RequireInterfaceComments: true}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if got := findingSymbols(interfaceOnly); len(got) != 1 || !got["MissingInterface"] {
 		t.Fatalf("interface-only findings = %#v, want MissingInterface only", interfaceOnly)
 	}
@@ -153,7 +168,7 @@ func localValues() {
 	findings := CommentRubricRule{
 		RequireConstComments: true,
 		RequireVarComments:   true,
-	}.AnalyzeUnit(unit, Context{})
+	}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	got := findingSymbols(findings)
 	want := []string{"RestatedConst", "MissingConst", "restatedVar", "missingVar"}
 	if len(got) != len(want) {
@@ -188,18 +203,18 @@ func MissingTestHelper() {}
 		ExcludePaths:            []string{"internal/config/*_test.go"},
 		RequireFunctionComments: true,
 	}
-	if findings := rule.AnalyzeUnit(mainUnit, Context{}); len(findings) != 1 {
+	if findings := rule.AnalyzeProject([]parser.Unit{mainUnit}, Context{}); len(findings) != 1 {
 		t.Fatalf("included findings = %#v, want one", findings)
 	}
-	if findings := rule.AnalyzeUnit(otherUnit, Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{otherUnit}, Context{}); len(findings) != 0 {
 		t.Fatalf("non-included findings = %#v, want none", findings)
 	}
-	if findings := rule.AnalyzeUnit(testUnit, Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{testUnit}, Context{}); len(findings) != 0 {
 		t.Fatalf("excluded test findings = %#v, want none", findings)
 	}
 
 	noTests := CommentRubricRule{RequireFunctionComments: true, IgnoreTests: true}
-	if findings := noTests.AnalyzeUnit(testUnit, Context{}); len(findings) != 0 {
+	if findings := noTests.AnalyzeProject([]parser.Unit{testUnit}, Context{}); len(findings) != 0 {
 		t.Fatalf("ignore-tests findings = %#v, want none", findings)
 	}
 }

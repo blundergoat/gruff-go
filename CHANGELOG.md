@@ -4,9 +4,23 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Fixed
+
+- `internal/source` gitignore matcher: a trailing `**` segment no longer matches the parent directory itself, so `foo/**` now targets descendants only and lets `!foo/a` negations re-include children of an otherwise-ignored directory.
+- `internal/source` discovery: an explicit input file outside the discovery root is no longer matched against the project's `.gitignore` rules; previously `displayPath` fell back to the absolute path and the matcher silently dropped unrelated external files.
+- `internal/source` discovery: the hardcoded dependency-skip fallback (`vendor`, `node_modules`, `dist`, …) is now gated per-subtree on the `.gitignore` chain. A monorepo subtree that owns its own `.gitignore` is no longer silently overridden by the rootless fallback; the fallback still applies to subtrees that lack any `.gitignore` in their ancestor chain.
+- `test-quality.no-failure-path`: failure calls inside fuzz callbacks (`f.Fuzz(func(t *testing.T, ...){ t.Fatal(...) })`) are now recognised. Testing receivers declared on nested function literals are added to the receiver set alongside the outer test function's parameters.
+- `naming.receiver-consistency`: receiver groups are now keyed by package directory in addition to type name, so methods on two unrelated types named e.g. `Service` in different packages no longer merge into one bucket and produce false dominant-receiver findings.
+- `docs.comment-rubric` `requirePackageSummary`: the missing-summary check is aggregated per package directory. A multi-file package whose summary lives in `doc.go` (or any single file) no longer triggers a "package summary is missing" finding on every other file in the same package.
+
+### Added
+
+- `gruff-go report --include-ignored` brings the `report` subcommand to flag parity with `analyse`, `baseline`, `summary`, and the dashboard.
+
 ### Changed
 
 - Release documentation now pins v0.1.0 install examples, documents the 30-rule catalogue accurately, and aligns CI/config snippets with the current CLI.
+- ADR-007 explicitly carves out `docs.config-field-comment` as the lone `defaultEnabled: false` rule: its scoping options default to empty and the per-field check is not a no-op without configuration, so defaulting it on would swamp adopters with findings on every exported field. Other documentation surfaces (`ADR-003`, `ADR-004`, `.goat-flow/architecture.md`, `docs/dashboard.md`, `.goat-flow/footguns/setup.md`) realign with the current `analysis.Analyze` entrypoint, default-on rule policy, and per-subtree gitignore fallback.
 
 ## [0.1.0] - 2026-05-19
 

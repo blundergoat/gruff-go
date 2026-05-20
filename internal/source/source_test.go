@@ -226,6 +226,38 @@ func TestDiscoverExplicitNonApplicationMetadataFileSkipped(t *testing.T) {
 	}
 }
 
+// TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree confirms that a
+// subtree-only .gitignore takes ownership of its own subtree: the hardcoded
+// fallback no longer prunes vendor/node_modules under that subtree, while a
+// sibling subtree without its own .gitignore still gets the fallback. This
+// matches the monorepo case where each service manages its own ignore policy.
+func TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree(t *testing.T) {
+	root := t.TempDir()
+	// No root .gitignore.
+	writeFile(t, root, "services/api/.gitignore", "# api owns its filtering\n")
+	writeFile(t, root, "services/api/main.go", "package main\n")
+	writeFile(t, root, "services/api/vendor/lib/x.go", "package lib\n")
+	writeFile(t, root, "services/web/main.go", "package main\n")
+	writeFile(t, root, "services/web/vendor/lib/x.go", "package lib\n")
+	writeFile(t, root, "vendor/lib/x.go", "package lib\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	if !contains(got, "services/api/vendor/lib/x.go") {
+		t.Fatalf("services/api/vendor should be scanned because services/api owns a .gitignore; got %#v", got)
+	}
+	if contains(got, "services/web/vendor/lib/x.go") {
+		t.Fatalf("services/web/vendor should be pruned by fallback (no subtree .gitignore); got %#v", got)
+	}
+	if contains(got, "vendor/lib/x.go") {
+		t.Fatalf("root-level vendor should be pruned by fallback (no root .gitignore); got %#v", got)
+	}
+}
+
 // TestDiscoverNoGitignoreFallsBackToHardcoded verifies fallback skips when no .gitignore is present.
 func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	root := t.TempDir()
@@ -247,6 +279,40 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 		if !contains(gotSkipped, want) {
 			t.Fatalf("hardcoded fallback skip missing %q in %#v", want, gotSkipped)
 		}
+	}
+}
+
+// TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore confirms that an
+// explicit file outside the discovery root is not silently dropped by the
+// repository's .gitignore. The regression: displayPath returned the absolute
+// path when filepath.Rel went up, and Matcher.Match treated that absolute path
+// as relative-to-root, so a root rule like "tmp/" could suppress /tmp/foo.go.
+func TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "tmp/\n")
+	writeFile(t, root, "main.go", "package main\n")
+
+	outside := t.TempDir()
+	writeFile(t, outside, "tmp/foo.go", "package tmp\n")
+	external := filepath.Join(outside, "tmp", "foo.go")
+
+	result, err := Discover(Options{Root: root, Paths: []string{".", external}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := paths(result.Files)
+	if !contains(got, "main.go") {
+		t.Fatalf("in-repo main.go should still be scanned; got %#v", got)
+	}
+	foundExternal := false
+	for _, file := range result.Files {
+		if file.AbsPath == external {
+			foundExternal = true
+		}
+	}
+	if !foundExternal {
+		t.Fatalf("external %s should be included; files=%#v skipped=%#v", external, got, result.Skipped)
 	}
 }
 

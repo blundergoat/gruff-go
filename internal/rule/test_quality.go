@@ -128,8 +128,14 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 // rule produced a wave of false positives on otherwise well-asserted tests.
 // Requiring the helper to take the receiver as an argument keeps unrelated
 // `MustX` calls (e.g. `json.MustDecode`) from being mistaken for assertions.
+//
+// Receivers are collected from the outer FuncDecl AND from any nested function
+// literal — fuzz tests put their assertions inside `f.Fuzz(func(t *testing.T,
+// ...){ t.Fatal(...) })`, where the inner `t` is the only handle that calls
+// failure methods.
 func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
 	receivers := testingReceiverNames(fn, testingPackages)
+	collectNestedTestingReceivers(fn.Body, testingPackages, receivers)
 	if len(receivers) == 0 {
 		return false
 	}
@@ -253,7 +259,31 @@ func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map
 	if fn.Type == nil || fn.Type.Params == nil {
 		return receivers
 	}
-	for _, field := range fn.Type.Params.List {
+	collectTestingFieldNames(fn.Type.Params.List, testingPackages, receivers)
+	return receivers
+}
+
+// collectNestedTestingReceivers walks body looking for function literals (such
+// as the fuzz callback in f.Fuzz(func(t *testing.T, ...){...})) and records
+// every *testing.T/B/F parameter name into receivers.
+func collectNestedTestingReceivers(body *ast.BlockStmt, testingPackages map[string]bool, receivers map[string]bool) {
+	if body == nil {
+		return
+	}
+	ast.Inspect(body, func(node ast.Node) bool {
+		funcLit, ok := node.(*ast.FuncLit)
+		if !ok || funcLit.Type == nil || funcLit.Type.Params == nil {
+			return true
+		}
+		collectTestingFieldNames(funcLit.Type.Params.List, testingPackages, receivers)
+		return true
+	})
+}
+
+// collectTestingFieldNames adds every non-blank field name whose declared type
+// is *testing.T/B/F into receivers.
+func collectTestingFieldNames(fields []*ast.Field, testingPackages map[string]bool, receivers map[string]bool) {
+	for _, field := range fields {
 		if !isTestingTBFType(field.Type, testingPackages) {
 			continue
 		}
@@ -263,7 +293,6 @@ func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map
 			}
 		}
 	}
-	return receivers
 }
 
 // isTestingTBFType reports whether expr names *testing.T, *testing.B, or *testing.F.

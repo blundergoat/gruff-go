@@ -256,6 +256,42 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	}
 }
 
+// TestReportIncludeIgnoredOverridesGitignore verifies the report subcommand
+// accepts --include-ignored and threads it into discovery so gitignored files
+// are scanned. Without this, gruff-go report --format json silently dropped
+// ignored files regardless of user intent.
+func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "package main\n")
+	t.Chdir(root)
+
+	withoutFlag := bytes.Buffer{}
+	errOut := bytes.Buffer{}
+	if code := Main([]string{"report", "--format", "json"}, &withoutFlag, &errOut); code != 0 {
+		t.Fatalf("default report exit = %d, stderr = %s", code, errOut.String())
+	}
+	if !strings.Contains(withoutFlag.String(), `"main.go"`) {
+		t.Fatalf("default report should scan main.go; got %s", withoutFlag.String())
+	}
+	if !strings.Contains(withoutFlag.String(), `"reason": "gitignored"`) {
+		t.Fatalf("default report should record ignored.go under skipped:gitignored; got %s", withoutFlag.String())
+	}
+
+	withFlag := bytes.Buffer{}
+	errOut.Reset()
+	if code := Main([]string{"report", "--format", "json", "--include-ignored"}, &withFlag, &errOut); code != 0 {
+		t.Fatalf("include-ignored report exit = %d, stderr = %s", code, errOut.String())
+	}
+	if !strings.Contains(withFlag.String(), `"ignored.go"`) {
+		t.Fatalf("--include-ignored report should scan ignored.go; got %s", withFlag.String())
+	}
+	if strings.Contains(withFlag.String(), `"reason": "gitignored"`) {
+		t.Fatalf("--include-ignored report should not emit gitignored skip reasons; got %s", withFlag.String())
+	}
+}
+
 // complexFixture returns a Go source string that triggers complexity findings.
 func complexFixture() string {
 	return `// Package sample is a test package.

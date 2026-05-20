@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"path"
 	"strings"
 	"unicode"
 
@@ -103,8 +104,25 @@ func (r CommentRubricRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit walks a parsed unit and emits findings for missing rubric comments.
-func (r CommentRubricRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+// AnalyzeProject walks every parsed unit and emits rubric findings. The
+// package-summary check is aggregated per package directory so a multi-file
+// package whose summary lives in a single doc.go does not generate a missing
+// finding on every other file; the other sub-checks remain strictly per unit.
+func (r CommentRubricRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+	findings := []finding.Finding{}
+	if r.RequirePackageSummary {
+		findings = append(findings, r.aggregatedPackageSummaryFindings(units)...)
+	}
+	for _, unit := range units {
+		findings = append(findings, r.analyzeUnitDecls(unit)...)
+	}
+	return findings
+}
+
+// analyzeUnitDecls runs the per-declaration checks (function, type, const, var)
+// for a single unit. Path scope, IgnoreTests, and nil-AST guards are applied
+// here so the per-package aggregation can iterate units uniformly.
+func (r CommentRubricRule) analyzeUnitDecls(unit parser.Unit) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !r.appliesToPath(unit.File.Path) {
 		return nil
 	}
@@ -112,9 +130,6 @@ func (r CommentRubricRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		return nil
 	}
 	findings := []finding.Finding{}
-	if r.RequirePackageSummary {
-		findings = append(findings, r.packageSummaryFindings(unit)...)
-	}
 	for _, decl := range unit.AST.Decls {
 		switch current := decl.(type) {
 		case *ast.FuncDecl:
@@ -139,27 +154,76 @@ func (r CommentRubricRule) appliesToPath(path string) bool {
 	return true
 }
 
-// packageSummaryFindings emits a finding when the package summary fails to meet the minimum line threshold.
-func (r CommentRubricRule) packageSummaryFindings(unit parser.Unit) []finding.Finding {
-	stats := commentStats(unit.AST.Doc)
+// aggregatedPackageSummaryFindings emits at most one package-summary finding
+// per package directory + package name. The best summary across the package's
+// files wins; only when no file meets the threshold does the rule emit, and
+// the finding is attached to the lexicographically first file so the location
+// is deterministic. Files outside the configured include/exclude scope are not
+// allowed to contribute summaries; ignoreTests still applies and the rule
+// never fires on a package whose only files are tests.
+func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit) []finding.Finding {
+	type packageState struct {
+		name       string
+		file       string
+		bestLines  int
+		hasInScope bool
+		hasNonTest bool
+	}
+	packages := map[string]*packageState{}
+	for _, unit := range units {
+		if unit.AST == nil || unit.FileSet == nil {
+			continue
+		}
+		if !r.appliesToPath(unit.File.Path) {
+			continue
+		}
+		if r.IgnoreTests && isGoTestFile(unit.File.Path) {
+			continue
+		}
+		key := path.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
+		state := packages[key]
+		if state == nil {
+			state = &packageState{name: unit.AST.Name.Name}
+			packages[key] = state
+		}
+		state.hasInScope = true
+		if !isGoTestFile(unit.File.Path) {
+			state.hasNonTest = true
+		}
+		stats := commentStats(unit.AST.Doc)
+		if stats.lines > state.bestLines {
+			state.bestLines = stats.lines
+		}
+		if state.file == "" || unit.File.Path < state.file {
+			state.file = unit.File.Path
+		}
+	}
+
 	minLines := r.minPackageCommentLines()
-	if stats.lines >= minLines {
-		return nil
+	findings := []finding.Finding{}
+	for _, state := range packages {
+		if !state.hasInScope || state.bestLines >= minLines {
+			continue
+		}
+		if !state.hasNonTest && strings.HasSuffix(state.name, "_test") {
+			continue
+		}
+		message := "package summary is missing"
+		if state.bestLines > 0 {
+			message = fmt.Sprintf("package summary has %d non-empty lines, below required %d lines", state.bestLines, minLines)
+		}
+		findings = append(findings, finding.Finding{
+			Message:  message,
+			File:     state.file,
+			Location: &finding.Location{Line: 1},
+			Metadata: map[string]any{
+				"kind":      "package",
+				"lines":     state.bestLines,
+				"threshold": minLines,
+			},
+		})
 	}
-	message := "package summary is missing"
-	if stats.lines > 0 {
-		message = fmt.Sprintf("package summary has %d non-empty lines, below required %d lines", stats.lines, minLines)
-	}
-	return []finding.Finding{{
-		Message:  message,
-		File:     unit.File.Path,
-		Location: &finding.Location{Line: 1},
-		Metadata: map[string]any{
-			"kind":      "package",
-			"lines":     stats.lines,
-			"threshold": minLines,
-		},
-	}}
+	return findings
 }
 
 // funcCommentFindings emits a finding when a top-level function or method has no useful attached comment.

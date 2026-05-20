@@ -18,7 +18,7 @@ func TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged(t *testing.T) {
 // Documented returns the rule metadata for FooRule.
 func Documented() {}
 `)
-	findings := CommentRubricRule{RequireFunctionComments: true}.AnalyzeUnit(unit, Context{})
+	findings := CommentRubricRule{RequireFunctionComments: true}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if len(findings) != 0 {
 		t.Fatalf("findings = %#v, want none (option disabled keeps existing behaviour)", findings)
 	}
@@ -37,7 +37,7 @@ func (FooRule) Definition() string { return "" }
 		RequireFunctionComments: true,
 		MinWordsBeyondSymbol:    3,
 	}
-	findings := rule.AnalyzeUnit(unit, Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if len(findings) != 1 {
 		t.Fatalf("findings = %#v, want one rejection", findings)
 	}
@@ -58,7 +58,7 @@ func Parse() {}
 		RequireFunctionComments: true,
 		MinWordsBeyondSymbol:    3,
 	}
-	if findings := rule.AnalyzeUnit(unit, Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{unit}, Context{}); len(findings) != 0 {
 		t.Fatalf("findings = %#v, want none (substantive comment passes)", findings)
 	}
 }
@@ -92,7 +92,7 @@ func (Worker) Method() {}
 		RequireVarComments:       true,
 		MinWordsBeyondSymbol:     3,
 	}
-	findings := rule.AnalyzeUnit(unit, Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{unit}, Context{})
 	got := findingSymbols(findings)
 	want := []string{"Definition", "Worker", "SingleConst", "SingleVar", "Worker.Method"}
 	if len(got) != len(want) {
@@ -127,7 +127,7 @@ var (
 		RequireVarComments:   true,
 		MinWordsBeyondSymbol: 3,
 	}
-	if findings := rule.AnalyzeUnit(unit, Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{unit}, Context{}); len(findings) != 0 {
 		t.Fatalf("findings = %#v, want none (substantive group comments)", findings)
 	}
 }
@@ -149,7 +149,7 @@ func (FooRule) Definition() string { return "" }
 		RequireFunctionComments: true,
 		MinWordsBeyondSymbol:    3,
 	}
-	findings := rule.AnalyzeUnit(unit, Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if len(findings) != 1 {
 		t.Fatalf("findings = %#v, want one rejection of the paraphrase boilerplate", findings)
 	}
@@ -192,10 +192,10 @@ func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 		RequireVarComments:   true,
 		IgnoreTests:          false,
 	}
-	if findings := rule.AnalyzeUnit(commentRubricTestScopingTestUnit(t), Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{commentRubricTestScopingTestUnit(t)}, Context{}); len(findings) != 0 {
 		t.Fatalf("test-file const/var findings = %#v, want none", findings)
 	}
-	findings := rule.AnalyzeUnit(commentRubricTestScopingProdUnit(t), Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{commentRubricTestScopingProdUnit(t)}, Context{})
 	if len(findings) != 2 {
 		t.Fatalf("production findings = %#v, want ProductionConst and productionVar", findings)
 	}
@@ -208,7 +208,7 @@ func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 		RequireFunctionComments: true,
 		IgnoreTests:             false,
 	}
-	findings := rule.AnalyzeUnit(commentRubricTestScopingTestUnit(t), Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{commentRubricTestScopingTestUnit(t)}, Context{})
 	if len(findings) != 1 || findings[0].Symbol != "TestSomething" {
 		t.Fatalf("findings = %#v, want one TestSomething finding", findings)
 	}
@@ -221,7 +221,7 @@ func TestCommentRubricRuleTestFileTypeCheckStillFires(t *testing.T) {
 		RequireNamedTypeComments: true,
 		IgnoreTests:              false,
 	}
-	findings := rule.AnalyzeUnit(commentRubricTestScopingTestUnit(t), Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{commentRubricTestScopingTestUnit(t)}, Context{})
 	if len(findings) != 1 || findings[0].Symbol != "TestWorker" {
 		t.Fatalf("findings = %#v, want one TestWorker finding", findings)
 	}
@@ -237,7 +237,7 @@ func TestCommentRubricRuleIgnoreTestsStillExemptsEverything(t *testing.T) {
 		RequireVarComments:       true,
 		IgnoreTests:              true,
 	}
-	if findings := rule.AnalyzeUnit(commentRubricTestScopingTestUnit(t), Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{commentRubricTestScopingTestUnit(t)}, Context{}); len(findings) != 0 {
 		t.Fatalf("findings = %#v, want none (whole-file exemption)", findings)
 	}
 }
@@ -251,13 +251,13 @@ func TestCommentRubricRuleDefaultPackageSummaryOneLine(t *testing.T) {
 	oneLine := parseOne(t, "ok.go", `// Package sample explains the maintenance boundary.
 package sample
 `)
-	if findings := rule.AnalyzeUnit(oneLine, Context{}); len(findings) != 0 {
+	if findings := rule.AnalyzeProject([]parser.Unit{oneLine}, Context{}); len(findings) != 0 {
 		t.Fatalf("one-line summary findings = %#v, want none under default threshold", findings)
 	}
 
 	missing := parseOne(t, "missing.go", `package sample
 `)
-	findings := rule.AnalyzeUnit(missing, Context{})
+	findings := rule.AnalyzeProject([]parser.Unit{missing}, Context{})
 	if len(findings) != 1 || findings[0].Message != "package summary is missing" {
 		t.Fatalf("missing findings = %#v, want one missing-summary finding", findings)
 	}
@@ -267,7 +267,7 @@ package sample
 		RequirePackageSummary:  true,
 		MinPackageCommentLines: 2,
 	}
-	if findings := strict.AnalyzeUnit(oneLine, Context{}); len(findings) != 1 {
+	if findings := strict.AnalyzeProject([]parser.Unit{oneLine}, Context{}); len(findings) != 1 {
 		t.Fatalf("strict one-line findings = %#v, want one threshold finding", findings)
 	}
 }

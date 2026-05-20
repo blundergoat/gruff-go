@@ -23,7 +23,7 @@ Use strict gruff-family operational files for v0.1:
 
 - Config schema: `gruff-go.config.v0.1`.
 - Default config discovery file: `.gruff-go.yaml`.
-- Root `.gruff-go.yaml` mirrors default-enabled rule behavior and keeps default-disabled expansion rules opt-in; config changes must be treated as scanner policy changes rather than a way to hide dogfood findings.
+- Root `.gruff-go.yaml` expresses per-project policy overrides on top of the registry's default rule pack. (Historical note: this ADR was written when expansion rules shipped default-off; [ADR-007](ADR-007-comprehensive-default-rule-pack.md) supersedes that policy and flips every shipped rule to default-on, leaving the project config to express per-rule overrides and threshold overrides instead.) Config changes must be treated as scanner policy changes rather than a way to hide dogfood findings.
 - `--config` selects an explicit file, and `--no-config` skips default discovery.
 - Baseline schema: `gruff-go.baseline.v0.1`.
 - Config and baseline parsing fail closed on malformed files or unknown contract elements.

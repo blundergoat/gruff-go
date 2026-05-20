@@ -276,6 +276,52 @@ func TestUnrelatedHelper(t *testing.T) {
 	}
 }
 
+// TestNoFailurePathRuleHandlesFuzzCallbackBodies confirms the rule does not
+// misfire on idiomatic fuzz tests, which put their assertions inside the
+// callback passed to f.Fuzz. The inner *testing.T parameter is the only handle
+// that calls failure methods, so the rule has to walk nested function literals
+// when collecting testing receivers.
+func TestNoFailurePathRuleHandlesFuzzCallbackBodies(t *testing.T) {
+	unit := parseOne(t, "pkg/fuzz_test.go", `package pkg
+
+import "testing"
+
+func FuzzInnerAssertion(f *testing.F) {
+	f.Add([]byte("seed"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if data == nil {
+			t.Fatal("nope")
+		}
+	})
+}
+
+func FuzzWithSubFunc(f *testing.F) {
+	f.Fuzz(func(t *testing.T, s string) {
+		t.Errorf("got %q", s)
+	})
+}
+
+func FuzzNoAssertion(f *testing.F) {
+	f.Fuzz(func(t *testing.T, n int) {
+		_ = n
+	})
+}
+`)
+	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.Symbol] = true
+	}
+	if !got["FuzzNoAssertion"] {
+		t.Fatalf("FuzzNoAssertion should fire (callback never reaches a failure method); got %#v", got)
+	}
+	for _, accepted := range []string{"FuzzInnerAssertion", "FuzzWithSubFunc"} {
+		if got[accepted] {
+			t.Errorf("%s should be accepted as having a failure path via the inner callback", accepted)
+		}
+	}
+}
+
 // TestTestQualityRulesDefaultEnabled asserts all test-quality rules ship enabled by default.
 func TestTestQualityRulesDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{

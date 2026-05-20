@@ -80,12 +80,12 @@ func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrSt
 
 // commandUsages maps each subcommand to its concrete usage flag list.
 var commandUsages = map[string]string{
-	"analyse":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]",
-	"analyze":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]",
-	"baseline":   "--out path [--config path|--no-config] [path ...]",
+	"analyse":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyze":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"baseline":   "--out path [--config path|--no-config] [--include-ignored] [path ...]",
 	"list-rules": "[--format text|json] [--config path|--no-config]",
 	"summary":    "[--format text|json] [--top N] [--config path|--no-config] [--include-ignored] [path ...]",
-	"report":     "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]",
+	"report":     "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
 	"dashboard":  "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]",
 }
 
