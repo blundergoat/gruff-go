@@ -4,6 +4,12 @@
 # uninteresting to analysis). Empty list here means "no extras beyond .gitignore".
 paths:
   ignore:
+    - '.agents/**'
+    - '.antigravitycli/**'
+    - '.claude/**'
+    - '.codex/**'
+    - '.github/**'
+    - '.goat-flow/**'
     - 'internal/rule/sensitive_test.go'
     - 'internal/report/sensitive_redaction_test.go'
 
