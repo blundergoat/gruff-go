@@ -17,7 +17,7 @@
     "url": "https://github.com/blundergoat/gruff-go/issues"
   },
   "homepage": "https://github.com/blundergoat/gruff-go#readme",
-  "dependencies": {
+  "devDependencies": {
     "@blundergoat/goat-flow": "^1.6.4"
   }
 }
