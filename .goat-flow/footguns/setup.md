@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-05-18
+last_reviewed: 2026-05-21
 ---
 
 # Setup Footguns
@@ -28,7 +28,7 @@ Evidence:
 - `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff-go.yaml"}`)
 - Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed the catalogue and exited 0. [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) (2026-05-18) subsequently flipped every shipped rule to `defaultEnabled: true` except the deliberate `docs.config-field-comment` carve-out called out in that ADR.
 
-The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, and gitignore-respecting discovery (`--include-ignored` to bypass). Per ADR-007 the rule catalogue ships entirely default-on, so the previous "small opt-in expansion pack" framing is superseded — projects opt *out* of individual rules instead of opting in. CI wiring, trend storage, deeper calibrated rule families, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
+The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, and gitignore-respecting discovery (`--include-ignored` to bypass). Per [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) the rule catalogue ships 30 rules default-on with one deliberate carve-out: `docs.config-field-comment` stays `defaultEnabled: false` because its empty-default scoping would otherwise fire on every exported struct field. The previous "small opt-in expansion pack" framing is superseded — projects opt *out* of individual rules instead of opting in, and the only rule they need to opt *in* to is `docs.config-field-comment`. CI wiring, trend storage, deeper calibrated rule families, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
 
 ## Resolved Entries
 

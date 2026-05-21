@@ -1,14 +1,16 @@
 ---
 category: setup
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-21
 ---
 
 # Setup Patterns
 
-## Pattern: Verify bootstrap repos by absence as well as presence
+## Pattern: Re-derive numeric claims from the live registry before writing architecture
 
-**Created:** 2026-05-13
+**Created:** 2026-05-21
 
-**Context:** This checkout has a project name and npm package metadata, but no application source files.
+**Evidence:** OBSERVED
 
-**Approach:** Before selecting commands or writing architecture claims, read `README.md`, `package.json`, `package-lock.json`, and `rg --files -g '!node_modules' -g '!dist' -g '!build' -g '!vendor'`. Run any detected script once if it appears to be a health gate, then record placeholder failures as setup gaps rather than working commands.
+**Context:** `.goat-flow/architecture.md` and `.goat-flow/code-map.md` carried a "29-rule default-enabled registry" claim across four lines while `go run ./cmd/gruff-go list-rules --format json` reported 30 rules. The drift went unnoticed because the count is asserted in prose rather than derived.
+
+**Approach:** When an orientation doc states a count (rules, pillars, packages, version literals), re-derive it from the canonical source in the same session before writing or editing the claim. Authoritative sources: `go run ./cmd/gruff-go list-rules --format json` for rules and pillars; `go list ./...` for Go packages; `grep -c '"id"'` is unreliable for nested JSON — prefer `python3 -c "import json; …"` or `jq`. Cite the command used in the commit or PR so the next reader can re-run it.

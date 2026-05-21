@@ -1,0 +1,23 @@
+name: gruff-go
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Build gruff-go
+        run: go build -o bin/gruff-go ./cmd/gruff-go
+
+      - name: Dogfood scan
+        run: ./bin/gruff-go analyse .

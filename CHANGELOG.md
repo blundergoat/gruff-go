@@ -4,6 +4,10 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+
+- **CI dogfood gate.** `.github/workflows/gruff-go.yml` runs on every pull request and push to `main`: builds the binary and runs `./bin/gruff-go analyse .`. Non-zero exit (findings at or above `--min-severity medium`) fails the build, formalising the "grade A with zero findings on `main`" convention previously enforced only by `CLAUDE.md`.
+
 ## [0.1.0] - 2026-05-20
 
 First release. The binary reports `0.1.0`. Schemas `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, and `gruff-go.baseline.v0.1` are stable within the `0.1.x` line.
