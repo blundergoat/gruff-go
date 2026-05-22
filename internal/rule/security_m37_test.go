@@ -7,6 +7,7 @@ import "testing"
 func TestSQLStringQueryRule(t *testing.T) {
 	tests := []struct {
 		name string
+		file string
 		code string
 		want int
 	}{
@@ -48,6 +49,54 @@ func sample(ctx Context, db DB, name string) {
 		},
 		{
 			name: "pgx context offset",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(ctx Context, pool Pool, schema string) {
+	pool.Exec(ctx, "CREATE SCHEMA " + schema)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "test schema creation with timestamp suffix",
+			file: "schema_test.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"fmt"
+	"time"
+)
+
+func sample(ctx Context, pool Pool) {
+	schema := fmt.Sprintf("test_migrate_%d", time.Now().UnixNano())
+	pool.Exec(ctx, "CREATE SCHEMA " + schema)
+}
+`,
+			want: 0,
+		},
+		{
+			name: "testutil schema creation with timestamp suffix",
+			file: "internal/testutil/db.go",
+			code: `// Package testutil is a test helper package.
+package testutil
+
+import (
+	"fmt"
+	"time"
+)
+
+func sample(ctx Context, pool Pool) {
+	schema := fmt.Sprintf("test_%d", time.Now().UnixNano())
+	pool.Exec(ctx, "CREATE SCHEMA " + schema)
+}
+`,
+			want: 0,
+		},
+		{
+			name: "create schema with parameter still fires",
+			file: "schema_test.go",
 			code: `// Package sample is a test package.
 package sample
 
@@ -108,7 +157,11 @@ func sample(runner Runner, name string) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			unit := parseOne(t, "sql.go", tt.code)
+			file := tt.file
+			if file == "" {
+				file = "sql.go"
+			}
+			unit := parseOne(t, file, tt.code)
 			findings := SQLStringQueryRule{}.AnalyzeUnit(unit, Context{})
 			if len(findings) != tt.want {
 				t.Fatalf("findings = %#v, want %d", findings, tt.want)

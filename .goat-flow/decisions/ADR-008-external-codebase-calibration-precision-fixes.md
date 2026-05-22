@@ -43,6 +43,8 @@ The six precision fixes shipped under this decision are the ones in `CHANGELOG.m
 | `size.function-length` | Comment-only and blank lines (length is now counted in code-bearing lines via `go/scanner`); `//nolint:funlen` / `//nolint:all` directly attached to the function doc | Functions whose code-line count exceeds the threshold |
 | `naming.get-prefix` | Extended to free functions with a single `context.Context` parameter returning one value (or one value + error) | Receiver methods (unchanged), and the newly covered context-accessor shape |
 
+2026-05-23 follow-up calibration: the `naming.get-prefix` context-accessor extension was narrowed back out of the default rule after the same corpus showed `GetLogger(ctx)` and `GetRequestID(ctx)` were conventional helper names rather than useful findings. `security.sql-string-query` also gained a test-support carve-out for fixed-prefix integration-test schema creation (`CREATE SCHEMA ` + `fmt.Sprintf("test_*_%d", time.Now().UnixNano())`) after rescans showed only parser-only noise in `_test.go` and `internal/testutil` setup helpers. Receiver `Get*` methods and arbitrary dynamic SQL/schema variables remain in scope.
+
 ## Failure Mode Comparison
 
 | Option | What fails | Why rejected or accepted |

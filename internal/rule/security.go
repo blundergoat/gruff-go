@@ -145,6 +145,7 @@ func (SQLStringQueryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 		return nil
 	}
 	fmtPackages := packageImportNames(unit.AST, "fmt", "fmt")
+	timePackages := packageImportNames(unit.AST, "time", "time")
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -152,6 +153,7 @@ func (SQLStringQueryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 			continue
 		}
 		constructedVars := collectConstructedSQLVars(fn.Body, fmtPackages)
+		testSchemaVars := collectTestSchemaVars(fn.Body, fmtPackages, timePackages)
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
@@ -166,6 +168,9 @@ func (SQLStringQueryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 			}
 			kind, ok := sqlConstructionKind(call.Args[queryArgIndex], constructedVars, fmtPackages)
 			if !ok {
+				return true
+			}
+			if isTestSupportPath(unit.File.Path) && isTestSchemaCreation(call.Args[queryArgIndex], testSchemaVars) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Args[queryArgIndex].Pos())

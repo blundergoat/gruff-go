@@ -25,7 +25,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
-| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods and context accessors with a discouraged `Get` prefix. |
+| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | low | parser | — | Identifiers, doc comments, and struct tags containing common programming misspellings. |
 | [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | — | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
@@ -309,7 +309,7 @@ rules:
 - **Tags:** `go-style`, `naming`
 - **Options:** `excludePaths []string`, `excludeNames []string`
 
-Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. It also flags package-level context accessors whose only parameter is `context.Context` and whose result shape is one value or `(T, error)`, such as `GetLogger(ctx)`. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context.
+Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. Package-level helpers, including context accessors such as `GetLogger(ctx)`, are not flagged because the verb often describes lookup semantics rather than field-style access. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context.
 
 ```yaml
 rules:
@@ -520,7 +520,7 @@ Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpr
 - **Capability:** parser
 - **Tags:** `security`, `sql`
 
-Flags SQL execution calls (`Query`, `QueryRow`, `Exec` and `*Context` forms) whose query argument is built with `fmt.Sprintf`, string concatenation, or a same-function variable initialized from those forms. The constructed expression must contain SQL statement keyword evidence, so non-SQL `Exec` calls and literal parameterized queries are ignored. The rule handles both standard `database/sql` argument positions and pgx-style calls where a context value appears before the query.
+Flags SQL execution calls (`Query`, `QueryRow`, `Exec` and `*Context` forms) whose query argument is built with `fmt.Sprintf`, string concatenation, or a same-function variable initialized from those forms. The constructed expression must contain SQL statement keyword evidence, so non-SQL `Exec` calls and literal parameterized queries are ignored. The rule handles both standard `database/sql` argument positions and pgx-style calls where a context value appears before the query. `_test.go` files and `testutil` helpers may build `CREATE SCHEMA ` statements from fixed `test_*_%d` names using `time.Now().UnixNano()` without firing; arbitrary schema variables still fire.
 
 Each finding's metadata carries the call name and construction kind.
 

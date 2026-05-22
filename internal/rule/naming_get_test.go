@@ -57,11 +57,10 @@ func (s Store) GetUser() User { return User{} }
 	}
 }
 
-// TestGetPrefixFlagsContextAccessorFunctions asserts the rule also catches the
-// context-value accessor pattern (`GetLogger(ctx)`) at free-function scope.
-// Other free-function shapes — including zero-param `GetGlobal` and variadic
-// or multi-param signatures — must remain unflagged.
-func TestGetPrefixFlagsContextAccessorFunctions(t *testing.T) {
+// TestGetPrefixSkipsFreeFunctions confirms package-level helpers, including
+// context accessors such as `GetLogger(ctx)`, stay out of this receiver-method
+// style rule.
+func TestGetPrefixSkipsFreeFunctions(t *testing.T) {
 	unit := parseOne(t, "pkg/ctx.go", `package pkg
 
 import "context"
@@ -80,17 +79,8 @@ func GetByID(ctx context.Context, id string) *Logger { return nil }
 func GetMany(ctx context.Context) (*Logger, *Logger, error) { return nil, nil, nil }
 `)
 	findings := GetPrefixRule{}.AnalyzeUnit(unit, Context{})
-	got := findingSymbols(findings)
-	want := map[string]bool{"GetLogger": true, "GetRequestID": true, "GetConfig": true}
-	for name := range want {
-		if !got[name] {
-			t.Errorf("expected %s to be flagged", name)
-		}
-	}
-	for name := range got {
-		if !want[name] {
-			t.Errorf("unexpected finding for %s", name)
-		}
+	if len(findings) != 0 {
+		t.Fatalf("free functions should not be flagged, got %#v", findings)
 	}
 }
 
