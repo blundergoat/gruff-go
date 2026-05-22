@@ -161,37 +161,7 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 	findings := []finding.Finding{}
 	inBlockComment := false
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
-		trimmed := strings.TrimLeft(line, " \t")
-		// Track multi-line /* ... */ block comments. If the line both opens and
-		// closes a block, treat it as comment-only when there's no following code.
-		if inBlockComment {
-			if idx := strings.Index(line, "*/"); idx >= 0 {
-				inBlockComment = false
-				after := strings.TrimSpace(line[idx+2:])
-				if after == "" {
-					continue
-				}
-				line = line[idx+2:]
-				trimmed = strings.TrimLeft(line, " \t")
-			} else {
-				continue
-			}
-		}
-		if strings.HasPrefix(trimmed, "/*") {
-			closeIdx := strings.Index(trimmed[2:], "*/")
-			if closeIdx < 0 {
-				inBlockComment = true
-				continue
-			}
-			after := strings.TrimSpace(trimmed[closeIdx+4:])
-			if after == "" {
-				continue
-			}
-		}
-		if strings.HasPrefix(trimmed, "//") {
-			continue
-		}
-		if hasSecretSuppressionAnnotation(line) {
+		if !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
 		match := pattern.FindString(line)
@@ -206,6 +176,86 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 		})
 	}
 	return findings
+}
+
+// scanUnitForCoOccurrence emits one finding per file when both primary and secondary patterns each match on a code-bearing line.
+// The finding is located at the primary marker's line. Both matches are
+// redacted into the preview metadata so the underlying secret never reaches
+// any output format.
+func scanUnitForCoOccurrence(unit parser.Unit, primary, secondary *regexp.Regexp, message string) []finding.Finding {
+	if unit.Source == "" {
+		return nil
+	}
+	primaryLine, primaryMatch := firstCodeMatch(unit.Source, primary)
+	if primaryLine == 0 {
+		return nil
+	}
+	secondaryLine, secondaryMatch := firstCodeMatch(unit.Source, secondary)
+	if secondaryLine == 0 {
+		return nil
+	}
+	return []finding.Finding{{
+		Message:  message,
+		File:     unit.File.Path,
+		Location: &finding.Location{Line: primaryLine},
+		Metadata: map[string]any{
+			"preview":          redact(primaryMatch),
+			"secondaryLine":    secondaryLine,
+			"secondaryPreview": redact(secondaryMatch),
+		},
+	}}
+}
+
+// firstCodeMatch returns the 1-indexed line and matched substring of the first pattern hit on a code-bearing line; returns (0, "") when none exists.
+func firstCodeMatch(source string, pattern *regexp.Regexp) (int, string) {
+	inBlockComment := false
+	for lineNumber, line := range strings.Split(source, "\n") {
+		if !lineIsCodeBearing(line, &inBlockComment) {
+			continue
+		}
+		if match := pattern.FindString(line); match != "" {
+			return lineNumber + 1, match
+		}
+	}
+	return 0, ""
+}
+
+// lineIsCodeBearing reports whether a line should be examined for secret patterns,
+// advancing the block-comment state machine and honoring inline suppression annotations.
+// Returns false for comment-only lines, lines inside an unclosed /* */ block, and
+// lines carrying #nosec or //nolint:{gosec,all}. The block-comment state mutates
+// through the pointer so the caller can walk a file with a single shared boolean.
+func lineIsCodeBearing(line string, inBlockComment *bool) bool {
+	trimmed := strings.TrimLeft(line, " \t")
+	if *inBlockComment {
+		if idx := strings.Index(line, "*/"); idx >= 0 {
+			*inBlockComment = false
+			after := strings.TrimSpace(line[idx+2:])
+			if after == "" {
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+	if strings.HasPrefix(trimmed, "/*") {
+		closeIdx := strings.Index(trimmed[2:], "*/")
+		if closeIdx < 0 {
+			*inBlockComment = true
+			return false
+		}
+		after := strings.TrimSpace(trimmed[closeIdx+4:])
+		if after == "" {
+			return false
+		}
+	}
+	if strings.HasPrefix(trimmed, "//") {
+		return false
+	}
+	if hasSecretSuppressionAnnotation(line) {
+		return false
+	}
+	return true
 }
 
 // hasSecretSuppressionAnnotation reports whether a source line carries an

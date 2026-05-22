@@ -44,6 +44,12 @@ func defaultUnitRules(config Config) []UnitRule {
 		AWSAccessKeyRule{},
 		JWTTokenRule{},
 		ConnectionStringRule{},
+		GitHubTokenRule{},
+		SlackTokenRule{},
+		StripeLiveKeyRule{},
+		GoogleAPIKeyRule{},
+		AnthropicAPIKeyRule{},
+		GCPServiceAccountRule{},
 		AcronymCaseRule{
 			Acronyms:              stringSliceOption(config, "naming.acronym-case", "acronyms"),
 			Allow:                 stringSliceOption(config, "naming.acronym-case", "allow"),

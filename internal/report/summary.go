@@ -28,7 +28,10 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	score := report.Score
 	header := fmt.Sprintf(
-		"gruff-go summary\nschema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n",
+		"gruff-go summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\nschema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n",
+		summaryInputs(report.Run.Inputs),
+		summaryWorkingDir(report.Run.WorkingDirectory),
+		report.Summary.FilesScanned, report.Summary.FilesSkipped,
 		report.SchemaVersion, score.Composite, gradeOrNA(score.Grade), report.Summary.FindingsCount,
 	)
 	if _, err := fmt.Fprint(writer, header); err != nil {
@@ -183,4 +186,20 @@ func gradeOrNA(grade string) string {
 		return "n/a"
 	}
 	return grade
+}
+
+// summaryInputs renders the run's input paths for the scanned line, falling back to "." when the slice is empty.
+func summaryInputs(inputs []string) string {
+	if len(inputs) == 0 {
+		return "."
+	}
+	return strings.Join(inputs, ", ")
+}
+
+// summaryWorkingDir renders the absolute working directory for the scanned line, returning "?" when the field is empty.
+func summaryWorkingDir(dir string) string {
+	if dir == "" {
+		return "?"
+	}
+	return dir
 }

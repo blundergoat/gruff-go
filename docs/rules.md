@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **30 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **36 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -33,11 +33,17 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
+| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | high | parser | — | Anthropic API key literals (`sk-ant-…`). |
 | [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | — | AWS access key id (AKIA…) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
+| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | critical | parser | — | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
+| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | high | parser | — | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
+| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | high | parser | — | Google API key literals (`AIza…`). |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | — | JWT-shaped literals (`eyJ…`). |
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | — | PEM-encoded private keys embedded in source. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
+| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | high | parser | — | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
+| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | high | parser | — | Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). |
 | [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
@@ -470,6 +476,19 @@ Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`,
 
 **Remediation.** Call the target executable directly with `exec.Command("ls", args...)` and pass arguments as separate parameters rather than interpolating them into a shell string.
 
+### `sensitive-data.anthropic-api-key`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A leaked Anthropic key bills model usage against the owning organisation and exposes any data the caller had access to send through the API.
+
+**Remediation.** Revoke the key in the Anthropic console, then load credentials from a secret manager.
+
 ### `sensitive-data.aws-access-key`
 
 - **Pillar:** sensitive-data
@@ -497,6 +516,49 @@ Flags database / queue / cache connection URIs that embed a username and passwor
 Obvious dev/test placeholders are skipped only when both halves match: the host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the embedded password contains a placeholder token such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. Real-looking credentials at local hosts still fire.
 
 **Remediation.** Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.
+
+### `sensitive-data.gcp-service-account`
+
+- **Pillar:** sensitive-data
+- **Default severity:** **critical**
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags files containing both a `"type": "service_account"` field and a PEM private-key header (`-----BEGIN ... PRIVATE KEY-----`) — the documented shape of a GCP service-account JSON key file. Neither marker alone triggers the rule: `"type": "service_account"` in a doc snippet is harmless, and an isolated PEM key is already covered by `sensitive-data.private-key`. The co-occurrence is the signal.
+
+The finding is located at the line of the `"type"` marker. Both markers are redacted in the preview metadata; the raw private-key body never reaches any output format.
+
+**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `critical` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
+
+**Remediation.** Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity.
+
+### `sensitive-data.github-token`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags GitHub personal-access (`ghp_`), OAuth (`gho_`), user-to-server (`ghu_`), server-to-server (`ghs_`), and refresh (`ghr_`) tokens embedded in source or text files. The single character class `gh[pousr]_` covers all five variants, followed by a 36-255 alphanumeric body matching GitHub's published format.
+
+**Remediation.** Revoke the token in GitHub's settings, then load credentials from a secret manager or environment-specific runtime configuration.
+
+### `sensitive-data.google-api-key`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embedded in source or text files. The fixed-width suffix prevents a bare `AIza` prefix from triggering a false positive on unrelated identifiers.
+
+**Remediation.** Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager.
 
 ### `sensitive-data.jwt-token`
 
@@ -539,6 +601,32 @@ All `sensitive-data.*` rules skip Go lines that are entirely comments and honor 
 Add documented dummies to `allowlists.secretPreviews` so example values in tests and READMEs aren't flagged.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
+
+### `sensitive-data.slack-token`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags Slack bot (`xoxb-`), user (`xoxp-`), app (`xoxa-`), and refresh (`xoxr-`) tokens embedded in source or text files. The three-segment body (numeric / numeric / alphanumeric) matches Slack's documented format and avoids matching unrelated `xox`-prefixed identifiers.
+
+**Remediation.** Revoke the token in Slack's app management console, then load credentials from a secret manager.
+
+### `sensitive-data.stripe-key`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_live_`) keys against the live (production) environment, followed by ≥24 alphanumeric characters. Test-mode keys (`*_test_`) are intentionally not flagged: they expose only sandbox state.
+
+**Remediation.** Roll the key in the Stripe dashboard, then load credentials from a secret manager.
 
 ### `size.file-length`
 

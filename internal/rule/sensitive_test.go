@@ -13,10 +13,22 @@ import (
 // "<prefix>...<suffix>" form rather than collapsing the entire match to
 // "[redacted]". The match must be at least 13 characters for that branch.
 const (
-	rawAWSKey        = "AKIAIOSFODNN7EXAMPLE"
-	rawJWT           = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-	rawPrivateKey    = "-----BEGIN RSA PRIVATE KEY-----"
-	rawConnectionURL = "postgres://app:supersecretpassword@db.internal:5432/orders"
+	rawAWSKey            = "AKIAIOSFODNN7EXAMPLE"
+	rawJWT               = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	rawPrivateKey        = "-----BEGIN RSA PRIVATE KEY-----"
+	rawConnectionURL     = "postgres://app:supersecretpassword@db.internal:5432/orders"
+	rawGitHubToken       = "ghp_0000000000000000000000000000000000ZZ"
+	rawSlackToken        = "xoxb-1234567890123-9876543210987-AbCdEfGhIjKlMnOpQrSt"
+	rawStripeKey         = "sk_live_0000000000000000000000ZZ"
+	rawGoogleAPIKey      = "AIza00000000000000000000000000000000ZZZ"
+	rawAnthropicAPIKey   = "sk-ant-00000000000000000000ZZ"
+	rawGCPServiceAccount = `{
+  "type": "service_account",
+  "project_id": "example-project",
+  "private_key_id": "0000000000000000000000000000000000000000",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...EXAMPLE...END\n-----END PRIVATE KEY-----\n",
+  "client_email": "svc@example-project.iam.gserviceaccount.com"
+}`
 )
 
 func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
@@ -67,12 +79,193 @@ func TestConnectionStringRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], "supersecretpassword")
 }
 
+func TestGitHubTokenRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "github_token = " + rawGitHubToken + "\n",
+	}
+	findings := GitHubTokenRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawGitHubToken)
+}
+
+func TestSlackTokenRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "slack_token = " + rawSlackToken + "\n",
+	}
+	findings := SlackTokenRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawSlackToken)
+}
+
+func TestStripeLiveKeyRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "stripe_key = " + rawStripeKey + "\n",
+	}
+	findings := StripeLiveKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawStripeKey)
+}
+
+func TestGoogleAPIKeyRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "google_api_key = " + rawGoogleAPIKey + "\n",
+	}
+	findings := GoogleAPIKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawGoogleAPIKey)
+}
+
+func TestAnthropicAPIKeyRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "anthropic_key = " + rawAnthropicAPIKey + "\n",
+	}
+	findings := AnthropicAPIKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawAnthropicAPIKey)
+}
+
+// TestGoogleAPIKeyRuleRejectsShortPrefix asserts the regex's fixed-width
+// suffix requirement prevents a bare AIza prefix from firing as a finding.
+func TestGoogleAPIKeyRuleRejectsShortPrefix(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "google_api_key = AIzaSyShort\n",
+	}
+	if got := (GoogleAPIKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected no findings for short prefix, got %#v", got)
+	}
+}
+
+// TestSlackTokenRuleRejectsBarePrefix asserts a bare xox[bpar]- with no body
+// is not matched as a token.
+func TestSlackTokenRuleRejectsBarePrefix(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "slack_token = xoxp-\n",
+	}
+	if got := (SlackTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected no findings for bare prefix, got %#v", got)
+	}
+}
+
+// TestGCPServiceAccountRuleDetectsBothMarkers asserts a JSON file containing
+// both the `"type": "service_account"` marker and a PEM private-key header
+// produces exactly one finding, located at the type marker line, with both
+// markers redacted in the preview metadata.
+func TestGCPServiceAccountRuleDetectsBothMarkers(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "service-account.json", Type: source.FileTypeText},
+		Source: rawGCPServiceAccount,
+	}
+	findings := GCPServiceAccountRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].Location == nil || findings[0].Location.Line != 2 {
+		t.Fatalf("finding should locate at the type marker line (2), got %#v", findings[0].Location)
+	}
+	assertNoRawSecret(t, findings[0], `"type": "service_account"`)
+	secondaryPreview, _ := findings[0].Metadata["secondaryPreview"].(string)
+	if secondaryPreview == "" {
+		t.Errorf("secondary preview should be present in metadata, got empty")
+	}
+	if strings.Contains(secondaryPreview, "MIIE") {
+		t.Errorf("secondary preview should not leak raw private-key body, got %q", secondaryPreview)
+	}
+	if secondaryLine, _ := findings[0].Metadata["secondaryLine"].(int); secondaryLine != 5 {
+		t.Errorf("secondary marker line should be 5 (the private_key line), got %d", secondaryLine)
+	}
+}
+
+// TestGCPServiceAccountRuleIgnoresTypeOnly asserts the type marker alone (a
+// common documentation snippet) does not trigger a finding.
+func TestGCPServiceAccountRuleIgnoresTypeOnly(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "docs.json", Type: source.FileTypeText},
+		Source: `{"type": "service_account", "project_id": "demo"}` + "\n",
+	}
+	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected no findings on type marker alone, got %#v", got)
+	}
+}
+
+// TestGCPServiceAccountRuleIgnoresPrivateKeyOnly asserts a PEM private key
+// without the service-account type marker does not trigger a GCP finding.
+// (sensitive-data.private-key will still fire on this input — tested elsewhere.)
+func TestGCPServiceAccountRuleIgnoresPrivateKeyOnly(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "key.pem", Type: source.FileTypeText},
+		Source: "-----BEGIN PRIVATE KEY-----\nMIIE...END\n-----END PRIVATE KEY-----\n",
+	}
+	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected no findings on PEM key alone, got %#v", got)
+	}
+}
+
+// TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers asserts both markers
+// inside Go comments do not trigger a finding.
+func TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers(t *testing.T) {
+	cases := map[string]string{
+		"line comment":  "// Example: \"type\": \"service_account\"\n// -----BEGIN PRIVATE KEY-----\n",
+		"block comment": "/*\n  \"type\": \"service_account\"\n  -----BEGIN PRIVATE KEY-----\n*/\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "doc.go", Type: source.FileTypeGo},
+				Source: src,
+			}
+			if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("expected no findings on comment-only source, got %#v", got)
+			}
+		})
+	}
+}
+
+// TestGCPServiceAccountRuleHonorsNoSecAnnotation asserts a #nosec annotation
+// on the type marker line silences the finding, mirroring the suppression
+// contract of the other sensitive-data.* rules.
+func TestGCPServiceAccountRuleHonorsNoSecAnnotation(t *testing.T) {
+	src := `{
+  "type": "service_account", // #nosec G101 -- fixture
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
+}`
+	unit := parser.Unit{
+		File:   source.File{Path: "fixture.json", Type: source.FileTypeText},
+		Source: src,
+	}
+	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected #nosec to suppress finding, got %#v", got)
+	}
+}
+
 func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		PrivateKeyRule{}.Definition(),
 		AWSAccessKeyRule{}.Definition(),
 		JWTTokenRule{}.Definition(),
 		ConnectionStringRule{}.Definition(),
+		GitHubTokenRule{}.Definition(),
+		SlackTokenRule{}.Definition(),
+		StripeLiveKeyRule{}.Definition(),
+		GoogleAPIKeyRule{}.Definition(),
+		AnthropicAPIKeyRule{}.Definition(),
+		GCPServiceAccountRule{}.Definition(),
 	} {
 		if !definition.DefaultEnabled {
 			t.Errorf("rule %q must be default-enabled", definition.ID)
@@ -90,6 +283,12 @@ func TestSensitiveDetectorsAreCleanOnInnocuousInput(t *testing.T) {
 		AWSAccessKeyRule{},
 		JWTTokenRule{},
 		ConnectionStringRule{},
+		GitHubTokenRule{},
+		SlackTokenRule{},
+		StripeLiveKeyRule{},
+		GoogleAPIKeyRule{},
+		AnthropicAPIKeyRule{},
+		GCPServiceAccountRule{},
 	} {
 		if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {
 			t.Errorf("rule %q produced findings on clean input: %#v", rule.Definition().ID, got)

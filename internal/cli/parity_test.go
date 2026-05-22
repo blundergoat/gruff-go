@@ -113,6 +113,10 @@ func TestSummaryCommandText(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"gruff-go summary",
+		"scanned: . (in ",
+		"files: ",
+		" analysed, ",
+		" skipped",
 		"score:",
 		"findings:",
 		"severity:",
@@ -120,6 +124,25 @@ func TestSummaryCommandText(t *testing.T) {
 		if !strings.Contains(out.String(), fragment) {
 			t.Errorf("summary missing %q; got: %s", fragment, out.String())
 		}
+	}
+}
+
+// TestSummaryCommandDefaultPath verifies running summary with no path argument
+// scans the current working directory.
+func TestSummaryCommandDefaultPath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	t.Chdir(root)
+
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"summary"}, &out, &errBuf); code != 0 {
+		t.Fatalf("summary (no path) exit = %d, stderr = %s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "scanned: . (in ") {
+		t.Errorf("summary (no path) missing default-path line; got: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "files: 1 analysed") {
+		t.Errorf("summary (no path) should report 1 file analysed; got: %s", out.String())
 	}
 }
 

@@ -7,6 +7,18 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 ### Added
 
 - **CI dogfood gate.** `.github/workflows/gruff-go.yml` runs on every pull request and push to `main`: builds the binary and runs `./bin/gruff-go analyse .`. Non-zero exit (findings at or above `--min-severity medium`) fails the build, formalising the "grade A with zero findings on `main`" convention previously enforced only by `CLAUDE.md`.
+- **Sensitive-data rule pack expansion (5 new vendor-prefixed detectors).** Five high-precision, default-enabled detectors join the `sensitive-data.*` family:
+  - `sensitive-data.github-token` — GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). Severity `high`, confidence `high`.
+  - `sensitive-data.slack-token` — Slack bot / user / app / refresh tokens (`xox[bpar]-…`). Severity `high`, confidence `high`.
+  - `sensitive-data.stripe-key` — Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). Severity `high`, confidence `high`. Test-mode keys are intentionally not flagged.
+  - `sensitive-data.google-api-key` — Google API keys (`AIza` + 35 base64url chars). Severity `high`, confidence `high`.
+  - `sensitive-data.anthropic-api-key` — Anthropic API keys (`sk-ant-…`). Severity `high`, confidence `high`.
+  - All five honor the existing `#nosec` / `//nolint:gosec` / `//nolint:all` suppression annotations and Go comment-skip discipline. Findings render with redacted previews; no raw token text reaches any output format.
+- **`sensitive-data.gcp-service-account` (GCP service-account JSON key shape).** Critical-severity detector that fires only when a file contains both a `"type": "service_account"` marker and a PEM private-key header. Neither marker alone triggers a finding — the signal is the co-occurrence, matching the documented shape of a GCP service-account key file. Coexists with `sensitive-data.private-key`: a real key file produces two independent `critical` findings (one for each rule's evidence), consistent with ADR-007's "rules fire on their own evidence" stance. The catalogue grows from 30 to 36 rules.
+
+### Changed
+
+- **`summary` text output surfaces what was scanned.** Two new lines after the header — `scanned: <inputs> (in <workingDirectory>)` and `files: N analysed, M skipped` — make it obvious which paths the run covered and the file volume behind the score. JSON output is unchanged (the same fields already live in `run.inputs`, `run.workingDirectory`, `summary.filesScanned`, `summary.filesSkipped`).
 
 ## [0.1.0] - 2026-05-20
 

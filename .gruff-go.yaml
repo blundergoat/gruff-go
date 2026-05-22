@@ -105,12 +105,28 @@ rules:
   security.shell-command:
     enabled: true
     severity: error
+  # Anthropic API keys grant model access billed against the owning org.
+  sensitive-data.anthropic-api-key:
+    enabled: true
+    severity: error
   # AWS access key IDs in source can expose cloud credentials.
   sensitive-data.aws-access-key:
     enabled: true
     severity: error
   # Connection strings with embedded passwords leak direct service access.
   sensitive-data.connection-string:
+    enabled: true
+    severity: error
+  # GCP service-account JSON key files leak full impersonation rights.
+  sensitive-data.gcp-service-account:
+    enabled: true
+    severity: critical
+  # GitHub PAT / OAuth / user / server / refresh tokens leak repo and org access.
+  sensitive-data.github-token:
+    enabled: true
+    severity: error
+  # Google API keys grant access to GCP services billed against the owning project.
+  sensitive-data.google-api-key:
     enabled: true
     severity: error
   # JWT-shaped literals in source can expose signed tokens or test data copied from production.
@@ -123,6 +139,14 @@ rules:
     severity: critical
   # Secret-like assignments catch broad API key, token, and password patterns.
   sensitive-data.secret-pattern:
+    enabled: true
+    severity: error
+  # Slack bot / user / app / refresh tokens leak workspace access.
+  sensitive-data.slack-token:
+    enabled: true
+    severity: error
+  # Stripe live secret / publishable / restricted keys move real money.
+  sensitive-data.stripe-key:
     enabled: true
     severity: error
   # Very large files slow navigation and usually mix responsibilities.

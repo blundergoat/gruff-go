@@ -17,11 +17,17 @@ naming.package-stutter	naming	low	parser	Package stutter
 naming.package-underscore	naming	low	parser	Package name contains underscore
 naming.receiver-consistency	naming	low	parser	Receiver consistency
 security.shell-command	security	medium	parser	Shell command execution
+sensitive-data.anthropic-api-key	sensitive-data	high	parser	Anthropic API key literal
 sensitive-data.aws-access-key	sensitive-data	high	parser	AWS access key id
 sensitive-data.connection-string	sensitive-data	high	parser	Connection string with embedded password
+sensitive-data.gcp-service-account	sensitive-data	critical	parser	GCP service-account JSON key
+sensitive-data.github-token	sensitive-data	high	parser	GitHub token literal
+sensitive-data.google-api-key	sensitive-data	high	parser	Google API key literal
 sensitive-data.jwt-token	sensitive-data	high	parser	JWT token literal
 sensitive-data.private-key	sensitive-data	critical	parser	Embedded private key
 sensitive-data.secret-pattern	sensitive-data	high	parser	Secret-like literal
+sensitive-data.slack-token	sensitive-data	high	parser	Slack token literal
+sensitive-data.stripe-key	sensitive-data	high	parser	Stripe live key literal
 size.file-length	size	medium	parser	File length
 size.function-length	size	medium	parser	Function length
 size.parameter-count	size	low	parser	Parameter count
