@@ -134,10 +134,15 @@ func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
 	}
+	execPackages := packageImportNames(unit.AST, "os/exec", "exec")
 	findings := []finding.Finding{}
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !isExecCommandCall(call) || !usesShellCommand(call) {
+		if !ok {
+			return true
+		}
+		shellArgOffset, isExecCommand := execCommandShellArgOffset(call, execPackages)
+		if !isExecCommand || !usesShellCommand(call, shellArgOffset) {
 			return true
 		}
 		position := unit.FileSet.Position(call.Pos())
@@ -335,40 +340,90 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	return found
 }
 
-// isExecCommandCall reports whether the call expression is exec.Command(...).
-func isExecCommandCall(call *ast.CallExpr) bool {
+// execCommandShellArgOffset reports whether call invokes os/exec Command or
+// CommandContext and returns the argument offset where the executable appears.
+func execCommandShellArgOffset(call *ast.CallExpr, execPackages map[string]bool) (int, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "Command" {
-		return false
+	if !ok {
+		return 0, false
 	}
 	receiver, ok := selector.X.(*ast.Ident)
-	return ok && receiver.Name == "exec"
+	if !ok || !execPackages[receiver.Name] {
+		return 0, false
+	}
+	switch selector.Sel.Name {
+	case "Command":
+		return 0, true
+	case "CommandContext":
+		return 1, true
+	default:
+		return 0, false
+	}
 }
 
 // usesShellCommand reports whether an exec.Command call invokes a shell interpreter.
-func usesShellCommand(call *ast.CallExpr) bool {
-	if len(call.Args) < 2 {
+func usesShellCommand(call *ast.CallExpr, shellArgOffset int) bool {
+	if len(call.Args) <= shellArgOffset+1 {
 		return false
 	}
-	shell, ok := stringLiteral(call.Args[0])
+	shell, ok := stringLiteral(call.Args[shellArgOffset])
 	if !ok || !isShellInterpreter(shell) {
 		return false
 	}
-	flag, ok := stringLiteral(call.Args[1])
+	flag, ok := stringLiteral(call.Args[shellArgOffset+1])
 	if !ok {
 		return false
 	}
-	return flag == "-c" || flag == "/C"
+	return isShellCommandFlag(flag)
 }
 
 // isShellInterpreter reports whether a string names a known shell interpreter binary.
 func isShellInterpreter(value string) bool {
-	switch value {
-	case "sh", "bash", "zsh", "cmd", "cmd.exe", "powershell", "pwsh":
+	normalized := strings.ReplaceAll(value, "\\", "/")
+	name := strings.ToLower(filepath.Base(normalized))
+	switch name {
+	case "sh", "bash", "zsh", "cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "pwsh.exe":
 		return true
 	default:
 		return false
 	}
+}
+
+// isShellCommandFlag reports whether a shell flag consumes the following
+// argument as command text rather than a direct executable argument.
+func isShellCommandFlag(value string) bool {
+	switch strings.ToLower(value) {
+	case "-c", "-lc", "/c", "-command":
+		return true
+	default:
+		return false
+	}
+}
+
+// packageImportNames returns the local identifiers that import a package path,
+// excluding blank and dot imports because selector-based rules cannot use them.
+func packageImportNames(file *ast.File, importPath string, defaultName string) map[string]bool {
+	names := map[string]bool{}
+	for _, imported := range file.Imports {
+		if imported.Path == nil {
+			continue
+		}
+		path, err := strconv.Unquote(imported.Path.Value)
+		if err != nil || path != importPath {
+			continue
+		}
+		if imported.Name == nil {
+			names[defaultName] = true
+			continue
+		}
+		switch imported.Name.Name {
+		case ".", "_":
+			continue
+		default:
+			names[imported.Name.Name] = true
+		}
+	}
+	return names
 }
 
 // isTestingSkipCall reports whether the call is a Skip variant invoked on a

@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **36 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **37 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -33,6 +33,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
+| [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | — | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
 | [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | high | parser | — | Anthropic API key literals (`sk-ant-…`). |
 | [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | — | AWS access key id (AKIA…) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
@@ -472,9 +473,24 @@ rules:
 - **Capability:** parser
 - **Tags:** `security`
 
-Flags `exec.Command` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, etc.) with a command string argument. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
+Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe` without flagging direct executable calls such as `exec.Command("git", "status")`. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
 
 **Remediation.** Call the target executable directly with `exec.Command("ls", args...)` and pass arguments as separate parameters rather than interpolating them into a shell string.
+
+### `security.tls-insecure-config`
+
+- **Pillar:** security
+- **Default severity:** medium
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `security`, `tls`
+
+Flags `tls.Config` composite literals that explicitly disable certificate verification with `InsecureSkipVerify: true` or set `MinVersion` to obsolete protocol constants: `tls.VersionSSL30`, `tls.VersionTLS10`, or `tls.VersionTLS11`. The rule intentionally does not flag an absent `MinVersion`; that is a hardening preference rather than concrete parser-only vulnerability evidence.
+
+Each finding's metadata carries the unsafe `field` and `value`.
+
+**Remediation.** Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.
 
 ### `sensitive-data.anthropic-api-key`
 

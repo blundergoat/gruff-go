@@ -105,6 +105,10 @@ rules:
   security.shell-command:
     enabled: true
     severity: error
+  # TLS configs that disable verification or allow obsolete protocols expose traffic.
+  security.tls-insecure-config:
+    enabled: true
+    severity: warning
   # Anthropic API keys grant model access billed against the owning org.
   sensitive-data.anthropic-api-key:
     enabled: true

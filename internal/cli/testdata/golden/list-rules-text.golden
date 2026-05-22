@@ -17,6 +17,7 @@ naming.package-stutter	naming	low	parser	Package stutter
 naming.package-underscore	naming	low	parser	Package name contains underscore
 naming.receiver-consistency	naming	low	parser	Receiver consistency
 security.shell-command	security	medium	parser	Shell command execution
+security.tls-insecure-config	security	medium	parser	TLS insecure config
 sensitive-data.anthropic-api-key	sensitive-data	high	parser	Anthropic API key literal
 sensitive-data.aws-access-key	sensitive-data	high	parser	AWS access key id
 sensitive-data.connection-string	sensitive-data	high	parser	Connection string with embedded password

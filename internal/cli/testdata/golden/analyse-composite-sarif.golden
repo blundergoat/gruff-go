@@ -637,6 +637,33 @@
               }
             },
             {
+              "id": "security.tls-insecure-config",
+              "name": "TLS insecure config",
+              "shortDescription": {
+                "text": "TLS insecure config"
+              },
+              "fullDescription": {
+                "text": "Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions."
+              },
+              "help": {
+                "text": "Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security",
+                  "tls"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "sensitive-data.anthropic-api-key",
               "name": "Anthropic API key literal",
               "shortDescription": {
@@ -1245,7 +1272,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 31,
+          "ruleIndex": 32,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"
