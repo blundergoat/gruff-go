@@ -608,6 +608,60 @@
               }
             },
             {
+              "id": "security.archive-path-traversal",
+              "name": "Archive path traversal",
+              "shortDescription": {
+                "text": "Archive path traversal"
+              },
+              "fullDescription": {
+                "text": "Flags archive extraction paths built from entry names without an obvious containment check."
+              },
+              "help": {
+                "text": "Clean the joined path and verify it stays within the extraction root before creating files."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "archive",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.insecure-random-secret",
+              "name": "Insecure random secret",
+              "shortDescription": {
+                "text": "Insecure random secret"
+              },
+              "fullDescription": {
+                "text": "Flags math/rand use when the result is assigned to or returned from token, nonce, session, password, key, or other secret-looking contexts."
+              },
+              "help": {
+                "text": "Use crypto/rand for security-sensitive random values and keep math/rand for sampling, tests, and simulations."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "random",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.shell-command",
               "name": "Shell command execution",
               "shortDescription": {
@@ -637,6 +691,33 @@
               }
             },
             {
+              "id": "security.sql-string-query",
+              "name": "SQL string query construction",
+              "shortDescription": {
+                "text": "SQL string query construction"
+              },
+              "fullDescription": {
+                "text": "Flags SQL execution calls whose query argument is constructed with string formatting or concatenation."
+              },
+              "help": {
+                "text": "Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security",
+                  "sql"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.tls-insecure-config",
               "name": "TLS insecure config",
               "shortDescription": {
@@ -661,6 +742,33 @@
               },
               "defaultConfiguration": {
                 "level": "warning"
+              }
+            },
+            {
+              "id": "security.weak-crypto",
+              "name": "Weak crypto primitive",
+              "shortDescription": {
+                "text": "Weak crypto primitive"
+              },
+              "fullDescription": {
+                "text": "Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits."
+              },
+              "help": {
+                "text": "Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "crypto",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
               }
             },
             {
@@ -1272,7 +1380,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 32,
+          "ruleIndex": 36,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"

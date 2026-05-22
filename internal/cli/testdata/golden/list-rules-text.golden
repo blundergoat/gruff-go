@@ -16,8 +16,12 @@ naming.negated-boolean	naming	low	parser	Negated boolean
 naming.package-stutter	naming	low	parser	Package stutter
 naming.package-underscore	naming	low	parser	Package name contains underscore
 naming.receiver-consistency	naming	low	parser	Receiver consistency
+security.archive-path-traversal	security	low	parser	Archive path traversal
+security.insecure-random-secret	security	low	parser	Insecure random secret
 security.shell-command	security	medium	parser	Shell command execution
+security.sql-string-query	security	low	parser	SQL string query construction
 security.tls-insecure-config	security	medium	parser	TLS insecure config
+security.weak-crypto	security	low	parser	Weak crypto primitive
 sensitive-data.anthropic-api-key	sensitive-data	high	parser	Anthropic API key literal
 sensitive-data.aws-access-key	sensitive-data	high	parser	AWS access key id
 sensitive-data.connection-string	sensitive-data	high	parser	Connection string with embedded password

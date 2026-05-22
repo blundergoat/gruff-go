@@ -101,14 +101,30 @@ rules:
   naming.package-underscore:
     enabled: true
     severity: notice
+  # Archive entry names must stay contained inside the extraction root.
+  security.archive-path-traversal:
+    enabled: true
+    severity: notice
+  # math/rand must not generate tokens, nonces, sessions, keys, or other secrets.
+  security.insecure-random-secret:
+    enabled: true
+    severity: notice
   # Shell-routed exec.Command calls can turn string interpolation into command injection.
   security.shell-command:
     enabled: true
     severity: error
+  # Dynamically constructed SQL query strings are injection-prone.
+  security.sql-string-query:
+    enabled: true
+    severity: notice
   # TLS configs that disable verification or allow obsolete protocols expose traffic.
   security.tls-insecure-config:
     enabled: true
     severity: warning
+  # Weak crypto primitives need explicit security review before use.
+  security.weak-crypto:
+    enabled: true
+    severity: notice
   # Anthropic API keys grant model access billed against the owning org.
   sensitive-data.anthropic-api-key:
     enabled: true

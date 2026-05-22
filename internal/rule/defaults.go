@@ -35,6 +35,8 @@ func defaultUnitRules(config Config) []UnitRule {
 		TLSInsecureConfigRule{},
 		SQLStringQueryRule{},
 		ArchivePathTraversalRule{},
+		InsecureRandomSecretRule{},
+		WeakCryptoRule{},
 		SkippedTestRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
 		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},

@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **37 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **41 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -32,8 +32,12 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-stutter`](#namingpackage-stutter) | naming | low | parser | — | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
+| [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | low | parser | — | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | low | parser | — | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
+| [`security.sql-string-query`](#securitysql-string-query) | security | low | parser | — | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | — | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
+| [`security.weak-crypto`](#securityweak-crypto) | security | low | parser | — | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
 | [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | high | parser | — | Anthropic API key literals (`sk-ant-…`). |
 | [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | — | AWS access key id (AKIA…) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
@@ -464,6 +468,36 @@ rules:
 
 **Remediation.** Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form.
 
+### `security.archive-path-traversal`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `archive`, `security`
+
+Flags Go files that import `archive/zip` or `archive/tar` and join an archive entry `Name` into an extraction destination without obvious containment evidence. The parser-only check recognises direct entry names such as `file.Name`, locals assigned from `header.Name`, and `filepath.Join` / `path.Join` calls. It suppresses when the same function contains obvious containment or sanitisation evidence such as `filepath.Clean`, `filepath.Rel`, `strings.HasPrefix`, or helper names containing `safe`, `sanitize`, `within`, or `contains`.
+
+Each finding's metadata carries the archive entry expression and the missing check kind.
+
+**Remediation.** Clean the joined path and verify it remains inside the extraction root before creating files.
+
+### `security.insecure-random-secret`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `random`, `security`
+
+Flags Go files that import `math/rand` and use package-level random APIs in secret-looking contexts such as token, nonce, session, password, key, CSRF, salt, OTP, or OAuth state generation. The parser-only check looks at the enclosing function name, assignment target, and call arguments, so ordinary sampling, shuffling, simulation, benchmark, and test-randomness names are ignored unless the surrounding symbol clearly carries a production-secret term. `crypto/rand` is not flagged.
+
+Each finding's metadata carries the random API and context word.
+
+**Remediation.** Use `crypto/rand` for security-sensitive random values and keep `math/rand` for sampling, tests, and simulations.
+
 ### `security.shell-command`
 
 - **Pillar:** security (secondary: sensitive-data)
@@ -476,6 +510,21 @@ rules:
 Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe` without flagging direct executable calls such as `exec.Command("git", "status")`. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
 
 **Remediation.** Call the target executable directly with `exec.Command("ls", args...)` and pass arguments as separate parameters rather than interpolating them into a shell string.
+
+### `security.sql-string-query`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `security`, `sql`
+
+Flags SQL execution calls (`Query`, `QueryRow`, `Exec` and `*Context` forms) whose query argument is built with `fmt.Sprintf`, string concatenation, or a same-function variable initialized from those forms. The constructed expression must contain SQL statement keyword evidence, so non-SQL `Exec` calls and literal parameterized queries are ignored. The rule handles both standard `database/sql` argument positions and pgx-style calls where a context value appears before the query.
+
+Each finding's metadata carries the call name and construction kind.
+
+**Remediation.** Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text.
 
 ### `security.tls-insecure-config`
 
@@ -491,6 +540,21 @@ Flags `tls.Config` composite literals that explicitly disable certificate verifi
 Each finding's metadata carries the unsafe `field` and `value`.
 
 **Remediation.** Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.
+
+### `security.weak-crypto`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `crypto`, `security`
+
+Flags weak cryptographic primitives when the parser-only evidence is concrete: `crypto/md5` or `crypto/sha1` calls in password, token, signature, key, session, CSRF, or other security-looking contexts; direct DES, 3DES, or RC4 cipher construction; and `rsa.GenerateKey(..., bits)` with a literal key size below 2048. Plain checksum-style MD5/SHA1 use is ignored unless the surrounding function, target, comment, or call argument carries a security context word.
+
+Each finding's metadata carries the primitive and reason.
+
+**Remediation.** Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits.
 
 ### `sensitive-data.anthropic-api-key`
 
