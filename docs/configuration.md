@@ -196,4 +196,4 @@ Any of these failures emits a `config:` diagnostic and exits the scan with code 
 
 ## Where defaults live
 
-The default rule pack, default thresholds, default severities, and the built-in ignore list are all sourced from `internal/rule/builtin.go` and `internal/source/source.go`. Run `gruff-go list-rules --format json` to inspect the resolved registry, including any overrides applied by your config.
+The default rule pack, default thresholds, and default severities live under `internal/rule/`; the built-in discovery ignore list lives under `internal/source/`. Run `gruff-go list-rules --format json` to inspect the resolved registry, including any overrides applied by your config.

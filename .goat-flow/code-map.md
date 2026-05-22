@@ -8,7 +8,7 @@
 - `SECURITY.md` = Vulnerability reporting channel, supported versions, in-scope/out-of-scope items.
 - `LICENSE` = MIT license text.
 - `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0`.
-- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 30-rule default-enabled registry.
+- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 41-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
 - `scripts/bump-version.sh` = Updates every in-tree version literal and regenerates CLI golden snapshots; sanity-sweeps for stale references.
@@ -86,7 +86,7 @@
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, gitignore-respecting filter (ADR-004/ADR-005), and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
-- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 30-rule default-enabled catalogue (ADR-007).
+- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 41-rule catalogue (40 default-enabled; ADR-007).
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
 - `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.
@@ -95,4 +95,5 @@
 - `internal/dashboard/` = Local-only dashboard HTTP server, request handling, scan option mapping, and shutdown behavior.
 - `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
 - `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring with score-neutral `design.*` annotations and per-pillar coverage labelling.
-- No CI workflow, deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package publication surface exists yet — `go install ...@v0.1.0` becomes the install path once the tag is pushed.
+- `.github/workflows/gruff-go.yml` = GitHub Actions dogfood gate that builds `bin/gruff-go` and runs `./bin/gruff-go analyse .` on PRs and pushes to `main`.
+- No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package publication surface exists yet — `go install ...@v0.1.0` becomes the install path once the tag is pushed.

@@ -4,7 +4,7 @@ An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scor
 
 ## Status
 
-`v0.1.0` is the first release line. The binary reports its version as `0.1.0`. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
+`v0.1.0` is the first release line. This checkout reports its binary version as `0.1.0` and is being prepared as the 0.1 release candidate. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Or use `go run` without installing:
 go run ./cmd/gruff-go analyse .
 ```
 
-For a tagged install:
+For a tagged install after the release tag is pushed:
 
 ```bash
 go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
@@ -145,9 +145,27 @@ The schema, every option, and validation rules are documented in [`docs/configur
 
 ## Rule catalog
 
-`gruff-go` v0.1 ships **30 rules** across **9 pillars**. The built-in pack enables 29 rules by default; `docs.config-field-comment` is opt-in for projects that want exported struct fields documented. Disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
+The current checkout contains **41 rules** across **9 pillars**. The built-in pack enables 40 rules by default; `docs.config-field-comment` is the single opt-in rule for projects that want exported struct fields documented. Disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
+
+Current built-in rule distribution:
+
+| Pillar | Rules |
+|--------|-------|
+| complexity | 2 |
+| dead-code | 1 |
+| design | 2 |
+| documentation | 4 |
+| naming | 9 |
+| security | 6 |
+| sensitive-data | 11 |
+| size | 3 |
+| test-quality | 3 |
 
 See [`docs/rules.md`](docs/rules.md) for the full list with severities, thresholds, and remediation guidance.
+
+## Release calibration
+
+The release gate is `make check` plus a dogfood scan (`gruff-go analyse .`) that must return grade A with zero findings on this repository. Rule precision is also calibrated against a separate Go service corpus so dogfood-only blind spots show up before release. The latest external calibration removed noisy `security.*` and `naming.*` false positives while preserving size and genuinely assertionless-test findings; details are recorded in [`CHANGELOG.md`](CHANGELOG.md) and [ADR-008](.goat-flow/decisions/ADR-008-external-codebase-calibration-precision-fixes.md).
 
 ## Dashboard
 

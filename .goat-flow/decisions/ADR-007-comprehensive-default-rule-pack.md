@@ -24,7 +24,9 @@ Two thresholds also drifted from common Go-tool defaults:
 
 ## Decision
 
-Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override. The current catalogue ships 30 rules (`list-rules --format json` is the source of truth); the number grows as new rule families land.
+Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override. At decision time the catalogue shipped 30 rules (`list-rules --format json` is the source of truth); the number grows as new rule families land.
+
+2026-05-23 update: the policy still holds after the security and sensitive-data expansions. The live registry now has 41 rules, with 40 default-enabled and `docs.config-field-comment` remaining the single deliberate opt-in carve-out.
 
 Two threshold adjustments toward industry-mainstream values:
 

@@ -4,6 +4,8 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
+These entries are release-candidate changes after the initial `0.1.0` changelog cut. If no public `v0.1.0` tag has been pushed yet, fold them into the `0.1.0` release entry before tagging; otherwise assign them to the next `0.1.x` or `0.2.0` release according to the default-rule-pack compatibility decision.
+
 ### Added
 
 - **CI dogfood gate.** `.github/workflows/gruff-go.yml` runs on every pull request and push to `main`: builds the binary and runs `./bin/gruff-go analyse .`. Non-zero exit (findings at or above `--min-severity medium`) fails the build, formalising the "grade A with zero findings on `main`" convention previously enforced only by `CLAUDE.md`.
@@ -27,6 +29,7 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ### Changed
 
+- **Release-facing documentation alignment.** README and project-memory docs now describe the live 41-rule / 40-default-enabled registry, the single opt-in `docs.config-field-comment` carve-out, and the external calibration gate used to reduce false positives before release.
 - **External-codebase false-positive calibration.** `naming.package-underscore` now accepts idiomatic external test packages such as `package handlers_test` while still flagging real underscored package names; `size.function-length` discounts multiline table fixture literals inside `_test.go` functions so large case matrices do not look like executable logic; `test-quality.no-failure-path` recognises assertion-helper self-tests that pass a locally allocated `*testing.T/B/F` into `Assert*`/`Require*`/`Expect*`/`Must*`/`Check*` helpers. Calibration against `blundergoat-platform` keeps the production size and genuinely assertionless-test findings intact.
 - **Follow-up calibration on remaining false positives.** `security.sql-string-query` now accepts fixed-prefix integration-test schema creation (`CREATE SCHEMA ` + `fmt.Sprintf("test_*_%d", time.Now().UnixNano())`) in `_test.go` and `testutil` helpers while preserving arbitrary schema-variable findings. `naming.get-prefix` now limits default enforcement to receiver accessors again; package-level context helpers such as `GetLogger(ctx)` are no longer reported by the default rule.
 - **`security.shell-command` precision expansion.** The shell-routed command detector now covers `exec.CommandContext`, aliased `os/exec` imports, path-qualified shell binaries, and Windows shell command forms while preserving direct executable non-findings such as `exec.Command("git", "status")`.
@@ -90,7 +93,7 @@ First release. The binary reports `0.1.0`. Schemas `gruff-go.analysis.v0.1`, `gr
 - **Test-file size downranking.** Default `size.file-length` and `size.function-length` findings in `_test.go` files keep the same thresholds, messages, metadata, and fingerprints, but report as `low` severity / `medium` confidence under medium severity. Explicit non-medium config severity overrides still apply to test files.
 - `docs.package-comment` skips `_test.go`-only external test packages such as `package foo_test`, reducing documentation noise from black-box test packages while preserving production package-comment checks.
 - **Dashboard field rename: `Options.NoConfig` → `SkipConfig` and `Options.NoBaseline` → `SkipBaseline`** in `internal/dashboard` and `internal/report`, along with all internal references. **CLI flag names `--no-config` and `--no-baseline` are unchanged** (public surface), and URL hash parameter names `noConfig`/`noBaseline` are unchanged (deep-link compatibility). Only the internal Go field names moved to match the positive form recommended by `naming.negated-boolean`.
-- **Late release-candidate precision tuning.** Scanner hot paths avoid avoidable work in large trees; `sensitive-data.*` rules skip Go comments and honor `#nosec` / `//nolint:gosec` / `//nolint:all`; `sensitive-data.connection-string` skips obvious local dev/test placeholders; `test-quality.no-failure-path` recognises assertion helpers that receive the testing receiver; `test-quality.skipped-test` distinguishes environment guards from debt; `size.function-length` measures code-bearing lines and honors direct `//nolint:funlen`; `naming.get-prefix` also covers package-level `context.Context` accessors.
+- **Late release-candidate precision tuning.** Scanner hot paths avoid avoidable work in large trees; `sensitive-data.*` rules skip Go comments and honor `#nosec` / `//nolint:gosec` / `//nolint:all`; `sensitive-data.connection-string` skips obvious local dev/test placeholders; `test-quality.no-failure-path` recognises assertion helpers that receive the testing receiver; `test-quality.skipped-test` distinguishes environment guards from debt; `size.function-length` measures code-bearing lines and honors direct `//nolint:funlen`; `naming.get-prefix` focuses on receiver accessor methods after external calibration showed package-level context helpers are too conventional to report by default.
 - **`docs.comment-rubric` calibration.** `requireConstComments` and `requireVarComments` no longer fire on `*_test.go` files even when `ignoreTests` is false, and the built-in `minPackageCommentLines` default is `1`. Projects that configure `threshold: 2` keep the stricter two-line package-summary floor.
 
 ### Rule additions during v0.1 development
@@ -101,7 +104,7 @@ These rules joined the catalogue after the initial 21-rule pack and are included
 - **`docs.comment-rubric` option `minWordsBeyondSymbol`** — optional quality floor that requires comments to contribute a configured number of unique tokens beyond the symbol's own identifier tokens.
 - **`docs.config-field-comment`** — default-disabled documentation rule for exported struct fields inside configured `includePaths`, intended for user-facing configuration schema types.
 - **`naming.acronym-case`** — flags identifiers that spell Go initialisms (`Id`, `Http`, `Url`, `Json`, `Api`, `Xml`, …) with mixed casing. `allowlists.acceptedAbbreviations` suppresses project-specific terms; the rule-local `allow` list handles exact third-party or generated API names that must stay as-is.
-- **`naming.get-prefix`** — flags accessor-style receiver methods using a discouraged `Get` prefix (`r.GetName()`) and package-level context accessors such as `GetLogger(ctx)`.
+- **`naming.get-prefix`** — flags accessor-style receiver methods using a discouraged `Get` prefix (`r.GetName()`). Package-level helpers such as `GetLogger(ctx)` are intentionally excluded after external calibration.
 - **`naming.receiver-consistency`** — project-level rule that groups methods by receiver type across the scanned project, strips leading `*`, and flags methods using the minority receiver name or pointer/value form.
 - **`naming.negated-boolean`** — flags boolean identifiers whose names begin with negation prefixes (`No`, `Not`, `Disable`, `Disallow`, `Without`, `Suppress`) followed by an uppercase letter. Type-aware: only flags identifiers whose syntactic type is `bool`. Configurable `prefixes`, `allowList`, and `scope` (`exported` default, `locals`, `all`). The default `allowList` covers English words like `NoOp`, `Notify`, `NoCopy`.
 - **`naming.misspelling`** — flags identifiers, doc comments, and struct tags containing tokens from a conservative built-in dictionary of common programming misspellings (`recieve`, `seperate`, `lenght`, `occured`, `enviroment`, etc., ~40 entries). Tokens are extracted with camelCase / snake_case / non-letter splitting and matched exactly. Configurable `extra map[string]string` for project additions and `ignore []string` for proper nouns.
@@ -110,8 +113,8 @@ These rules joined the catalogue after the initial 21-rule pack and are included
 
 ### Known limitations
 
-- Calibration is single-corpus (this repository) plus fixtures. No second real Go corpus has been used to validate threshold defaults.
-- The analysis model is parser-only. Type-aware rules, external linter ingestion, trend storage, package publication, and CI release workflow remain deferred.
+- Calibration currently covers this repository, fixtures, and one external Go service corpus. Broader multi-corpus validation is still deferred.
+- The analysis model is parser-only. Type-aware rules, external linter ingestion, trend storage, package publication, and automated release publishing remain deferred.
 - Accessibility evidence for the HTML report and dashboard (Lighthouse, WCAG contrast, screen-reader walk, colour-blind sim) is pending human review.
 
 ### Engineering history
