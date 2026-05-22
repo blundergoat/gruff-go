@@ -331,6 +331,47 @@ func TestNonTestingAssertCallStillFires(t *testing.T) {
 	}
 }
 
+// TestNoFailurePathRuleAcceptsAssertionHelperSelfTests covers tests for local
+// assertion helpers, where the helper is intentionally called with a locally
+// allocated *testing.T instead of the outer test's receiver.
+func TestNoFailurePathRuleAcceptsAssertionHelperSelfTests(t *testing.T) {
+	unit := parseOne(t, "pkg/helpers_test.go", `package pkg
+
+import "testing"
+
+func AssertStatus(t *testing.T, got, want int) {}
+func AssertHeader(t *testing.T, name string) {}
+
+func TestAssertStatusPassesOnMatch(t *testing.T) {
+	mockT := &testing.T{}
+	AssertStatus(mockT, 200, 200)
+}
+
+func TestAssertHeaderPassesWithNew(t *testing.T) {
+	mockT := new(testing.T)
+	AssertHeader(mockT, "X-Request-ID")
+}
+
+func TestMockReceiverAloneStillFires(t *testing.T) {
+	mockT := &testing.T{}
+	_ = mockT
+}
+`)
+	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.Symbol] = true
+	}
+	for _, accepted := range []string{"TestAssertStatusPassesOnMatch", "TestAssertHeaderPassesWithNew"} {
+		if got[accepted] {
+			t.Errorf("%s should be accepted as an assertion-helper self-test", accepted)
+		}
+	}
+	if !got["TestMockReceiverAloneStillFires"] {
+		t.Fatalf("allocating a mock testing receiver alone should not count as a failure path; got %#v", findings)
+	}
+}
+
 // TestNoFailurePathRuleHandlesFuzzCallbackBodies confirms the rule does not
 // misfire on idiomatic fuzz tests, which put their assertions inside the
 // callback passed to f.Fuzz. The inner *testing.T parameter is the only handle

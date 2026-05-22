@@ -48,6 +48,9 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 		if unit.AST == nil || !strings.Contains(unit.AST.Name.Name, "_") {
 			continue
 		}
+		if isExternalTestPackageName(unit.AST.Name.Name, unit.File.Path) {
+			continue
+		}
 		line := 1
 		if unit.FileSet != nil {
 			line = unit.FileSet.Position(unit.AST.Name.Pos()).Line
@@ -69,6 +72,17 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 		})
 	}
 	return findings
+}
+
+// isExternalTestPackageName reports whether package name is the idiomatic
+// black-box test shape `foo_test`. The production package name part must still
+// be underscore-free; `bad_pkg_test` remains in scope for the rule.
+func isExternalTestPackageName(name, filePath string) bool {
+	if !strings.HasSuffix(filePath, "_test.go") || !strings.HasSuffix(name, "_test") {
+		return false
+	}
+	base := strings.TrimSuffix(name, "_test")
+	return base != "" && !strings.Contains(base, "_")
 }
 
 // EmptyBlockRule flags empty control-flow blocks that indicate unfinished or dead code.

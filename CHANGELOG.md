@@ -27,6 +27,7 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ### Changed
 
+- **External-codebase false-positive calibration.** `naming.package-underscore` now accepts idiomatic external test packages such as `package handlers_test` while still flagging real underscored package names; `size.function-length` discounts multiline table fixture literals inside `_test.go` functions so large case matrices do not look like executable logic; `test-quality.no-failure-path` recognises assertion-helper self-tests that pass a locally allocated `*testing.T/B/F` into `Assert*`/`Require*`/`Expect*`/`Must*`/`Check*` helpers. Calibration against `blundergoat-platform` keeps the production size and genuinely assertionless-test findings intact.
 - **`security.shell-command` precision expansion.** The shell-routed command detector now covers `exec.CommandContext`, aliased `os/exec` imports, path-qualified shell binaries, and Windows shell command forms while preserving direct executable non-findings such as `exec.Command("git", "status")`.
 - **`summary` text output surfaces what was scanned.** Two new lines after the header — `scanned: <inputs> (in <workingDirectory>)` and `files: N analysed, M skipped` — make it obvious which paths the run covered and the file volume behind the score. JSON output is unchanged (the same fields already live in `run.inputs`, `run.workingDirectory`, `summary.filesScanned`, `summary.filesSkipped`).
 

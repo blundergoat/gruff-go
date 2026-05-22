@@ -441,7 +441,7 @@ rules:
 - **Capability:** parser
 - **Tags:** `go-style`
 
-Flags Go package names that use underscores instead of short lowercase words (the Go convention favours `oauth2`, not `o_auth_2`).
+Flags Go package names that use underscores instead of short lowercase words (the Go convention favours `oauth2`, not `o_auth_2`). Idiomatic external test packages such as `package api_test` in `_test.go` files are exempt; package names like `bad_pkg_test` still fire because the production-name portion contains an underscore.
 
 **Remediation.** Rename the package to a short lowercase name without underscores. Use a package-relative import alias at the call sites if the change ripples wider than expected.
 
@@ -730,7 +730,7 @@ Flags Go files that exceed the configured line-count threshold. Long files frequ
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
+Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
 
 `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
 
@@ -773,7 +773,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 
 Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call — `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
 
-The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when the testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`. A `MustX()` call that does not receive `t`, `b`, or `f` is still treated as a non-assertion helper.
+The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
 

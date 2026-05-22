@@ -112,6 +112,75 @@ func wired() {
 	}
 }
 
+// TestFunctionLengthDiscountsTableDrivenTestFixtures verifies large case
+// matrices in table-driven tests are treated as fixture data instead of
+// executable test logic.
+func TestFunctionLengthDiscountsTableDrivenTestFixtures(t *testing.T) {
+	rule := FunctionLengthRule{MaxLines: 8}
+	unit := parseOne(t, "table_test.go", `package sample
+
+import "testing"
+
+func TestTable(t *testing.T) {
+	tests := []struct{ name string; want int }{
+		{name: "a", want: 1},
+		{name: "b", want: 2},
+		{name: "c", want: 3},
+		{name: "d", want: 4},
+		{name: "e", want: 5},
+		{name: "f", want: 6},
+		{name: "g", want: 7},
+		{name: "h", want: 8},
+		{name: "i", want: 9},
+	}
+	for _, tt := range tests {
+		if got := tt.want; got != tt.want {
+			t.Fatalf("%s: got %d", tt.name, got)
+		}
+	}
+}
+`)
+	if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("table fixture rows should not make the test look too long, got %#v", got)
+	}
+}
+
+// TestFunctionLengthStillFiresOnLongTestLogic keeps the table-fixture
+// discount from hiding tests whose executable logic is itself too long.
+func TestFunctionLengthStillFiresOnLongTestLogic(t *testing.T) {
+	rule := FunctionLengthRule{MaxLines: 5}
+	unit := parseOne(t, "logic_test.go", `package sample
+
+import "testing"
+
+func TestLongLogic(t *testing.T) {
+	tests := []struct{ name string }{
+		{name: "a"},
+		{name: "b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := 1
+			b := 2
+			c := 3
+			d := 4
+			e := 5
+			if got := a + b + c + d + e; got == 0 {
+				t.Fatal(got)
+			}
+		})
+	}
+}
+`)
+	got := rule.AnalyzeUnit(unit, Context{})
+	if len(got) != 1 || got[0].Symbol != "TestLongLogic" {
+		t.Fatalf("long executable test logic should still fire, got %#v", got)
+	}
+	if got[0].Metadata["tableFixtureLines"] == nil {
+		t.Fatalf("expected table fixture metadata on adjusted finding, got %#v", got[0].Metadata)
+	}
+}
+
 // TestSkippedTestRuleAcceptsConditionalSkips asserts the skipped-test rule no
 // longer fires on the common integration-test "guard on missing infrastructure"
 // pattern (`if !available { t.Skip(...) }`), but still flags unconditional

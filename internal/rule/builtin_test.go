@@ -373,6 +373,30 @@ func TestThirdPartySkipIgnored(t *testing.T) {
 	}
 }
 
+// TestPackageNameUnderscoreRuleSkipsExternalTestPackages confirms idiomatic
+// black-box test packages (`package foo_test`) are not treated as bad package
+// names, while genuinely underscored package names remain in scope.
+func TestPackageNameUnderscoreRuleSkipsExternalTestPackages(t *testing.T) {
+	externalTest := parseOne(t, "pkg/api_test.go", `package api_test
+`)
+	badExternalTest := parseOne(t, "bad/bad_pkg_test.go", `package bad_pkg_test
+`)
+	production := parseOne(t, "bad/bad_pkg.go", `package bad_pkg
+`)
+
+	findings := PackageNameUnderscoreRule{}.AnalyzeProject([]parser.Unit{externalTest, badExternalTest, production}, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.File] = true
+	}
+	if got["pkg/api_test.go"] {
+		t.Fatalf("external api_test package should not be flagged; got %#v", findings)
+	}
+	if !got["bad/bad_pkg_test.go"] || !got["bad/bad_pkg.go"] {
+		t.Fatalf("bad_pkg packages should still be flagged; got %#v", findings)
+	}
+}
+
 // TestExpansionRulesFireByDefault confirms expansion rules fire under Defaults() and can be disabled.
 func TestExpansionRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "empty.go", `// Package sample is a test package.

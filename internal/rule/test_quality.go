@@ -5,6 +5,7 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -136,6 +137,7 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
 	receivers := testingReceiverNames(fn, testingPackages)
 	collectNestedTestingReceivers(fn.Body, testingPackages, receivers)
+	collectTestingReceiverVariables(fn.Body, testingPackages, receivers)
 	if len(receivers) == 0 {
 		return false
 	}
@@ -204,6 +206,77 @@ func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool) bool {
 		return true
 	}
 	return false
+}
+
+// collectTestingReceiverVariables records local variables initialised as
+// *testing.T/B/F values. This keeps tests for assertion helper functions from
+// being reported just because they pass a locally allocated mock receiver
+// (`mockT := &testing.T{}`) instead of the outer test's `t`.
+func collectTestingReceiverVariables(body *ast.BlockStmt, testingPackages map[string]bool, receivers map[string]bool) {
+	if body == nil {
+		return
+	}
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch stmt := node.(type) {
+		case *ast.AssignStmt:
+			for i, rhs := range stmt.Rhs {
+				if i >= len(stmt.Lhs) || !isTestingReceiverAllocation(rhs, testingPackages) {
+					continue
+				}
+				if ident, ok := stmt.Lhs[i].(*ast.Ident); ok && ident.Name != "_" {
+					receivers[ident.Name] = true
+				}
+			}
+		case *ast.ValueSpec:
+			for i, value := range stmt.Values {
+				if i >= len(stmt.Names) || !isTestingReceiverAllocation(value, testingPackages) {
+					continue
+				}
+				name := stmt.Names[i]
+				if name.Name != "_" {
+					receivers[name.Name] = true
+				}
+			}
+		}
+		return true
+	})
+}
+
+// isTestingReceiverAllocation recognises local mock receiver construction
+// forms such as `&testing.T{}` and `new(testing.T)`.
+func isTestingReceiverAllocation(expr ast.Expr, testingPackages map[string]bool) bool {
+	switch value := expr.(type) {
+	case *ast.UnaryExpr:
+		if value.Op != token.AND {
+			return false
+		}
+		lit, ok := value.X.(*ast.CompositeLit)
+		return ok && isTestingTBFSelector(lit.Type, testingPackages)
+	case *ast.CallExpr:
+		ident, ok := value.Fun.(*ast.Ident)
+		return ok && ident.Name == "new" && len(value.Args) == 1 && isTestingTBFSelector(value.Args[0], testingPackages)
+	default:
+		return false
+	}
+}
+
+// isTestingTBFSelector reports whether expr names testing.T, testing.B, or
+// testing.F through an imported standard testing package selector.
+func isTestingTBFSelector(expr ast.Expr, testingPackages map[string]bool) bool {
+	selector, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	if !ok || !testingPackages[pkg.Name] {
+		return false
+	}
+	switch selector.Sel.Name {
+	case "T", "B", "F":
+		return true
+	default:
+		return false
+	}
 }
 
 // callPassesTestingReceiver reports whether any argument of call is a
