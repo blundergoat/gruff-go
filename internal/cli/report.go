@@ -14,7 +14,7 @@ import (
 )
 
 // runReport parses report flags, runs analysis, and writes the selected report format.
-func runReport(args []string, stdout, stderr io.Writer) int {
+func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	flags := flag.NewFlagSet("report", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "html", "report format: html or json")
@@ -47,7 +47,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
+	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stdout)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

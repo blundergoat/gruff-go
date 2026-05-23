@@ -24,9 +24,11 @@ const toolVersion = "0.1.0"
 func Main(args []string, stdout, stderr io.Writer) int {
 	args, ansiPref := extractAnsiFlags(args)
 	args, quiet := extractQuiet(args)
+	args, noInteraction := extractNoInteraction(args)
 	if quiet {
 		stdout = io.Discard
 	}
+	interactive := !noInteraction && !quiet
 	stdoutStyle := ansiStyler{enabled: ansiEnabled(stdout, ansiPref)}
 	stderrStyle := ansiStyler{enabled: ansiEnabled(stderr, ansiPref)}
 
@@ -42,17 +44,19 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "analyse", "analyze":
-		return runAnalyse(args[1:], stdout, stderr)
+		return runAnalyse(args[1:], stdout, stderr, interactive)
 	case "baseline":
 		return runBaseline(args[1:], stdout, stderr)
+	case "init":
+		return runInit(args[1:], stdout, stderr)
 	case "list-rules":
 		return runListRules(args[1:], stdout, stderr)
 	case "summary":
-		return runSummary(args[1:], stdout, stderr)
+		return runSummary(args[1:], stdout, stderr, interactive)
 	case "report":
-		return runReport(args[1:], stdout, stderr)
+		return runReport(args[1:], stdout, stderr, interactive)
 	case "dashboard":
-		return runDashboard(args[1:], stdout, stderr)
+		return runDashboard(args[1:], stdout, stderr, interactive)
 	case "list":
 		usage(stdout, stdoutStyle)
 		return 0
@@ -92,7 +96,73 @@ func isVersionFlag(arg string) bool {
 }
 
 // runAnalyse executes the analyse subcommand and renders the scan report.
-func runAnalyse(args []string, stdout, stderr io.Writer) int {
+func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
+	flags, values, ok := parseAnalyseFlags(args, stderr)
+	if !ok {
+		return 2
+	}
+	registry, ignorePaths, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stdout)
+	if err != nil {
+		fmt.Fprintf(stderr, "config: %v\n", err)
+		return 2
+	}
+	if values.generateBaselinePath != "" {
+		return writeBaselineFromScan(baselineScanOptions{
+			paths:          flags.Args(),
+			outPath:        values.generateBaselinePath,
+			registry:       registry,
+			ignorePaths:    ignorePaths,
+			includeIgnored: values.includeIgnored,
+		}, stdout, stderr)
+	}
+	displayFilter, err := parseDisplayFilter(values.includeRules, values.excludeRules, values.includePillars, values.excludePillars, registry.Definitions())
+	if err != nil {
+		fmt.Fprintf(stderr, "display filter: %v\n", err)
+		return 2
+	}
+	analysisReport, err := analysis.Analyze(analysis.Options{
+		Paths:          flags.Args(),
+		Format:         values.format,
+		FailOn:         values.failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: values.includeIgnored,
+		BaselinePath:   values.baselinePath,
+		DiffBase:       values.diffBase,
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)
+	if err := writeAnalysisReport(stdout, values.format, analysisReport, report.HTMLOptions{EditorLink: values.editorLink, Interactive: values.reportInteractive}); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	return analysisReport.Summary.ExitCode
+}
+
+// analyseFlagValues is the parsed analyse command state after validation.
+type analyseFlagValues struct {
+	format               string
+	failOn               finding.Severity
+	configPath           string
+	noConfig             bool
+	baselinePath         string
+	generateBaselinePath string
+	diffBase             string
+	includeRules         string
+	excludeRules         string
+	includePillars       string
+	excludePillars       string
+	editorLink           string
+	reportInteractive    bool
+	includeIgnored       bool
+}
+
+// parseAnalyseFlags parses and validates analyse flags, printing validation
+// errors to stderr in the same style as the legacy inline parser.
+func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
@@ -100,6 +170,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
+	generateBaselinePath := flags.String("generate-baseline", "", "write current findings to a baseline file and exit cleanly")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
 	includeRules := flags.String("include-rules", "", "comma-separated rule IDs to display")
 	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
@@ -109,51 +180,76 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	if err := flags.Parse(args); err != nil {
-		return 2
+		return flags, analyseFlagValues{}, false
 	}
 	if !supportedAnalysisFormat(*format) {
 		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
-		return 2
+		return flags, analyseFlagValues{}, false
 	}
 	if !supportedEditorLink(*editorLink) {
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
-		return 2
+		return flags, analyseFlagValues{}, false
 	}
 	failOn, err := finding.ParseSeverity(*minSeverity)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return 2
+		return flags, analyseFlagValues{}, false
 	}
-	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
-	if err != nil {
-		fmt.Fprintf(stderr, "config: %v\n", err)
-		return 2
+	values := analyseFlagValues{
+		format:               *format,
+		failOn:               failOn,
+		configPath:           *configPath,
+		noConfig:             *noConfig,
+		baselinePath:         *baselinePath,
+		generateBaselinePath: *generateBaselinePath,
+		diffBase:             *diffBase,
+		includeRules:         *includeRules,
+		excludeRules:         *excludeRules,
+		includePillars:       *includePillars,
+		excludePillars:       *excludePillars,
+		editorLink:           *editorLink,
+		reportInteractive:    *reportInteractive,
+		includeIgnored:       *includeIgnored,
 	}
-	displayFilter, err := parseDisplayFilter(*includeRules, *excludeRules, *includePillars, *excludePillars, registry.Definitions())
-	if err != nil {
-		fmt.Fprintf(stderr, "display filter: %v\n", err)
-		return 2
+	if values.generateBaselinePath != "" {
+		if err := validateGenerateBaselineFlags(generateBaselineFlagState{
+			baselinePath:   values.baselinePath,
+			diffBase:       values.diffBase,
+			includeRules:   values.includeRules,
+			excludeRules:   values.excludeRules,
+			includePillars: values.includePillars,
+			excludePillars: values.excludePillars,
+		}); err != nil {
+			fmt.Fprintln(stderr, err)
+			return flags, analyseFlagValues{}, false
+		}
 	}
-	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          flags.Args(),
-		Format:         *format,
-		FailOn:         failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: *includeIgnored,
-		BaselinePath:   *baselinePath,
-		DiffBase:       *diffBase,
-	})
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
+	return flags, values, true
+}
+
+// generateBaselineFlagState groups analyse flags that change finding scope.
+type generateBaselineFlagState struct {
+	baselinePath   string
+	diffBase       string
+	includeRules   string
+	excludeRules   string
+	includePillars string
+	excludePillars string
+}
+
+// validateGenerateBaselineFlags rejects combinations that would make the
+// generated baseline partial rather than a fresh snapshot of current findings.
+func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
+	switch {
+	case state.baselinePath != "":
+		return fmt.Errorf("--generate-baseline cannot be combined with --baseline")
+	case state.diffBase != "":
+		return fmt.Errorf("--generate-baseline cannot be combined with --diff-base")
+	case state.includeRules != "" || state.excludeRules != "" || state.includePillars != "" || state.excludePillars != "":
+		return fmt.Errorf("--generate-baseline cannot be combined with display filters")
+	default:
+		return nil
 	}
-	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)
-	if err := writeAnalysisReport(stdout, *format, analysisReport, report.HTMLOptions{EditorLink: *editorLink, Interactive: *reportInteractive}); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	return analysisReport.Summary.ExitCode
 }
 
 // writeAnalysisReport serialises the analysis report to writer in the chosen format.
@@ -194,13 +290,36 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
+	return writeBaselineFromScan(baselineScanOptions{
+		paths:          flags.Args(),
+		outPath:        *outPath,
+		registry:       registry,
+		ignorePaths:    ignorePaths,
+		includeIgnored: *includeIgnored,
+	}, stdout, stderr)
+}
+
+// baselineScanOptions groups the inputs shared by the baseline command and the
+// analyse-side baseline generator.
+type baselineScanOptions struct {
+	paths          []string
+	outPath        string
+	registry       rule.Registry
+	ignorePaths    []string
+	includeIgnored bool
+}
+
+// writeBaselineFromScan runs a full scan with no suppression or diff filtering,
+// then writes a baseline file from the current findings. The generated baseline
+// is a setup artifact, so current findings do not make this command fail.
+func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) int {
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          flags.Args(),
+		Paths:          opts.paths,
 		Format:         "json",
 		FailOn:         finding.SeverityCritical,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: *includeIgnored,
+		Registry:       opts.registry,
+		IgnorePaths:    opts.ignorePaths,
+		IncludeIgnored: opts.includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -212,11 +331,11 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if err := baseline.Write(*outPath, baseline.FromFindings(analysisReport.Findings)); err != nil {
+	if err := baseline.Write(opts.outPath, baseline.FromFindings(analysisReport.Findings)); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	fmt.Fprintf(stdout, "baseline: wrote %d findings to %s\n", len(analysisReport.Findings), *outPath)
+	fmt.Fprintf(stdout, "baseline: wrote %d findings to %s\n", len(analysisReport.Findings), opts.outPath)
 	return 0
 }
 

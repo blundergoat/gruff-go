@@ -14,7 +14,7 @@ import (
 )
 
 // runSummary parses summary flags, runs analysis, and prints the compact digest.
-func runSummary(args []string, stdout, stderr io.Writer) int {
+func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	flags := flag.NewFlagSet("summary", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text or json")
@@ -40,7 +40,7 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	started := time.Now()
-	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
+	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stdout)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

@@ -30,8 +30,6 @@ go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
 go tool gruff-go analyse .
 ```
 
-This is the closest equivalent to `composer require --dev` or an `npm` dev-dependency: the version is recorded in `go.mod`, and `go tool gruff-go` always resolves to the pinned build.
-
 ### As a global binary
 
 ```bash
@@ -79,6 +77,9 @@ gruff-go analyse --no-config .
 # Scan only what changed against main
 gruff-go analyse --diff-base origin/main .
 
+# Generate a fresh-start baseline for existing findings
+gruff-go analyse --generate-baseline gruff-baseline.json .
+
 # Apply a baseline (suppresses pre-existing findings)
 gruff-go analyse --baseline gruff-baseline.json .
 ```
@@ -93,6 +94,7 @@ gruff-go analyse --baseline gruff-baseline.json .
 | `summary` | Print a compact digest of a scan - composite score, per-pillar counts, top rules, top file offenders. |
 | `report` | Convenience wrapper around `analyse` for static HTML or JSON reports written to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a JSON baseline so subsequent runs can suppress them. |
+| `init` | Generate a default `.gruff-go.yaml` that mirrors the built-in rule defaults. |
 | `list-rules` | Print rule metadata (id, pillar, default severity, threshold defaults) as text or JSON. |
 | `list` | List the available commands (same output as `--help`). |
 | `dashboard` | Serve a local interactive dashboard (default `127.0.0.1:8765`) that re-runs scans on demand from a browser. |
@@ -107,6 +109,7 @@ gruff-go analyse --baseline gruff-baseline.json .
 | `-h`, `--help` | Display help. Use `gruff-go help <command>` for command-specific help. |
 | `-V`, `--version` | Display the gruff-go version. |
 | `-q`, `--quiet` | Only errors are displayed; non-error stdout output is suppressed. |
+| `-n`, `--no-interaction` | Skip the bootstrap prompt when no `.gruff-go.yaml` is found. |
 | `--ansi` | Force ANSI colour output (auto-detected when omitted). |
 | `--no-ansi` | Disable ANSI colour output. Honours `NO_COLOR` and `TERM=dumb`. |
 

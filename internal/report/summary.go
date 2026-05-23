@@ -38,6 +38,11 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if _, err := fmt.Fprint(writer, header); err != nil {
 		return err
 	}
+	if gitignored := countGitignored(report.Paths.Skipped); gitignored > 0 {
+		if _, err := fmt.Fprintf(writer, "  ignored by .gitignore: %d\n", gitignored); err != nil {
+			return err
+		}
+	}
 	if opts.ScanDuration > 0 {
 		if _, err := fmt.Fprintf(writer, "scan time: %s\n", summaryDuration(opts.ScanDuration)); err != nil {
 			return err
@@ -61,7 +66,24 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if err := writeTopOffenders(writer, score.TopOffender, top); err != nil {
 		return err
 	}
+	if err := writeFreshStartHint(writer, report); err != nil {
+		return err
+	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
+	return err
+}
+
+// writeFreshStartHint gives first-run users a concrete baseline workflow when
+// the summary found existing debt and no baseline was applied.
+func writeFreshStartHint(writer io.Writer, report analysis.Report) error {
+	if report.Summary.FindingsCount == 0 || report.Baseline.Applied {
+		return nil
+	}
+	inputs := summaryCommandInputs(report.Run.Inputs)
+	if _, err := fmt.Fprintf(writer, "fresh start: gruff-go analyse --generate-baseline gruff-baseline.json %s\n", inputs); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(writer, "then scan with: gruff-go analyse --baseline gruff-baseline.json %s\n", inputs)
 	return err
 }
 
@@ -203,6 +225,14 @@ func summaryInputs(inputs []string) string {
 		return "."
 	}
 	return strings.Join(inputs, ", ")
+}
+
+// summaryCommandInputs renders input paths as command arguments for copy/paste hints.
+func summaryCommandInputs(inputs []string) string {
+	if len(inputs) == 0 {
+		return "."
+	}
+	return strings.Join(inputs, " ")
 }
 
 // summaryWorkingDir renders the absolute working directory for the scanned line, returning "?" when the field is empty.
