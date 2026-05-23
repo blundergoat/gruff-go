@@ -36,9 +36,10 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 		return nil
 	}
 	findings := []finding.Finding{}
+	testingPackages := testingPackageNames(unit.AST)
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || !isTestFunction(fn) {
+		if !ok || !isRunnableTestFunction(fn, testingPackages) {
 			continue
 		}
 		if fn.Body == nil || len(fn.Body.List) == 0 {
@@ -79,15 +80,16 @@ func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 	}
 	findings := []finding.Finding{}
 	testingPackages := testingPackageNames(unit.AST)
+	assertionPackages := assertionPackageNames(unit.AST)
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || !isTestFunction(fn) {
+		if !ok || !isRunnableTestFunction(fn, testingPackages) {
 			continue
 		}
 		if fn.Body == nil || len(fn.Body.List) == 0 {
 			continue
 		}
-		if hasFailureCall(fn, testingPackages) {
+		if hasFailureCall(fn, testingPackages, assertionPackages) {
 			continue
 		}
 		position := unit.FileSet.Position(fn.Name.NamePos)
@@ -99,24 +101,6 @@ func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 		})
 	}
 	return findings
-}
-
-// isTestFunction returns true for top-level Test... / Benchmark... / Fuzz... functions.
-func isTestFunction(fn *ast.FuncDecl) bool {
-	if fn.Recv != nil || fn.Name == nil {
-		return false
-	}
-	name := fn.Name.Name
-	switch {
-	case strings.HasPrefix(name, "Test"):
-		return true
-	case strings.HasPrefix(name, "Benchmark"):
-		return true
-	case strings.HasPrefix(name, "Fuzz"):
-		return true
-	default:
-		return false
-	}
 }
 
 // hasFailureCall reports whether fn invokes either:
@@ -134,33 +118,12 @@ func isTestFunction(fn *ast.FuncDecl) bool {
 // literal — fuzz tests put their assertions inside `f.Fuzz(func(t *testing.T,
 // ...){ t.Fatal(...) })`, where the inner `t` is the only handle that calls
 // failure methods.
-func hasFailureCall(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
+func hasFailureCall(fn *ast.FuncDecl, testingPackages, assertionPackages map[string]bool) bool {
 	receivers := testingReceiverNames(fn, testingPackages)
-	collectNestedTestingReceivers(fn.Body, testingPackages, receivers)
-	collectTestingReceiverVariables(fn.Body, testingPackages, receivers)
 	if len(receivers) == 0 {
 		return false
 	}
-	found := false
-	ast.Inspect(fn.Body, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		if isReceiverFailureCall(call, receivers) {
-			found = true
-			return false
-		}
-		if isAssertionHelperCall(call, receivers) {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
+	return blockHasFailureCall(fn.Body, testingPackages, assertionPackages, receivers)
 }
 
 // isReceiverFailureCall reports whether the call is `<t>.<failing-method>(...)`
@@ -195,14 +158,14 @@ func isReceiverFailureCall(call *ast.CallExpr, receivers map[string]bool) bool {
 // unrelated `MustX` calls (`json.MustDecode`) and library calls that happen
 // to live in an `assert` package but do not take a `*testing.T` are not
 // mistaken for assertion helpers.
-func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool) bool {
+func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool, assertionPackages map[string]bool) bool {
 	if !callPassesTestingReceiver(call, receivers) {
 		return false
 	}
 	if hasAssertionHelperPrefix(callFunctionName(call)) {
 		return true
 	}
-	if hasAssertionLibrarySelector(call) {
+	if hasAssertionLibrarySelector(call, assertionPackages) {
 		return true
 	}
 	return false
@@ -217,6 +180,9 @@ func collectTestingReceiverVariables(body *ast.BlockStmt, testingPackages map[st
 		return
 	}
 	ast.Inspect(body, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
 		switch stmt := node.(type) {
 		case *ast.AssignStmt:
 			for i, rhs := range stmt.Rhs {
@@ -263,17 +229,20 @@ func isTestingReceiverAllocation(expr ast.Expr, testingPackages map[string]bool)
 // isTestingTBFSelector reports whether expr names testing.T, testing.B, or
 // testing.F through an imported standard testing package selector.
 func isTestingTBFSelector(expr ast.Expr, testingPackages map[string]bool) bool {
-	selector, ok := expr.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	pkg, ok := selector.X.(*ast.Ident)
-	if !ok || !testingPackages[pkg.Name] {
-		return false
-	}
-	switch selector.Sel.Name {
-	case "T", "B", "F":
-		return true
+	switch value := expr.(type) {
+	case *ast.SelectorExpr:
+		pkg, ok := value.X.(*ast.Ident)
+		if !ok || !testingPackages[pkg.Name] {
+			return false
+		}
+		_, ok = testingReceiverKind(value.Sel.Name)
+		return ok
+	case *ast.Ident:
+		if !testingPackages["."] {
+			return false
+		}
+		_, ok := testingReceiverKind(value.Name)
+		return ok
 	default:
 		return false
 	}
@@ -298,7 +267,7 @@ func callPassesTestingReceiver(call *ast.CallExpr, receivers map[string]bool) bo
 // `require.X(...)`, `expect.X(...)`, `must.X(...)`, or `check.X(...)`. These
 // cover testify and similar libraries where the assertion prefix lives on the
 // package qualifier, not the method name.
-func hasAssertionLibrarySelector(call *ast.CallExpr) bool {
+func hasAssertionLibrarySelector(call *ast.CallExpr, assertionPackages map[string]bool) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return false
@@ -307,11 +276,7 @@ func hasAssertionLibrarySelector(call *ast.CallExpr) bool {
 	if !ok {
 		return false
 	}
-	switch ident.Name {
-	case "assert", "require", "expect", "must", "check":
-		return true
-	}
-	return false
+	return assertionPackages[ident.Name]
 }
 
 // callFunctionName returns the bare identifier name of a call's function,
@@ -357,8 +322,10 @@ func testingPackageNames(file *ast.File) map[string]bool {
 			continue
 		}
 		switch imported.Name.Name {
-		case ".", "_":
+		case "_":
 			continue
+		case ".":
+			names["."] = true
 		default:
 			names[imported.Name.Name] = true
 		}
@@ -410,22 +377,6 @@ func collectTestingFieldNames(fields []*ast.Field, testingPackages map[string]bo
 
 // isTestingTBFType reports whether expr names *testing.T, *testing.B, or *testing.F.
 func isTestingTBFType(expr ast.Expr, testingPackages map[string]bool) bool {
-	pointer, ok := expr.(*ast.StarExpr)
-	if !ok {
-		return false
-	}
-	selector, ok := pointer.X.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	pkg, ok := selector.X.(*ast.Ident)
-	if !ok || !testingPackages[pkg.Name] {
-		return false
-	}
-	switch selector.Sel.Name {
-	case "T", "B", "F":
-		return true
-	default:
-		return false
-	}
+	_, ok := testingReceiverTypeName(expr, testingPackages)
+	return ok
 }

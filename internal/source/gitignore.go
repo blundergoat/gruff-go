@@ -62,14 +62,14 @@ func (m *Matcher) Match(rel string, isDir bool) (matched bool, source string) {
 
 // hasRulesInChain reports whether any .gitignore from root through dir exists
 // with usable rules. It still loads malformed files so ParseErrors can surface
-// them, but malformed rules do not force the slower matcher path.
+// them, while preserving any valid rules from the same file.
 func (m *Matcher) hasRulesInChain(dir string) bool {
 	if value, ok := m.ruleChainCache[dir]; ok {
 		return value
 	}
 	for _, ancestor := range dirChain(dir) {
 		file := m.load(ancestor)
-		if file != nil && file.err == nil && len(file.rules) > 0 {
+		if file != nil && len(file.rules) > 0 {
 			m.ruleChainCache[dir] = true
 			return true
 		}
@@ -112,7 +112,7 @@ func (m *Matcher) matchPath(rel string, isDir bool) (bool, string) {
 	source := ""
 	for _, dir := range chain {
 		file := m.load(dir)
-		if file == nil || file.err != nil {
+		if file == nil {
 			continue
 		}
 		rels := relPathFrom(dir, rel)
@@ -176,8 +176,7 @@ func parseIgnoreFile(dir, text string) *ignoreFile {
 		rule, err := parseIgnoreRule(line)
 		if err != nil {
 			file.err = err
-			file.rules = nil
-			return file
+			continue
 		}
 		file.rules = append(file.rules, rule)
 	}

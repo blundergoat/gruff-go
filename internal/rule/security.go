@@ -8,7 +8,6 @@ import (
 	"go/printer"
 	"go/token"
 	"regexp"
-	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -219,7 +218,7 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil || hasArchiveContainmentEvidence(fn.Body) {
+		if !ok || fn.Body == nil {
 			continue
 		}
 		archiveNameVars := collectArchiveNameVars(fn.Body)
@@ -233,6 +232,9 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			}
 			entryExpr, ok := archiveEntryNameArg(call.Args, archiveNameVars)
 			if !ok {
+				return true
+			}
+			if archiveJoinHasContainmentEvidence(fn.Body, call) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -406,33 +408,6 @@ func collectArchiveNameVars(body *ast.BlockStmt) map[string]ast.Expr {
 		return true
 	})
 	return vars
-}
-
-// hasArchiveContainmentEvidence recognises simple in-function containment checks for extracted paths.
-func hasArchiveContainmentEvidence(body *ast.BlockStmt) bool {
-	found := false
-	ast.Inspect(body, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		name := callName(call)
-		switch name {
-		case "Clean", "Rel", "HasPrefix", "Contains":
-			found = true
-			return false
-		}
-		lower := strings.ToLower(name)
-		if strings.Contains(lower, "safe") || strings.Contains(lower, "sanit") || strings.Contains(lower, "within") || strings.Contains(lower, "contain") {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
 }
 
 // isPathJoinCall reports whether call is path/filepath.Join or path.Join through an imported package name.

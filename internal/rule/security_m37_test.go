@@ -255,6 +255,29 @@ func extract(file *zip.File, dest string) {
 			want: 0,
 		},
 		{
+			name: "containment check does not suppress another archive join",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"archive/zip"
+	"path/filepath"
+	"strings"
+)
+
+func extract(safeFile *zip.File, unsafeFile *zip.File, dest string) {
+	safeTarget := filepath.Join(dest, safeFile.Name)
+	clean := filepath.Clean(safeTarget)
+	if !strings.HasPrefix(clean, filepath.Clean(dest)) {
+		return
+	}
+	unsafeTarget := filepath.Join(dest, unsafeFile.Name)
+	_ = unsafeTarget
+}
+`,
+			want: 1,
+		},
+		{
 			name: "non archive name",
 			code: `// Package sample is a test package.
 package sample

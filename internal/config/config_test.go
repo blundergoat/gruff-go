@@ -99,6 +99,50 @@ rules:
 	}
 }
 
+// TestParseMergesLegacyAndGruffShapeLists verifies gruff-family aliases extend
+// rather than replace legacy top-level list fields.
+func TestParseMergesLegacyAndGruffShapeLists(t *testing.T) {
+	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+select: [size.file-length]
+excludeRules: [complexity.cyclomatic]
+ignorePaths: ['legacy/**']
+acceptedAbbreviations: [HTTP]
+sensitiveData:
+  previewAllowlist: ['legacy-secrets/**']
+paths:
+  ignore:
+    - 'nested/**'
+allowlists:
+  acceptedAbbreviations:
+    - ID
+  secretPreviews:
+    - 'nested-secrets/**'
+selection:
+  rules:
+    - dead-code.empty-block
+  excludeRules:
+    - size.function-length
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(cfg.Select, ","), "dead-code.empty-block,size.file-length"; got != want {
+		t.Fatalf("select = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(cfg.ExcludeRules, ","), "complexity.cyclomatic,size.function-length"; got != want {
+		t.Fatalf("exclude rules = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(cfg.IgnorePaths, ","), "legacy/**,nested/**"; got != want {
+		t.Fatalf("ignore paths = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(cfg.AcceptedAbbreviations, ","), "HTTP,ID"; got != want {
+		t.Fatalf("accepted abbreviations = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(cfg.SensitiveData.PreviewAllowlist, ","), "legacy-secrets/**,nested-secrets/**"; got != want {
+		t.Fatalf("secret preview allowlist = %q, want %q", got, want)
+	}
+}
+
 // TestResolvePathLoadsOnlyGruffGoYAML asserts auto-discovery prefers .gruff-go.yaml.
 func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	root := t.TempDir()

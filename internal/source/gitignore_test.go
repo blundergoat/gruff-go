@@ -273,15 +273,23 @@ func TestMatcherEmptyFile(t *testing.T) {
 	}
 }
 
-// TestMatcherMalformedPatternSkipsFile verifies malformed .gitignore files report parse errors.
-func TestMatcherMalformedPatternSkipsFile(t *testing.T) {
+// TestMatcherMalformedPatternSkipsOnlyBadRule verifies valid rules survive a
+// malformed line, matching Git's line-local handling while still surfacing a
+// diagnostic for the bad pattern.
+func TestMatcherMalformedPatternSkipsOnlyBadRule(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
-		".gitignore": "*.log\n[bad\n",
+		".gitignore": "*.log\n[bad\n*.tmp\n",
 	})
 	m := NewMatcher(root)
 
-	if got, _ := m.Match("foo.log", false); got {
-		t.Fatalf("malformed .gitignore should be ignored wholesale; *.log must not apply")
+	if got, _ := m.Match("foo.log", false); !got {
+		t.Fatalf("valid rule before malformed pattern should still apply")
+	}
+	if got, _ := m.Match("scratch.tmp", false); !got {
+		t.Fatalf("valid rule after malformed pattern should still apply")
+	}
+	if got, _ := m.Match("main.go", false); got {
+		t.Fatalf("malformed pattern itself should not ignore unrelated files")
 	}
 	errs := m.ParseErrors()
 	if len(errs) != 1 || errs[0] != ".gitignore" {

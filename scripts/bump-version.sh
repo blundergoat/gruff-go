@@ -79,12 +79,18 @@ sed_inplace() {
   fi
 }
 
+escape_sed_ere() {
+  printf '%s' "$1" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g'
+}
+
+CURRENT_VERSION_PATTERN=$(escape_sed_ere "$CURRENT_VERSION")
+
 # Anchor each replacement to its surrounding context so we don't accidentally
 # touch an unrelated string that happens to match the old version.
-sed_inplace "$CLI_FILE"          "s|(const toolVersion = )\"${CURRENT_VERSION}\"|\\1\"${NEW_VERSION}\"|"
-sed_inplace "$REPORT_FILE"       "s|(Version:[[:space:]]+)\"${CURRENT_VERSION}\"|\\1\"${NEW_VERSION}\"|"
-sed_inplace "$MACHINE_TEST_FILE" "s|(SemanticVersion != )\"${CURRENT_VERSION}\"|\\1\"${NEW_VERSION}\"|"
-sed_inplace "$PKG_JSON"          "s|(\"version\":[[:space:]]+)\"${CURRENT_VERSION}\"|\\1\"${NEW_VERSION}\"|"
+sed_inplace "$CLI_FILE"          "s|(const toolVersion = )\"${CURRENT_VERSION_PATTERN}\"|\\1\"${NEW_VERSION}\"|"
+sed_inplace "$REPORT_FILE"       "s|(Version:[[:space:]]+)\"${CURRENT_VERSION_PATTERN}\"|\\1\"${NEW_VERSION}\"|"
+sed_inplace "$MACHINE_TEST_FILE" "s|(SemanticVersion != )\"${CURRENT_VERSION_PATTERN}\"|\\1\"${NEW_VERSION}\"|"
+sed_inplace "$PKG_JSON"          "s|(\"version\":[[:space:]]+)\"${CURRENT_VERSION_PATTERN}\"|\\1\"${NEW_VERSION}\"|"
 
 # Verify each anchor actually hit.
 for entry in \

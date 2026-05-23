@@ -37,7 +37,16 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 FAILURES=()
-START_TIME=$(date +%s%N)
+
+now_ns() {
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import time; print(time.time_ns())'
+        return
+    fi
+    printf '%s000000000\n' "$(date +%s)"
+}
+
+START_TIME=$(now_ns)
 
 rule() {
     printf '  %s\n' "${DIM}────────────────────────────────────────────${RESET}"
@@ -47,7 +56,7 @@ elapsed_since() {
     local started_at=$1
     local finished_at elapsed_ms seconds minutes remainder frac
 
-    finished_at=$(date +%s%N)
+    finished_at=$(now_ns)
     elapsed_ms=$(((finished_at - started_at) / 1000000))
 
     if ((elapsed_ms < 1000)); then
@@ -122,7 +131,7 @@ run_step() {
     local started_at output status elapsed
 
     step "$label"
-    started_at=$(date +%s%N)
+    started_at=$(now_ns)
     output=$("$@" 2>&1)
     status=$?
     elapsed=$(elapsed_since "$started_at")

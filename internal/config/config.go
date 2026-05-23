@@ -304,19 +304,19 @@ func copyThresholds(input map[string]float64) map[string]float64 {
 // Normalized folds legacy and gruff-family fields into canonical locations.
 func (cfg Config) Normalized() Config {
 	if len(cfg.Paths.Ignore) > 0 {
-		cfg.IgnorePaths = cfg.Paths.Ignore
+		cfg.IgnorePaths = mergeStringLists(cfg.IgnorePaths, cfg.Paths.Ignore)
 	}
 	if len(cfg.Allowlists.AcceptedAbbreviations) > 0 {
-		cfg.AcceptedAbbreviations = cfg.Allowlists.AcceptedAbbreviations
+		cfg.AcceptedAbbreviations = mergeStringLists(cfg.AcceptedAbbreviations, cfg.Allowlists.AcceptedAbbreviations)
 	}
 	if len(cfg.Allowlists.SecretPreviews) > 0 {
-		cfg.SensitiveData.PreviewAllowlist = cfg.Allowlists.SecretPreviews
+		cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)
 	}
 	if len(cfg.Selection.Rules) > 0 {
-		cfg.Select = cfg.Selection.Rules
+		cfg.Select = mergeStringLists(cfg.Select, cfg.Selection.Rules)
 	}
 	if len(cfg.Selection.ExcludeRules) > 0 {
-		cfg.ExcludeRules = cfg.Selection.ExcludeRules
+		cfg.ExcludeRules = mergeStringLists(cfg.ExcludeRules, cfg.Selection.ExcludeRules)
 	}
 	cfg.Select = sortedCopy(cfg.Select)
 	cfg.ExcludeRules = sortedCopy(cfg.ExcludeRules)
@@ -324,6 +324,21 @@ func (cfg Config) Normalized() Config {
 	cfg.AcceptedAbbreviations = sortedCopy(cfg.AcceptedAbbreviations)
 	cfg.SensitiveData.PreviewAllowlist = sortedCopy(cfg.SensitiveData.PreviewAllowlist)
 	return cfg
+}
+
+// mergeStringLists appends gruff-family aliases to their legacy top-level
+// counterparts before the deterministic sort step.
+func mergeStringLists(primary, alias []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range append(append([]string(nil), primary...), alias...) {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 // sortedCopy returns a deterministic copy of string-slice config values.

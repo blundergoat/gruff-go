@@ -52,6 +52,10 @@ ok()   { printf '%s%s%s\n' "$C_GRN" "$*" "$C_OFF" >&2; }
 warn() { printf '%s%s%s\n' "$C_YEL" "$*" "$C_OFF" >&2; }
 fail() { printf '%s%s%s\n' "$C_RED" "$*" "$C_OFF" >&2; exit 1; }
 
+now_ns() {
+  python3 -c 'import time; print(time.time_ns())'
+}
+
 # ---------- hyperfine bootstrap ----------
 HF_VERSION="v1.20.0"
 HF_TOOLS_DIR="$SCRIPT_DIR/.tools"
@@ -152,10 +156,10 @@ run_smoke() {
   local start_ns end_ns elapsed_ms summary_file
   summary_file=$(mktemp)
   trap 'rm -f "$summary_file"' RETURN
-  start_ns=$(date +%s%N)
+  start_ns=$(now_ns)
   # gruff-go discovers .gruff-go.yaml from cwd, so cd into the repo for realism.
   (cd "$REPO_ROOT" && "$BIN" analyse --format summary-json .) > "$summary_file"
-  end_ns=$(date +%s%N)
+  end_ns=$(now_ns)
   elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
 
   python3 - "$elapsed_ms" "$summary_file" <<'PY'
@@ -322,6 +326,18 @@ list_rules() {
   "$BIN" list-rules 2>/dev/null | awk -F'\t' '{print $1}'
 }
 
+timeout_command() {
+  if command -v timeout >/dev/null 2>&1; then
+    command -v timeout
+    return 0
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    command -v gtimeout
+    return 0
+  fi
+  return 1
+}
+
 write_single_rule_config() {
   # $1: output path; $2: rule id
   printf 'selection:\n  rules:\n    - %s\n' "$2" > "$1"
@@ -333,7 +349,6 @@ run_sweep() {
   ensure_corpus "$CORPUS_DIR/medium" "$MEDIUM_FILES"
   local timestamp; timestamp=$(date -u +%Y%m%dT%H%M%SZ)
   local sweep_out="$RESULTS_DIR/sweep-$timestamp.json"
-  local rows_json="["
   # Per-run stash file. The previous shared /tmp/gruff-sweep-stash.jsonl was
   # appended-to across runs, so an aborted sweep (or two concurrent runs)
   # poisoned the next aggregation with stale rows. Scope the file to this run
@@ -425,11 +440,16 @@ PY
   log "${C_DIM}-- pathological --${C_OFF}"
   local patho="$CORPUS_DIR/pathological"
   ensure_pathological "$patho"
+  local timeout_cmd; timeout_cmd=$(timeout_command || true)
   printf '\n%-20s  %12s  %12s\n' "case" "median_ms" "stddev_ms"
   printf '%s\n' "--------------------  ------------  ------------"
   for case_name in huge-single-file many-tiny-files deep-nesting; do
     local case_dir="$patho/$case_name"
-    if ! raw=$(timeout "$SWEEP_CELL_TIMEOUT" bash -c "
+    if [[ -z "$timeout_cmd" ]]; then
+      printf '%-20s  %12s  %12s\n' "$case_name" "SKIPPED" "no timeout"
+      continue
+    fi
+    if ! raw=$("$timeout_cmd" "$SWEEP_CELL_TIMEOUT" bash -c "
       '$HYPERFINE' -i --warmup 1 --min-runs 3 \
         --export-json '$RESULTS_DIR/raw-sweep-patho-$case_name.json' \
         --command-name 'patho-$case_name' \

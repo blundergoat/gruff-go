@@ -64,7 +64,15 @@ func load() int    { return 3 }
 func TestIdentifierQualityIgnoresTestFiles(t *testing.T) {
 	unit := parseOne(t, "pkg/file_test.go", `package pkg
 
-import "testing"
+	import (
+		"testing"
+
+		expect "github.com/onsi/gomega"
+		assert "github.com/stretchr/testify/assert"
+		require "github.com/stretchr/testify/require"
+		check "gotest.tools/v3/assert"
+		must "gotest.tools/v3/assert/cmp"
+	)
 
 func TestSomething(t *testing.T) {
 	data := 1
@@ -286,7 +294,15 @@ func TestUnrelatedHelper(t *testing.T) {
 func TestNoFailurePathRuleAcceptsTestifyStyleSelectorHelpers(t *testing.T) {
 	unit := parseOne(t, "pkg/sample_test.go", `package pkg
 
-import "testing"
+import (
+	"testing"
+
+	expect "github.com/onsi/gomega"
+	assert "github.com/stretchr/testify/assert"
+	require "github.com/stretchr/testify/require"
+	check "gotest.tools/v3/assert"
+	must "gotest.tools/v3/assert/cmp"
+)
 
 func TestRequireNoError(t *testing.T) {
 	require.NoError(t, nil)

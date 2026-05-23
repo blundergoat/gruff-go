@@ -4,7 +4,17 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
-No changes yet.
+### Fixed
+
+- `.gitignore` parsing now preserves valid rules before and after a malformed line while still reporting the malformed file as a discovery diagnostic.
+- Config normalization now merges legacy top-level lists with nested gruff-family aliases instead of letting the nested form replace the legacy values.
+- `test-quality.*` precision now requires runnable Go test signatures, scopes testing receiver names to lexical functions, recognises dot-imported `testing` handles, and only treats selector-style assertion calls as assertions when the selector comes from a known assertion-library import.
+- `security.archive-path-traversal` containment evidence is now tied to the specific archive path join it guards, so one checked extraction path no longer suppresses another unchecked join in the same function.
+- Release and performance scripts now avoid GNU-only nanosecond `date` assumptions, support `gtimeout` as the BSD/macOS timeout fallback, and escape the old version before using it in sed regex replacements.
+
+### Changed
+
+- `gruff-go summary` text output now includes a `scan time:` line showing the measured wall-clock duration of the scan.
 
 ## [0.1.0] - 2026-05-23
 

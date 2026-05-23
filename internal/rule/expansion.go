@@ -206,26 +206,16 @@ func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findin
 		return nil
 	}
 	testingPackages := testingPackageNames(unit.AST)
-	testingReceivers := collectFileTestingReceivers(unit.AST, testingPackages)
 	conditionalRegions := conditionalBodyRanges(unit.AST)
 	findings := []finding.Finding{}
-	ast.Inspect(unit.AST, func(node ast.Node) bool {
-		call, ok := node.(*ast.CallExpr)
-		if !ok || !isTestingSkipCall(call, testingReceivers) {
-			return true
+	for _, decl := range unit.AST.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
 		}
-		conditional := isPosInsideAny(call.Pos(), call.End(), conditionalRegions)
-		if conditional && !skipMessageMentionsDebt(call) {
-			return true
-		}
-		position := unit.FileSet.Position(call.Pos())
-		findings = append(findings, finding.Finding{
-			Message:  "test contains a skip call",
-			File:     unit.File.Path,
-			Location: &finding.Location{Line: position.Line, Column: position.Column},
-		})
-		return true
-	})
+		receivers := testingReceiverNames(fn, testingPackages)
+		findings = append(findings, skippedTestFindingsInBlock(unit, fn.Body, testingPackages, receivers, conditionalRegions)...)
+	}
 	return findings
 }
 

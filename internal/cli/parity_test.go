@@ -117,6 +117,7 @@ func TestSummaryCommandText(t *testing.T) {
 		"files: ",
 		" analysed, ",
 		" skipped",
+		"scan time: ",
 		"score:",
 		"findings:",
 		"severity:",

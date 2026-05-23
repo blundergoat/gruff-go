@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -38,6 +39,7 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	started := time.Now()
 	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
@@ -55,6 +57,7 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	scanDuration := time.Since(started)
 	switch *format {
 	case "json":
 		if err := report.WriteSummaryJSON(stdout, analysisReport); err != nil {
@@ -62,7 +65,10 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	default:
-		if err := report.WriteSummaryText(stdout, analysisReport, report.SummaryOptions{Top: *top}); err != nil {
+		if err := report.WriteSummaryText(stdout, analysisReport, report.SummaryOptions{
+			Top:          *top,
+			ScanDuration: scanDuration,
+		}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/scoring"
@@ -17,9 +18,10 @@ import (
 type SummaryOptions struct {
 	// Top limits the number of top rules and top file offenders shown.
 	Top int
+	// ScanDuration is the measured wall-clock duration of the summary scan.
+	ScanDuration time.Duration
 }
 
-// WriteSummaryText renders a compact human-readable digest of the report.
 // WriteSummaryText renders a compact human-readable digest of the analysis report to writer.
 func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOptions) error {
 	top := opts.Top
@@ -28,13 +30,20 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	score := report.Score
 	header := fmt.Sprintf(
-		"gruff-go summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\nschema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n",
+		"gruff-go summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\n",
 		summaryInputs(report.Run.Inputs),
 		summaryWorkingDir(report.Run.WorkingDirectory),
 		report.Summary.FilesScanned, report.Summary.FilesSkipped,
-		report.SchemaVersion, score.Composite, gradeOrNA(score.Grade), report.Summary.FindingsCount,
 	)
 	if _, err := fmt.Fprint(writer, header); err != nil {
+		return err
+	}
+	if opts.ScanDuration > 0 {
+		if _, err := fmt.Fprintf(writer, "scan time: %s\n", summaryDuration(opts.ScanDuration)); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(writer, "schema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n", report.SchemaVersion, score.Composite, gradeOrNA(score.Grade), report.Summary.FindingsCount); err != nil {
 		return err
 	}
 	if err := writeScoreCoverage(writer, score); err != nil {
@@ -202,4 +211,21 @@ func summaryWorkingDir(dir string) string {
 		return "?"
 	}
 	return dir
+}
+
+// summaryDuration renders scan durations without Unicode unit symbols so CLI
+// output remains portable in plain terminals and logs.
+func summaryDuration(duration time.Duration) string {
+	if duration < time.Millisecond {
+		return "<1ms"
+	}
+	if duration < time.Second {
+		return fmt.Sprintf("%dms", duration.Milliseconds())
+	}
+	if duration < time.Minute {
+		return fmt.Sprintf("%.1fs", duration.Seconds())
+	}
+	minutes := int(duration / time.Minute)
+	remainder := duration - time.Duration(minutes)*time.Minute
+	return fmt.Sprintf("%dm %.1fs", minutes, remainder.Seconds())
 }
