@@ -14,6 +14,7 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ### Changed
 
+- GitHub Actions now runs `scripts/preflight-checks.sh` as the CI preflight entrypoint so pull requests exercise the same shell syntax, ShellCheck, gofmt, `go vet`, `go test ./...`, and gruff self-scan gates used locally.
 - `gruff-go summary` text output now includes a `scan time:` line showing the measured wall-clock duration of the scan.
 
 ## [0.1.0] - 2026-05-23
