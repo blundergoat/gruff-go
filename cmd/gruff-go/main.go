@@ -1,5 +1,3 @@
-// Command gruff-go runs the local code quality scanner CLI.
-// It delegates to the cli package and forwards the resulting exit code.
 package main
 
 import (

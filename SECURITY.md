@@ -18,7 +18,7 @@
 Send vulnerability reports privately by either:
 
 1. Opening a [GitHub security advisory](https://github.com/blundergoat/gruff-go/security/advisories/new) on this repository (preferred - keeps disclosure coordinated and auditable), or
-2. Emailing the maintainer at **mattyh@outlook.com** with the subject prefix `[gruff-go security]`.
+2. Emailing the maintainer at **hello@blundergoat.com** with the subject prefix `[gruff-go security]`.
 
 Include in your report:
 

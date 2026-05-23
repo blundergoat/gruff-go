@@ -1,5 +1,11 @@
 # gruff-go
 
+[![CI](https://github.com/blundergoat/gruff-go/actions/workflows/gruff-go.yml/badge.svg)](https://github.com/blundergoat/gruff-go/actions/workflows/gruff-go.yml)
+[![Release](https://img.shields.io/github/v/release/blundergoat/gruff-go?sort=semver&color=blue)](https://github.com/blundergoat/gruff-go/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/blundergoat/gruff-go.svg)](https://pkg.go.dev/github.com/blundergoat/gruff-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
+[![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
+
 An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across nine pillars - complexity, dead code, design, documentation, naming, security, sensitive data, size, and test quality - and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
 
 ## Status

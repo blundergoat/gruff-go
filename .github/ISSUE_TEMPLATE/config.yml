@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/blundergoat/gruff-go/security/advisories/new
+    about: Please report vulnerabilities privately instead of opening a public issue.
+  - name: Questions and ideas
+    url: https://github.com/blundergoat/gruff-go/discussions
+    about: Use Discussions for usage questions, feedback, and early ideas.
