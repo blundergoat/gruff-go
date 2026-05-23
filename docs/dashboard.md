@@ -28,7 +28,7 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--baseline` | *empty* | Initial baseline JSON path. |
 | `--no-baseline` | *off* | Refuse to apply any baseline. |
 | `--diff` | *off* | Start in diff-only scan mode (against `HEAD`). |
-| `--include-ignored` | *off* | Include files under default-ignored directories. |
+| `--include-ignored` | *off* | Include gitignored and default-ignored files; `paths.ignore` still applies. |
 | `--fail-on` | `medium` | Minimum severity that fails the scan. |
 | `--report-interactive` | *off* | Enable the inline finding filter UI inside the iframe. |
 | `--report-editor-link` | `none` | File:line link mode: `none`, `vscode`, `phpstorm`. |

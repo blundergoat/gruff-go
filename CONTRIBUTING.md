@@ -80,7 +80,7 @@ make check    # gofmt -d, go vet ./..., go test ./...
 
 ## Milestone-style workflow
 
-`gruff-go` uses a milestone discipline for non-trivial work. Each milestone is a markdown plan under `.goat-flow/tasks/0.1/MNN-kebab-title.md` with: objective, dependencies, kill criteria, read-first list, assumptions, tasks, exit criteria, and a testing gate. Read the existing M01–M30 plans for the cadence. Small fixes, doc tweaks, and isolated rule additions don't need a milestone; cross-cutting work usually does.
+`gruff-go` uses a milestone discipline for non-trivial work. Each milestone is a markdown plan under `.goat-flow/tasks/0.1/MNN-kebab-title.md` with: objective, dependencies, kill criteria, read-first list, assumptions, tasks, exit criteria, and a testing gate. Read the existing M01–M38 plans for the cadence. Small fixes, doc tweaks, and isolated rule additions don't need a milestone; cross-cutting work usually does.
 
 ## Commits and PRs
 

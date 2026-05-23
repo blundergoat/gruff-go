@@ -42,6 +42,6 @@ npm dependency state flows from `package.json` through `package-lock.json` into 
 
 `gruff-go` is shipped as a Go binary built from source. The verified operational gates are `make check` (gofmt + go vet + go test ./...) and the dogfood scan (`go run ./cmd/gruff-go analyse .` returns grade A with zero findings on `main`). `scripts/bump-version.sh` updates every in-tree version literal and regenerates CLI goldens for a release bump. `scripts/test-performance.sh` provides smoke/matrix/sweep performance modes against synthetic corpora and a regression gate against a pinned baseline.
 
-There is no hosted service or published package distribution yet. The repository does include a GitHub Actions dogfood workflow at `.github/workflows/gruff-go.yml`; `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0` becomes the public install path once the tag is pushed.
+There is no hosted service, package-manager distribution, or automated release publishing yet. The repository does include a GitHub Actions dogfood workflow at `.github/workflows/gruff-go.yml`; the public 0.1 install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0`.
 
 `npm test` is the default npm placeholder and currently exits with `Error: no test specified`, so it is not a valid project health gate; the npm metadata only exists to vendor `@blundergoat/goat-flow` for agent tooling.

@@ -4,7 +4,7 @@ An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scor
 
 ## Status
 
-`v0.1.0` is the first release line. This checkout reports its binary version as `0.1.0` and is being prepared as the 0.1 release candidate. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
+`v0.1.0` is the first public release line. The binary reports `0.1.0`. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Requirements
 
@@ -15,7 +15,16 @@ No runtime dependencies outside the Go standard library.
 
 ## Install
 
-From source today:
+Install the pinned release:
+
+```bash
+go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+gruff-go --help
+```
+
+Use `@latest` only when you intentionally want the newest published release rather than a pinned build.
+
+From a source checkout:
 
 ```bash
 git clone https://github.com/blundergoat/gruff-go.git
@@ -29,14 +38,6 @@ Or use `go run` without installing:
 ```bash
 go run ./cmd/gruff-go analyse .
 ```
-
-For a tagged install after the release tag is pushed:
-
-```bash
-go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
-```
-
-Use `@latest` only when you intentionally want the newest published release rather than a pinned build.
 
 ## Quick start
 
@@ -165,7 +166,7 @@ See [`docs/rules.md`](docs/rules.md) for the full list with severities, threshol
 
 ## Release calibration
 
-The release gate is `make check` plus a dogfood scan (`gruff-go analyse .`) that must return grade A with zero findings on this repository. Rule precision is also calibrated against a separate Go service corpus so dogfood-only blind spots show up before release. The latest external calibration removed noisy `security.*` and `naming.*` false positives while preserving size and genuinely assertionless-test findings; details are recorded in [`CHANGELOG.md`](CHANGELOG.md) and [ADR-008](.goat-flow/decisions/ADR-008-external-codebase-calibration-precision-fixes.md).
+The release gate is `make check` plus a dogfood scan (`gruff-go analyse .`) that must return grade A with zero findings on this repository. Rule precision is also calibrated against a separate Go service corpus so dogfood-only blind spots show up before release. The `0.1.0` calibration removed noisy `security.*` and `naming.*` false positives while preserving size and genuinely assertionless-test findings; details are recorded in [`CHANGELOG.md`](CHANGELOG.md) and [ADR-008](.goat-flow/decisions/ADR-008-external-codebase-calibration-precision-fixes.md).
 
 ## Dashboard
 

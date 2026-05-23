@@ -8,7 +8,7 @@
 
 | Version | Supported |
 |---------|-----------|
-| `0.1.x` (current) | ✅ |
+| `0.1.x` (current public line) | ✅ |
 | anything else | ❌ |
 
 ## Reporting a vulnerability
@@ -25,7 +25,7 @@ Include in your report:
 - A description of the vulnerability and the affected component (`internal/dashboard`, a specific rule, the config loader, etc.).
 - Reproduction steps. A minimal repository or input that triggers the issue is ideal.
 - The impact you observed and the impact you believe is possible.
-- The version (`gruff-go --help` prints it) and the OS / Go version you ran against.
+- The version (`gruff-go --version` prints it) and the OS / Go version you ran against.
 - Whether you intend to disclose publicly, and if so on what timeline.
 
 We will acknowledge receipt within **3 business days** and aim to provide an initial assessment within **7 days**. Coordinated disclosure timelines are agreed case-by-case; we default to public disclosure after a fix ships or 90 days from the initial report, whichever is sooner.

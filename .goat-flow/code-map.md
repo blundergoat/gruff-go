@@ -96,4 +96,4 @@
 - `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
 - `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring with score-neutral `design.*` annotations and per-pillar coverage labelling.
 - `.github/workflows/gruff-go.yml` = GitHub Actions dogfood gate that builds `bin/gruff-go` and runs `./bin/gruff-go analyse .` on PRs and pushes to `main`.
-- No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package publication surface exists yet — `go install ...@v0.1.0` becomes the install path once the tag is pushed.
+- No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, package-manager distribution, or automated release publishing surface exists yet. The public 0.1 install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0`.

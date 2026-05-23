@@ -1,6 +1,6 @@
 # Glossary
 
-Last reviewed 2026-05-19.
+Last reviewed 2026-05-23.
 
 ## gruff-go
 
