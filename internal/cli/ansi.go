@@ -63,7 +63,10 @@ func ansiEnabled(writer io.Writer, mode ansiMode) bool {
 	return isTerminalWriter(writer)
 }
 
-// isTerminalWriter reports whether writer points at a character device.
+// isTerminalWriter probes for a TTY by Stat()'ing the underlying *os.File and
+// checking for ModeCharDevice. Any writer that isn't an *os.File (e.g. the
+// bytes.Buffer used in tests, or a pipe wrapped through a custom writer)
+// returns false, which is the conservative choice — when in doubt, no colour.
 func isTerminalWriter(writer io.Writer) bool {
 	file, ok := writer.(*os.File)
 	if !ok {
@@ -81,7 +84,9 @@ type ansiStyler struct {
 	enabled bool
 }
 
-// yellow wraps text in the yellow ANSI escape when styling is enabled.
+// yellow wraps text in the yellow ANSI escape, or returns it unchanged when
+// styling is off. The no-op fallback lets callers wrap unconditionally instead
+// of branching on ansiEnabled at every styling site.
 func (s ansiStyler) yellow(text string) string {
 	if !s.enabled {
 		return text
@@ -89,7 +94,8 @@ func (s ansiStyler) yellow(text string) string {
 	return ansiYellow + text + ansiReset
 }
 
-// green wraps text in the green ANSI escape when styling is enabled.
+// green wraps text in the green ANSI escape, or returns it unchanged when
+// styling is off. See yellow for the rationale behind the no-op fallback.
 func (s ansiStyler) green(text string) string {
 	if !s.enabled {
 		return text
@@ -97,7 +103,8 @@ func (s ansiStyler) green(text string) string {
 	return ansiGreen + text + ansiReset
 }
 
-// bold wraps text in the bold ANSI escape when styling is enabled.
+// bold wraps text in the bold ANSI escape, or returns it unchanged when
+// styling is off. See yellow for the rationale behind the no-op fallback.
 func (s ansiStyler) bold(text string) string {
 	if !s.enabled {
 		return text

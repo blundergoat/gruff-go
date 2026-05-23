@@ -170,9 +170,12 @@ func codeBearingLines(src string) map[int]bool {
 	return out
 }
 
-// countLinesInRange returns how many lines in [start, end] are code-bearing.
-// When codeLines is nil the caller substitutes the raw span, so we don't
-// silently emit zero-length findings.
+// countLinesInRange counts how many lines in [start, end] are code-bearing
+// according to codeLines (built once per file by codeBearingLines). A nil
+// codeLines means "the scanner failed for this file" — we return 0 so the
+// caller can detect that case and fall back to the raw span; if we silently
+// returned end-start+1 instead, a parse-broken file would still report
+// realistic length numbers and mask the underlying failure.
 func countLinesInRange(codeLines map[int]bool, start, end int) int {
 	if codeLines == nil {
 		return 0
@@ -186,9 +189,13 @@ func countLinesInRange(codeLines map[int]bool, start, end int) int {
 	return count
 }
 
-// funlenNolintNames walks the file's function declarations and returns the
-// symbols carrying a directly attached `//nolint:funlen` or `//nolint:all`
-// directive in their doc comment.
+// funlenNolintNames returns the symbols whose own doc comment carries
+// `//nolint:funlen` or `//nolint:all`. Only the function's *doc* comment is
+// consulted — directives floating inside the body or at file scope are
+// ignored — so a misplaced or copy-pasted nolint can't accidentally suppress
+// length findings on the wrong function. Symbol keys are produced via
+// funcDeclSymbol so they line up with parser.Function entries when callers
+// look up suppressions.
 func funlenNolintNames(file *ast.File) map[string]bool {
 	out := map[string]bool{}
 	if file == nil {

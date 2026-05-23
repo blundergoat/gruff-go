@@ -278,7 +278,11 @@ func lowerStringSetWithDefault(values, fallback []string) map[string]bool {
 	return out
 }
 
-// positiveOrDefault returns value when positive, otherwise the supplied fallback.
+// positiveOrDefault is the shared zero-as-unconfigured shim used by
+// configurable int knobs across the rule registry: when a knob is omitted
+// from YAML it arrives as Go's zero value, and we swap in the rule's
+// hardcoded fallback so an unset knob doesn't silently disable the check
+// (or worse, fire on every input by treating 0 as the threshold).
 func positiveOrDefault(value, fallback int) int {
 	if value > 0 {
 		return value

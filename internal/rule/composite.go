@@ -202,7 +202,12 @@ func compositeEvidenceMetadata(evidence []finding.Finding) map[string]any {
 	return metadata
 }
 
-// uniqueSortedRuleIDs returns the sorted unique set of non-empty rule IDs from the findings.
+// uniqueSortedRuleIDs collects the rule IDs of the evidence findings into a
+// deterministic sorted set. Dedup matters because the same rule can fire
+// multiple times on one symbol (e.g. two separate size findings on a
+// function), and the sort keeps JSON output diff-stable across runs so
+// golden tests aren't flaky. Empty rule IDs are dropped to avoid an empty
+// string sneaking into metadata.
 func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
 	for _, evidence := range findings {
@@ -213,7 +218,10 @@ func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 	return sortedStringSet(seen)
 }
 
-// uniqueSortedFingerprints returns the sorted unique set of non-empty fingerprints from the findings.
+// uniqueSortedFingerprints collects the underlying-finding fingerprints into a
+// deterministic sorted set so downstream consumers can correlate a composite
+// back to its evidence without depending on iteration order. Same diff-
+// stability rationale as uniqueSortedRuleIDs.
 func uniqueSortedFingerprints(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
 	for _, evidence := range findings {
@@ -224,7 +232,10 @@ func uniqueSortedFingerprints(findings []finding.Finding) []string {
 	return sortedStringSet(seen)
 }
 
-// sortedStringSet returns the sorted slice of keys from a string set.
+// sortedStringSet drains a dedup set (the map[string]struct{} is keyed for
+// uniqueness only; the struct{} value carries no info) into a sorted slice.
+// Centralised so the various "unique sorted X" helpers above stay consistent
+// rather than each open-coding the same drain+sort.
 func sortedStringSet(values map[string]struct{}) []string {
 	out := make([]string, 0, len(values))
 	for value := range values {
@@ -234,7 +245,11 @@ func sortedStringSet(values map[string]struct{}) []string {
 	return out
 }
 
-// sortedPillars returns the sorted slice of pillar names from a pillar-count map.
+// sortedPillars returns the pillar names from the count map as a sorted
+// []string for composite metadata. The per-pillar counts are intentionally
+// dropped — the composite only needs the *set* of pillars crossed — and the
+// string conversion produces a JSON-friendly slice of names rather than a
+// nested map.
 func sortedPillars(pillars map[finding.Pillar]int) []string {
 	out := make([]string, 0, len(pillars))
 	for pillar := range pillars {
@@ -244,7 +259,11 @@ func sortedPillars(pillars map[finding.Pillar]int) []string {
 	return out
 }
 
-// firstEvidenceLine returns the smallest non-zero line number among the supplied findings.
+// firstEvidenceLine picks the earliest non-zero evidence line so a composite
+// finding — which has no source location of its own — still navigates the
+// reader somewhere useful in the IDE. Line 0 is treated as "missing" rather
+// than the literal first line; otherwise a file-level evidence finding (no
+// line info) would mask a real line further down.
 func firstEvidenceLine(findings []finding.Finding) int {
 	first := 0
 	for _, evidence := range findings {
