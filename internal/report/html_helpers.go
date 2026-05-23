@@ -1,5 +1,5 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file collects shared helpers used by the HTML reporter.
+// Shared HTML helpers centralize escaping and formatting so renderer methods stay structural.
 package report
 
 import (

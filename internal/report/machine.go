@@ -1,5 +1,5 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file holds the machine-readable reporters: summary JSON, SARIF, and GitHub annotations.
+// Machine-readable reporters keep their payloads stable for CI systems, SARIF consumers, and automation.
 package report
 
 import (
@@ -12,7 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// WriteSummaryJSON writes a compact JSON envelope containing scoring and metadata but no per-finding rows.
+// WriteSummaryJSON writes the scan-level JSON contract without the heavier per-finding payload.
 func WriteSummaryJSON(writer io.Writer, report analysis.Report) error {
 	payload := struct {
 		SchemaVersion string                        `json:"schemaVersion"`

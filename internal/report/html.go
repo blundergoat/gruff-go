@@ -1,5 +1,5 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file implements the self-contained HTML report renderer.
+// The HTML renderer emits a self-contained report so CI artifacts can be opened without external assets.
 package report
 
 import (

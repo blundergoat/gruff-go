@@ -1,7 +1,6 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the M26-M28 calibration knobs on docs.comment-rubric:
-// minWordsBeyondSymbol token thresholding, _test.go const/var scoping, and the
-// one-line default package summary.
+// Comment-rubric calibration tests pin down substantive-token thresholds,
+// _test.go const/var scoping, and the one-line default package summary.
 package rule
 
 import (
@@ -10,8 +9,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged confirms M26 is opt-in: when the option
-// stays zero, behaviour matches today's rule even for paraphrase comments.
+// TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged confirms the
+// substantive-token threshold is opt-in: when the option stays zero, existing
+// paraphrase behaviour remains accepted.
 func TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged(t *testing.T) {
 	unit := parseOne(t, "fns.go", `package sample
 
@@ -24,8 +24,9 @@ func Documented() {}
 	}
 }
 
-// TestCommentRubricRuleMinWordsBeyondSymbolRejectsRestatement confirms M26 rejects sparse comments
-// whose non-symbol token count falls below the configured threshold.
+// TestCommentRubricRuleMinWordsBeyondSymbolRejectsRestatement confirms the
+// substantive-token threshold rejects sparse comments whose non-symbol token
+// count falls below the configured threshold.
 func TestCommentRubricRuleMinWordsBeyondSymbolRejectsRestatement(t *testing.T) {
 	// Comment yields only {is} beyond the qualified symbol token set {foo, rule, definition}.
 	unit := parseOne(t, "fns.go", `package sample
@@ -158,7 +159,7 @@ func (FooRule) Definition() string { return "" }
 	}
 }
 
-// commentRubricTestScopingTestUnit parses the canonical _test.go fixture for M27 scoping tests.
+// commentRubricTestScopingTestUnit parses the shared _test.go fixture used by const/var scoping tests.
 func commentRubricTestScopingTestUnit(t *testing.T) parser.Unit {
 	t.Helper()
 	return parseOne(t, "internal/sample/sample_test.go", `package sample
@@ -173,7 +174,7 @@ type TestWorker struct{}
 `)
 }
 
-// commentRubricTestScopingProdUnit parses the canonical production fixture for M27 scoping tests.
+// commentRubricTestScopingProdUnit parses the production fixture paired with the _test.go scoping case.
 func commentRubricTestScopingProdUnit(t *testing.T) parser.Unit {
 	t.Helper()
 	return parseOne(t, "internal/sample/sample.go", `package sample
@@ -184,8 +185,9 @@ var productionVar = 2
 `)
 }
 
-// TestCommentRubricRuleTestFileConstVarSkippedByDefault confirms M27: const and var enforcement is
-// suppressed on _test.go files even when ignoreTests is false, while non-test files stay strict.
+// TestCommentRubricRuleTestFileConstVarSkippedByDefault confirms const and var
+// enforcement is suppressed on _test.go files even when ignoreTests is false,
+// while non-test files stay strict.
 func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireConstComments: true,
@@ -201,8 +203,8 @@ func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleTestFileFunctionCheckStillFires confirms function comment enforcement on
-// test files survives M27 (only const/var are scoped away).
+// TestCommentRubricRuleTestFileFunctionCheckStillFires confirms function
+// comment enforcement on test files survives the const/var exemption.
 func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireFunctionComments: true,
@@ -214,8 +216,8 @@ func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleTestFileTypeCheckStillFires confirms named-type enforcement on test files
-// survives M27 (only const/var are scoped away).
+// TestCommentRubricRuleTestFileTypeCheckStillFires confirms named-type
+// enforcement on test files survives the const/var exemption.
 func TestCommentRubricRuleTestFileTypeCheckStillFires(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireNamedTypeComments: true,
@@ -242,8 +244,8 @@ func TestCommentRubricRuleIgnoreTestsStillExemptsEverything(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleDefaultPackageSummaryOneLine covers M28: when requirePackageSummary is true
-// and no threshold is configured, a single-line package summary now passes by default. A missing
+// TestCommentRubricRuleDefaultPackageSummaryOneLine covers the default
+// package-summary threshold: a single-line summary passes, while a missing
 // summary still fails.
 func TestCommentRubricRuleDefaultPackageSummaryOneLine(t *testing.T) {
 	rule := CommentRubricRule{RequirePackageSummary: true}

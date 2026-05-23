@@ -1,5 +1,5 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file implements the plain-text reporter and rule listing for the CLI.
+// Plain-text output favours deterministic sections and one-line findings for terminal review.
 package report
 
 import (
@@ -12,7 +12,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// WriteText renders the full analysis report as plain text to writer.
+// WriteText renders the complete report in the human-readable CLI format.
 func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextHeader(writer, report); err != nil {
 		return err

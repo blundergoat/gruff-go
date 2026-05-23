@@ -1,5 +1,5 @@
 // Package cli implements the gruff-go command-line interface.
-// This file wires the report subcommand to the HTML and JSON renderers.
+// The report command runs analysis once and routes the result through the selected report writer.
 package cli
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
-// runReport renders the report subcommand to either stdout or a file.
+// runReport parses report flags, runs analysis, and writes the selected report format.
 func runReport(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("report", flag.ContinueOnError)
 	flags.SetOutput(stderr)

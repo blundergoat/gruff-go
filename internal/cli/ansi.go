@@ -1,5 +1,5 @@
 // Package cli implements the gruff-go command-line interface.
-// This file holds ANSI colour helpers used by the CLI output.
+// ANSI helpers keep colour policy separate from command parsing and rendering.
 package cli
 
 import (

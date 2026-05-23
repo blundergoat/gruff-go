@@ -1,5 +1,5 @@
 // Package cli implements the gruff-go command-line interface.
-// This file wires the summary subcommand to the compact digest renderer.
+// The summary command keeps scan timing near the analysis call so digests can show real wall time.
 package cli
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
-// runSummary executes the summary subcommand and prints a compact digest.
+// runSummary parses summary flags, runs analysis, and prints the compact digest.
 func runSummary(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("summary", flag.ContinueOnError)
 	flags.SetOutput(stderr)

@@ -4,18 +4,7 @@ All notable changes to `gruff-go` are recorded here. The format follows [Keep a 
 
 ## [Unreleased]
 
-### Fixed
-
-- `.gitignore` parsing now preserves valid rules before and after a malformed line while still reporting the malformed file as a discovery diagnostic.
-- Config normalization now merges legacy top-level lists with nested gruff-family aliases instead of letting the nested form replace the legacy values.
-- `test-quality.*` precision now requires runnable Go test signatures, scopes testing receiver names to lexical functions, recognises dot-imported `testing` handles, and only treats selector-style assertion calls as assertions when the selector comes from a known assertion-library import.
-- `security.archive-path-traversal` containment evidence is now tied to the specific archive path join it guards, so one checked extraction path no longer suppresses another unchecked join in the same function.
-- Release and performance scripts now avoid GNU-only nanosecond `date` assumptions, support `gtimeout` as the BSD/macOS timeout fallback, and escape the old version before using it in sed regex replacements.
-
-### Changed
-
-- GitHub Actions now runs `scripts/preflight-checks.sh` as the CI preflight entrypoint so pull requests exercise the same shell syntax, ShellCheck, gofmt, `go vet`, `go test ./...`, and gruff self-scan gates used locally.
-- `gruff-go summary` text output now includes a `scan time:` line showing the measured wall-clock duration of the scan.
+No changes yet.
 
 ## [0.1.0] - 2026-05-23
 
@@ -23,109 +12,41 @@ First public release. The binary reports `0.1.0`. Schemas `gruff-go.analysis.v0.
 
 ### Added
 
-- **CLI** (`gruff-go`) with subcommands `analyse`, `baseline`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Exit codes: `0` clean, `1` findings at/above `--min-severity`, `2` diagnostics or invalid input.
-- **CI dogfood gate.** `.github/workflows/gruff-go.yml` runs on every pull request and push to `main`: builds the binary and runs `./bin/gruff-go analyse .`. Non-zero exit (findings at or above `--min-severity medium`) fails the build, formalising the "grade A with zero findings on `main`" release convention.
-- **Report include-ignored parity.** `gruff-go report --include-ignored` brings the `report` subcommand to flag parity with `analyse`, `baseline`, `summary`, and the dashboard.
-- **Parser-only analysis pipeline.** `internal/source` discovers files, respects project `.gitignore` rules by default, records ignored files in `paths.skipped`, and skips generated files; `internal/parser` parses Go with `go/parser`; `internal/rule` dispatches rules deterministically; `internal/scoring` produces severity/confidence-weighted scores. No type-loader dependency; type-aware rules are deferred. See [`.goat-flow/decisions/ADR-001`](.goat-flow/decisions/ADR-001-parser-only-scanner-pipeline.md).
-- **Rule catalogue (41 rules across 9 pillars).** The built-in pack ships 40 default-enabled rules plus the opt-in `docs.config-field-comment` rule for configuration-style struct fields; projects opt out per-rule with `rules.<id>.enabled: false`. Grouped by pillar:
-  - **complexity** — `complexity.cyclomatic`, `complexity.nesting-depth`.
-  - **dead-code** — `dead-code.empty-block`.
-  - **design** — `design.god-function`, `design.hotspot-file` (composite, score-neutral).
-  - **documentation** — `docs.comment-rubric`, `docs.config-field-comment` (opt-in), `docs.exported-symbol-comment`, `docs.package-comment`.
-  - **naming** — `naming.acronym-case`, `naming.contextual-generic`, `naming.get-prefix`, `naming.identifier-quality`, `naming.misspelling`, `naming.negated-boolean`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`.
-  - **security** — `security.archive-path-traversal`, `security.insecure-random-secret`, `security.shell-command`, `security.sql-string-query`, `security.tls-insecure-config`, `security.weak-crypto`.
-  - **sensitive-data** — `sensitive-data.anthropic-api-key`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.jwt-token`, `sensitive-data.private-key`, `sensitive-data.secret-pattern`, `sensitive-data.slack-token`, `sensitive-data.stripe-key`.
-  - **size** — `size.file-length`, `size.function-length`, `size.parameter-count`.
-  - **test-quality** — `test-quality.empty-test`, `test-quality.no-failure-path`, `test-quality.skipped-test`.
+- **CLI** (`gruff-go`) with subcommands `analyse`, `baseline`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Exit codes are `0` for clean runs, `1` for findings at or above `--min-severity`, and `2` for diagnostics or invalid input.
+- **Parser-only Go analysis pipeline** with source discovery, generated-file skipping, Go parser integration, deterministic rule dispatch, and severity/confidence-weighted scoring. Type-aware rules are intentionally deferred.
+- **Rule catalogue with 41 rules across 9 pillars.** The built-in pack ships 40 default-enabled rules plus the opt-in `docs.config-field-comment` rule for configuration-style struct fields.
+- **Strict `.gruff-go.yaml` config** using schema `gruff-go.config.v0.1`. Unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds fail closed.
+- **Baseline workflow.** `gruff-go baseline --out gruff-baseline.json` writes a fingerprinted snapshot; `analyse --baseline path` suppresses exact rule/file/fingerprint matches and reports stale entries.
+- **Diff-mode scanning.** `analyse --diff-base <ref>` filters line-located findings to changed lines and records that diff mode is changed-line scoped, not full-project proof.
+- **Display filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` hide rendered findings without changing score or exit code.
+- **Output formats**: `text`, `json`, `summary-json`, `sarif`, `github`, and `html`.
+- **HTML inspection report** with severity stats, pillar breakdowns, top-offender tables, cyclomatic histogram, findings list, and optional editor links.
+- **Local dashboard** with loopback-default serving, scan controls, configurable timeout, diff/baseline/config toggles, and iframe-rendered reports.
+- **Interactive findings filter** for HTML reports with severity, pillar, path, search, and group-by controls.
+- **Gitignore-respecting discovery.** `analyse`, `baseline`, `summary`, and dashboard scans skip project `.gitignore` matches by default and support `--include-ignored` when callers intentionally want to scan ignored paths.
+- **Scoring model** with 0-100 composite score, letter grade, per-pillar scores, top offenders, complexity distribution, and score-coverage caveats.
+- **CI preflight gate.** GitHub Actions now runs `scripts/preflight-checks.sh`, covering shell syntax, ShellCheck, gofmt, `go vet`, `go test ./...`, and the gruff self-scan.
+- **Release tooling.** `scripts/bump-version.sh <new-version>` updates in-tree version literals and regenerates CLI golden snapshots.
+- **Broad default rule policy.** Adopters get 40 of the 41 shipped rules out of the box; `docs.config-field-comment` remains default-disabled because broad struct-field enforcement is only appropriate for selected configuration/API files.
+- **Mainstream Go thresholds.** Defaults use `complexity.nesting-depth.maxDepth: 5`, `size.parameter-count.maxParameters: 8`, and `size.file-length.maxLines: 500`.
+- **Low-severity heuristic coverage.** Documentation, naming, test-quality, design, and heuristic security findings generally report below the default `--min-severity medium` gate unless configured otherwise.
+- **Test-file calibration.** Default `size.file-length` and `size.function-length` findings in `_test.go` files report as lower-confidence/lower-severity signals unless a project explicitly overrides severity.
+- **Summary scan context.** `gruff-go summary` prints scanned inputs, working directory, analysed/skipped file counts, and scan duration before the score.
+- **Robust `.gitignore` handling** with valid-rule preservation around malformed lines, descendants-only trailing `**` semantics, explicit external-input boundaries, and per-subtree fallback gating.
+- **Test-quality precision** for runnable Go test signatures, fuzz callbacks, assertion helpers, dot-imported `testing` handles, lexical receiver scoping, and third-party `Skip` method avoidance.
+- **Documentation-rule precision** for package-wide doc summaries, inline config-field comments, and the opt-in struct-field documentation rule.
+- **Naming-rule precision** for receiver consistency by package, external test package names, receiver accessor `Get` methods, contextual generic identifiers, misspellings, Go initialisms, negated booleans, and package stutter.
+- **Size-rule precision** with code-bearing function length measurement and discounted multiline table fixtures in test functions.
+- **Security-rule precision** for shell-routed commands, TLS settings, dynamic SQL, archive path traversal containment, weak crypto, and insecure random values used for secrets.
+- **Sensitive-data precision** with vendor-prefixed token detectors, GCP service-account key detection, comment skipping, common suppression support, consistent redaction, and local dev/test placeholder avoidance.
+- **Config compatibility** that merges legacy top-level lists with nested gruff-family aliases.
+- **Portable shell tooling** for release and performance scripts, including BSD/macOS timeout fallback support and safe version replacement.
 
-  Full reference (severities, thresholds, remediation) in [`docs/rules.md`](docs/rules.md). Print the built-in release registry with `gruff-go list-rules --no-config`.
-- **Strict config** at `.gruff-go.yaml` (schema `gruff-go.config.v0.1`). Unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds fail closed. Supports `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, `selection.{rules,excludeRules,pillars,excludePillars}`, and `rules.<id>.{enabled,threshold,thresholds,severity,options}`. Legacy hyphenated rule IDs (`size-file-length`) and `documentation.*` aliases are canonicalised on load. See [`.goat-flow/decisions/ADR-003`](.goat-flow/decisions/ADR-003-strict-json-operational-surfaces.md).
-- **Baseline workflow.** `gruff-go baseline --out gruff-baseline.json` writes a fingerprinted snapshot; `analyse --baseline path` suppresses exact rule/file/fingerprint matches and reports stale entries. Schema `gruff-go.baseline.v0.1`.
-- **Diff-mode scanning.** `analyse --diff-base <ref>` keeps line-located findings only on lines changed against the ref, with a recorded "changed-line scope, not full-project proof" caveat in the report.
-- **Display filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` hide findings from rendering without affecting score or exit code. The filter caveat is preserved in the report so downstream consumers can detect partial display.
-- **Output formats.** `text` (default), `json` (`gruff-go.analysis.v0.1`), `summary-json`, `sarif` (2.1.0), `github` (Actions annotations), and `html`. See [`docs/output-formats.md`](docs/output-formats.md).
-- **HTML inspection report** (`--format html`). Self-contained document with inline CSS, the paper-on-near-black inspection aesthetic, tilted grade stamp, masthead, verdict + per-severity stats, pillar grid, top-offender table, cyclomatic histogram with summary line, findings list, footer. `--report-editor-link none|vscode|phpstorm` toggles editor-protocol anchors on file:line references.
-- **Local dashboard** (`gruff-go dashboard`). Serves the HTML report inside an iframe at `127.0.0.1:8765` with a controls panel for project, paths, config, baseline, scope, fail-on, and the interactive findings toggle. `--allow-public` gates non-loopback binds (refusal by default). `--scan-timeout` enforces a per-scan deadline; the iframe receives a dashboard-error document on timeout.
-- **Interactive findings filter** (`--report-interactive`). Inline filter form inside the HTML report — severity multi-select, pillar multi-select, path / search inputs, group-by file/rule, clear-all, live count via `aria-live="polite"`. URL hash mirrors filter state so deep-links and reload survive. The static report still emits `data-severity / data-pillar / data-file / data-rule / data-search` attributes whether or not the script ships.
-- **Gitignore-respecting discovery.** `analyse`, `baseline`, `summary`, and dashboard scans skip project `.gitignore` matches by default, expose `gitignored` skip reasons in JSON output, and accept `--include-ignored` when the caller intentionally wants the older broad scan boundary. See [ADR-004](.goat-flow/decisions/ADR-004-gitignore-respecting-discovery.md) and [ADR-005](.goat-flow/decisions/ADR-005-gitignore-matcher-implementation.md).
-- **Scoring.** Severity- and confidence-weighted penalties produce a 0–100 composite plus a letter grade (`A`–`F`). The score object surfaces per-pillar scores, per-pillar grade letters with severity breakdowns, top-5 offender files with per-file findings/grade/max-cyclomatic, a `1-5 / 6-10 / 11-15 / 16-20 / 21+` cyclomatic distribution, `score.coverage` to make narrow score coverage explicit, and `score.complexityDistributionScope` to label the histogram as finding-only.
-- **Repository hygiene.** `Makefile` `check` target wraps `go fmt`, `go vet`, `go test ./...`. Strict `gofmt` / `go vet ./...` / `make check` gates kept clean throughout v0.1 work. Self-dogfood (`go run ./cmd/gruff-go analyse .`) returns grade A with zero findings.
-- **Release tooling.** `scripts/bump-version.sh <new-version>` updates every in-tree version literal (CLI const, analysis report, SARIF driver assertion, `package.json`) and regenerates the CLI golden snapshots in one shot, then prints a sanity-sweep of any remaining stale references.
+### Known Limitations
 
-### Fixed
-
-- `internal/source` gitignore matcher: a trailing `**` segment no longer matches the parent directory itself, so `foo/**` now targets descendants only and lets `!foo/a` negations re-include children of an otherwise-ignored directory.
-- `internal/source` discovery: an explicit input file outside the discovery root is no longer matched against the project's `.gitignore` rules; previously `displayPath` fell back to the absolute path and the matcher silently dropped unrelated external files.
-- `internal/source` discovery: the hardcoded dependency-skip fallback (`vendor`, `node_modules`, `dist`, …) is now gated per-subtree on the `.gitignore` chain. A monorepo subtree that owns its own `.gitignore` is no longer silently overridden by the rootless fallback; the fallback still applies to subtrees that lack any `.gitignore` in their ancestor chain.
-- `test-quality.no-failure-path`: failure calls inside fuzz callbacks (`f.Fuzz(func(t *testing.T, ...){ t.Fatal(...) })`) are now recognised. Testing receivers declared on nested function literals are added to the receiver set alongside the outer test function's parameters.
-- `test-quality.no-failure-path`: testify-style selector helpers (`require.NoError(t, err)`, `assert.Equal(t, …)`, `expect`/`must`/`check`) are now recognised as assertions even though their function names do not carry an `Assert*/Require*/Expect*/Must*/Check*` prefix. Matching requires the call to also pass a known testing receiver argument so unrelated `assert.Something(value)` calls remain in scope.
-- `test-quality.skipped-test`: `Skip`/`Skipf`/`SkipNow` are only flagged when invoked on a name the file declares as a `*testing.T/B/F` parameter. Third-party APIs that happen to expose a method named `Skip` in test files are no longer misreported.
-- `naming.receiver-consistency`: receiver groups are now keyed by package directory in addition to type name, so methods on two unrelated types named e.g. `Service` in different packages no longer merge into one bucket and produce false dominant-receiver findings.
-- `docs.comment-rubric` `requirePackageSummary`: the missing-summary check is aggregated per package directory. A multi-file package whose summary lives in `doc.go` (or any single file) no longer triggers a "package summary is missing" finding on every other file in the same package.
-- `docs.config-field-comment`: trailing same-line comments (`Port int // TCP port used by …`) are now accepted as field documentation. Previously only `// Above` doc comments stored in `field.Doc` counted, false-flagging projects that prefer inline field docs.
-- `design.god-function` / `design.hotspot-file`: composite findings (which stay line-stable to keep baseline matching across underlying code shifts) are now pruned in `--diff-base` scans when none of their recorded underlying fingerprints survive the diff filter. Previously the composites stayed in the diff-only report even when the size/complexity evidence they composed had been filtered out.
-- `scripts/test-performance.sh`: the sweep results stash is now scoped to a per-run mktemp file and removed on function exit. The previous shared `/tmp/gruff-sweep-stash.jsonl` was appended to across runs, so an aborted or concurrent sweep poisoned the next baseline with stale rows.
-- Rule metadata no longer carries legacy `opt-in` tags on default-enabled rules. The live catalogue still marks `docs.config-field-comment` as the single opt-in/default-disabled rule.
-- External-codebase false-positive calibration: `naming.package-underscore` now accepts idiomatic external test packages such as `package handlers_test` while still flagging real underscored package names; `size.function-length` discounts multiline table fixture literals inside `_test.go` functions so large case matrices do not look like executable logic; `test-quality.no-failure-path` recognises assertion-helper self-tests that pass a locally allocated `*testing.T/B/F` into `Assert*`/`Require*`/`Expect*`/`Must*`/`Check*` helpers. Calibration against `blundergoat-platform` keeps the production size and genuinely assertionless-test findings intact.
-- Follow-up calibration on remaining false positives: `security.sql-string-query` accepts fixed-prefix integration-test schema creation (`CREATE SCHEMA ` + `fmt.Sprintf("test_*_%d", time.Now().UnixNano())`) in `_test.go` and `testutil` helpers while preserving arbitrary schema-variable findings. `naming.get-prefix` limits default enforcement to receiver accessors again; package-level context helpers such as `GetLogger(ctx)` are no longer reported by the default rule.
-- `security.shell-command` precision expansion: the shell-routed command detector now covers `exec.CommandContext`, aliased `os/exec` imports, path-qualified shell binaries, and Windows shell command forms while preserving direct executable non-findings such as `exec.Command("git", "status")`.
-
-### Changed
-
-- Release documentation now pins v0.1.0 install examples, documents the 41-rule catalogue accurately, and aligns CI/config snippets with the current CLI.
-- ADR-007 explicitly carves out `docs.config-field-comment` as the lone `defaultEnabled: false` rule: its scoping options default to empty and the per-field check is not a no-op without configuration, so defaulting it on would swamp adopters with findings on every exported field. Other documentation surfaces (`ADR-003`, `ADR-004`, `.goat-flow/architecture.md`, `docs/dashboard.md`, `.goat-flow/footguns/setup.md`) realign with the current `analysis.Analyze` entrypoint, default-on rule policy, and per-subtree gitignore fallback.
-- **Default policy: broad by default, with one explicit opt-in documentation rule.** ADR-002's narrow 5-rule pack (`complexity.cyclomatic`, `docs.package-comment`, `sensitive-data.secret-pattern`, `size.file-length`, `size.function-length`) is superseded by [ADR-007](.goat-flow/decisions/ADR-007-comprehensive-default-rule-pack.md). Adopters get 40 of the 41 shipped rules out of the box; `docs.config-field-comment` remains default-disabled because broad struct-field enforcement is only appropriate for selected configuration/API files. Disable any rule via `rules.<id>.enabled: false`. Severity discipline keeps default `--min-severity medium` CI gates stable — many documentation, naming, test-quality, design, and heuristic security rules are `low` severity and appear in reports without flipping exit code. Fingerprints, baseline schema, exit-code semantics, JSON schema version, and rule IDs are unchanged.
-- **Threshold defaults moved toward industry-mainstream values.** `complexity.nesting-depth` `maxDepth` `4 → 5` (matches `nestif`); `size.parameter-count` `maxParameters` `5 → 8` (matches revive `argument-limit`); `size.file-length` `maxLines` `400 → 500`. Calibration on a real Go corpus showed `400` was dominated by line-count findings while the production handler size signal is preserved at `500`. Projects pinning the older thresholds in `.gruff-go.yaml` keep the stricter policy.
-- **Test-file size downranking.** Default `size.file-length` and `size.function-length` findings in `_test.go` files keep the same thresholds, messages, metadata, and fingerprints, but report as `low` severity / `medium` confidence under medium severity. Explicit non-medium config severity overrides still apply to test files.
-- `docs.package-comment` skips `_test.go`-only external test packages such as `package foo_test`, reducing documentation noise from black-box test packages while preserving production package-comment checks.
-- **Dashboard field rename: `Options.NoConfig` → `SkipConfig` and `Options.NoBaseline` → `SkipBaseline`** in `internal/dashboard` and `internal/report`, along with all internal references. **CLI flag names `--no-config` and `--no-baseline` are unchanged** (public surface), and URL hash parameter names `noConfig`/`noBaseline` are unchanged (deep-link compatibility). Only the internal Go field names moved to match the positive form recommended by `naming.negated-boolean`.
-- **Late release precision tuning.** Scanner hot paths avoid avoidable work in large trees; `sensitive-data.*` rules skip Go comments and honor `#nosec` / `//nolint:gosec` / `//nolint:all`; `sensitive-data.connection-string` skips obvious local dev/test placeholders; `test-quality.no-failure-path` recognises assertion helpers that receive the testing receiver; `test-quality.skipped-test` distinguishes environment guards from debt; `size.function-length` measures code-bearing lines and honors direct `//nolint:funlen`; `naming.get-prefix` focuses on receiver accessor methods after external calibration showed package-level context helpers are too conventional to report by default.
-- **`docs.comment-rubric` calibration.** `requireConstComments` and `requireVarComments` no longer fire on `*_test.go` files even when `ignoreTests` is false, and the built-in `minPackageCommentLines` default is `1`. Projects that configure `threshold: 2` keep the stricter two-line package-summary floor.
-- **`summary` text output surfaces what was scanned.** Two lines after the header — `scanned: <inputs> (in <workingDirectory>)` and `files: N analysed, M skipped` — make it obvious which paths the run covered and the file volume behind the score. JSON output is unchanged because the same fields already live in `run.inputs`, `run.workingDirectory`, `summary.filesScanned`, and `summary.filesSkipped`.
-
-### Rule additions during v0.1 development
-
-These rules joined the catalogue after the initial 21-rule pack and are included in the v0.1.0 release:
-
-- **`docs.comment-rubric`** — path-scoped maintainer-comment rule. Files listed in its `includePaths` option are checked for a package summary plus directly attached comments on functions, named types, package-scope constants, and package-scope variables. Without configured paths it is a no-op, so its default-on status is harmless on adoption.
-- **`docs.comment-rubric` option `minWordsBeyondSymbol`** — optional quality floor that requires comments to contribute a configured number of unique tokens beyond the symbol's own identifier tokens.
-- **`docs.config-field-comment`** — default-disabled documentation rule for exported struct fields inside configured `includePaths`, intended for user-facing configuration schema types.
-- **`naming.acronym-case`** — flags identifiers that spell Go initialisms (`Id`, `Http`, `Url`, `Json`, `Api`, `Xml`, …) with mixed casing. `allowlists.acceptedAbbreviations` suppresses project-specific terms; the rule-local `allow` list handles exact third-party or generated API names that must stay as-is.
-- **`naming.get-prefix`** — flags accessor-style receiver methods using a discouraged `Get` prefix (`r.GetName()`). Package-level helpers such as `GetLogger(ctx)` are intentionally excluded after external calibration.
-- **`naming.receiver-consistency`** — project-level rule that groups methods by receiver type across the scanned project, strips leading `*`, and flags methods using the minority receiver name or pointer/value form.
-- **`naming.negated-boolean`** — flags boolean identifiers whose names begin with negation prefixes (`No`, `Not`, `Disable`, `Disallow`, `Without`, `Suppress`) followed by an uppercase letter. Type-aware: only flags identifiers whose syntactic type is `bool`. Configurable `prefixes`, `allowList`, and `scope` (`exported` default, `locals`, `all`). The default `allowList` covers English words like `NoOp`, `Notify`, `NoCopy`.
-- **`naming.misspelling`** — flags identifiers, doc comments, and struct tags containing tokens from a conservative built-in dictionary of common programming misspellings (`recieve`, `seperate`, `lenght`, `occured`, `enviroment`, etc., ~40 entries). Tokens are extracted with camelCase / snake_case / non-letter splitting and matched exactly. Configurable `extra map[string]string` for project additions and `ignore []string` for proper nouns.
-- **`naming.package-stutter`** — flags exported top-level types, non-method functions, and package-scope variables/constants whose lowercase form starts with their own package name (`rule.RuleRegistry`, `httpserver.HttpServerOptions`, `config.ConfigOptions`). Catches both exact-match stutter (allowlisted by default for `Config`, `Finding` per Go community convention) and prefix-then-uppercase stutter. Plain word extensions like `type Rules` in `package rule` do not fire. Method names are not checked. Configurable `allowStutter []string`.
-- **`naming.contextual-generic`** — flags identifiers like `result`, `data`, `value`, `item`, `entry`, `temp`, `info`, `obj` only when the surrounding loop or function is large enough that the context no longer disambiguates them. Thresholds: `minBodyLines: 15` for the enclosing block, `minFunctionLines: 50` for the enclosing function. Configurable `genericNames`, `minBodyLines`, `minFunctionLines`.
-- **Vendor-prefixed sensitive-data detectors** — default-enabled `sensitive-data.github-token`, `sensitive-data.slack-token`, `sensitive-data.stripe-key`, `sensitive-data.google-api-key`, and `sensitive-data.anthropic-api-key` detect high-precision token shapes, honor common suppression comments, and redact previews in every output format.
-- **`sensitive-data.gcp-service-account`** — critical detector for the co-occurrence of a `"type": "service_account"` marker and a PEM private-key header, matching the shape of GCP service-account JSON keys.
-- **Security expansion rules** — `security.tls-insecure-config`, `security.sql-string-query`, `security.archive-path-traversal`, `security.insecure-random-secret`, and `security.weak-crypto` add parser-only security coverage calibrated to keep heuristic rules visible at `low` severity unless concrete medium-severity evidence exists.
-
-### Known limitations
-
-- Calibration currently covers this repository, fixtures, and one external Go service corpus. Broader multi-corpus validation is still deferred.
-- The analysis model is parser-only. Type-aware rules, external linter ingestion, trend storage, package-manager distribution, and automated release publishing remain deferred.
-- Accessibility evidence for the HTML report and dashboard (Lighthouse, WCAG contrast, screen-reader walk, colour-blind sim) is pending human review.
-
-### Engineering history
-
-The v0.1 foundation was built across implementation milestones tracked in `.goat-flow/tasks/0.1/`; M13-M17 contain research and roadmap follow-up, and later M18-M38 milestones cover report trust, redaction, default policy, rubric expansion, performance cleanup, security expansion, and release calibration:
-
-- **M01 — Prove Go rubric and layout.** Validated repo state, translated the reference rubric into Go-native rule candidates, secured approval for the v0.1 source layout, recorded the parser-only-vs-package-loader spike.
-- **M02 — Build scanner foundation.** Added `cmd/gruff-go`, `internal/{source,parser,rule,analysis,report,scoring}`. First clean `go test ./...` on a real parser pipeline.
-- **M03 — Ship Go rule pack and scoring.** Five default-enabled MVP rules, severity-weighted scoring, top-offender list.
-- **M04 — Add config, diff, baseline, and reports.** Strict `.gruff-go.yaml` config, `git diff --unified=0`-driven changed-line filtering, JSON baselines, summary JSON, SARIF 2.1.0, GitHub annotations. Recorded as [ADR-003](.goat-flow/decisions/ADR-003-strict-json-operational-surfaces.md).
-- **M05 — Dogfood, calibrate, and document.** Repository self-scan hardened, threshold defaults tuned, glossary and architecture docs aligned with shipped behaviour.
-- **M06 — Core rubric expansion rules.** Default-disabled `complexity.nesting-depth`, `size.parameter-count`, `docs.exported-symbol-comment` with fixtures and dogfood coverage.
-- **M07 — Sensitive-naming and test rubrics.** Default-disabled sensitive-data, naming, and test-quality expansion rules with redaction and rule-option validation.
-- **M08 — Composite design and default policy.** Project-level composite design findings and the default policy table tuned from dogfood data.
-- **M09 — HTML report visual parity.** Self-contained HTML reporter, paper-frame aesthetic, tilted grade stamp, seven section sequence, `--format html` and `--report-editor-link` flags. `internal/scoring` extended with `PillarDetails`, `ComplexityDistribution`, and enriched `FileScore` (`Findings`, `Grade`, `MaxCyclomatic`).
-- **M10 — Local dashboard server.** `gruff-go dashboard` subcommand. `net/http` shell with cog-button controls panel, iframe-rendered report, `postMessage` scan-complete hand-off, signal-driven shutdown, loopback-default bind with explicit public gate.
-- **M11 — Interactive findings and accessibility.** Inline filter UI with URL-hash state, data attributes on every finding row, `--report-interactive` flag, dashboard checkbox wiring.
-- **M12 — Gitignore-respecting discovery.** Default scan boundary now follows project `.gitignore` files with `--include-ignored` as the explicit opt-out.
-- **M24-M30 — Naming and documentation calibration.** Phases 5-7 added `naming.negated-boolean`, `naming.misspelling`, and `naming.package-stutter`. Follow-up work added `naming.contextual-generic`, `docs.config-field-comment`, and stricter comment-rubric options. Earlier in v0.1 an unnumbered batch added `naming.acronym-case`, `naming.get-prefix`, `naming.receiver-consistency`, and `docs.comment-rubric`.
-- **M31-M33 — Release-performance cleanup.** Reduced sensitive-rule regex work, cleaned discovery allocations, and parallelised parser / registry hot paths without changing public schemas.
-- **M34-M38 — Sensitive-data and security expansion.** Added vendor-prefixed token detectors, GCP service-account shape detection, TLS / shell command hardening, calibrated SQL/archive rules, and calibrated crypto/random rules, taking the release catalogue to 41 rules.
+- Analysis is parser-only in v0.1. Type-aware rules, SSA/dataflow analysis, and external linter ingestion are deferred.
+- Trend storage, package-manager distribution, hosted service surfaces, and automated release publishing are not included in this release.
+- Accessibility validation for the HTML report and dashboard still needs broader manual and assistive-technology review.
 
 [Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/blundergoat/gruff-go/releases/tag/v0.1.0

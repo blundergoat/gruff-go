@@ -2,12 +2,12 @@
 # test-performance.sh - benchmark the gruff-go analyser end-to-end.
 #
 # Modes:
-#   --smoke         (M1) one timed pass over the repo itself, prints elapsed + counts
-#   --matrix        (M2) hyperfine over self + synthetic-medium + synthetic-large
-#   --sweep         (M3) format x rule-set x pathological inputs; peak RSS captured
-#   --compare       (M4) compare against scripts/.perf-results/baseline.json
-#   --baseline-update (M4) overwrite baseline with current run
-#   --ci            (M4) stricter regression tolerances and compact output
+#   --smoke          one timed pass over the repo itself, prints elapsed + counts
+#   --matrix         hyperfine over self + synthetic-medium + synthetic-large
+#   --sweep          format x rule-set x pathological inputs; peak RSS captured
+#   --compare        compare against scripts/.perf-results/baseline.json
+#   --baseline-update  overwrite baseline with current run
+#   --ci             stricter regression tolerances and compact output
 #   --all           run --smoke, --matrix, --sweep in that order
 #
 # Defaults to --smoke when no mode flag is given.
@@ -149,7 +149,7 @@ preflight() {
   mkdir -p "$RESULTS_DIR" "$CORPUS_DIR"
 }
 
-# ---------- M1: smoke ----------
+# ---------- smoke mode ----------
 run_smoke() {
   log ""
   log "== smoke =="
@@ -176,7 +176,7 @@ PY
   ok "smoke OK"
 }
 
-# ---------- M2: corpus generator (deterministic) ----------
+# ---------- corpus generator (deterministic) ----------
 ensure_corpus() {
   local target="$1" count="$2" stamp_file
   stamp_file="$target/.stamp-${CORPUS_SEED}-${count}"
@@ -276,17 +276,6 @@ run_matrix() {
     rows+=("$name|$raw|$metrics")
   done
 
-  python3 - <<PY
-import json
-rows = """${rows[*]}""".strip().split("\n") if """${rows[*]}""" else []
-# bash array joined by space; split on '|' triples manually
-raw = """${rows[*]}"""
-# Re-parse: we passed rows separated by spaces; cells separated by '|'.
-entries = []
-for chunk in raw.split():
-    pass
-PY
-  # The above python heredoc parsing is fragile; do it in bash instead:
   printf '\n%-8s  %12s  %12s  %12s  %10s  %12s\n' \
     "corpus" "median_ms" "p95_ms" "stddev_ms" "files" "files_per_s"
   printf '%s\n' "--------  ------------  ------------  ------------  ----------  ------------"
@@ -311,7 +300,7 @@ PY
   ok "matrix OK"
 }
 
-# ---------- M3: dimensional sweep ----------
+# ---------- dimensional sweep ----------
 peak_rss_kb() {
   # Runs the given command and prints peak RSS in KB (or "-" if unavailable).
   if /usr/bin/time -v true >/dev/null 2>&1; then
@@ -566,7 +555,7 @@ PY
   : > "$root/.stamp-${CORPUS_SEED}"
 }
 
-# ---------- M4: regression gate ----------
+# ---------- regression gate ----------
 write_baseline_from_results() {
   # Reads the latest matrix raw json files + sweep stash and emits baseline.
   python3 - "$RESULTS_DIR" "$BASELINE_FILE" <<'PY'

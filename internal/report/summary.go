@@ -1,5 +1,5 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file implements the compact text summary writer used by the CLI digest.
+// Compact summaries are optimized for quick terminal checks and CI log snippets.
 package report
 
 import (
@@ -22,7 +22,7 @@ type SummaryOptions struct {
 	ScanDuration time.Duration
 }
 
-// WriteSummaryText renders a compact human-readable digest of the analysis report to writer.
+// WriteSummaryText renders the short human-readable digest used by the summary command.
 func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOptions) error {
 	top := opts.Top
 	if top <= 0 {

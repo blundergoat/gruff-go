@@ -1,5 +1,5 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the get-prefix rule for accessor-style methods.
+// Get-prefix detection stays parser-only by matching method names and result shapes without type information.
 package rule
 
 import (

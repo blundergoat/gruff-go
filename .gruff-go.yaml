@@ -1,7 +1,6 @@
-# Discovery already respects the repo's .gitignore (see ADR-004). paths.ignore
-# is only for project-specific additions on top of that filter (e.g., committed
-# fixture trees or generated artefacts that are not in .gitignore but still
-# uninteresting to analysis). Empty list here means "no extras beyond .gitignore".
+# Discovery reads .gitignore first. paths.ignore is only for committed metadata,
+# fixtures, or generated artifacts that should stay out of dogfood scans even
+# when they are not ignored by Git.
 paths:
   ignore:
     - '.agents/**'
@@ -60,8 +59,9 @@ rules:
     severity: notice
     options:
       ignoreInternalPackages: true
-  # Every function, named type, const, and var requires an attached comment; every package needs a summary.
-  # minWordsBeyondSymbol: 3 rejects paraphrase boilerplate after stopword filtering (M26).
+  # Dogfood scans hold maintainer-facing comments to a stricter floor than the
+  # default rule pack: every declaration needs context, and every package needs
+  # a summary. minWordsBeyondSymbol rejects comments that mostly restate names.
   docs.comment-rubric:
     enabled: true
     threshold: 2
@@ -74,7 +74,7 @@ rules:
       requireVarComments: true
       ignoreTests: false
       minWordsBeyondSymbol: 3
-  # Every exported struct field must carry a doc comment (M29).
+  # Exported struct fields should explain the config/report contracts they expose.
   docs.config-field-comment:
     enabled: true
     severity: warning

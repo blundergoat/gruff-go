@@ -1,6 +1,6 @@
 // Package rule defines gruff-go's rule registry and analysers.
 // This file exercises the comment-rubric rule across its configuration knobs.
-// M26-M28 calibration tests live in comment_rubric_calibration_test.go.
+// Additional calibration tests live in comment_rubric_calibration_test.go.
 package rule
 
 import (
@@ -40,9 +40,8 @@ package sample
 		t.Fatalf("ok findings = %#v, want none", findings)
 	}
 
-	// New: a multi-file package whose summary lives in doc.go produces no
-	// findings on the other in-package files (the pre-fix behavior emitted
-	// "package summary is missing" once per undocumented file).
+	// Regression coverage: a package-level summary in doc.go should satisfy the
+	// whole package instead of producing one missing-summary finding per sibling file.
 	docFile := parseOne(t, "internal/sample/doc.go", `// Package sample explains the maintenance boundary for this test fixture.
 // It provides enough context for future maintainers to understand ownership.
 package sample

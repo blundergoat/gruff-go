@@ -15,9 +15,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestSensitiveRedactionAcrossFormats is the load-bearing redaction guarantee
-// from M07: raw secret values must not appear in any output format, even
-// when a rule emits a "preview" in its metadata.
+// TestSensitiveRedactionAcrossFormats protects the redaction contract: raw
+// secret values must not appear in any output format, even when a rule emits a
+// "preview" in its metadata.
 func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	rawSecret := "AKIAIOSFODNN7EXAMPLE"
 	rawPassword := "supersecretpassword"

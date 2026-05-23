@@ -1,5 +1,5 @@
 // Package cli implements the gruff-go command-line interface.
-// This file renders the usage and per-command help screens.
+// Help text lives here so command usage, examples, and flag descriptions stay consistent across entrypoints.
 package cli
 
 import (

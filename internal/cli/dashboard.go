@@ -1,5 +1,5 @@
 // Package cli implements the gruff-go command-line interface.
-// This file wires the dashboard subcommand to the dashboard server package.
+// The dashboard command converts CLI flags into the browser scan defaults served over HTTP.
 package cli
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// runDashboard parses dashboard flags and starts the embedded HTTP dashboard.
+// runDashboard parses dashboard flags and starts the local HTTP dashboard.
 func runDashboard(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	flags.SetOutput(stderr)
