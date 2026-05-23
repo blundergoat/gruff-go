@@ -1,15 +1,20 @@
+// Package cli implements the gruff-go command-line interface.
+// This file holds golden-file CLI tests that lock down rendered output.
 package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
 
+// TestGoldenAnalysisFormats compares analyse output against committed golden files.
 func TestGoldenAnalysisFormats(t *testing.T) {
 	cases := []struct {
 		name string
@@ -41,10 +46,11 @@ func TestGoldenAnalysisFormats(t *testing.T) {
 	}
 }
 
+// TestGoldenConfigLoading locks down summary output when a config file is loaded.
 func TestGoldenConfigLoading(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
-	writeFile(t, root, ".gruff.yaml", `
+	writeFile(t, root, ".gruff-go.yaml", `
 rules:
   complexity.cyclomatic:
     threshold: 100
@@ -61,6 +67,7 @@ rules:
 	assertGolden(t, "config-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestGoldenBaselineSuppression locks down output for baseline suppression flows.
 func TestGoldenBaselineSuppression(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -85,10 +92,11 @@ func TestGoldenBaselineSuppression(t *testing.T) {
 	assertGolden(t, "baseline-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
-func TestGoldenOptInExpansionRules(t *testing.T) {
+// TestGoldenConfiguredExpansionRules locks down output when expansion rules are configured explicitly.
+func TestGoldenConfiguredExpansionRules(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "expansion.go", expansionFixture())
-	writeFile(t, root, ".gruff.yaml", `
+	writeFile(t, root, ".gruff-go.yaml", `
 rules:
   size.parameter-count:
     enabled: true
@@ -106,20 +114,53 @@ rules:
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	assertGolden(t, "analyse-opt-in-expansion.golden", normalizeGoldenOutput(root, stdout))
+	assertGolden(t, "analyse-configured-expansion.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestGoldenCompositeRuleOutputs locks down output when composite rules fire.
+func TestGoldenCompositeRuleOutputs(t *testing.T) {
+	cases := []struct {
+		name   string
+		format string
+		code   int
+	}{
+		{name: "analyse-composite-summary-json.golden", format: "summary-json", code: 1},
+		{name: "analyse-composite-sarif.golden", format: "sarif", code: 1},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, "composite.go", compositeFixture())
+			writeFile(t, root, ".gruff-go.yaml", compositeConfig())
+			t.Chdir(root)
+
+			stdout, stderr, code := runGoldenCLI("analyse", "--format", tc.format, "composite.go")
+			if code != tc.code {
+				t.Fatalf("exit = %d, want %d\nstderr:\n%s\nstdout:\n%s", code, tc.code, stderr, stdout)
+			}
+			if stderr != "" {
+				t.Fatalf("stderr = %q, want empty", stderr)
+			}
+			assertGolden(t, tc.name, normalizeGoldenOutput(root, stdout))
+		})
+	}
+}
+
+// expansionFixture returns a Go source string that triggers expansion rule findings.
 func expansionFixture() string {
 	return `// Package sample is a test package.
 package sample
 
-func Wide(a, b, c, d, e, f int) {
+func Wide(a, b, c, d, e, f, g, h, i int) {
 	if a > 0 {
 		if b > 0 {
 			if c > 0 {
 				if d > 0 {
 					if e > 0 {
-						_ = f
+						if f > 0 {
+							_ = g + h + i
+						}
 					}
 				}
 			}
@@ -129,9 +170,39 @@ func Wide(a, b, c, d, e, f int) {
 `
 }
 
+// compositeFixture returns a Go source string that triggers composite rule findings.
+func compositeFixture() string {
+	return `// Package sample is a test package.
+package sample
+
+func Hot(a bool, b bool) {
+	if a {
+		_ = a
+	}
+	if b {
+		_ = b
+	}
+}
+`
+}
+
+// compositeConfig returns a YAML config enabling rules used by compositeFixture.
+func compositeConfig() string {
+	return `
+rules:
+  size.function-length:
+    threshold: 4
+  complexity.cyclomatic:
+    threshold: 2
+  design.god-function:
+    enabled: true
+`
+}
+
+// TestGoldenDiffMode locks down diff-mode output by setting up a temp git repo.
 func TestGoldenDiffMode(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is required for diff-mode golden coverage")
+		t.Fatalf("git is required for diff-mode golden coverage: %v", err)
 	}
 
 	root := t.TempDir()
@@ -158,12 +229,104 @@ func risky(a bool) {}
 	assertGolden(t, "diff-summary-json.golden", normalizeGoldenOutput(root, stdout))
 }
 
+// TestAnalyseRespectsGitignoreByDefault confirms gitignored files are skipped by default.
+func TestAnalyseRespectsGitignoreByDefault(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n*.log\n")
+	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "// Package main is a test package.\npackage main\n")
+	writeFile(t, root, "notes.log", "noise\n")
+	t.Chdir(root)
+
+	stdout, stderr, code := runGoldenCLI("analyse", "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s\nstdout:\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stdout, `"main.go"`) {
+		t.Fatalf("main.go should be in scanned paths; got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"path": "ignored.go"`) || !strings.Contains(stdout, `"reason": "gitignored"`) {
+		t.Fatalf("ignored.go should appear in skipped with reason gitignored; got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"path": "notes.log"`) {
+		t.Fatalf("notes.log should appear in skipped; got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, `"includeIgnored": true`) {
+		t.Fatalf("includeIgnored should not be emitted on default analyse; got:\n%s", stdout)
+	}
+}
+
+// TestAnalyseIncludeIgnoredBypassesGitignore confirms --include-ignored scans gitignored files.
+func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n")
+	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "// Package main is a test package.\npackage main\n")
+	t.Chdir(root)
+
+	stdout, stderr, code := runGoldenCLI("analyse", "--format", "json", "--include-ignored")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s\nstdout:\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stdout, `"includeIgnored": true`) {
+		t.Fatalf("--include-ignored should emit run.includeIgnored=true; got:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, `"ignored.go"`) {
+		t.Fatalf("ignored.go should be scanned with --include-ignored; got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, `"reason": "gitignored"`) {
+		t.Fatalf("--include-ignored must not emit gitignored skipped entries; got:\n%s", stdout)
+	}
+}
+
+// TestAnalyseIncludeIgnoredPreservesConfigIgnores confirms config ignore paths still apply.
+func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "secret.go\n")
+	writeFile(t, root, ".gruff-go.yaml", "paths:\n  ignore:\n    - secret.go\n")
+	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "secret.go", "// Package main is a test package.\npackage main\n")
+	t.Chdir(root)
+
+	stdout, stderr, code := runGoldenCLI("analyse", "--format", "json", "--include-ignored")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstderr:\n%s\nstdout:\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stdout, `"includeIgnored": true`) {
+		t.Fatalf("--include-ignored should emit run.includeIgnored=true; got:\n%s", stdout)
+	}
+	var parsed struct {
+		Paths struct {
+			Scanned []string `json:"scanned"`
+			Skipped []struct {
+				Path   string `json:"path"`
+				Reason string `json:"reason"`
+			} `json:"skipped"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("invalid json: %v\n%s", err, stdout)
+	}
+	if slices.Contains(parsed.Paths.Scanned, "secret.go") {
+		t.Fatalf("secret.go should not be scanned with config ignore; got %#v", parsed.Paths.Scanned)
+	}
+	foundSkip := false
+	for _, item := range parsed.Paths.Skipped {
+		foundSkip = foundSkip || (item.Path == "secret.go" && item.Reason == "config-ignore")
+	}
+	if !foundSkip {
+		t.Fatalf("secret.go should remain config-ignored with --include-ignored; got %#v", parsed.Paths.Skipped)
+	}
+}
+
+// runGoldenCLI invokes Main with args and returns captured stdout, stderr, and exit code.
 func runGoldenCLI(args ...string) (string, string, int) {
 	var stdout, stderr bytes.Buffer
 	code := Main(args, &stdout, &stderr)
 	return stdout.String(), stderr.String(), code
 }
 
+// assertGolden compares got against the named golden file, honouring UPDATE_GOLDEN.
 func assertGolden(t *testing.T, name string, got string) {
 	t.Helper()
 	path := goldenPath(t, name)
@@ -183,6 +346,7 @@ func assertGolden(t *testing.T, name string, got string) {
 	}
 }
 
+// goldenPath returns the on-disk location of the named golden file.
 func goldenPath(t *testing.T, name string) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -192,6 +356,7 @@ func goldenPath(t *testing.T, name string) string {
 	return filepath.Join(filepath.Dir(file), "testdata", "golden", name)
 }
 
+// normalizeGoldenOutput rewrites tmp paths to <WORKDIR> so goldens stay stable across runs.
 func normalizeGoldenOutput(root string, value string) string {
 	value = normalizeLineEndings(value)
 	value = strings.ReplaceAll(value, root, "<WORKDIR>")
@@ -199,10 +364,12 @@ func normalizeGoldenOutput(root string, value string) string {
 	return value
 }
 
+// normalizeLineEndings rewrites CRLF into LF so goldens stay stable on Windows.
 func normalizeLineEndings(value string) string {
 	return strings.ReplaceAll(value, "\r\n", "\n")
 }
 
+// runGit invokes git inside root and fails the test if the command errors.
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)

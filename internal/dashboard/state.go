@@ -1,3 +1,5 @@
+// Package dashboard state helpers build the initial form state for new sessions.
+// They translate dashboard Options into the report.DashboardState payload.
 package dashboard
 
 import (
@@ -10,7 +12,7 @@ import (
 // defaultState builds the dashboard form state used on first load.
 func defaultState(opts Options) report.DashboardState {
 	scope := "full"
-	if opts.Diff {
+	if opts.DiffMode {
 		scope = "diff"
 	}
 	failOn := opts.FailOn
@@ -18,14 +20,14 @@ func defaultState(opts Options) report.DashboardState {
 		failOn = "medium"
 	}
 	state := report.DashboardState{
-		Project:    firstNonEmpty(opts.ProjectRoot, currentWorkingDirectory()),
-		Paths:      strings.Join(opts.Paths, ","),
-		ScanScope:  scope,
-		FailOn:     failOn,
-		Config:     opts.ConfigPath,
-		Baseline:   opts.BaselinePath,
-		NoBaseline: boolFlag(opts.NoBaseline),
-		NoConfig:   boolFlag(opts.NoConfig),
+		Project:      firstNonEmpty(opts.ProjectRoot, currentWorkingDirectory()),
+		Paths:        strings.Join(opts.Paths, ","),
+		ScanScope:    scope,
+		FailOn:       failOn,
+		Config:       opts.ConfigPath,
+		Baseline:     opts.BaselinePath,
+		SkipBaseline: boolFlag(opts.SkipBaseline),
+		SkipConfig:   boolFlag(opts.SkipConfig),
 	}
 	if opts.IncludeIgnored {
 		state.IncludeIgnored = "1"
@@ -36,10 +38,12 @@ func defaultState(opts Options) report.DashboardState {
 	return state
 }
 
+// dashboardQueryFromState encodes the dashboard state as a URL query string.
 func dashboardQueryFromState(state report.DashboardState) string {
 	return report.DashboardScanQuery(state)
 }
 
+// firstNonEmpty returns the first non-empty value or "" when all are empty.
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -49,6 +53,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// boolFlag returns "1" for true and "" for false, matching the dashboard form contract.
 func boolFlag(value bool) string {
 	if value {
 		return "1"
@@ -56,14 +61,11 @@ func boolFlag(value bool) string {
 	return ""
 }
 
+// currentWorkingDirectory returns os.Getwd or empty string on error.
 func currentWorkingDirectory() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
 	return wd
-}
-
-func changeDir(path string) error {
-	return os.Chdir(path)
 }

@@ -2,6 +2,7 @@
 
 **Status:** Implemented
 **Date:** 2026-05-13
+**Updated:** 2026-05-18
 **Author(s):** Codex
 **Ticket/Context:** `.goat-flow/tasks/0.1`
 
@@ -24,6 +25,15 @@ Evidence from this session:
 - Rules operate on parser units, source text, ASTs, and project-level unit collections.
 - Type/package-aware rules are deferred until a later milestone proves that they need type information and can degrade cleanly when imports or packages fail.
 
+M21 addendum: rule definitions also carry an explicit capability label with the closed enum `parser`, `type`, `ssa`, and `dataflow`.
+
+- `parser` means the rule can run with source discovery, source text, Go parser units, ASTs, or already-produced findings.
+- `type` means the rule requires package/type information that the v0.1 runtime does not provide.
+- `ssa` means the rule requires an SSA/IR representation that the v0.1 runtime does not provide.
+- `dataflow` means the rule requires path/taint/dataflow evidence that the v0.1 runtime does not provide.
+
+All shipped v0.1 rules must report `parser` while this ADR remains the runtime contract. A future rule may declare a higher tier only in the same milestone that adds and verifies the runtime capability needed to serve that tier; capability labels are metadata, not permission to over-claim scanner coverage.
+
 ## Failure Mode Comparison
 
 | Option | What fails | Why rejected or accepted |
@@ -34,4 +44,4 @@ Evidence from this session:
 
 ## Reversibility
 
-Two-way door. A future milestone can add a package/type loader alongside parser units if it preserves parser-only fallback behavior, keeps diagnostics deterministic, and proves the added rules need type data.
+Two-way door. A future milestone can add a package/type loader alongside parser units if it preserves parser-only fallback behavior, keeps diagnostics deterministic, proves the added rules need type data, and updates the capability invariant with runtime evidence.

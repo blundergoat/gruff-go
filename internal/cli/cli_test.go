@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// This file exercises the analyse subcommand and related helpers.
 package cli
 
 import (
@@ -12,6 +14,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
+// TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output.
 func TestAnalyseTextAndJSON(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -39,8 +42,14 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	if parsed.Summary.FilesScanned != 1 {
 		t.Fatalf("files scanned = %d, want 1", parsed.Summary.FilesScanned)
 	}
+	for _, definition := range parsed.Rules {
+		if definition.Capability != "parser" {
+			t.Fatalf("rule %s capability = %q, want parser", definition.ID, definition.Capability)
+		}
+	}
 }
 
+// TestAnalyseJSONDeterministicShape verifies that repeated scans yield identical JSON.
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "b.go", "package main\n")
@@ -72,6 +81,7 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	}
 }
 
+// TestListRulesAndDiagnostics covers list-rules output and diagnostic exit codes.
 func TestListRulesAndDiagnostics(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -81,6 +91,9 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(listOut.String(), `"id": "size.file-length"`) {
 		t.Fatalf("list-rules output = %s", listOut.String())
+	}
+	if !strings.Contains(listOut.String(), `"capability": "parser"`) {
+		t.Fatalf("list-rules output missing capability = %s", listOut.String())
 	}
 
 	var missingOut, missingErr bytes.Buffer
@@ -95,33 +108,34 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	}
 }
 
+// TestAnalyseJSONIncludesFindingsAndScore asserts findings and score appear in JSON output.
 func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", `// Package sample is a test package.
 package sample
 
 func risky(a bool) {
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
 }
 `)
 	t.Chdir(root)
@@ -146,20 +160,20 @@ func risky(a bool) {
 	}
 }
 
+// TestAnalyseHonorsConfigThresholdAndBaseline checks config thresholds and baseline suppression.
 func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
-	writeFile(t, root, "config.json", `{
-		"rules": {
-			"complexity.cyclomatic": {
-				"thresholds": {"maxComplexity": 100}
-			}
-		}
-	}`)
+	writeFile(t, root, "config.yaml", `
+rules:
+  complexity.cyclomatic:
+    thresholds:
+      maxComplexity: 100
+`)
 	t.Chdir(root)
 
 	var configOut, configErr bytes.Buffer
-	if code := Main([]string{"analyse", "--config", "config.json", "."}, &configOut, &configErr); code != 0 {
+	if code := Main([]string{"analyse", "--config", "config.yaml", "."}, &configOut, &configErr); code != 0 {
 		t.Fatalf("config exit = %d, stderr = %s, stdout = %s", code, configErr.String(), configOut.String())
 	}
 
@@ -181,10 +195,11 @@ func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	}
 }
 
-func TestAnalyseAutoLoadsGruffYAMLAndNoConfigSkipsIt(t *testing.T) {
+// TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt confirms config autoload and --no-config behaviour.
+func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
-	writeFile(t, root, ".gruff.yaml", `
+	writeFile(t, root, ".gruff-go.yaml", `
 rules:
   complexity.cyclomatic:
     threshold: 100
@@ -203,6 +218,7 @@ rules:
 	}
 }
 
+// TestAnalyseSummarySARIFAndGitHubFormats verifies non-empty output for alternative report formats.
 func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -221,6 +237,7 @@ func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 	}
 }
 
+// TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs ensures display filters affect rendering only.
 func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -239,36 +256,74 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	}
 }
 
+// TestReportIncludeIgnoredOverridesGitignore verifies the report subcommand
+// accepts --include-ignored and threads it into discovery so gitignored files
+// are scanned. Without this, gruff-go report --format json silently dropped
+// ignored files regardless of user intent.
+func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "package main\n")
+	t.Chdir(root)
+
+	withoutFlag := bytes.Buffer{}
+	errOut := bytes.Buffer{}
+	if code := Main([]string{"report", "--format", "json"}, &withoutFlag, &errOut); code != 0 {
+		t.Fatalf("default report exit = %d, stderr = %s", code, errOut.String())
+	}
+	if !strings.Contains(withoutFlag.String(), `"main.go"`) {
+		t.Fatalf("default report should scan main.go; got %s", withoutFlag.String())
+	}
+	if !strings.Contains(withoutFlag.String(), `"reason": "gitignored"`) {
+		t.Fatalf("default report should record ignored.go under skipped:gitignored; got %s", withoutFlag.String())
+	}
+
+	withFlag := bytes.Buffer{}
+	errOut.Reset()
+	if code := Main([]string{"report", "--format", "json", "--include-ignored"}, &withFlag, &errOut); code != 0 {
+		t.Fatalf("include-ignored report exit = %d, stderr = %s", code, errOut.String())
+	}
+	if !strings.Contains(withFlag.String(), `"ignored.go"`) {
+		t.Fatalf("--include-ignored report should scan ignored.go; got %s", withFlag.String())
+	}
+	if strings.Contains(withFlag.String(), `"reason": "gitignored"`) {
+		t.Fatalf("--include-ignored report should not emit gitignored skip reasons; got %s", withFlag.String())
+	}
+}
+
+// complexFixture returns a Go source string that triggers complexity findings.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
 
 func risky(a bool) {
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
-	if a {}
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
+	if a { _ = a }
 }
 `
 }
 
+// writeFile is a test helper that creates a file beneath root with the given contents.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

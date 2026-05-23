@@ -2,7 +2,7 @@
   "schemaVersion": "gruff-go.analysis.v0.1",
   "tool": {
     "name": "gruff-go",
-    "version": "0.1.0-dev"
+    "version": "0.1.0"
   },
   "run": {
     "workingDirectory": "<WORKDIR>",
@@ -73,6 +73,12 @@
         "info": 0
       }
     ],
+    "coverage": {
+      "contributingPillars": [
+        "complexity"
+      ],
+      "caveat": "Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage."
+    },
     "topOffenders": [
       {
         "file": "complex.go",
@@ -88,7 +94,8 @@
       "16-20": 0,
       "21+": 1,
       "6-10": 0
-    }
+    },
+    "complexityDistributionScope": "finding-only"
   },
   "diagnostics": []
 }

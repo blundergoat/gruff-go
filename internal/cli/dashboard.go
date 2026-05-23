@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// The dashboard command converts CLI flags into the browser scan defaults served over HTTP.
 package cli
 
 import (
@@ -13,6 +15,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// runDashboard parses dashboard flags and starts the local HTTP dashboard.
 func runDashboard(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -26,7 +29,7 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 	baselinePath := flags.String("baseline", "", "initial baseline file")
 	noBaseline := flags.Bool("no-baseline", false, "skip applying any baseline")
 	diff := flags.Bool("diff", false, "start dashboard in diff-only scan mode")
-	includeIgnored := flags.Bool("include-ignored", false, "include files under default ignored directories")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	failOn := flags.String("fail-on", string(finding.SeverityMedium), "minimum severity that fails a scan")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in the report")
 	editorLink := flags.String("report-editor-link", "none", "html file:line link mode: none, vscode, or phpstorm")
@@ -64,11 +67,11 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 		ProjectRoot:       *project,
 		Paths:             splitComma(*paths),
 		ConfigPath:        *configPath,
-		NoConfig:          *noConfig,
+		SkipConfig:        *noConfig,
 		BaselinePath:      *baselinePath,
-		NoBaseline:        *noBaseline,
+		SkipBaseline:      *noBaseline,
 		IncludeIgnored:    *includeIgnored,
-		Diff:              *diff,
+		DiffMode:          *diff,
 		FailOn:            string(parsedFailOn),
 		ReportInteractive: *reportInteractive,
 		EditorLink:        *editorLink,
@@ -82,6 +85,7 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// parseDashboardTimeout interprets the --scan-timeout flag value as a duration.
 func parseDashboardTimeout(raw string) (time.Duration, error) {
 	value, err := strconv.Atoi(raw)
 	if err != nil || value < 0 {
@@ -93,6 +97,7 @@ func parseDashboardTimeout(raw string) (time.Duration, error) {
 	return time.Duration(value) * time.Second, nil
 }
 
+// splitComma splits raw on commas and drops empty entries after trimming whitespace.
 func splitComma(raw string) []string {
 	if raw == "" {
 		return nil

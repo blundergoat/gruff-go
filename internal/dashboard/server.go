@@ -1,4 +1,5 @@
 // Package dashboard serves the local browser dashboard for interactive analysis.
+// It hosts the HTTP server, default options, and scan orchestration entrypoints.
 package dashboard
 
 import (
@@ -28,23 +29,40 @@ const DefaultScanTimeout = 120 * time.Second
 
 // Options configures a dashboard server.
 type Options struct {
-	Host              string
-	Port              int
-	ScanTimeout       time.Duration
-	ProjectRoot       string
-	Paths             []string
-	ConfigPath        string
-	NoConfig          bool
-	BaselinePath      string
-	NoBaseline        bool
-	IncludeIgnored    bool
-	Diff              bool
-	FailOn            string
+	// Host is the bind host; empty defaults to DefaultHost (loopback).
+	Host string
+	// Port is the TCP listener port; zero or negative defaults to DefaultPort.
+	Port int
+	// ScanTimeout caps the wall-clock duration of a single scan; zero disables the deadline.
+	ScanTimeout time.Duration
+	// ProjectRoot is the default project directory used by scans when the query omits one.
+	ProjectRoot string
+	// Paths are the default discovery paths under ProjectRoot used by initial scans.
+	Paths []string
+	// ConfigPath is the default .gruff-go.yaml location consumed by scans.
+	ConfigPath string
+	// SkipConfig disables config file loading when true.
+	SkipConfig bool
+	// BaselinePath is the default baseline file used by scans.
+	BaselinePath string
+	// SkipBaseline disables baseline application when true.
+	SkipBaseline bool
+	// IncludeIgnored disables gitignore filtering when true.
+	IncludeIgnored bool
+	// DiffMode enables changed-lines-only scans by default when true.
+	DiffMode bool
+	// FailOn is the default severity threshold used for scan exit codes.
+	FailOn string
+	// ReportInteractive renders the interactive findings UI when true.
 	ReportInteractive bool
-	EditorLink        string
-	AllowPublic       bool
-	Registry          rule.Registry
-	IgnorePaths       []string
+	// EditorLink is the editor URL template used to deep-link findings (e.g. "vscode://file/{path}:{line}").
+	EditorLink string
+	// AllowPublic permits binding to non-loopback hosts; required to expose the dashboard beyond localhost.
+	AllowPublic bool
+	// Registry supplies the rules used by scan handlers.
+	Registry rule.Registry
+	// IgnorePaths lists path patterns suppressed from discovery on every scan.
+	IgnorePaths []string
 }
 
 // Serve binds the dashboard listener and processes HTTP clients until shut down.
@@ -72,11 +90,15 @@ func Serve(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 	}
 
 	handler := NewHandler(opts)
+	writeTimeout := time.Duration(0)
+	if opts.ScanTimeout > 0 {
+		writeTimeout = opts.ScanTimeout + 10*time.Second
+	}
 	server := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      opts.ScanTimeout + 10*time.Second,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       60 * time.Second,
 	}
 
@@ -107,6 +129,7 @@ func Serve(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 	}
 }
 
+// isLoopbackHost reports whether the host string resolves to a loopback address.
 func isLoopbackHost(host string) bool {
 	switch strings.ToLower(host) {
 	case "127.0.0.1", "::1", "localhost":
@@ -119,6 +142,7 @@ func isLoopbackHost(host string) bool {
 	return parsed.IsLoopback()
 }
 
+// initialURL builds the dashboard root URL with the default scan query string.
 func initialURL(host string, port int, opts Options) string {
 	state := defaultState(opts)
 	query := dashboardQueryFromState(state)

@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the builtin rule pack and shared helpers.
 package rule
 
 import (
@@ -10,8 +12,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// TestDefaultsListRules verifies the default registry exposes the expected rule IDs.
 func TestDefaultsListRules(t *testing.T) {
-	definitions := Defaults().Definitions()
+	defaults := Defaults()
+	definitions := defaults.Definitions()
 	got := make([]string, 0, len(definitions))
 	enabled := map[string]bool{}
 	for _, definition := range definitions {
@@ -22,16 +26,38 @@ func TestDefaultsListRules(t *testing.T) {
 		"complexity.cyclomatic",
 		"complexity.nesting-depth",
 		"dead-code.empty-block",
+		"design.god-function",
+		"design.hotspot-file",
+		"docs.comment-rubric",
+		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
 		"docs.package-comment",
+		"naming.acronym-case",
+		"naming.contextual-generic",
+		"naming.get-prefix",
 		"naming.identifier-quality",
+		"naming.misspelling",
+		"naming.negated-boolean",
+		"naming.package-stutter",
 		"naming.package-underscore",
+		"naming.receiver-consistency",
+		"security.archive-path-traversal",
+		"security.insecure-random-secret",
 		"security.shell-command",
+		"security.sql-string-query",
+		"security.tls-insecure-config",
+		"security.weak-crypto",
+		"sensitive-data.anthropic-api-key",
 		"sensitive-data.aws-access-key",
 		"sensitive-data.connection-string",
+		"sensitive-data.gcp-service-account",
+		"sensitive-data.github-token",
+		"sensitive-data.google-api-key",
 		"sensitive-data.jwt-token",
 		"sensitive-data.private-key",
 		"sensitive-data.secret-pattern",
+		"sensitive-data.slack-token",
+		"sensitive-data.stripe-key",
 		"size.file-length",
 		"size.function-length",
 		"size.parameter-count",
@@ -47,32 +73,22 @@ func TestDefaultsListRules(t *testing.T) {
 			t.Fatalf("rules = %#v, want %#v", got, want)
 		}
 	}
-	for _, id := range []string{
-		"complexity.cyclomatic",
-		"docs.package-comment",
-		"sensitive-data.secret-pattern",
-		"size.file-length",
-		"size.function-length",
-	} {
+	// docs.config-field-comment ships default-disabled; all other shipped rules are default-enabled.
+	defaultDisabled := map[string]bool{"docs.config-field-comment": true}
+	for _, id := range want {
+		if defaultDisabled[id] {
+			if enabled[id] {
+				t.Fatalf("rule %s should be default disabled", id)
+			}
+			continue
+		}
 		if !enabled[id] {
 			t.Fatalf("rule %s should be default enabled", id)
 		}
 	}
-	for _, id := range []string{
-		"complexity.nesting-depth",
-		"dead-code.empty-block",
-		"docs.exported-symbol-comment",
-		"naming.package-underscore",
-		"security.shell-command",
-		"size.parameter-count",
-		"test-quality.skipped-test",
-	} {
-		if enabled[id] {
-			t.Fatalf("rule %s should be default disabled", id)
-		}
-	}
 }
 
+// TestSizeRules covers the file-length and function-length rules on long and short units.
 func TestSizeRules(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long.go", Type: source.FileTypeGo},
@@ -110,6 +126,7 @@ func TestSizeRules(t *testing.T) {
 	}
 }
 
+// TestCyclomaticComplexityRule confirms the rule fires for highly branching functions.
 func TestCyclomaticComplexityRule(t *testing.T) {
 	unit := parseOne(t, "complex.go", `// Package sample is a test package.
 package sample
@@ -144,6 +161,7 @@ func risky(a bool) {
 	}
 }
 
+// TestCyclomaticComplexityCases exercises the cyclomatic helper across control-flow shapes.
 func TestCyclomaticComplexityCases(t *testing.T) {
 	tests := []struct {
 		name string
@@ -186,6 +204,7 @@ func sample(a bool, b bool) {
 	}
 }
 
+// TestPackageCommentRule verifies the rule fires only on packages without a package comment.
 func TestPackageCommentRule(t *testing.T) {
 	withComment := parseOne(t, "with/comment.go", `// Package withcomment explains itself.
 package withcomment
@@ -199,27 +218,82 @@ package withcomment
 	}
 }
 
-func TestSensitiveDataRule(t *testing.T) {
-	unit := parser.Unit{
-		File:   source.File{Path: "config.env", Type: source.FileTypeText},
-		Source: "api_key = \"12345678901234567890\"\n",
-	}
-	findings := SensitiveDataRule{}.AnalyzeUnit(unit, Context{})
+// TestPackageCommentRuleSkipsExternalTestPackages confirms that an external xxx_test package without its own summary is not reported, while the sibling production package without one still produces a finding.
+func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
+	production := parseOne(t, "pkg/prod.go", `package pkg
+`)
+	externalTest := parseOne(t, "pkg/prod_test.go", `package pkg_test
+`)
+
+	findings := PackageCommentRule{}.AnalyzeProject([]parser.Unit{production, externalTest}, Context{})
 	if len(findings) != 1 {
-		t.Fatalf("findings = %#v, want one secret finding", findings)
+		t.Fatalf("findings = %#v, want one production package finding", findings)
 	}
-	if findings[0].Metadata["preview"] == "" {
-		t.Fatalf("finding preview missing: %#v", findings[0])
-	}
-	clean := parser.Unit{
-		File:   source.File{Path: "config.env", Type: source.FileTypeText},
-		Source: "name = \"not-secret\"\n",
-	}
-	if got := (SensitiveDataRule{}).AnalyzeUnit(clean, Context{}); len(got) != 0 {
-		t.Fatalf("clean findings = %#v, want none", got)
+	if findings[0].File != "pkg/prod.go" || findings[0].Message != "package pkg has no package comment" {
+		t.Fatalf("finding = %#v, want production package comment finding", findings[0])
 	}
 }
 
+// TestSensitiveDataRule verifies the rule flags common secret-like assignment lines.
+func TestSensitiveDataRule(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+	}{
+		{name: "api key env", line: "api_key = \"12345678901234567890\""},
+		{name: "api key short declaration", line: "apiKey := \"12345678901234567890\""},
+		{name: "auth token", line: "auth_token = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "access token", line: "access-token = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "refresh token camel", line: "refreshToken = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "client secret", line: "client_secret: \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "bearer value", line: "bearer = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "authorization bearer value", line: "authorization = \"Bearer abcdefghijklmnopqrstuvwxyz123456\""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "config.env", Type: source.FileTypeText},
+				Source: tt.line + "\n",
+			}
+			findings := SensitiveDataRule{}.AnalyzeUnit(unit, Context{})
+			if len(findings) != 1 {
+				t.Fatalf("findings = %#v, want one secret finding", findings)
+			}
+			if findings[0].Metadata["preview"] == "" {
+				t.Fatalf("finding preview missing: %#v", findings[0])
+			}
+		})
+	}
+}
+
+// TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig avoids false positives on configish lines.
+func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+	}{
+		{name: "plain non secret", line: "name = \"not-secret\""},
+		{name: "token refresh bool", line: "enabled_token_refresh = true"},
+		{name: "token refresh long value", line: "enabled_token_refresh = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "token ttl", line: "token_ttl = 3600"},
+		{name: "access token enabled", line: "access_token_enabled = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "bearer mode", line: "bearer_mode = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "short bearer authorization", line: "authorization = \"Bearer short\""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			unit := parser.Unit{
+				File:   source.File{Path: "config.env", Type: source.FileTypeText},
+				Source: tt.line + "\n",
+			}
+			if got := (SensitiveDataRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("findings = %#v, want none", got)
+			}
+		})
+	}
+}
+
+// TestExpansionRules covers the expansion rule pack (package name, empty block, shell, skip).
 func TestExpansionRules(t *testing.T) {
 	packageUnit := parseOne(t, "bad/package.go", `// Package bad_name is a test package.
 package bad_name
@@ -270,9 +344,61 @@ func TestSkipped(t *testing.T) {
 	if len(skipFindings) != 1 {
 		t.Fatalf("skip findings = %#v, want one", skipFindings)
 	}
+
+	// Confirm Skip-named calls on non-testing receivers do not produce
+	// findings. Without the receiver-type check the matcher would treat any
+	// .Skip()/.Skipf()/.SkipNow() selector as a testing skip, false-flagging
+	// queue clients, table iterators, and similar third-party APIs.
+	thirdPartyUnit := parseOne(t, "third_party_test.go", `// Package sample is a test package.
+package sample
+
+import "testing"
+
+type Iter struct{}
+
+func (Iter) Skip()         {}
+func (Iter) Skipf(string)  {}
+func (Iter) SkipNow()      {}
+
+func TestThirdPartySkipIgnored(t *testing.T) {
+	iter := Iter{}
+	iter.Skip()
+	iter.Skipf("x")
+	iter.SkipNow()
+}
+`)
+	got := SkippedTestRule{}.AnalyzeUnit(thirdPartyUnit, Context{})
+	if len(got) != 0 {
+		t.Fatalf("third-party .Skip() calls must not be flagged; got %#v", got)
+	}
 }
 
-func TestExpansionRulesAreOptIn(t *testing.T) {
+// TestPackageNameUnderscoreRuleSkipsExternalTestPackages confirms idiomatic
+// black-box test packages (`package foo_test`) are not treated as bad package
+// names, while genuinely underscored package names remain in scope.
+func TestPackageNameUnderscoreRuleSkipsExternalTestPackages(t *testing.T) {
+	externalTest := parseOne(t, "pkg/api_test.go", `package api_test
+`)
+	badExternalTest := parseOne(t, "bad/bad_pkg_test.go", `package bad_pkg_test
+`)
+	production := parseOne(t, "bad/bad_pkg.go", `package bad_pkg
+`)
+
+	findings := PackageNameUnderscoreRule{}.AnalyzeProject([]parser.Unit{externalTest, badExternalTest, production}, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.File] = true
+	}
+	if got["pkg/api_test.go"] {
+		t.Fatalf("external api_test package should not be flagged; got %#v", findings)
+	}
+	if !got["bad/bad_pkg_test.go"] || !got["bad/bad_pkg.go"] {
+		t.Fatalf("bad_pkg packages should still be flagged; got %#v", findings)
+	}
+}
+
+// TestExpansionRulesFireByDefault confirms expansion rules fire under Defaults() and can be disabled.
+func TestExpansionRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "empty.go", `// Package sample is a test package.
 package sample
 
@@ -281,22 +407,23 @@ func empty(a bool) {
 }
 `)
 	defaults := Defaults()
-	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); len(findings) != 0 {
-		t.Fatalf("default findings = %#v, want disabled expansion rules skipped", findings)
+	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); !containsRuleID(findings, "dead-code.empty-block") {
+		t.Fatalf("default findings = %#v, want dead-code.empty-block fired", findings)
 	}
 
-	enabledRegistry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"dead-code.empty-block": true},
+	disabledRegistry, err := DefaultsConfigured(Config{
+		Enabled: map[string]bool{"dead-code.empty-block": false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := enabledRegistry.Analyze([]parser.Unit{unit}, Context{})
-	if len(findings) != 1 || findings[0].RuleID != "dead-code.empty-block" {
-		t.Fatalf("enabled findings = %#v, want dead-code.empty-block", findings)
+	findings := disabledRegistry.Analyze([]parser.Unit{unit}, Context{})
+	if containsRuleID(findings, "dead-code.empty-block") {
+		t.Fatalf("disabled findings = %#v, want dead-code.empty-block silenced", findings)
 	}
 }
 
+// parseOne writes contents to a temp file and returns the parsed unit; used by rule tests.
 func parseOne(t *testing.T, rel string, contents string) parser.Unit {
 	t.Helper()
 	root := t.TempDir()

@@ -1,4 +1,5 @@
 // Package baseline reads, writes, and applies finding baselines.
+// It supports suppressing previously accepted findings by fingerprint match.
 package baseline
 
 import (
@@ -12,26 +13,40 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// SchemaVersion identifies the on-disk baseline schema accepted by this package.
 const SchemaVersion = "gruff-go.baseline.v0.1"
 
+// File is the persisted baseline document containing accepted findings.
 type File struct {
-	SchemaVersion string  `json:"schemaVersion"`
-	Findings      []Entry `json:"findings"`
+	// SchemaVersion identifies the on-disk baseline schema; must match SchemaVersion.
+	SchemaVersion string `json:"schemaVersion"`
+	// Findings lists the accepted finding identities suppressed by Apply.
+	Findings []Entry `json:"findings"`
 }
 
+// Entry is a single accepted finding identified by rule, file, and fingerprint.
 type Entry struct {
-	RuleID      string `json:"ruleId"`
-	File        string `json:"file"`
+	// RuleID is the rule whose finding is suppressed.
+	RuleID string `json:"ruleId"`
+	// File is the repo-relative path the suppressed finding targets.
+	File string `json:"file"`
+	// Fingerprint is the stable identity hash of the suppressed finding.
 	Fingerprint string `json:"fingerprint"`
 }
 
+// ApplyResult summarises how a baseline affected a set of findings.
 type ApplyResult struct {
-	Findings           []finding.Finding
+	// Findings holds the surviving findings after baseline suppression.
+	Findings []finding.Finding
+	// SuppressedFindings is the count of findings hidden by matching baseline entries.
 	SuppressedFindings int
-	StaleEntries       int
-	Entries            int
+	// StaleEntries is the count of baseline entries that did not match any current finding.
+	StaleEntries int
+	// Entries is the total number of entries the baseline contained.
+	Entries int
 }
 
+// FromFindings builds a baseline File from the supplied findings, sorted deterministically.
 func FromFindings(findings []finding.Finding) File {
 	entries := make([]Entry, 0, len(findings))
 	for _, item := range findings {
@@ -53,6 +68,7 @@ func FromFindings(findings []finding.Finding) File {
 	return File{SchemaVersion: SchemaVersion, Findings: entries}
 }
 
+// Load reads and parses a baseline File from the given filesystem path.
 func Load(path string) (File, error) {
 	// #nosec G304 -- CLI intentionally reads an explicit user-provided baseline path.
 	data, err := os.ReadFile(path)
@@ -62,6 +78,7 @@ func Load(path string) (File, error) {
 	return Parse(data)
 }
 
+// Parse decodes baseline JSON bytes into a validated File.
 func Parse(data []byte) (File, error) {
 	var file File
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -80,6 +97,7 @@ func Parse(data []byte) (File, error) {
 	return file, nil
 }
 
+// Write serialises the baseline File to disk at path with restricted permissions.
 func Write(path string, file File) error {
 	data, err := Marshal(file)
 	if err != nil {
@@ -88,6 +106,7 @@ func Write(path string, file File) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
+// Marshal encodes the baseline File as indented JSON with a trailing newline.
 func Marshal(file File) ([]byte, error) {
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
@@ -96,6 +115,7 @@ func Marshal(file File) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
+// Apply suppresses findings present in the baseline and reports stale entries.
 func Apply(findings []finding.Finding, file File) ApplyResult {
 	entries := map[Entry]struct{}{}
 	for _, entry := range file.Findings {

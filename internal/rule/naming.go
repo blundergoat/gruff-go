@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file implements the identifier-quality placeholder rule.
 package rule
 
 import (
@@ -13,24 +15,24 @@ import (
 // always indicate hurried code. Project configs override the list via
 // rules.<id>.options.placeholderNames.
 var defaultPlaceholderNames = []string{
-	"data",
-	"info",
-	"obj",
-	"tmp",
-	"temp",
 	"foo",
 	"bar",
 	"baz",
-	"qux",
+	"tmp",
+	"temp",
+	"obj",
 	"todo",
 	"thing",
 	"stuff",
 }
 
+// IdentifierQualityRule flags local identifiers whose names match a configured placeholder list.
 type IdentifierQualityRule struct {
+	// PlaceholderNames overrides the default placeholder list (foo, bar, tmp, ...) the rule treats as low-quality identifiers.
 	PlaceholderNames []string
 }
 
+// Definition declares the naming.identifier-quality rule that fires when local variables match the configured placeholderNames list.
 func (r IdentifierQualityRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.identifier-quality",
@@ -39,13 +41,14 @@ func (r IdentifierQualityRule) Definition() Definition {
 		Pillar:         finding.PillarNaming,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
-		Tags:           []string{"opt-in", "naming"},
+		DefaultEnabled: true,
+		Tags:           []string{"naming"},
 		Options:        map[string]any{"placeholderNames": defaultPlaceholderNames},
 		Remediation:    "Rename the identifier to something that names its role, or remove it if it is no longer needed.",
 	}
 }
 
+// AnalyzeUnit walks a parsed unit and emits findings for placeholder-named local identifiers.
 func (r IdentifierQualityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -84,6 +87,7 @@ func (r IdentifierQualityRule) AnalyzeUnit(unit parser.Unit, _ Context) []findin
 	return findings
 }
 
+// placeholderSet returns the lowercased placeholder names the rule will match against.
 func (r IdentifierQualityRule) placeholderSet() map[string]bool {
 	source := r.PlaceholderNames
 	if len(source) == 0 {
@@ -100,6 +104,7 @@ func (r IdentifierQualityRule) placeholderSet() map[string]bool {
 	return out
 }
 
+// makeNamingFinding builds a placeholder-identifier finding anchored at the identifier's position.
 func makeNamingFinding(unit parser.Unit, ident *ast.Ident) finding.Finding {
 	position := unit.FileSet.Position(ident.NamePos)
 	return finding.Finding{

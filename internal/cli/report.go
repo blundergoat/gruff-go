@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// The report command runs analysis once and routes the result through the selected report writer.
 package cli
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
+// runReport parses report flags, runs analysis, and writes the selected report format.
 func runReport(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("report", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -19,7 +22,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
@@ -27,6 +30,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -53,14 +57,15 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
-	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:        flags.Args(),
-		Format:       *format,
-		FailOn:       failOn,
-		Registry:     registry,
-		IgnorePaths:  ignorePaths,
-		BaselinePath: *baselinePath,
-		DiffBase:     *diffBase,
+	analysisReport, err := analysis.Analyze(analysis.Options{
+		Paths:          flags.Args(),
+		Format:         *format,
+		FailOn:         failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
+		BaselinePath:   *baselinePath,
+		DiffBase:       *diffBase,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -83,6 +88,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	return analysisReport.Summary.ExitCode
 }
 
+// openReportWriter selects stdout or a created file as the report writer.
 func openReportWriter(stdout io.Writer, path string) (io.Writer, func(), error) {
 	if path == "" {
 		return stdout, func() {}, nil
@@ -95,6 +101,7 @@ func openReportWriter(stdout io.Writer, path string) (io.Writer, func(), error) 
 	return file, func() { _ = file.Close() }, nil
 }
 
+// writeReport serialises the analysis report in the requested format.
 func writeReport(writer io.Writer, analysisReport analysis.Report, format string, htmlOpts report.HTMLOptions) error {
 	switch format {
 	case "json":

@@ -1,6 +1,6 @@
 # Configuration
 
-`gruff-go` is configurable through a single project-root file: `.gruff.yaml`, `.gruff.yml`, or `.gruff.json` (the loader tries them in that order). The file is **strict** — unknown keys, unknown rule IDs, unknown pillars, and out-of-range thresholds all fail closed with a clear diagnostic. The schema is versioned: `gruff-go.config.v0.1`.
+`gruff-go` is configurable through a single project-root file: `.gruff-go.yaml`. The file is **strict** - unknown keys, unknown rule IDs, unknown pillars, and out-of-range thresholds all fail closed with a clear diagnostic. The schema is versioned: `gruff-go.config.v0.1`.
 
 ## Discovery
 
@@ -15,12 +15,12 @@ gruff-go analyse --config configs/strict.yaml .
 gruff-go analyse --no-config .
 ```
 
-`--config` and `--no-config` are mutually exclusive — pass one or neither, never both.
+`--config` and `--no-config` are mutually exclusive - pass one or neither, never both.
 
 ## Full schema
 
 ```yaml
-# .gruff.yaml
+# .gruff-go.yaml
 paths:
   ignore: []          # extra path prefixes/globs to skip; merged with built-in ignores
 
@@ -41,18 +41,16 @@ rules:
     threshold: <int>            # convenience for single-threshold rules
     thresholds:                 # for rules with named thresholds
       <name>: <int>
-    severity: info | low | medium | high | critical
+    severity: info | low | medium | high | critical | notice | warning | warn | error
     options:                    # rule-specific opaque map
       <key>: <value>
 ```
-
-JSON form (`.gruff.json`) carries the same keys with standard JSON syntax. Mixing YAML and JSON files isn't supported — pick one.
 
 ## Section reference
 
 ### `paths.ignore`
 
-A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), dependency caches (`vendor/`, `node_modules/`), generated Go files (`//go:generate`-emitted with the standard `Code generated … DO NOT EDIT.` header), and GOAT Flow scratchpads. The entries you add are layered on top.
+A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), non-application metadata directories (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`), dependency caches (`vendor/`, `node_modules/`), and generated Go files (`//go:generate`-emitted with the standard `Code generated … DO NOT EDIT.` header). The entries you add are layered on top.
 
 ```yaml
 paths:
@@ -66,7 +64,7 @@ Patterns are matched against the project-relative path. Trailing slashes mark di
 
 ### `allowlists.acceptedAbbreviations`
 
-Uppercase identifiers that naming rules will treat as a single word rather than flagging as broken CamelCase. Default list includes common Go conventions; add domain-specific ones.
+Uppercase identifiers that naming rules will treat as accepted words. `naming.acronym-case` uses this list to suppress configured initialism findings for project-specific terms.
 
 ```yaml
 allowlists:
@@ -94,27 +92,29 @@ allowlists:
 
 ### `selection`
 
-Four lists that filter which findings appear in the report **without** changing how rules execute. The display filter is also reachable through the CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars`; the CLI values win when both are set.
+Four lists that change which rules execute. `rules` and `pillars` create an allowlist when non-empty; `excludeRules` and `excludePillars` remove rules after that allowlist is applied. Because unselected rules do not run, config selection changes findings, score, and exit code.
 
 ```yaml
 selection:
-  rules: []                          # allowlist
-  excludeRules: ["docs.package-comment"]
-  pillars: ["security", "complexity"]
-  excludePillars: ["modernisation"]
+  rules: []                           # run only these rule IDs when non-empty
+  excludeRules: ["docs.package-comment"] # disable these rule IDs
+  pillars: ["security", "complexity"] # run only these pillars when non-empty
+  excludePillars: ["test-quality"]    # disable these pillars
 ```
 
-The report records the active filter in `displayFilter` so downstream consumers can detect that the scan was filtered. Score and exit code use the full unfiltered finding set; only the rendered list of findings is hidden.
+The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.
 
 ### `rules.<rule-id>`
 
 Per-rule overrides. Every field is optional:
 
-- `enabled` — turn a default-disabled rule on (or a default-enabled rule off).
-- `threshold` — shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
-- `thresholds` — for rules with multiple thresholds, name them explicitly.
-- `severity` — `info`, `low`, `medium`, `high`, or `critical`.
-- `options` — opaque per-rule map for rules with bespoke options.
+- `enabled` - toggle a rule on or off. All built-in rules are enabled by default except `docs.config-field-comment`; set `false` to disable a default-enabled rule or `true` to opt into the config-field rule.
+- `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
+- `thresholds` - for rules with multiple thresholds, name them explicitly.
+- `severity` - canonical severities `info`, `low`, `medium`, `high`, or `critical`. Config also accepts gruff-family aliases: `notice` maps to `low`, `warning` / `warn` map to `medium`, and `error` maps to `high`.
+- `options` - opaque per-rule map for rules with bespoke options.
+
+Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses medium severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `low` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-medium configured `severity` applies to test files too and disables that default downranking for the overridden rule.
 
 Examples:
 
@@ -129,17 +129,48 @@ rules:
   docs.package-comment:
     enabled: false
 
-  # Turn on an opt-in expansion rule.
+  # Disable a rule that does not fit this project.
   naming.package-underscore:
-    enabled: true
+    enabled: false
 
-  # Custom shell-command rule allowlist.
+  # Raise shell-routed command execution to a high-severity gate.
   security.shell-command:
     enabled: true
+    severity: high
+
+  # Require doc comments for module-private exported symbols too.
+  docs.exported-symbol-comment:
+    enabled: true
     options:
-      allowList:
-        - "git"
-        - "go"
+      ignoreInternalPackages: false
+
+  # Enforce a stricter maintainer-comment rubric on selected files.
+  # Threshold defaults to 1 (one-line package summary OK); set to 2 for the older two-line floor.
+  # minWordsBeyondSymbol is opt-in: when set, comments that only restate the symbol name are rejected.
+  # _test.go files: requireConstComments and requireVarComments are automatically scoped away even
+  # when ignoreTests is false. Function, named-type, and package-summary checks still apply.
+  docs.comment-rubric:
+    enabled: true
+    threshold: 2
+    severity: low
+    options:
+      includePaths:
+        - internal/analysis/report.go
+      minWordsBeyondSymbol: 3
+      requirePackageSummary: true
+      requireFunctionComments: true
+      requireNamedTypeComments: true
+      requireConstComments: true
+      requireVarComments: true
+
+  # Require doc comments on every exported field of configuration-style struct types.
+  # Default-disabled; enable per-path via includePaths so general struct fields stay un-enforced.
+  docs.config-field-comment:
+    enabled: true
+    severity: low
+    options:
+      includePaths:
+        - internal/config/config.go
 ```
 
 If a rule ID doesn't exist, the loader rejects the file with `config: unknown rule "x.y"`. Run `gruff-go list-rules` to print the current registry.
@@ -153,7 +184,8 @@ The loader rejects:
 - Unknown rule IDs in `selection.rules` or `selection.excludeRules`.
 - Unknown pillar names in `selection.pillars` or `selection.excludePillars`.
 - Non-integer or negative threshold values.
-- Severity values outside `info / low / medium / high / critical`.
+- A rule config that combines `threshold` and `thresholds`.
+- Severity values outside `info / low / medium / high / critical` and their accepted aliases (`notice`, `warning`, `warn`, `error`).
 - Lowercase abbreviations in `allowlists.acceptedAbbreviations`.
 
 Any of these failures emits a `config:` diagnostic and exits the scan with code `2`. Treat config errors as build breaks, not silent warnings.
@@ -164,4 +196,4 @@ Any of these failures emits a `config:` diagnostic and exits the scan with code 
 
 ## Where defaults live
 
-The default rule pack, default thresholds, default severities, and the built-in ignore list are all sourced from `internal/rule/builtin.go` and `internal/source/source.go`. Run `gruff-go list-rules --format json` to inspect the resolved registry, including any overrides applied by your config.
+The default rule pack, default thresholds, and default severities live under `internal/rule/`; the built-in discovery ignore list lives under `internal/source/`. Run `gruff-go list-rules --format json` to inspect the resolved registry, including any overrides applied by your config.

@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-23
 ---
 
 # Setup Footguns
@@ -24,11 +24,11 @@ The package exposes a `test` script, so script detection can look successful. Tr
 hallucination-risk: high
 
 Evidence:
-- `internal/cli/cli.go` (search: `gruff-go analyse [--format text|json|summary-json|sarif|github]`)
-- `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff.yaml", ".gruff.yml", ".gruff.json"}`)
-- Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed five default-enabled rules, four opt-in rules, and exited 0.
+- `internal/cli/cli.go` (search: `output format: text, json, summary-json, sarif, github, or html`)
+- `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff-go.yaml"}`)
+- Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed the catalogue and exited 0. [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) (2026-05-18) subsequently flipped every shipped rule to `defaultEnabled: true` except the deliberate `docs.config-field-comment` carve-out called out in that ADR.
 
-The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, and a small opt-in expansion pack, but README usage, CI wiring, dashboard, trend storage, broad calibrated rule families, and package publication are still not implemented. Do not claim those published integration surfaces until later milestones add them.
+The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a GitHub Actions dogfood workflow. Per [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) the current rule catalogue has 41 rules, with 40 default-enabled and one deliberate carve-out: `docs.config-field-comment` stays `defaultEnabled: false` because its empty-default scoping would otherwise fire on every exported struct field. The previous "small opt-in expansion pack" framing is superseded - projects opt *out* of individual rules instead of opting in, and the only rule they need to opt *in* to is `docs.config-field-comment`. Trend storage, hosted dashboard/service surfaces, external linter ingestion, package-manager distribution, and automated release publishing are still not implemented. Do not claim those published integration surfaces until later milestones add them.
 
 ## Resolved Entries
 

@@ -1,4 +1,5 @@
 // Package cli implements the gruff-go command-line interface.
+// It wires command-line flags and dispatches subcommands to the analysis pipeline.
 package cli
 
 import (
@@ -16,8 +17,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-const toolVersion = "0.1.0-dev"
+// toolVersion is the released gruff-go semantic version printed by --version.
+const toolVersion = "0.1.0"
 
+// Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
 	args, ansiPref := extractAnsiFlags(args)
 	args, quiet := extractQuiet(args)
@@ -83,16 +86,18 @@ func extractQuiet(args []string) ([]string, bool) {
 	return out, quiet
 }
 
+// isVersionFlag reports whether the argument requests version output.
 func isVersionFlag(arg string) bool {
 	return arg == "-V" || arg == "--version"
 }
 
+// runAnalyse executes the analyse subcommand and renders the scan report.
 func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
@@ -102,6 +107,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -128,14 +134,15 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
-	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:        flags.Args(),
-		Format:       *format,
-		FailOn:       failOn,
-		Registry:     registry,
-		IgnorePaths:  ignorePaths,
-		BaselinePath: *baselinePath,
-		DiffBase:     *diffBase,
+	analysisReport, err := analysis.Analyze(analysis.Options{
+		Paths:          flags.Args(),
+		Format:         *format,
+		FailOn:         failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
+		BaselinePath:   *baselinePath,
+		DiffBase:       *diffBase,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -149,6 +156,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer) int {
 	return analysisReport.Summary.ExitCode
 }
 
+// writeAnalysisReport serialises the analysis report to writer in the chosen format.
 func writeAnalysisReport(writer io.Writer, format string, analysisReport analysis.Report, htmlOpts report.HTMLOptions) error {
 	switch format {
 	case "json":
@@ -166,12 +174,14 @@ func writeAnalysisReport(writer io.Writer, format string, analysisReport analysi
 	}
 }
 
+// runBaseline writes a baseline JSON file from a clean scan.
 func runBaseline(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("baseline", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	outPath := flags.String("out", "", "baseline output path")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -184,12 +194,13 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
-	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:       flags.Args(),
-		Format:      "json",
-		FailOn:      finding.SeverityCritical,
-		Registry:    registry,
-		IgnorePaths: ignorePaths,
+	analysisReport, err := analysis.Analyze(analysis.Options{
+		Paths:          flags.Args(),
+		Format:         "json",
+		FailOn:         finding.SeverityCritical,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -209,11 +220,12 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// runListRules prints metadata for every registered rule.
 func runListRules(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("list-rules", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text or json")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -249,6 +261,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// configuredRegistry builds the rule registry honouring the loaded config file.
 func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, error) {
 	defaults := rule.Defaults()
 	root, err := os.Getwd()
@@ -270,6 +283,7 @@ func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []stri
 	return registry, cfg.IgnorePaths, nil
 }
 
+// supportedAnalysisFormat reports whether format names a known analyse output.
 func supportedAnalysisFormat(format string) bool {
 	switch format {
 	case "text", "json", "summary-json", "sarif", "github", "html":
@@ -279,6 +293,7 @@ func supportedAnalysisFormat(format string) bool {
 	}
 }
 
+// supportedEditorLink reports whether value names a supported editor-link mode.
 func supportedEditorLink(value string) bool {
 	switch value {
 	case "none", "vscode", "phpstorm":
@@ -288,6 +303,7 @@ func supportedEditorLink(value string) bool {
 	}
 }
 
+// parseDisplayFilter validates the rule and pillar filter flags into a DisplayFilter.
 func parseDisplayFilter(includeRules, excludeRules, includePillars, excludePillars string, definitions []rule.Definition) (analysis.DisplayFilter, error) {
 	ruleIDs := map[string]struct{}{}
 	for _, definition := range definitions {
@@ -314,6 +330,7 @@ func parseDisplayFilter(includeRules, excludeRules, includePillars, excludePilla
 	return filter, nil
 }
 
+// parsePillars converts a comma-separated pillar list into validated Pillar values.
 func parsePillars(input string) ([]finding.Pillar, error) {
 	values := splitCSV(input)
 	out := make([]finding.Pillar, 0, len(values))
@@ -327,6 +344,7 @@ func parsePillars(input string) ([]finding.Pillar, error) {
 	return out, nil
 }
 
+// splitCSV splits a comma-separated input string and trims surrounding whitespace.
 func splitCSV(input string) []string {
 	if input == "" {
 		return nil

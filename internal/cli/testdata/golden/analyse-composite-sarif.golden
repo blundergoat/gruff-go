@@ -1,0 +1,1426 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "gruff-go",
+          "semanticVersion": "0.1.0",
+          "rules": [
+            {
+              "id": "complexity.cyclomatic",
+              "name": "Cyclomatic complexity",
+              "shortDescription": {
+                "text": "Cyclomatic complexity"
+              },
+              "fullDescription": {
+                "text": "Flags Go functions whose branch count exceeds the default cyclomatic threshold."
+              },
+              "help": {
+                "text": "Split independent decisions or move branches into named helpers."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxComplexity": 2
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "complexity.nesting-depth",
+              "name": "Nesting depth",
+              "shortDescription": {
+                "text": "Nesting depth"
+              },
+              "fullDescription": {
+                "text": "Flags functions whose maximum control-flow nesting depth exceeds the configured threshold. Function literals reset the count."
+              },
+              "help": {
+                "text": "Extract nested branches into named helpers or return early on guard conditions."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxDepth": 5
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "dead-code.empty-block",
+              "name": "Empty control-flow block",
+              "shortDescription": {
+                "text": "Empty control-flow block"
+              },
+              "fullDescription": {
+                "text": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code."
+              },
+              "help": {
+                "text": "Remove the empty block or add the intended implementation."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "design.god-function",
+              "name": "God function",
+              "shortDescription": {
+                "text": "God function"
+              },
+              "fullDescription": {
+                "text": "Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition."
+              },
+              "help": {
+                "text": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared."
+              },
+              "properties": {
+                "pillar": "design",
+                "secondaryPillars": [
+                  "size",
+                  "complexity"
+                ],
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "composite"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "design.hotspot-file",
+              "name": "Hotspot file",
+              "shortDescription": {
+                "text": "Hotspot file"
+              },
+              "fullDescription": {
+                "text": "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots."
+              },
+              "help": {
+                "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
+              },
+              "properties": {
+                "pillar": "design",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "composite"
+                ],
+                "thresholds": {
+                  "minFindings": 3,
+                  "minPillars": 2
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.comment-rubric",
+              "name": "Comment rubric",
+              "shortDescription": {
+                "text": "Comment rubric"
+              },
+              "fullDescription": {
+                "text": "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply."
+              },
+              "help": {
+                "text": "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When minWordsBeyondSymbol is set, the comment must add at least that many tokens beyond the symbol's own identifier tokens; replace name-restatement summaries with substantive context."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "comments",
+                  "documentation",
+                  "rubric"
+                ],
+                "thresholds": {
+                  "minPackageCommentLines": 1
+                },
+                "options": {
+                  "excludePaths": [],
+                  "ignoreTests": false,
+                  "includePaths": [],
+                  "minWordsBeyondSymbol": 0,
+                  "requireConstComments": false,
+                  "requireFunctionComments": false,
+                  "requireInterfaceComments": false,
+                  "requireNamedTypeComments": false,
+                  "requirePackageSummary": false,
+                  "requireStructComments": false,
+                  "requireVarComments": false
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.config-field-comment",
+              "name": "Config field comment",
+              "shortDescription": {
+                "text": "Config field comment"
+              },
+              "fullDescription": {
+                "text": "Flags exported fields on struct types declared inside configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope. Default-disabled and intended for user-facing configuration schema types."
+              },
+              "help": {
+                "text": "Add a doc comment to every exported field of structs declared in the configured includePaths."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "comments",
+                  "documentation",
+                  "opt-in",
+                  "struct-fields"
+                ],
+                "options": {
+                  "excludePaths": [],
+                  "includePaths": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.exported-symbol-comment",
+              "name": "Exported symbol comment",
+              "shortDescription": {
+                "text": "Exported symbol comment"
+              },
+              "fullDescription": {
+                "text": "Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment."
+              },
+              "help": {
+                "text": "Add a Go-style doc comment that begins with the symbol name."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "options": {
+                  "ignoreInternalPackages": true
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.package-comment",
+              "name": "Package comment",
+              "shortDescription": {
+                "text": "Package comment"
+              },
+              "fullDescription": {
+                "text": "Flags Go packages that do not have a package-level comment in any file."
+              },
+              "help": {
+                "text": "Add a package comment that explains the package responsibility."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.acronym-case",
+              "name": "Acronym case",
+              "shortDescription": {
+                "text": "Acronym case"
+              },
+              "fullDescription": {
+                "text": "Flags identifiers that spell configured Go initialisms with mixed casing."
+              },
+              "help": {
+                "text": "Use all-caps initialisms in exported names and consistently cased initialisms in unexported names."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming"
+                ],
+                "options": {
+                  "acronyms": [
+                    "HTTP",
+                    "URL",
+                    "JSON",
+                    "ID",
+                    "XML",
+                    "API",
+                    "JWT",
+                    "AWS",
+                    "OAUTH",
+                    "CSS",
+                    "HTML",
+                    "YAML",
+                    "SARIF",
+                    "ASCII",
+                    "SQL",
+                    "CLI",
+                    "TCP",
+                    "UDP",
+                    "TLS",
+                    "SSL",
+                    "DNS",
+                    "IP",
+                    "GPU",
+                    "CPU",
+                    "OS"
+                  ],
+                  "allow": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.contextual-generic",
+              "name": "Contextual generic name",
+              "shortDescription": {
+                "text": "Contextual generic name"
+              },
+              "fullDescription": {
+                "text": "Flags generic range variables and accumulator names only when surrounding context is large enough that the name loses meaning."
+              },
+              "help": {
+                "text": "Rename long-loop values and long-function accumulators to describe the data role they carry."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "naming"
+                ],
+                "thresholds": {
+                  "minBodyLines": 15,
+                  "minFunctionLines": 50
+                },
+                "options": {
+                  "accumulatorNames": [
+                    "out",
+                    "result"
+                  ],
+                  "genericNames": [
+                    "item",
+                    "value",
+                    "entry",
+                    "elem",
+                    "v"
+                  ],
+                  "requireMultiple": true
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.get-prefix",
+              "name": "Get prefix",
+              "shortDescription": {
+                "text": "Get prefix"
+              },
+              "fullDescription": {
+                "text": "Flags receiver accessor methods that use a Get prefix instead of a direct noun phrase."
+              },
+              "help": {
+                "text": "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming"
+                ],
+                "options": {
+                  "excludeNames": [],
+                  "excludePaths": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.identifier-quality",
+              "name": "Identifier quality",
+              "shortDescription": {
+                "text": "Identifier quality"
+              },
+              "fullDescription": {
+                "text": "Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review."
+              },
+              "help": {
+                "text": "Rename the identifier to something that names its role, or remove it if it is no longer needed."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "naming"
+                ],
+                "options": {
+                  "placeholderNames": [
+                    "foo",
+                    "bar",
+                    "baz",
+                    "tmp",
+                    "temp",
+                    "obj",
+                    "todo",
+                    "thing",
+                    "stuff"
+                  ]
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.misspelling",
+              "name": "Misspelled identifier or comment",
+              "shortDescription": {
+                "text": "Misspelled identifier or comment"
+              },
+              "fullDescription": {
+                "text": "Flags identifiers, doc comments, and struct tags containing common programming misspellings."
+              },
+              "help": {
+                "text": "Replace the misspelled token with the suggested correction. Use the `ignore` option for project-specific terms that look like misspellings but are intentional (proper nouns, vendor-specific terms)."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "naming"
+                ],
+                "options": {
+                  "extra": {},
+                  "ignore": []
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.negated-boolean",
+              "name": "Negated boolean",
+              "shortDescription": {
+                "text": "Negated boolean"
+              },
+              "fullDescription": {
+                "text": "Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites."
+              },
+              "help": {
+                "text": "Rename to the positive form (e.g. Skip… instead of No…) so call sites read without double negation."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming"
+                ],
+                "options": {
+                  "allowList": [
+                    "NoOp",
+                    "Notify",
+                    "Notice",
+                    "Now",
+                    "NoCopy",
+                    "Notation",
+                    "Notebook"
+                  ],
+                  "prefixes": [
+                    "No",
+                    "Not",
+                    "Disable",
+                    "Disallow",
+                    "Without",
+                    "Suppress"
+                  ],
+                  "scope": "exported"
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.package-stutter",
+              "name": "Package stutter",
+              "shortDescription": {
+                "text": "Package stutter"
+              },
+              "fullDescription": {
+                "text": "Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry)."
+              },
+              "help": {
+                "text": "Rename the identifier to remove the package-name prefix so call sites read `config.Options` instead of `config.ConfigOptions`. Use `allowStutter` for single-noun stutter the community accepts (Config, Finding)."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming"
+                ],
+                "options": {
+                  "allowStutter": [
+                    "Config",
+                    "Finding"
+                  ]
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.package-underscore",
+              "name": "Package name contains underscore",
+              "shortDescription": {
+                "text": "Package name contains underscore"
+              },
+              "fullDescription": {
+                "text": "Flags Go package names that use underscores instead of short lowercase words."
+              },
+              "help": {
+                "text": "Rename the package to a short lowercase name without underscores."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "naming.receiver-consistency",
+              "name": "Receiver consistency",
+              "shortDescription": {
+                "text": "Receiver consistency"
+              },
+              "fullDescription": {
+                "text": "Flags methods on the same type that use inconsistent receiver names or pointer/value forms."
+              },
+              "help": {
+                "text": "Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form."
+              },
+              "properties": {
+                "pillar": "naming",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style",
+                  "naming"
+                ],
+                "options": {
+                  "allowMixed": [],
+                  "inspectGroup": "both"
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.archive-path-traversal",
+              "name": "Archive path traversal",
+              "shortDescription": {
+                "text": "Archive path traversal"
+              },
+              "fullDescription": {
+                "text": "Flags archive extraction paths built from entry names without an obvious containment check."
+              },
+              "help": {
+                "text": "Clean the joined path and verify it stays within the extraction root before creating files."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "archive",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.insecure-random-secret",
+              "name": "Insecure random secret",
+              "shortDescription": {
+                "text": "Insecure random secret"
+              },
+              "fullDescription": {
+                "text": "Flags math/rand use when the result is assigned to or returned from token, nonce, session, password, key, or other secret-looking contexts."
+              },
+              "help": {
+                "text": "Use crypto/rand for security-sensitive random values and keep math/rand for sampling, tests, and simulations."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "random",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.shell-command",
+              "name": "Shell command execution",
+              "shortDescription": {
+                "text": "Shell command execution"
+              },
+              "fullDescription": {
+                "text": "Flags exec.Command calls that invoke a shell interpreter with command strings."
+              },
+              "help": {
+                "text": "Call the target executable directly and pass arguments without shell interpretation."
+              },
+              "properties": {
+                "pillar": "security",
+                "secondaryPillars": [
+                  "sensitive-data"
+                ],
+                "defaultSeverity": "medium",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "security.sql-string-query",
+              "name": "SQL string query construction",
+              "shortDescription": {
+                "text": "SQL string query construction"
+              },
+              "fullDescription": {
+                "text": "Flags SQL execution calls whose query argument is constructed with string formatting or concatenation."
+              },
+              "help": {
+                "text": "Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security",
+                  "sql"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.tls-insecure-config",
+              "name": "TLS insecure config",
+              "shortDescription": {
+                "text": "TLS insecure config"
+              },
+              "fullDescription": {
+                "text": "Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions."
+              },
+              "help": {
+                "text": "Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security",
+                  "tls"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "security.weak-crypto",
+              "name": "Weak crypto primitive",
+              "shortDescription": {
+                "text": "Weak crypto primitive"
+              },
+              "fullDescription": {
+                "text": "Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits."
+              },
+              "help": {
+                "text": "Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "crypto",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "sensitive-data.anthropic-api-key",
+              "name": "Anthropic API key literal",
+              "shortDescription": {
+                "text": "Anthropic API key literal"
+              },
+              "fullDescription": {
+                "text": "Flags Anthropic API keys (sk-ant- prefix) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the key in the Anthropic console, then load credentials from a secret manager."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.aws-access-key",
+              "name": "AWS access key id",
+              "shortDescription": {
+                "text": "AWS access key id"
+              },
+              "fullDescription": {
+                "text": "Flags AWS access key identifiers (AKIA...) embedded in source or text files."
+              },
+              "help": {
+                "text": "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.connection-string",
+              "name": "Connection string with embedded password",
+              "shortDescription": {
+                "text": "Connection string with embedded password"
+              },
+              "fullDescription": {
+                "text": "Flags database/queue connection URLs that embed a username and password in the URI."
+              },
+              "help": {
+                "text": "Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.gcp-service-account",
+              "name": "GCP service-account JSON key",
+              "shortDescription": {
+                "text": "GCP service-account JSON key"
+              },
+              "fullDescription": {
+                "text": "Flags files containing both a `\"type\": \"service_account\"` marker and a PEM private-key header - the documented shape of a GCP service-account JSON key file. Fires independently of sensitive-data.private-key, so a real key file produces two findings."
+              },
+              "help": {
+                "text": "Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "critical",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.github-token",
+              "name": "GitHub token literal",
+              "shortDescription": {
+                "text": "GitHub token literal"
+              },
+              "fullDescription": {
+                "text": "Flags GitHub personal-access, OAuth, user-to-server, server-to-server, and refresh tokens (gh[pousr]_ prefix) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the token, then load credentials from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.google-api-key",
+              "name": "Google API key literal",
+              "shortDescription": {
+                "text": "Google API key literal"
+              },
+              "fullDescription": {
+                "text": "Flags Google API keys (AIza prefix plus 35 base64url characters) embedded in source or text files."
+              },
+              "help": {
+                "text": "Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.jwt-token",
+              "name": "JWT token literal",
+              "shortDescription": {
+                "text": "JWT token literal"
+              },
+              "fullDescription": {
+                "text": "Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files."
+              },
+              "help": {
+                "text": "Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.private-key",
+              "name": "Embedded private key",
+              "shortDescription": {
+                "text": "Embedded private key"
+              },
+              "fullDescription": {
+                "text": "Flags PEM-encoded private keys embedded directly in source or text files."
+              },
+              "help": {
+                "text": "Remove the key and load it from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "critical",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.secret-pattern",
+              "name": "Secret-like literal",
+              "shortDescription": {
+                "text": "Secret-like literal"
+              },
+              "fullDescription": {
+                "text": "Flags high-risk secret-like key/value assignments in Go and text/config files."
+              },
+              "help": {
+                "text": "Move secrets to a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.slack-token",
+              "name": "Slack token literal",
+              "shortDescription": {
+                "text": "Slack token literal"
+              },
+              "fullDescription": {
+                "text": "Flags Slack bot, user, app, and refresh tokens (xox[bpar]- prefix) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the token in Slack's app management console, then load credentials from a secret manager."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.stripe-key",
+              "name": "Stripe live key literal",
+              "shortDescription": {
+                "text": "Stripe live key literal"
+              },
+              "fullDescription": {
+                "text": "Flags Stripe secret, publishable, and restricted live-environment keys ((sk|pk|rk)_live_ prefix) embedded in source or text files."
+              },
+              "help": {
+                "text": "Roll the key in the Stripe dashboard, then load credentials from a secret manager."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "size.file-length",
+              "name": "File length",
+              "shortDescription": {
+                "text": "File length"
+              },
+              "fullDescription": {
+                "text": "Flags Go files that exceed the default line-count threshold."
+              },
+              "help": {
+                "text": "Split the file by responsibility or move focused behavior into smaller files."
+              },
+              "properties": {
+                "pillar": "size",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxLines": 500
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "size.function-length",
+              "name": "Function length",
+              "shortDescription": {
+                "text": "Function length"
+              },
+              "fullDescription": {
+                "text": "Flags Go functions that exceed the default line-count threshold."
+              },
+              "help": {
+                "text": "Extract cohesive helper functions or split independent branches."
+              },
+              "properties": {
+                "pillar": "size",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxLines": 4
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "size.parameter-count",
+              "name": "Parameter count",
+              "shortDescription": {
+                "text": "Parameter count"
+              },
+              "fullDescription": {
+                "text": "Flags functions and methods whose parameter list exceeds the configured maximum, excluding the method receiver."
+              },
+              "help": {
+                "text": "Group related parameters into a struct, accept an options type, or split the function."
+              },
+              "properties": {
+                "pillar": "size",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "thresholds": {
+                  "maxParameters": 8
+                }
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.empty-test",
+              "name": "Empty test",
+              "shortDescription": {
+                "text": "Empty test"
+              },
+              "fullDescription": {
+                "text": "Flags Go test functions whose body contains no executable statements."
+              },
+              "help": {
+                "text": "Add an assertion that exercises the behaviour the test name claims, or remove the empty test."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.no-failure-path",
+              "name": "Test cannot fail",
+              "shortDescription": {
+                "text": "Test cannot fail"
+              },
+              "fullDescription": {
+                "text": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.)."
+              },
+              "help": {
+                "text": "Add an assertion or document why the test cannot fail."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.skipped-test",
+              "name": "Skipped test",
+              "shortDescription": {
+                "text": "Skipped test"
+              },
+              "fullDescription": {
+                "text": "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow."
+              },
+              "help": {
+                "text": "Remove the skip or document and track the condition outside the test body."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "design.god-function",
+          "ruleIndex": 3,
+          "level": "note",
+          "message": {
+            "text": "function Hot combines size and complexity findings"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "4a10c037e95fba2e"
+          },
+          "properties": {
+            "confidence": "high",
+            "fingerprint": "4a10c037e95fba2e",
+            "metadata": {
+              "complexityFindings": 1,
+              "primaryLine": 4,
+              "ruleIds": [
+                "complexity.cyclomatic",
+                "size.function-length"
+              ],
+              "sizeFindings": 1,
+              "underlyingFingerprints": [
+                "6c2b61fff900ee69",
+                "d8293925f32a0f34"
+              ]
+            },
+            "pillar": "design",
+            "remediation": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
+            "secondaryPillars": [
+              "size",
+              "complexity"
+            ],
+            "severity": "low",
+            "symbol": "Hot"
+          }
+        },
+        {
+          "ruleId": "design.hotspot-file",
+          "ruleIndex": 4,
+          "level": "note",
+          "message": {
+            "text": "file has findings across multiple quality pillars"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "c8f0761928502c92"
+          },
+          "properties": {
+            "confidence": "medium",
+            "fingerprint": "c8f0761928502c92",
+            "metadata": {
+              "findings": 3,
+              "minFindings": 3,
+              "minPillars": 2,
+              "pillars": [
+                "complexity",
+                "documentation",
+                "size"
+              ],
+              "primaryLine": 4,
+              "ruleIds": [
+                "complexity.cyclomatic",
+                "docs.exported-symbol-comment",
+                "size.function-length"
+              ],
+              "underlyingFingerprints": [
+                "470a3d967e37e18b",
+                "6c2b61fff900ee69",
+                "d8293925f32a0f34"
+              ]
+            },
+            "pillar": "design",
+            "remediation": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
+            "severity": "low"
+          }
+        },
+        {
+          "ruleId": "complexity.cyclomatic",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "function cyclomatic complexity is 3, above threshold 2"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                },
+                "region": {
+                  "startLine": 4,
+                  "endLine": 11
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "d8293925f32a0f34"
+          },
+          "properties": {
+            "confidence": "high",
+            "fingerprint": "d8293925f32a0f34",
+            "metadata": {
+              "complexity": 3,
+              "threshold": 2
+            },
+            "pillar": "complexity",
+            "remediation": "Split independent decisions or move branches into named helpers.",
+            "severity": "medium",
+            "symbol": "Hot"
+          }
+        },
+        {
+          "ruleId": "docs.exported-symbol-comment",
+          "ruleIndex": 7,
+          "level": "note",
+          "message": {
+            "text": "exported function \"Hot\" has no doc comment"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                },
+                "region": {
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "470a3d967e37e18b"
+          },
+          "properties": {
+            "confidence": "medium",
+            "fingerprint": "470a3d967e37e18b",
+            "metadata": {
+              "kind": "function",
+              "symbol": "Hot"
+            },
+            "pillar": "documentation",
+            "remediation": "Add a Go-style doc comment that begins with the symbol name.",
+            "severity": "low",
+            "symbol": "Hot"
+          }
+        },
+        {
+          "ruleId": "size.function-length",
+          "ruleIndex": 36,
+          "level": "warning",
+          "message": {
+            "text": "function has 8 code lines, above threshold 4"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "composite.go"
+                },
+                "region": {
+                  "startLine": 4,
+                  "endLine": 11
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "gruffFingerprint": "6c2b61fff900ee69"
+          },
+          "properties": {
+            "confidence": "high",
+            "fingerprint": "6c2b61fff900ee69",
+            "metadata": {
+              "lines": 8,
+              "rawLines": 8,
+              "threshold": 4
+            },
+            "pillar": "size",
+            "remediation": "Extract cohesive helper functions or split independent branches.",
+            "severity": "medium",
+            "symbol": "Hot"
+          }
+        }
+      ],
+      "properties": {
+        "gruffSchemaVersion": "gruff-go.analysis.v0.1",
+        "score": 94,
+        "grade": "A"
+      }
+    }
+  ]
+}

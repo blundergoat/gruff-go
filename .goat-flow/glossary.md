@@ -1,6 +1,6 @@
 # Glossary
 
-Last reviewed 2026-05-14.
+Last reviewed 2026-05-23.
 
 ## gruff-go
 
@@ -12,7 +12,7 @@ The v0.1 analysis model uses standard-library source discovery and `go/parser` w
 
 ## Gruff Config
 
-Analysis config loaded explicitly by `--config` or discovered as `.gruff.yaml`, `.gruff.yml`, then `.gruff.json`. The root `.gruff.yaml` is this repository's dogfood config. It uses the gruff-family shape `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, `selection`, and `rules.<id>`. Rule IDs are canonical dotted names, while legacy hyphen-only and old `documentation.*` aliases are still accepted for config compatibility.
+Analysis config loaded explicitly by `--config` or discovered as `.gruff-go.yaml`. The root `.gruff-go.yaml` is this repository's dogfood config. It uses the gruff-family shape `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, `selection`, and `rules.<id>`. Rule IDs are canonical dotted names, while legacy hyphen-only and old `documentation.*` aliases are still accepted for rule-ID compatibility.
 
 ## Rule ID
 
@@ -46,9 +46,17 @@ The `--diff-base` analysis mode. It uses local `git diff --unified=0` output to 
 
 The Static Analysis Results Interchange Format. `gruff-go` emits SARIF 2.1.0 from the same report data used by text, JSON, summary JSON, and GitHub annotation output.
 
-## Opt-In Rule
+## Dashboard
 
-A rule listed by `list-rules` with `defaultEnabled: false`. It can be enabled through strict config, but default scans skip it so experimental or context-sensitive signals do not change baseline dogfood behavior.
+Local-only `gruff-go dashboard` HTTP server. It binds to loopback by default, renders a dashboard shell around the HTML report, and runs scans in-process with explicit project root/context options rather than changing the process working directory.
+
+## Default-Enabled Rule
+
+Every rule shipped with `gruff-go` is `defaultEnabled: true` per [ADR-007](decisions/ADR-007-comprehensive-default-rule-pack.md). Projects opt out per rule with `rules.<id>.enabled: false`, or per pillar with `selection.excludePillars`. Historical drafts split the catalogue into a five-rule default pack and an opt-in expansion (ADR-002); that split is superseded.
+
+## Composite Design Finding
+
+A score-neutral `design.*` finding derived from already-emitted base findings. Current composites are `design.god-function` for same-symbol size plus complexity overlap and `design.hotspot-file` for multi-pillar file hotspots. Composites do not feed other composite rules.
 
 ## GOAT Flow
 
@@ -61,3 +69,11 @@ Files one agent setup owns without widening scope. Claude owns `CLAUDE.md` and `
 ## Learning Loop
 
 Durable shared project-memory directories under `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/`.
+
+## Gitignored Discovery Skip
+
+A `paths.skipped` entry with reason `gitignored` indicates the path matched a rule in the repo's own `.gitignore` chain (see ADR-004 and ADR-005). Discovery never consults the user's global gitignore, `.git/info/exclude`, or any external Git state. A malformed `.gitignore` produces one entry with reason `gitignore-parse-error` and its rules are dropped wholesale.
+
+## --include-ignored
+
+CLI flag on `analyse`, `baseline`, `summary`, and `dashboard`. When set, discovery bypasses both the gitignore filter and the hardcoded fallback directory list, scans every classifiable file in the working tree, and emits `run.includeIgnored: true` in the JSON output. The flag is the documented opt-out; there is no per-rule split.

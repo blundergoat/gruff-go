@@ -1,3 +1,5 @@
+// Package rule defines gruff-go's rule registry and analysers.
+// This file exercises the structural-metric rules and shared findings helper.
 package rule
 
 import (
@@ -7,12 +9,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// TestParameterCountRule verifies the parameter-count threshold and metadata payload.
 func TestParameterCountRule(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
 type Builder struct{}
 
-func Wide(a, b, c, d, e, f int) {}
+func Wide(a, b, c, d, e, f, g, h, i int) {}
 
 func Narrow(a, b, c int) {}
 
@@ -22,20 +25,22 @@ func (Builder) Many(a, b, c, d, e int) {}
 	if len(findings) != 1 || findings[0].Symbol != "Wide" {
 		t.Fatalf("findings = %#v, want one finding on Wide", findings)
 	}
-	if findings[0].Metadata["parameters"] != 6 {
-		t.Fatalf("metadata = %#v, want parameters=6", findings[0].Metadata)
+	if findings[0].Metadata["parameters"] != 9 {
+		t.Fatalf("metadata = %#v, want parameters=9", findings[0].Metadata)
 	}
 
-	below := ParameterCountRule{MaxParameters: 6}.AnalyzeUnit(unit, Context{})
+	below := ParameterCountRule{MaxParameters: 9}.AnalyzeUnit(unit, Context{})
 	if len(below) != 0 {
-		t.Fatalf("threshold-6 findings = %#v, want none", below)
+		t.Fatalf("threshold-9 findings = %#v, want none", below)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "size.parameter-count") {
-		t.Fatalf("default scan = %#v, want size.parameter-count disabled", findings)
+	defaults := Defaults()
+	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); !containsRuleID(findings, "size.parameter-count") {
+		t.Fatalf("default scan = %#v, want size.parameter-count enabled", findings)
 	}
 }
 
+// TestNestingDepthRule covers deep/shallow/func-lit nesting cases for the rule.
 func TestNestingDepthRule(t *testing.T) {
 	deep := parseOne(t, "deep.go", `package sample
 
@@ -45,7 +50,9 @@ func Deep(a, b, c bool) {
 			if c {
 				for i := 0; i < 10; i++ {
 					if i > 0 {
-						_ = i
+						if i < 5 {
+							_ = i
+						}
 					}
 				}
 			}
@@ -57,8 +64,8 @@ func Deep(a, b, c bool) {
 	if len(findings) != 1 || findings[0].Symbol != "Deep" {
 		t.Fatalf("findings = %#v, want one finding on Deep", findings)
 	}
-	if findings[0].Metadata["depth"] != 5 {
-		t.Fatalf("metadata = %#v, want depth=5", findings[0].Metadata)
+	if findings[0].Metadata["depth"] != 6 {
+		t.Fatalf("metadata = %#v, want depth=6", findings[0].Metadata)
 	}
 
 	shallow := parseOne(t, "shallow.go", `package sample
@@ -98,11 +105,13 @@ func Outer() {
 		t.Fatalf("func-lit findings = %#v, want outer counted independently of literal", findings)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{deep}, Context{})); containsRuleID(findings, "complexity.nesting-depth") {
-		t.Fatalf("default scan = %#v, want complexity.nesting-depth disabled", findings)
+	defaults := Defaults()
+	if findings := defaults.Analyze([]parser.Unit{deep}, Context{}); !containsRuleID(findings, "complexity.nesting-depth") {
+		t.Fatalf("default scan = %#v, want complexity.nesting-depth enabled", findings)
 	}
 }
 
+// TestExportedSymbolCommentRule verifies which exported declarations get flagged.
 func TestExportedSymbolCommentRule(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
@@ -167,11 +176,66 @@ func ExportedTestHelper() {}
 		t.Fatalf("test-file findings = %#v, want none", findings)
 	}
 
-	if findings := (Defaults().Analyze([]parser.Unit{unit}, Context{})); containsRuleID(findings, "docs.exported-symbol-comment") {
-		t.Fatalf("default scan = %#v, want docs.exported-symbol-comment disabled", findings)
+	defaults := Defaults()
+	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); !containsRuleID(findings, "docs.exported-symbol-comment") {
+		t.Fatalf("default scan = %#v, want docs.exported-symbol-comment enabled", findings)
 	}
 }
 
+// TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages=true option, asserting an internal/service export is silenced while a public pkg/api export still surfaces.
+func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
+	internalUnit := parseOne(t, "internal/service/service.go", `package service
+
+func VisibleInsideModule() {}
+`)
+	publicUnit := parseOne(t, "pkg/api/api.go", `package api
+
+func VisibleOutsideModule() {}
+`)
+	registry, err := DefaultsConfigured(Config{
+		Enabled: map[string]bool{"docs.exported-symbol-comment": true, "docs.package-comment": false},
+		Options: map[string]map[string]any{
+			"docs.exported-symbol-comment": {"ignoreInternalPackages": true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings := registry.Analyze([]parser.Unit{internalUnit, publicUnit}, Context{})
+	got := map[string]bool{}
+	for _, f := range findings {
+		got[f.Symbol] = true
+	}
+	if got["VisibleInsideModule"] {
+		t.Fatalf("findings = %#v, want internal export ignored", findings)
+	}
+	if !got["VisibleOutsideModule"] || len(got) != 1 {
+		t.Fatalf("findings = %#v, want only public package export", findings)
+	}
+}
+
+// TestExportedSymbolCommentRuleCanIncludeInternalPackages exercises ignoreInternalPackages=false, asserting an undocumented internal/service export does report a finding once the opt-out is disabled.
+func TestExportedSymbolCommentRuleCanIncludeInternalPackages(t *testing.T) {
+	internalUnit := parseOne(t, "internal/service/service.go", `package service
+
+func VisibleInsideModule() {}
+`)
+	registry, err := DefaultsConfigured(Config{
+		Enabled: map[string]bool{"docs.exported-symbol-comment": true, "docs.package-comment": false},
+		Options: map[string]map[string]any{
+			"docs.exported-symbol-comment": {"ignoreInternalPackages": false},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings := registry.Analyze([]parser.Unit{internalUnit}, Context{})
+	if !containsRuleID(findings, "docs.exported-symbol-comment") {
+		t.Fatalf("findings = %#v, want internal export included when option is false", findings)
+	}
+}
+
+// containsRuleID reports whether any finding in the slice has the given rule ID.
 func containsRuleID(findings []finding.Finding, id string) bool {
 	for _, f := range findings {
 		if f.RuleID == id {

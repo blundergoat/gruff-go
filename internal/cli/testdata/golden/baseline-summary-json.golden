@@ -2,7 +2,7 @@
   "schemaVersion": "gruff-go.analysis.v0.1",
   "tool": {
     "name": "gruff-go",
-    "version": "0.1.0-dev"
+    "version": "0.1.0"
   },
   "run": {
     "workingDirectory": "<WORKDIR>",
@@ -54,6 +54,10 @@
     "grade": "A",
     "pillars": {},
     "pillarDetails": [],
+    "coverage": {
+      "contributingPillars": [],
+      "caveat": "No score-impacting findings; the score reflects configured parser rules and thresholds, not exhaustive semantic proof."
+    },
     "topOffenders": [],
     "complexityDistribution": {
       "1-5": 0,
@@ -61,7 +65,8 @@
       "16-20": 0,
       "21+": 0,
       "6-10": 0
-    }
+    },
+    "complexityDistributionScope": "finding-only"
   },
   "diagnostics": []
 }

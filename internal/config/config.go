@@ -1,4 +1,6 @@
-// Package config loads and validates strict gruff-go configuration files.
+// Package config loads and validates gruff-go configuration files.
+// It owns the strict .gruff-go.yaml schema, legacy rule-ID compatibility,
+// default config discovery, and conversion into rule-registry options.
 package config
 
 import (
@@ -15,58 +17,95 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// SchemaVersion identifies the supported config document contract.
 const SchemaVersion = "gruff-go.config.v0.1"
 
-var defaultConfigFiles = []string{".gruff.yaml", ".gruff.yml", ".gruff.json"}
+// defaultConfigFiles lists auto-discovered config files in precedence order.
+var defaultConfigFiles = []string{".gruff-go.yaml"}
 
+// Config is the canonical in-memory representation of gruff config.
 type Config struct {
-	SchemaVersion         string                `json:"schemaVersion,omitempty"`
-	Select                []string              `json:"select,omitempty"`
-	ExcludeRules          []string              `json:"excludeRules,omitempty"`
-	IgnorePaths           []string              `json:"ignorePaths,omitempty"`
-	AcceptedAbbreviations []string              `json:"acceptedAbbreviations,omitempty"`
-	Rules                 map[string]RuleConfig `json:"rules,omitempty"`
-	SensitiveData         SensitiveDataConfig   `json:"sensitiveData,omitempty"`
-	Paths                 PathsConfig           `json:"paths,omitempty"`
-	Allowlists            AllowlistsConfig      `json:"allowlists,omitempty"`
-	Selection             SelectionConfig       `json:"selection,omitempty"`
-	MinimumGoVersion      string                `json:"minimumGoVersion,omitempty"`
+	// SchemaVersion identifies the gruff-go config schema this file targets.
+	SchemaVersion string `json:"schemaVersion,omitempty"`
+	// Select restricts the active rule set to the listed rule IDs (or aliases).
+	Select []string `json:"select,omitempty"`
+	// ExcludeRules disables the named rule IDs even when they would otherwise run.
+	ExcludeRules []string `json:"excludeRules,omitempty"`
+	// IgnorePaths lists glob patterns the discovery layer skips entirely.
+	IgnorePaths []string `json:"ignorePaths,omitempty"`
+	// AcceptedAbbreviations is the project-wide allowlist for identifier abbreviations.
+	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
+	// Rules holds per-rule overrides for enablement, thresholds, severity, and options.
+	Rules map[string]RuleConfig `json:"rules,omitempty"`
+	// SensitiveData carries policy for the sensitive-data.* rule family.
+	SensitiveData SensitiveDataConfig `json:"sensitiveData,omitempty"`
+	// Paths nests path-scoped policy (currently the canonical `ignore` list).
+	Paths PathsConfig `json:"paths,omitempty"`
+	// Allowlists nests project-wide allowlists folded into top-level fields by Normalized.
+	Allowlists AllowlistsConfig `json:"allowlists,omitempty"`
+	// Selection nests rule/pillar selection policy folded into Select/ExcludeRules by Normalized.
+	Selection SelectionConfig `json:"selection,omitempty"`
+	// MinimumGoVersion documents the minimum Go toolchain version this config supports.
+	MinimumGoVersion string `json:"minimumGoVersion,omitempty"`
 }
 
+// RuleConfig stores per-rule overrides from `.gruff-go.yaml`.
 type RuleConfig struct {
-	Enabled    *bool              `json:"enabled,omitempty"`
-	Threshold  *float64           `json:"threshold,omitempty"`
+	// Enabled toggles the rule on or off; nil means honour the registry default.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Threshold sets a single primary numeric threshold for the rule.
+	Threshold *float64 `json:"threshold,omitempty"`
+	// Thresholds sets named numeric thresholds when the rule has more than one knob.
 	Thresholds map[string]float64 `json:"thresholds,omitempty"`
-	Options    map[string]any     `json:"options,omitempty"`
-	Severity   string             `json:"severity,omitempty"`
+	// Options carries rule-specific configuration values keyed by option name.
+	Options map[string]any `json:"options,omitempty"`
+	// Severity overrides the rule's default severity using a gruff-family alias or canonical level.
+	Severity string `json:"severity,omitempty"`
 }
 
+// PathsConfig stores source discovery path policy.
 type PathsConfig struct {
+	// Ignore lists glob patterns the discovery layer skips; Normalized folds this into top-level IgnorePaths.
 	Ignore []string `json:"ignore,omitempty"`
 }
 
+// AllowlistsConfig stores explicit project acceptances for noisy signals.
 type AllowlistsConfig struct {
+	// AcceptedAbbreviations is the gruff-family alias folded into Config.AcceptedAbbreviations.
 	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
-	SecretPreviews        []string `json:"secretPreviews,omitempty"`
+	// SecretPreviews lists path patterns where the sensitive-data rules may emit the matched preview.
+	SecretPreviews []string `json:"secretPreviews,omitempty"`
 }
 
+// SelectionConfig stores rule and pillar allowlist/denylist policy.
 type SelectionConfig struct {
-	Tiers          []string `json:"tiers,omitempty"`
-	Pillars        []string `json:"pillars,omitempty"`
-	Rules          []string `json:"rules,omitempty"`
+	// Tiers names rule tier labels reserved for future selection grouping.
+	Tiers []string `json:"tiers,omitempty"`
+	// Pillars selects rules by quality pillar (documentation, naming, size, etc.).
+	Pillars []string `json:"pillars,omitempty"`
+	// Rules is the gruff-family alias for the top-level Select field.
+	Rules []string `json:"rules,omitempty"`
+	// ExcludePillars disables every rule that belongs to one of the listed pillars.
 	ExcludePillars []string `json:"excludePillars,omitempty"`
-	ExcludeRules   []string `json:"excludeRules,omitempty"`
+	// ExcludeRules is the gruff-family alias for the top-level ExcludeRules field.
+	ExcludeRules []string `json:"excludeRules,omitempty"`
 }
 
+// SensitiveDataConfig stores sensitive-data rule preview exceptions.
 type SensitiveDataConfig struct {
+	// PreviewAllowlist lists path patterns where the sensitive-data rules may emit the matched secret preview.
 	PreviewAllowlist []string `json:"previewAllowlist,omitempty"`
 }
 
+// Loaded returns parsed config together with the file path that supplied it.
 type Loaded struct {
+	// Config is the parsed and normalized configuration payload.
 	Config Config
-	Path   string
+	// Path is the absolute filesystem location the configuration was read from.
+	Path string
 }
 
+// LoadAuto resolves the configured path and parses config unless disabled.
 func LoadAuto(root string, explicitPath string, noConfig bool, definitions []rule.Definition) (Loaded, error) {
 	if noConfig {
 		return Loaded{Config: Config{}}, nil
@@ -82,6 +121,7 @@ func LoadAuto(root string, explicitPath string, noConfig bool, definitions []rul
 	return Loaded{Config: cfg, Path: filepath.ToSlash(path)}, nil
 }
 
+// ResolvePath finds the explicit or auto-discovered config path for a root.
 func ResolvePath(root string, explicitPath string) (string, bool, error) {
 	if root == "" {
 		root = "."
@@ -116,6 +156,7 @@ func ResolvePath(root string, explicitPath string) (string, bool, error) {
 	return "", false, nil
 }
 
+// Load reads and parses a config file from disk.
 func Load(path string, definitions []rule.Definition) (Config, error) {
 	// #nosec G304 -- CLI intentionally reads an explicit user-provided config path.
 	data, err := os.ReadFile(path)
@@ -125,20 +166,23 @@ func Load(path string, definitions []rule.Definition) (Config, error) {
 	return ParseFile(path, data, definitions)
 }
 
+// Parse parses config bytes using the supported strict YAML subset.
 func Parse(data []byte, definitions []rule.Definition) (Config, error) {
-	return parseJSON(data, definitions)
+	return parseYAML(data, definitions)
 }
 
+// ParseFile parses config bytes after validating the file extension.
 func ParseFile(path string, data []byte, definitions []rule.Definition) (Config, error) {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".yaml", ".yml":
+	case ".yaml":
 		return parseYAML(data, definitions)
 	default:
-		return parseJSON(data, definitions)
+		return Config{}, fmt.Errorf("unsupported config file extension %q (want .yaml)", filepath.Ext(path))
 	}
 }
 
-func parseJSON(data []byte, definitions []rule.Definition) (Config, error) {
+// decodeConfigPayload unmarshals canonical JSON payloads from the YAML parser.
+func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -147,7 +191,7 @@ func parseJSON(data []byte, definitions []rule.Definition) (Config, error) {
 	}
 	var trailing struct{}
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return Config{}, fmt.Errorf("config contains trailing JSON values")
+		return Config{}, fmt.Errorf("config contains trailing values")
 	}
 	cfg = cfg.Normalized()
 	if err := cfg.Validate(definitions); err != nil {
@@ -156,6 +200,7 @@ func parseJSON(data []byte, definitions []rule.Definition) (Config, error) {
 	return cfg, nil
 }
 
+// Validate checks schema, rule, threshold, option, path, and severity contracts.
 func (cfg Config) Validate(definitions []rule.Definition) error {
 	if cfg.SchemaVersion != "" && cfg.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported schemaVersion %q", cfg.SchemaVersion)
@@ -179,16 +224,19 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 	return runChecks(checks)
 }
 
+// RuleOptions converts parsed config into registry enablement and overrides.
 func (cfg Config) RuleOptions() rule.Config {
+	cfg = cfg.Normalized()
 	options := rule.Config{
 		Enabled:                       map[string]bool{},
 		Thresholds:                    map[string]map[string]float64{},
 		Severities:                    map[string]finding.Severity{},
 		Options:                       map[string]map[string]any{},
 		SensitiveDataPreviewAllowlist: cfg.SensitiveData.PreviewAllowlist,
+		AcceptedAbbreviations:         cfg.AcceptedAbbreviations,
 	}
-	cfg = cfg.Normalized()
-	definitions := rule.Defaults().Definitions()
+	defaults := rule.Defaults()
+	definitions := defaults.Definitions()
 	if len(cfg.Select) > 0 || len(cfg.Selection.Pillars) > 0 {
 		selected := map[string]struct{}{}
 		byID := definitionsByID(definitions)
@@ -244,6 +292,7 @@ func (cfg Config) RuleOptions() rule.Config {
 	return options
 }
 
+// copyThresholds returns an isolated copy of rule threshold overrides.
 func copyThresholds(input map[string]float64) map[string]float64 {
 	out := make(map[string]float64, len(input))
 	for key, value := range input {
@@ -252,21 +301,22 @@ func copyThresholds(input map[string]float64) map[string]float64 {
 	return out
 }
 
+// Normalized folds legacy and gruff-family fields into canonical locations.
 func (cfg Config) Normalized() Config {
 	if len(cfg.Paths.Ignore) > 0 {
-		cfg.IgnorePaths = cfg.Paths.Ignore
+		cfg.IgnorePaths = mergeStringLists(cfg.IgnorePaths, cfg.Paths.Ignore)
 	}
 	if len(cfg.Allowlists.AcceptedAbbreviations) > 0 {
-		cfg.AcceptedAbbreviations = cfg.Allowlists.AcceptedAbbreviations
+		cfg.AcceptedAbbreviations = mergeStringLists(cfg.AcceptedAbbreviations, cfg.Allowlists.AcceptedAbbreviations)
 	}
 	if len(cfg.Allowlists.SecretPreviews) > 0 {
-		cfg.SensitiveData.PreviewAllowlist = cfg.Allowlists.SecretPreviews
+		cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)
 	}
 	if len(cfg.Selection.Rules) > 0 {
-		cfg.Select = cfg.Selection.Rules
+		cfg.Select = mergeStringLists(cfg.Select, cfg.Selection.Rules)
 	}
 	if len(cfg.Selection.ExcludeRules) > 0 {
-		cfg.ExcludeRules = cfg.Selection.ExcludeRules
+		cfg.ExcludeRules = mergeStringLists(cfg.ExcludeRules, cfg.Selection.ExcludeRules)
 	}
 	cfg.Select = sortedCopy(cfg.Select)
 	cfg.ExcludeRules = sortedCopy(cfg.ExcludeRules)
@@ -276,12 +326,29 @@ func (cfg Config) Normalized() Config {
 	return cfg
 }
 
+// mergeStringLists appends gruff-family aliases to their legacy top-level
+// counterparts before the deterministic sort step.
+func mergeStringLists(primary, alias []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, value := range append(append([]string(nil), primary...), alias...) {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+// sortedCopy returns a deterministic copy of string-slice config values.
 func sortedCopy(values []string) []string {
 	out := append([]string(nil), values...)
 	slices.Sort(out)
 	return out
 }
 
+// canonicalRuleID maps accepted legacy rule aliases onto live rule IDs.
 func canonicalRuleID(id string, definitions map[string]rule.Definition) (string, bool) {
 	if _, ok := definitions[id]; ok {
 		return id, true
@@ -306,6 +373,7 @@ func canonicalRuleID(id string, definitions map[string]rule.Definition) (string,
 	return "", false
 }
 
+// definitionsByID indexes rule definitions by canonical rule ID.
 func definitionsByID(definitions []rule.Definition) map[string]rule.Definition {
 	out := make(map[string]rule.Definition, len(definitions))
 	for _, definition := range definitions {
@@ -314,6 +382,7 @@ func definitionsByID(definitions []rule.Definition) map[string]rule.Definition {
 	return out
 }
 
+// parseConfigSeverity maps gruff-family severity aliases to scanner severities.
 func parseConfigSeverity(input string) (finding.Severity, error) {
 	switch input {
 	case "notice":

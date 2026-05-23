@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// Compact summaries are optimized for quick terminal checks and CI log snippets.
 package report
 
 import (
@@ -6,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/scoring"
@@ -15,9 +18,11 @@ import (
 type SummaryOptions struct {
 	// Top limits the number of top rules and top file offenders shown.
 	Top int
+	// ScanDuration is the measured wall-clock duration of the summary scan.
+	ScanDuration time.Duration
 }
 
-// WriteSummaryText renders a compact human-readable digest of the report.
+// WriteSummaryText renders the short human-readable digest used by the summary command.
 func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOptions) error {
 	top := opts.Top
 	if top <= 0 {
@@ -25,10 +30,23 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	score := report.Score
 	header := fmt.Sprintf(
-		"gruff-go summary\nschema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n",
-		report.SchemaVersion, score.Composite, gradeOrNA(score.Grade), report.Summary.FindingsCount,
+		"gruff-go summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\n",
+		summaryInputs(report.Run.Inputs),
+		summaryWorkingDir(report.Run.WorkingDirectory),
+		report.Summary.FilesScanned, report.Summary.FilesSkipped,
 	)
 	if _, err := fmt.Fprint(writer, header); err != nil {
+		return err
+	}
+	if opts.ScanDuration > 0 {
+		if _, err := fmt.Fprintf(writer, "scan time: %s\n", summaryDuration(opts.ScanDuration)); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(writer, "schema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n", report.SchemaVersion, score.Composite, gradeOrNA(score.Grade), report.Summary.FindingsCount); err != nil {
+		return err
+	}
+	if err := writeScoreCoverage(writer, score); err != nil {
 		return err
 	}
 	if err := writeSeverityCounts(writer, report.Summary.CountsBySeverity); err != nil {
@@ -47,6 +65,29 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	return err
 }
 
+// writeScoreCoverage emits score coverage, optional caveat, and complexity distribution scope lines.
+func writeScoreCoverage(writer io.Writer, score scoring.Score) error {
+	contributing := "none"
+	if len(score.Coverage.ContributingPillars) > 0 {
+		contributing = strings.Join(score.Coverage.ContributingPillars, ", ")
+	}
+	if _, err := fmt.Fprintf(writer, "score coverage: %s\n", contributing); err != nil {
+		return err
+	}
+	if score.Coverage.Caveat != "" {
+		if _, err := fmt.Fprintf(writer, "score caveat: %s\n", score.Coverage.Caveat); err != nil {
+			return err
+		}
+	}
+	if score.ComplexityDistributionScope != "" {
+		if _, err := fmt.Fprintf(writer, "complexity distribution: %s\n", score.ComplexityDistributionScope); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeSeverityCounts emits the severity breakdown table for the summary digest.
 func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
 	if _, err := fmt.Fprintln(writer, "severity:"); err != nil {
 		return err
@@ -59,6 +100,7 @@ func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
 	return nil
 }
 
+// writePillarBreakdown emits each pillar's grade, score, and finding count sorted by activity.
 func writePillarBreakdown(writer io.Writer, details []scoring.PillarDetail) error {
 	if len(details) == 0 {
 		return nil
@@ -81,6 +123,7 @@ func writePillarBreakdown(writer io.Writer, details []scoring.PillarDetail) erro
 	return nil
 }
 
+// writeTopRules emits the most-triggered rules in descending count order.
 func writeTopRules(writer io.Writer, entries []ruleCount) error {
 	if len(entries) == 0 {
 		return nil
@@ -96,6 +139,7 @@ func writeTopRules(writer io.Writer, entries []ruleCount) error {
 	return nil
 }
 
+// writeTopOffenders emits up to top file offenders ordered by penalty.
 func writeTopOffenders(writer io.Writer, offenders []scoring.FileScore, top int) error {
 	if len(offenders) == 0 {
 		return nil
@@ -115,11 +159,15 @@ func writeTopOffenders(writer io.Writer, offenders []scoring.FileScore, top int)
 	return nil
 }
 
+// ruleCount pairs a rule ID with the number of times it fired in the report.
 type ruleCount struct {
+	// RuleID identifies the rule the count applies to.
 	RuleID string
-	Count  int
+	// Count is the number of findings emitted by RuleID in the report.
+	Count int
 }
 
+// computeTopRules returns the top rule IDs by finding count, capped at top entries.
 func computeTopRules(report analysis.Report, top int) []ruleCount {
 	counts := map[string]int{}
 	for _, item := range report.Findings {
@@ -141,9 +189,43 @@ func computeTopRules(report analysis.Report, top int) []ruleCount {
 	return entries
 }
 
+// gradeOrNA returns grade or the placeholder "n/a" when grade is empty.
 func gradeOrNA(grade string) string {
 	if grade == "" {
 		return "n/a"
 	}
 	return grade
+}
+
+// summaryInputs renders the run's input paths for the scanned line, falling back to "." when the slice is empty.
+func summaryInputs(inputs []string) string {
+	if len(inputs) == 0 {
+		return "."
+	}
+	return strings.Join(inputs, ", ")
+}
+
+// summaryWorkingDir renders the absolute working directory for the scanned line, returning "?" when the field is empty.
+func summaryWorkingDir(dir string) string {
+	if dir == "" {
+		return "?"
+	}
+	return dir
+}
+
+// summaryDuration renders scan durations without Unicode unit symbols so CLI
+// output remains portable in plain terminals and logs.
+func summaryDuration(duration time.Duration) string {
+	if duration < time.Millisecond {
+		return "<1ms"
+	}
+	if duration < time.Second {
+		return fmt.Sprintf("%dms", duration.Milliseconds())
+	}
+	if duration < time.Minute {
+		return fmt.Sprintf("%.1fs", duration.Seconds())
+	}
+	minutes := int(duration / time.Minute)
+	remainder := duration - time.Duration(minutes)*time.Minute
+	return fmt.Sprintf("%dm %.1fs", minutes, remainder.Seconds())
 }

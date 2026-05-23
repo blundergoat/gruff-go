@@ -1,6 +1,6 @@
 # Dashboard
 
-`gruff-go dashboard` serves a local browser dashboard that wraps the HTML inspection report in an interactive shell. You point it at a project root, click `Run scan`, and the report renders in an iframe with the current findings — no terminal output to parse, no rebuild loop. The same report is what `gruff-go analyse --format html` emits, so what you see in the dashboard is what you'd commit to a static report artefact.
+`gruff-go dashboard` serves a local browser dashboard that wraps the HTML inspection report in an interactive shell. You point it at a project root, click `Run scan`, and the report renders in an iframe with the current findings - no terminal output to parse, no rebuild loop. The same report is what `gruff-go analyse --format html` emits, so what you see in the dashboard is what you'd commit to a static report artefact.
 
 ## Quick start
 
@@ -23,18 +23,18 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--scan-timeout` | `120` | Per-scan deadline in seconds. `0` disables. |
 | `--project` | *current dir* | Initial project root the controls panel pre-fills. |
 | `--paths` | *empty* | Comma-separated initial paths to scan. |
-| `--config` | *auto-discover* | Initial `.gruff.yaml` path. |
+| `--config` | *auto-discover* | Initial `.gruff-go.yaml` path. |
 | `--no-config` | *off* | Skip auto-loading any config file. |
 | `--baseline` | *empty* | Initial baseline JSON path. |
 | `--no-baseline` | *off* | Refuse to apply any baseline. |
 | `--diff` | *off* | Start in diff-only scan mode (against `HEAD`). |
-| `--include-ignored` | *off* | Include files under default-ignored directories. |
+| `--include-ignored` | *off* | Include gitignored and default-ignored files; `paths.ignore` still applies. |
 | `--fail-on` | `medium` | Minimum severity that fails the scan. |
 | `--report-interactive` | *off* | Enable the inline finding filter UI inside the iframe. |
 | `--report-editor-link` | `none` | File:line link mode: `none`, `vscode`, `phpstorm`. |
 | `--allow-public` | *off* | Permit non-loopback `--host`. Required for `0.0.0.0` etc. |
 
-All flags map 1:1 to the controls-panel form fields, so you can adjust the same knobs from the browser without restarting the server.
+The scan-shaping flags from `--project` through `--report-interactive` map to controls-panel fields, so you can adjust those knobs from the browser without restarting the server. Listener and startup-only settings (`--host`, `--port`, `--scan-timeout`, `--report-editor-link`, and `--allow-public`) stay fixed for the running dashboard process.
 
 ## Security model
 
@@ -44,8 +44,8 @@ The dashboard is **local-only** by design:
 - If `--host` resolves to a non-loopback address, the server **refuses to start** without `--allow-public`. The refusal includes the host name in the error so it's obvious in scripts.
 - When `--allow-public` is set with a non-loopback host, the server prints a `WARNING: binding dashboard to non-loopback host …` line at start-up.
 - The dashboard accepts only `GET` requests. `POST` returns `405 Method Not Allowed`; unknown paths return `404 Not Found`.
-- Every query-string value (project root, paths, config path, baseline path, fail-on, scope, command) is HTML-escaped before it reaches the rendered shell or report. The same escaping path the static HTML reporter uses is reused here.
-- `/scan` runs the analyser **in-process** — there is no `exec`, no template substitution into a shell command, no eval. The "command" string shown in the controls panel is a human-readable rendering of what the analyser would be invoked with, not a string passed to a shell.
+- Every query-string value (project root, paths, config path, baseline path, fail-on, scope, include-ignored, and interactive-report state) is HTML-escaped before it reaches the rendered shell or report. The same escaping path the static HTML reporter uses is reused here.
+- `/scan` runs the analyser **in-process** - there is no `exec`, no template substitution into a shell command, no eval. The "command" string shown in the controls panel is a human-readable rendering of what the analyser would be invoked with, not a string passed to a shell.
 - The iframe `postMessage` listener accepts events only from `window.location.origin`. Cross-origin or sandboxed iframes attempting to spoof scan-complete metadata are ignored.
 
 If you need remote access, run the dashboard inside an SSH tunnel rather than enabling `--allow-public`:
@@ -96,7 +96,7 @@ gruff-go dashboard --project /path/to/repo
    - Mirrors the same state into the URL hash via `history.replaceState`, so reloading the dashboard preserves the form.
 3. The server handler:
    - Parses the query string into an `analysis.Options` struct (no shell exec).
-   - Runs the scan with the configured `--scan-timeout` deadline.
+   - Runs the scan with the configured project root and `--scan-timeout` deadline. Project config and baseline paths are resolved relative to that project root.
    - Renders the result via `report.WriteHTML` and injects the `postMessage` metadata `<script>`.
    - Returns `text/html; charset=utf-8`.
 4. When the iframe `load` event fires, the dashboard JS:
@@ -116,22 +116,24 @@ After every scan, the report HTML carries:
 
 The dashboard shell ignores any message whose `origin` does not match `window.location.origin` and any payload whose `type` is not `gruff-scan-complete`. If you embed the dashboard inside your own page, listen for the same event shape on the matching origin.
 
+When the scan includes ignored files or enables the interactive report UI, the metadata command includes `--include-ignored` and `--report-interactive` so the scan can be reproduced from `gruff-go analyse --format html`.
+
 ## Scan-timeout behaviour
 
 `--scan-timeout` (default `120` seconds) enforces a wall-clock deadline per scan. On expiry, the handler:
 
-- Cancels the analysis context (rules that read it stop early).
+- Cancels the analysis context so discovery stops early and later analysis phases abort before rendering partial results.
 - Returns a `dashboardErrorHTML` document with HTTP status `200` (so the iframe still loads parseable HTML).
 - Sets the metadata `exitCode` to `124` and includes a `Scan exceeded Ns timeout.` headline.
 
-Set `--scan-timeout 0` to disable the deadline entirely — useful when bisecting a slow-rule issue.
+Set `--scan-timeout 0` to disable the deadline entirely - useful when bisecting a slow-rule issue.
 
 ## Interactive findings inside the iframe
 
-Check the **interactive findings** checkbox in the controls panel (or pass `--report-interactive` at start-up) to enable the filter form inside the iframe report. The filter is a self-contained client-side widget — severity multi-select, pillar multi-select, path / search text, group-by file/rule, clear-all. Filter state lives in the iframe's URL hash so deep-links and reload survive.
+Check the **interactive findings** checkbox in the controls panel (or pass `--report-interactive` at start-up) to enable the filter form inside the iframe report. The filter is a self-contained client-side widget - severity multi-select, pillar multi-select, path / search text, group-by file/rule, clear-all. Filter state lives in the iframe's URL hash so deep-links and reload survive.
 
 See [`output-formats.md`](output-formats.md) for the standalone behaviour of the same flag in `gruff-go analyse --format html --report-interactive`.
 
-## Known limitation
+## Concurrency model
 
-The handler uses `os.Chdir(projectRoot)` before invoking the analyser because `analysis.Run` derives its scan root from `os.Getwd`. This is a global process mutation — safe today because the `net/http` mux handles requests serially in a single goroutine for this dashboard, but a future move to concurrent scans will require threading a root option through `analysis.Run` instead. Tracked in the M10 implementation note.
+Each `/scan` request passes an explicit project root and context into `analysis.Analyze`; the dashboard does not change the process working directory. This keeps concurrent requests isolated at the scan-root/config layer. The server still handles scans inline per request and does not provide a queued multi-scan workflow.

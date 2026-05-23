@@ -2,11 +2,19 @@
 
 ## Repository Root
 
-- `README.md` = Minimal project title only.
-- `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`.
-- `.gruff.yaml` = Standalone dogfood scanner config for this repository; mirrors current default-enabled rules and keeps expansion rules disabled.
+- `README.md` = User-facing project overview: status, install, quick start, commands, flags, output formats, exit codes, config, rule catalog summary, dashboard, CI integration links.
+- `CHANGELOG.md` = Keep-a-Changelog release log; `[Unreleased]` and per-version entries.
+- `CONTRIBUTING.md` = Dev loop, project layout, test gates, rule-addition / output-format-addition workflow, milestone discipline.
+- `SECURITY.md` = Vulnerability reporting channel, supported versions, in-scope/out-of-scope items.
+- `LICENSE` = MIT license text.
+- `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0`.
+- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 41-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
-- `package.json` = npm package metadata; declares `@blundergoat/goat-flow` and the placeholder failing `npm test` script.
+- `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
+- `scripts/bump-version.sh` = Updates every in-tree version literal and regenerates CLI golden snapshots; sanity-sweeps for stale references.
+- `scripts/test-performance.sh` = Smoke / matrix / sweep / regression-gate performance harness over synthetic corpora.
+- `docs/` = Long-form user docs (rules, configuration, output formats, dashboard, CI integration).
+- `package.json` = npm package metadata; declares `@blundergoat/goat-flow` for agent tooling. The `npm test` script is a placeholder; the project's real gates are `make check` and the dogfood scan.
 - `package-lock.json` = npm lockfile for GOAT Flow and transitive dependencies.
 - `CLAUDE.md` = Claude Code hot-path instructions for this target project.
 - `AGENTS.md` = Codex hot-path instructions for this target project.
@@ -74,16 +82,18 @@
 ## Go Application Surface
 
 - `cmd/gruff-go/main.go` = Thin executable entrypoint that exits with the CLI package's Main function.
-- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, and `list-rules`.
-- `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, and configured ignore patterns.
+- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Holds the `toolVersion` constant and the golden test fixtures under `internal/cli/testdata/golden/`.
+- `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, gitignore-respecting filter (ADR-004/ADR-005), and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
-- `internal/config/` = Strict gruff config discovery/parsing for `.gruff.yaml`, `.gruff.yml`, and `.gruff.json`, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
-- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, finding ordering, the built-in default rule pack, and default-disabled opt-in expansion rules.
+- `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
+- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 41-rule catalogue (40 default-enabled; ADR-007).
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
 - `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.
 - `internal/pathfilter/` = Shared relative path glob validation and matching.
-- `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, and exit semantics.
-- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, and rule-list rendering.
-- `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring.
-- No CI config, deployment config, dashboard, database assets, trend storage, external linter ingestion, or package publication surface exists yet.
+- `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, exit semantics, and the `Tool.Version` literal that flows into JSON/SARIF reports.
+- `internal/dashboard/` = Local-only dashboard HTTP server, request handling, scan option mapping, and shutdown behavior.
+- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
+- `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring with score-neutral `design.*` annotations and per-pillar coverage labelling.
+- `.github/workflows/gruff-go.yml` = GitHub Actions dogfood gate that builds `bin/gruff-go` and runs `./bin/gruff-go analyse .` on PRs and pushes to `main`.
+- No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, package-manager distribution, or automated release publishing surface exists yet. The public 0.1 install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0`.

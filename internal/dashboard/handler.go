@@ -1,17 +1,23 @@
+// Package dashboard HTTP handlers wire dashboard form state to scans.
+// They translate query parameters into analysis options and render results.
 package dashboard
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
+	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/report"
+	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
 // NewHandler returns the dashboard HTTP handler that owns / and /scan routes.
@@ -40,17 +46,13 @@ func NewHandler(opts Options) http.Handler {
 	return mux
 }
 
+// handleScan runs an analysis from /scan query parameters and writes HTML output.
 func handleScan(writer http.ResponseWriter, request *http.Request, opts Options) {
 	query := request.URL.Query()
 	state := stateFromQuery(opts, query)
 	scanOpts := buildScanOptions(opts, state)
 
-	ctx := request.Context()
-	timeout := opts.ScanTimeout
-	if timeout <= 0 {
-		timeout = DefaultScanTimeout
-	}
-	scanCtx, cancel := context.WithTimeout(ctx, timeout)
+	scanCtx, cancel := scanContext(request.Context(), opts.ScanTimeout)
 	defer cancel()
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -60,19 +62,18 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 	duration := time.Since(started)
 	durationMs := int(duration.Milliseconds())
 
-	if runErr != nil {
-		_ = report.WriteDashboardError(writer, "Scan failed.", runErr.Error(), 2, durationMs)
-		return
-	}
-
-	if scanCtx.Err() == context.DeadlineExceeded {
+	if errors.Is(runErr, context.DeadlineExceeded) || scanCtx.Err() == context.DeadlineExceeded {
 		_ = report.WriteDashboardError(
 			writer,
-			fmt.Sprintf("Scan exceeded %ds timeout.", int(timeout.Seconds())),
+			fmt.Sprintf("Scan exceeded %ds timeout.", int(opts.ScanTimeout.Seconds())),
 			"The dashboard cancelled the scan before it completed. Increase --scan-timeout to allow longer runs.",
 			124,
 			durationMs,
 		)
+		return
+	}
+	if runErr != nil {
+		_ = report.WriteDashboardError(writer, "Scan failed.", runErr.Error(), 2, durationMs)
 		return
 	}
 
@@ -90,11 +91,20 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		ExitCode:    reportData.Summary.ExitCode,
 		DurationMs:  durationMs,
 		ProjectRoot: scanOpts.projectRoot,
-		Command:     displayCommand(state),
+		Command:     displayCommand(state, opts),
 	}
 	_, _ = writer.Write([]byte(report.InjectScanMetadata(buffer.String(), metadata)))
 }
 
+// scanContext returns a derived context that applies the per-scan timeout when set.
+func scanContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout > 0 {
+		return context.WithTimeout(parent, timeout)
+	}
+	return context.WithCancel(parent)
+}
+
+// scanRunOptions captures the resolved inputs for a single dashboard scan.
 type scanRunOptions struct {
 	projectRoot       string
 	paths             []string
@@ -108,6 +118,7 @@ type scanRunOptions struct {
 	reportInteractive bool
 }
 
+// buildScanOptions merges dashboard defaults with form state into runScan inputs.
 func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions {
 	projectRoot := strings.TrimSpace(state.Project)
 	if projectRoot == "" {
@@ -122,13 +133,13 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 	if configPath == "" {
 		configPath = opts.ConfigPath
 	}
-	noConfig := state.NoConfig == "1" || opts.NoConfig
+	noConfig := state.SkipConfig == "1" || opts.SkipConfig
 
 	baselinePath := strings.TrimSpace(state.Baseline)
 	if baselinePath == "" {
 		baselinePath = opts.BaselinePath
 	}
-	noBaseline := state.NoBaseline == "1" || opts.NoBaseline
+	noBaseline := state.SkipBaseline == "1" || opts.SkipBaseline
 	if noBaseline {
 		baselinePath = ""
 	}
@@ -164,21 +175,56 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 	}
 }
 
-func runScan(_ context.Context, scanOpts scanRunOptions) (analysis.Report, error) {
-	if scanOpts.projectRoot != "" {
-		if err := changeDir(scanOpts.projectRoot); err != nil {
-			return analysis.Report{}, err
-		}
+// runScan loads the registry and runs analysis.Analyze for the given scan options.
+func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, error) {
+	root, err := dashboardRoot(scanOpts.projectRoot)
+	if err != nil {
+		return analysis.Report{}, err
 	}
-	return analysis.Run(analysis.Options{
-		Paths:        scanOpts.paths,
-		Format:       "html",
-		FailOn:       scanOpts.failOn,
-		BaselinePath: scanOpts.baselinePath,
-		DiffBase:     scanOpts.diffBase,
+	registry, ignorePaths, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig)
+	if err != nil {
+		return analysis.Report{}, fmt.Errorf("config: %w", err)
+	}
+	return analysis.Analyze(analysis.Options{
+		Context:        ctx,
+		Root:           root,
+		Paths:          scanOpts.paths,
+		Format:         "html",
+		FailOn:         scanOpts.failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		BaselinePath:   scanOpts.baselinePath,
+		DiffBase:       scanOpts.diffBase,
+		IncludeIgnored: scanOpts.includeIgnored,
 	})
 }
 
+// dashboardRoot resolves the requested project root to an absolute path or empty string.
+func dashboardRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", nil
+	}
+	return filepath.Abs(root)
+}
+
+// dashboardRegistry loads project config and returns the configured rule registry.
+func dashboardRegistry(root, configPath string, noConfig bool) (rule.Registry, []string, error) {
+	defaults := rule.Defaults()
+	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
+	if err != nil {
+		return rule.Registry{}, nil, err
+	}
+	if loaded.Path == "" {
+		return defaults, nil, nil
+	}
+	registry, err := rule.DefaultsConfigured(loaded.Config.RuleOptions())
+	if err != nil {
+		return rule.Registry{}, nil, err
+	}
+	return registry, loaded.Config.IgnorePaths, nil
+}
+
+// splitPaths breaks a comma-separated path query value into trimmed entries.
 func splitPaths(raw string) []string {
 	if raw == "" {
 		return nil
@@ -194,19 +240,29 @@ func splitPaths(raw string) []string {
 	return out
 }
 
-func displayCommand(state report.DashboardState) string {
+// displayCommand reconstructs the equivalent `gruff-go analyse` shell command for state.
+func displayCommand(state report.DashboardState, opts Options) string {
 	args := []string{"gruff-go", "analyse", "--format", "html"}
+	if state.ReportInteractive == "1" {
+		args = append(args, "--report-interactive")
+	}
+	if opts.EditorLink != "" && opts.EditorLink != "none" {
+		args = append(args, "--report-editor-link", opts.EditorLink)
+	}
 	if state.Config != "" {
 		args = append(args, "--config", state.Config)
 	}
-	if state.NoConfig == "1" {
+	if state.SkipConfig == "1" {
 		args = append(args, "--no-config")
 	}
-	if state.Baseline != "" && state.NoBaseline != "1" {
+	if state.Baseline != "" && state.SkipBaseline != "1" {
 		args = append(args, "--baseline", state.Baseline)
 	}
 	if state.ScanScope == "diff" {
 		args = append(args, "--diff-base", "HEAD")
+	}
+	if state.IncludeIgnored == "1" {
+		args = append(args, "--include-ignored")
 	}
 	if state.FailOn != "" {
 		args = append(args, "--min-severity", state.FailOn)
@@ -234,8 +290,8 @@ func stateFromQuery(opts Options, values url.Values) report.DashboardState {
 		FailOn:            get("failOn", defaults.FailOn),
 		Config:            get("config", defaults.Config),
 		Baseline:          get("baseline", defaults.Baseline),
-		NoBaseline:        get("noBaseline", defaults.NoBaseline),
-		NoConfig:          get("noConfig", defaults.NoConfig),
+		SkipBaseline:      get("noBaseline", defaults.SkipBaseline),
+		SkipConfig:        get("noConfig", defaults.SkipConfig),
 		IncludeIgnored:    get("includeIgnored", defaults.IncludeIgnored),
 		ReportInteractive: get("reportInteractive", defaults.ReportInteractive),
 	}

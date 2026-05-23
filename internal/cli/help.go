@@ -1,3 +1,5 @@
+// Package cli implements the gruff-go command-line interface.
+// Help text lives here so command usage, examples, and flag descriptions stay consistent across entrypoints.
 package cli
 
 import (
@@ -6,16 +8,19 @@ import (
 	"strings"
 )
 
+// commandDescription pairs a subcommand name with its short help text.
 type commandDescription struct {
 	name        string
 	description string
 }
 
+// optionDescription pairs a flag name with its short help text.
 type optionDescription struct {
 	flag        string
 	description string
 }
 
+// commandList enumerates the subcommands shown in the top-level usage screen.
 var commandList = []commandDescription{
 	{"analyse", "Run the rule registry over the supplied paths and emit a report."},
 	{"baseline", "Write a JSON baseline of current findings for use with --baseline."},
@@ -27,6 +32,7 @@ var commandList = []commandDescription{
 	{"summary", "Print a compact digest of a scan: score, per-pillar counts, top rules and offenders."},
 }
 
+// globalOptions enumerates the cross-command flags shown in the usage screen.
 var globalOptions = []optionDescription{
 	{"-h, --help", "Display help. Use \"gruff-go help <command>\" for command-specific help."},
 	{"-V, --version", "Display the gruff-go version."},
@@ -35,9 +41,13 @@ var globalOptions = []optionDescription{
 	{"    --no-ansi", "Disable ANSI colour output."},
 }
 
+// commandNameWidth is the column width used when aligning subcommand names.
 const commandNameWidth = 10
+
+// optionFlagWidth is the column width used when aligning option flag names.
 const optionFlagWidth = 13
 
+// usage prints the top-level help screen describing commands and global options.
 func usage(writer io.Writer, style ansiStyler) {
 	fmt.Fprintf(writer, "%s %s\n\n", style.bold("gruff-go"), toolVersion)
 	fmt.Fprintln(writer, style.yellow("Usage:"))
@@ -56,6 +66,7 @@ func usage(writer io.Writer, style ansiStyler) {
 	fmt.Fprintf(writer, "Run %s for the per-command flag list.\n", style.green("\"gruff-go help <command>\""))
 }
 
+// helpForCommand prints the usage line for a specific subcommand.
 func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrStyle ansiStyler) int {
 	commandUsage, ok := commandUsages[name]
 	if !ok {
@@ -67,16 +78,18 @@ func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrSt
 	return 0
 }
 
+// commandUsages maps each subcommand to its concrete usage flag list.
 var commandUsages = map[string]string{
-	"analyse":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]",
-	"analyze":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]",
-	"baseline":   "--out path [--config path|--no-config] [path ...]",
+	"analyse":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyze":    "[--format text|json|summary-json|sarif|github|html] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"baseline":   "--out path [--config path|--no-config] [--include-ignored] [path ...]",
 	"list-rules": "[--format text|json] [--config path|--no-config]",
 	"summary":    "[--format text|json] [--top N] [--config path|--no-config] [--include-ignored] [path ...]",
-	"report":     "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [path ...]",
+	"report":     "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
 	"dashboard":  "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]",
 }
 
+// padCommandName right-pads a command name to commandNameWidth for table layout.
 func padCommandName(coloured, plain string) string {
 	if width := commandNameWidth - len(plain); width > 0 {
 		return coloured + strings.Repeat(" ", width)
@@ -84,6 +97,7 @@ func padCommandName(coloured, plain string) string {
 	return coloured
 }
 
+// padOptionName right-pads an option flag name to optionFlagWidth for table layout.
 func padOptionName(coloured, plain string) string {
 	if width := optionFlagWidth - len(plain); width > 0 {
 		return coloured + strings.Repeat(" ", width)

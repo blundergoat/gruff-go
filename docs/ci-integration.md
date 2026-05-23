@@ -4,13 +4,13 @@
 
 This page is a copy-paste cheat sheet for common runners and the recommended rollout pattern for existing codebases.
 
-> **Flag ordering.** Every `--flag` must appear before the path arguments — `gruff-go` uses the Go standard `flag` package, which stops parsing at the first non-flag token. Write `gruff-go analyse --baseline foo.json .`, not `gruff-go analyse . --baseline foo.json`.
+> **Flag ordering.** Every `--flag` must appear before the path arguments - `gruff-go` uses the Go standard `flag` package, which stops parsing at the first non-flag token. Write `gruff-go analyse --baseline foo.json .`, not `gruff-go analyse . --baseline foo.json`.
 
 ## Recommended rollout pattern
 
 Adopting any new static analysis tool on a real codebase tends to trigger a baseline avalanche. `gruff-go` handles this with a three-step rollout:
 
-1. **First run** — generate a baseline of the current state. Don't fail the build.
+1. **First run** - generate a baseline of the current state. Don't fail the build.
 
    ```bash
    gruff-go baseline --out gruff-baseline.json
@@ -18,13 +18,13 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    git commit -m "chore: capture initial gruff-go baseline"
    ```
 
-2. **Steady state** — fail on regressions against the baseline.
+2. **Steady state** - fail on regressions against the baseline.
 
    ```bash
    gruff-go analyse --baseline gruff-baseline.json .
    ```
 
-3. **Drift-down** — periodically regenerate the baseline as the team fixes findings.
+3. **Drift-down** - periodically regenerate the baseline as the team fixes findings.
 
    ```bash
    # In a clean-up branch.
@@ -65,14 +65,14 @@ jobs:
           go-version: '1.25'
 
       - name: Install gruff-go
-        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest
+        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
 
       - name: Scan (diff-mode for PRs, full for push)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gruff-go analyse --baseline gruff-baseline.json . --diff-base origin/${{ github.base_ref }} --format github
+            gruff-go analyse --baseline gruff-baseline.json --diff-base origin/${{ github.base_ref }} --format github .
           else
-            gruff-go analyse --baseline gruff-baseline.json . --format github
+            gruff-go analyse --baseline gruff-baseline.json --format github .
           fi
 ```
 
@@ -92,7 +92,7 @@ The `--format github` output is one workflow command per finding, so each one sh
           category: gruff-go
 ```
 
-Code Scanning will track findings over time, surface them in the Security tab, and dedupe across runs using the `partialFingerprints.primary` value `gruff-go` emits.
+Code Scanning will track findings over time, surface them in the Security tab, and dedupe across runs using the `partialFingerprints.gruffFingerprint` value `gruff-go` emits.
 
 ### Archive the HTML report as an artefact
 
@@ -109,7 +109,7 @@ Code Scanning will track findings over time, surface them in the Security tab, a
           path: gruff-report.html
 ```
 
-Reviewers can download the artefact and open it locally. The HTML report is self-contained — no external network requests.
+Reviewers can download the artefact and open it locally. The HTML report is self-contained - no external network requests.
 
 ## GitLab CI
 
@@ -119,7 +119,7 @@ gruff-go:
   image: golang:1.25
   stage: test
   script:
-    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest
+    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
     - gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif
   artifacts:
     when: always
@@ -148,7 +148,7 @@ jobs:
       - checkout
       - run:
           name: Install gruff-go
-          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest
+          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
       - run:
           name: Scan
           command: gruff-go analyse --baseline gruff-baseline.json .
@@ -172,7 +172,7 @@ pipeline {
     stages {
         stage('gruff-go') {
             steps {
-                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest'
+                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0'
                 sh 'gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif'
             }
             post {
@@ -208,13 +208,13 @@ Pair `--diff-base HEAD` with `--min-severity high` so the hook stays fast and on
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` — default `medium`. Set higher (`high` / `critical`) for noisy codebases that need a strict gate; set lower (`low` / `info`) for tight quality bars.
+- `--min-severity` - default `medium`. Set higher (`high` / `critical`) for noisy codebases that need a strict gate; set lower (`low` / `info`) for tight quality bars.
 - `--fail-on` is the dashboard's equivalent flag; the analyser uses `--min-severity` and they share the same severity vocabulary.
 
-If CI needs to **scan and report** without **failing**, run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and then upload the report artefact separately. The exit code is honest about whether findings are above threshold — you decide whether to act on it.
+If CI needs to **scan and report** without **failing**, run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and then upload the report artefact separately. The exit code is honest about whether findings are above threshold - you decide whether to act on it.
 
 ## Common pitfalls
 
 - **Shallow clones** break `--diff-base`. Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
 - **First run on a busy codebase** with thousands of findings is a waste of CI cycles. Generate a baseline locally first, commit it, and let CI scan against it.
-- **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff.yaml`.
+- **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff-go.yaml`.

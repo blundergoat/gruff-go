@@ -1,23 +1,27 @@
+// Package cli implements the gruff-go command-line interface.
+// The summary command keeps scan timing near the analysis call so digests can show real wall time.
 package cli
 
 import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
+// runSummary parses summary flags, runs analysis, and prints the compact digest.
 func runSummary(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("summary", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text or json")
 	top := flags.Int("top", 10, "limit on top rules and top offenders shown")
-	configPath := flags.String("config", "", "gruff config file (.gruff.yaml, .gruff.yml, or .gruff.json)")
+	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
-	includeIgnored := flags.Bool("include-ignored", false, "include files under default-ignored directories")
+	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -35,25 +39,25 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	started := time.Now()
 	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
-	if *includeIgnored {
-		ignorePaths = nil
-	}
-	analysisReport, err := analysis.Run(analysis.Options{
-		Paths:       flags.Args(),
-		Format:      *format,
-		FailOn:      failOn,
-		Registry:    registry,
-		IgnorePaths: ignorePaths,
+	analysisReport, err := analysis.Analyze(analysis.Options{
+		Paths:          flags.Args(),
+		Format:         *format,
+		FailOn:         failOn,
+		Registry:       registry,
+		IgnorePaths:    ignorePaths,
+		IncludeIgnored: *includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	scanDuration := time.Since(started)
 	switch *format {
 	case "json":
 		if err := report.WriteSummaryJSON(stdout, analysisReport); err != nil {
@@ -61,7 +65,10 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	default:
-		if err := report.WriteSummaryText(stdout, analysisReport, report.SummaryOptions{Top: *top}); err != nil {
+		if err := report.WriteSummaryText(stdout, analysisReport, report.SummaryOptions{
+			Top:          *top,
+			ScanDuration: scanDuration,
+		}); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}

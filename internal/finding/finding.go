@@ -1,3 +1,5 @@
+// Package finding defines the Finding payload and fingerprint helpers.
+// Findings carry rule output, location, severity, and identity hash data.
 package finding
 
 import (
@@ -6,26 +8,41 @@ import (
 	"encoding/json"
 )
 
+// Finding is a single rule result emitted by the analyser pipeline.
 type Finding struct {
-	RuleID           string         `json:"ruleId"`
-	Message          string         `json:"message"`
-	File             string         `json:"file"`
-	Location         *Location      `json:"location,omitempty"`
-	Symbol           string         `json:"symbol,omitempty"`
-	Severity         Severity       `json:"severity"`
-	Confidence       Confidence     `json:"confidence"`
-	Pillar           Pillar         `json:"pillar"`
-	SecondaryPillars []Pillar       `json:"secondaryPillars,omitempty"`
-	Remediation      string         `json:"remediation,omitempty"`
-	Metadata         map[string]any `json:"metadata,omitempty"`
-	Fingerprint      string         `json:"fingerprint"`
+	// RuleID is the identifier of the rule that produced the finding.
+	RuleID string `json:"ruleId"`
+	// Message is the human-readable description of what the rule detected.
+	Message string `json:"message"`
+	// File is the repo-relative path of the source file the finding targets.
+	File string `json:"file"`
+	// Location pins the finding to a span within File; nil when the rule reports the file as a whole.
+	Location *Location `json:"location,omitempty"`
+	// Symbol is the optional named subject (function, type, identifier) the finding is anchored to.
+	Symbol string `json:"symbol,omitempty"`
+	// Severity is the urgency tier reported for the finding.
+	Severity Severity `json:"severity"`
+	// Confidence is the rule's certainty in the finding.
+	Confidence Confidence `json:"confidence"`
+	// Pillar is the primary quality category the finding belongs to.
+	Pillar Pillar `json:"pillar"`
+	// SecondaryPillars lists additional quality categories the finding touches.
+	SecondaryPillars []Pillar `json:"secondaryPillars,omitempty"`
+	// Remediation is a short suggested fix or pointer to remediation guidance.
+	Remediation string `json:"remediation,omitempty"`
+	// Metadata carries rule-specific structured data (thresholds, measured values, etc.).
+	Metadata map[string]any `json:"metadata,omitempty"`
+	// Fingerprint is the stable identity hash used by baseline matching.
+	Fingerprint string `json:"fingerprint"`
 }
 
+// WithFingerprint returns a copy of the finding with Fingerprint populated.
 func (f Finding) WithFingerprint() Finding {
 	f.Fingerprint = f.ComputeFingerprint()
 	return f
 }
 
+// ComputeFingerprint hashes the finding identity fields into a stable short ID.
 func (f Finding) ComputeFingerprint() string {
 	line, column, endLine := 0, 0, 0
 	if f.Location != nil {

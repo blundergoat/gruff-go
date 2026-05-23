@@ -1,3 +1,5 @@
+// Package report renders gruff-go analysis results into output formats.
+// This file generates the interactive findings filter UI inlined into the HTML report.
 package report
 
 import (
@@ -8,6 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
+// findingFilters renders the severity, pillar, path, and search controls above the findings list.
 func (r htmlRenderer) findingFilters() string {
 	pillars := map[string]struct{}{}
 	for _, item := range r.report.Findings {

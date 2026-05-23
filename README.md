@@ -1,10 +1,16 @@
 # gruff-go
 
-An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across eleven pillars — size, complexity, dead code, naming, documentation, modernisation, security, sensitive data, test quality, maintainability, and design — and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
+[![CI](https://github.com/blundergoat/gruff-go/actions/workflows/gruff-go.yml/badge.svg)](https://github.com/blundergoat/gruff-go/actions/workflows/gruff-go.yml)
+[![Release](https://img.shields.io/github/v/release/blundergoat/gruff-go?sort=semver&color=blue)](https://github.com/blundergoat/gruff-go/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/blundergoat/gruff-go.svg)](https://pkg.go.dev/github.com/blundergoat/gruff-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
+[![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
+
+An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across nine pillars - complexity, dead code, design, documentation, naming, security, sensitive data, size, and test quality - and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
 
 ## Status
 
-Pre-release: the binary reports its version as `0.1.0-dev`. The package is not yet published, schemas are versioned but may shift before `v0.1.0` final, and the CLI surface is consumed from source. See [`CHANGELOG.md`](CHANGELOG.md) for the running list of foundation work.
+`v0.1.0` is the first public release line. The binary reports `0.1.0`. Schemas (`gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1`) are stable within the `0.1.x` line; breaking changes to the CLI, schemas, or default rule pack land in a future minor and are called out in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Requirements
 
@@ -15,7 +21,37 @@ No runtime dependencies outside the Go standard library.
 
 ## Install
 
-From source today:
+### As a project-pinned dev tool (recommended, Go 1.24+)
+
+Add `gruff-go` to your project's `go.mod` so teammates and CI use the same version:
+
+```bash
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+go tool gruff-go analyse .
+```
+
+This is the closest equivalent to `composer require --dev` or an `npm` dev-dependency: the version is recorded in `go.mod`, and `go tool gruff-go` always resolves to the pinned build.
+
+### As a global binary
+
+```bash
+go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+gruff-go --help
+```
+
+The binary lands in `$GOBIN` (defaults to `$HOME/go/bin`). Use `@latest` only when you intentionally want the newest published release rather than a pinned build.
+
+### Without installing
+
+```bash
+go run github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0 analyse .
+```
+
+### Prebuilt binaries
+
+Linux, macOS, and Windows archives are attached to each [GitHub Release](https://github.com/blundergoat/gruff-go/releases). Pick the matching `gruff-go_<version>_<os>_<arch>.tar.gz` (or `.zip` on Windows), extract, and move `gruff-go` somewhere on your `PATH`. Releases include a `checksums.txt` for verification.
+
+### From a source checkout
 
 ```bash
 git clone https://github.com/blundergoat/gruff-go.git
@@ -23,14 +59,6 @@ cd gruff-go
 go install ./cmd/gruff-go
 gruff-go --help
 ```
-
-Or use `go run` without installing:
-
-```bash
-go run ./cmd/gruff-go analyse .
-```
-
-Once a release is published, `go install github.com/blundergoat/gruff-go/cmd/gruff-go@latest` will be the convenient form.
 
 ## Quick start
 
@@ -45,7 +73,7 @@ gruff-go analyse ./cmd/myapp ./internal/auth
 # Fail only on critical findings (default: medium)
 gruff-go analyse --min-severity critical .
 
-# Skip the auto-loaded .gruff.yaml for a single run
+# Skip the auto-loaded .gruff-go.yaml for a single run
 gruff-go analyse --no-config .
 
 # Scan only what changed against main
@@ -62,7 +90,7 @@ gruff-go analyse --baseline gruff-baseline.json .
 | Command | Purpose |
 |---------|---------|
 | `analyse` | Run the rule registry over the supplied paths and emit a report in the chosen format. The main command. |
-| `summary` | Print a compact digest of a scan — composite score, per-pillar counts, top rules, top file offenders. |
+| `summary` | Print a compact digest of a scan - composite score, per-pillar counts, top rules, top file offenders. |
 | `report` | Convenience wrapper around `analyse` for static HTML or JSON reports written to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a JSON baseline so subsequent runs can suppress them. |
 | `list-rules` | Print rule metadata (id, pillar, default severity, threshold defaults) as text or JSON. |
@@ -89,7 +117,7 @@ gruff-go analyse --baseline gruff-baseline.json .
 | Format | Use it for |
 |--------|------------|
 | `text` *(default)* | Reading findings in a terminal. |
-| `json` | Full structured report — schema `gruff-go.analysis.v0.1`. |
+| `json` | Full structured report - schema `gruff-go.analysis.v0.1`. |
 | `summary-json` | Compact CI digest. Same shape as `json` minus the per-finding list. |
 | `sarif` | SARIF 2.1.0 for GitHub Code Scanning, GitLab, and tools that consume the format. |
 | `github` | GitHub Actions workflow commands (`::error`, `::warning`, `::notice`). |
@@ -109,7 +137,7 @@ See [`docs/output-formats.md`](docs/output-formats.md) for the schema details an
 
 ## Configuration
 
-`gruff-go` auto-loads `.gruff.yaml`, `.gruff.yml`, then `.gruff.json` from the project root unless `--config <path>` or `--no-config` is given. The config is strict: unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds all fail closed.
+`gruff-go` auto-loads `.gruff-go.yaml` from the project root unless `--config <path>` or `--no-config` is given. The config is strict: unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds all fail closed.
 
 A minimal example:
 
@@ -130,7 +158,7 @@ rules:
     threshold: 15
     severity: high
   size.file-length:
-    threshold: 400
+    threshold: 300
   naming.package-underscore:
     enabled: true
 ```
@@ -139,9 +167,27 @@ The schema, every option, and validation rules are documented in [`docs/configur
 
 ## Rule catalog
 
-`gruff-go` v0.1 ships twelve rules across eight pillars. Five are enabled by default; the rest are opt-in via config so existing repos can phase them in without baseline churn.
+The current checkout contains **41 rules** across **9 pillars**. The built-in pack enables 40 rules by default; `docs.config-field-comment` is the single opt-in rule for projects that want exported struct fields documented. Disable any rule per project via `selection.excludeRules` or `rules.<id>.enabled: false`.
+
+Current built-in rule distribution:
+
+| Pillar | Rules |
+|--------|-------|
+| complexity | 2 |
+| dead-code | 1 |
+| design | 2 |
+| documentation | 4 |
+| naming | 9 |
+| security | 6 |
+| sensitive-data | 11 |
+| size | 3 |
+| test-quality | 3 |
 
 See [`docs/rules.md`](docs/rules.md) for the full list with severities, thresholds, and remediation guidance.
+
+## Release calibration
+
+The release gate is `make check` plus a dogfood scan (`gruff-go analyse .`) that must return grade A with zero findings on this repository. Rule precision is also calibrated against a separate Go service corpus so dogfood-only blind spots show up before release. The `0.1.0` calibration removed noisy `security.*` and `naming.*` false positives while preserving size and genuinely assertionless-test findings; details are recorded in [`CHANGELOG.md`](CHANGELOG.md) and [ADR-008](.goat-flow/decisions/ADR-008-external-codebase-calibration-precision-fixes.md).
 
 ## Dashboard
 
@@ -160,6 +206,10 @@ GitHub Actions, GitLab CI, and other runners can consume the SARIF or GitHub-ann
 
 Patches welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, the milestone-style workflow, and the test conventions. Security issues: please follow [`SECURITY.md`](SECURITY.md) instead of opening a public issue.
 
+## Author
+
+Built by [Matthew Hansen](https://www.blundergoat.com/about).
+
 ## License
 
-[MIT](LICENSE). See the LICENSE file for the full text.
+[MIT](LICENSE)

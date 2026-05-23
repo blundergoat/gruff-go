@@ -1,3 +1,5 @@
+// Package analysis tests exercise the Analyze pipeline end-to-end.
+// They cover diagnostics, deterministic output, and exit-code thresholds.
 package analysis
 
 import (
@@ -10,9 +12,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-func TestRunReportsMissingPathAsDiagnostic(t *testing.T) {
+// TestAnalyzeReportsMissingPathAsDiagnostic asserts missing inputs surface as discovery diagnostics.
+func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	t.Chdir(t.TempDir())
-	report, err := Run(Options{
+	report, err := Analyze(Options{
 		Paths:    []string{"missing.go"},
 		FailOn:   finding.SeverityMedium,
 		Registry: rule.Defaults(),
@@ -28,16 +31,17 @@ func TestRunReportsMissingPathAsDiagnostic(t *testing.T) {
 	}
 }
 
-func TestRunIsDeterministicExceptStartedAt(t *testing.T) {
+// TestAnalyzeIsDeterministicExceptStartedAt confirms repeated runs match aside from timestamps.
+func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
-	first, err := Run(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
+	first, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Run(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
+	second, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +50,8 @@ func TestRunIsDeterministicExceptStartedAt(t *testing.T) {
 	}
 }
 
-func TestRunExitsOneWhenFindingMeetsThreshold(t *testing.T) {
+// TestAnalyzeExitsOneWhenFindingMeetsThreshold checks the threshold-driven exit code.
+func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
 	t.Chdir(root)
@@ -55,7 +60,7 @@ func TestRunExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Run(Options{
+	report, err := Analyze(Options{
 		Registry: registry,
 		FailOn:   finding.SeverityMedium,
 	})
@@ -70,8 +75,59 @@ func TestRunExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	}
 }
 
+// TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence confirms
+// that composite findings (carrying an underlyingFingerprints metadata slice)
+// are dropped when none of their underlying fingerprints survive the diff
+// filter. Without this prune, composites would stay in --diff-base reports
+// even when the size/complexity evidence they composed has been filtered out.
+func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testing.T) {
+	survivingEvidence := finding.Finding{
+		RuleID:      "size.function-length",
+		File:        "hot.go",
+		Symbol:      "Hot",
+		Fingerprint: "ev-1",
+		Location:    &finding.Location{Line: 10},
+	}
+	survivingComposite := finding.Finding{
+		RuleID: "design.god-function",
+		File:   "hot.go",
+		Symbol: "Hot",
+		Metadata: map[string]any{
+			"underlyingFingerprints": []string{"ev-1"},
+		},
+	}
+	orphanComposite := finding.Finding{
+		RuleID: "design.god-function",
+		File:   "cold.go",
+		Symbol: "Cold",
+		Metadata: map[string]any{
+			"underlyingFingerprints": []string{"ev-cold-not-present"},
+		},
+	}
+
+	kept, pruned := pruneOrphanedComposites([]finding.Finding{
+		survivingEvidence,
+		survivingComposite,
+		orphanComposite,
+	})
+
+	if pruned != 1 {
+		t.Fatalf("pruned = %d, want 1 orphan composite removed", pruned)
+	}
+	if len(kept) != 2 {
+		t.Fatalf("kept = %#v, want survivingEvidence and survivingComposite only", kept)
+	}
+	for _, item := range kept {
+		if item.File == "cold.go" {
+			t.Fatalf("orphan composite for cold.go should have been pruned; got %#v", item)
+		}
+	}
+}
+
+// findingRule is a test rule that always emits one finding per unit.
 type findingRule struct{}
 
+// Definition returns the rule metadata used by the registry.
 func (findingRule) Definition() rule.Definition {
 	return rule.Definition{
 		ID:             "size.file-length",
@@ -83,6 +139,7 @@ func (findingRule) Definition() rule.Definition {
 	}
 }
 
+// AnalyzeUnit emits a single fixed finding for the given unit.
 func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Finding {
 	return []finding.Finding{{
 		Message:  "test finding",
@@ -91,6 +148,7 @@ func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Findi
 	}}
 }
 
+// writeFile writes contents to root/rel, creating parent directories as needed.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
