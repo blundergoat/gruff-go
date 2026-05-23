@@ -54,7 +54,7 @@ type Config struct {
 // TestConfigFieldCommentRuleInlineCommentPasses confirms a same-line trailing
 // comment counts as field documentation. Go's AST attaches `// inline` after a
 // field declaration to field.Comment rather than field.Doc, and the rule used
-// to only check field.Doc — false-flagging every project that prefers trailing
+// to only check field.Doc - false-flagging every project that prefers trailing
 // inline docs in its config structs.
 func TestConfigFieldCommentRuleInlineCommentPasses(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config

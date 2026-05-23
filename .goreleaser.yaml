@@ -1,0 +1,96 @@
+version: 2
+
+project_name: gruff-go
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gruff-go
+    main: ./cmd/gruff-go
+    binary: gruff-go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+
+archives:
+  - id: gruff-go
+    ids:
+      - gruff-go
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: blundergoat
+    name: gruff-go
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## gruff-go {{ .Tag }}
+
+    Install (pinned):
+
+    ```bash
+    go install github.com/blundergoat/gruff-go/cmd/gruff-go@{{ .Tag }}
+    ```
+
+    Or pin per project as a dev tool (Go 1.24+):
+
+    ```bash
+    go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@{{ .Tag }}
+    go tool gruff-go analyse .
+    ```
+
+    See [`CHANGELOG.md`](https://github.com/blundergoat/gruff-go/blob/main/CHANGELOG.md) for the full notes.
+  footer: |
+    ---
+    **Full changelog**: https://github.com/blundergoat/gruff-go/compare/{{ .PreviousTag }}...{{ .Tag }}

@@ -34,16 +34,16 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Tool playbooks: `.goat-flow/skill-playbooks/`; read before declaring tool unavailability.
 
 ## Essential Commands
-- `make check` — gofmt + go vet + go test ./... (primary quality gate).
-- `go run ./cmd/gruff-go analyse .` — dogfood scan; must return grade A with zero findings on `main`.
-- `UPDATE_GOLDEN=1 go test ./internal/cli/...` — regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
-- `scripts/bump-version.sh <new-version>` — update every in-tree version literal in one shot and regenerate goldens.
-- `node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent claude` — GOAT Flow setup audit.
+- `make check` - gofmt + go vet + go test ./... (primary quality gate).
+- `go run ./cmd/gruff-go analyse .` - dogfood scan; must return grade A with zero findings on `main`.
+- `UPDATE_GOLDEN=1 go test ./internal/cli/...` - regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
+- `scripts/bump-version.sh <new-version>` - update every in-tree version literal in one shot and regenerate goldens.
+- `node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent claude` - GOAT Flow setup audit.
 
 ## Execution Loop: READ → SCOPE → ACT → VERIFY
 
 ### READ
-MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go` and any fixture under `internal/rule/testdata/`. For policy decisions, grep `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/` first. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-playbooks/` and run its "Availability Check" verbatim — project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
+MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go` and any fixture under `internal/rule/testdata/`. For policy decisions, grep `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/` first. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-playbooks/` and run its "Availability Check" verbatim - project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
 
 ### SCOPE
 Declare mode, files allowed to change, non-goals, and max blast radius before writes. Stop and re-scope before crossing into schema versions, the rule registry's default policy, CLI flag surface, or vendored dependencies.
@@ -76,7 +76,7 @@ Run the narrowest real checks available and report literal pass/fail lines from 
 | Orientation | `.goat-flow/code-map.md`, `.goat-flow/glossary.md` |
 | Learning loop | `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, `.goat-flow/decisions/` |
 | Skill reference (meta) | `.goat-flow/skill-reference/` |
-| Tool playbooks (CLI/MCP availability checks) | `.goat-flow/skill-playbooks/` — read BEFORE declaring a tool unavailable |
+| Tool playbooks (CLI/MCP availability checks) | `.goat-flow/skill-playbooks/` - read BEFORE declaring a tool unavailable |
 | Claude skills/config | `.claude/skills/`, `.claude/settings.json`, `.claude/hooks/` |
 | Application entrypoint | `cmd/gruff-go/main.go` |
 | Application packages | `internal/{cli,source,parser,rule,config,baseline,diff,finding,scoring,analysis,report,dashboard,pathfilter}/` |

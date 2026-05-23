@@ -80,7 +80,7 @@ elapsed_since() {
 header() {
     printf '\n'
     printf '  %sPreflight Check%s\n' "$BOLD" "$RESET"
-    printf '  %s%s — %s%s\n' "$DIM" "$(date '+%Y-%m-%d %H:%M:%S')" "$REPO_ROOT" "$RESET"
+    printf '  %s%s - %s%s\n' "$DIM" "$(date '+%Y-%m-%d %H:%M:%S')" "$REPO_ROOT" "$RESET"
     rule
     printf '\n'
 }
@@ -271,7 +271,7 @@ check_gruff_summary() {
     score=$(awk '/^score:/ {print $2; exit}' <<<"$output")
     grade=$(awk '/^score:/ {print $NF; exit}' <<<"$output")
     findings=$(awk '/^findings:/ {print $2; exit}' <<<"$output")
-    printf 'grade %s — %s/100 — %s findings' "${grade:-?}" "${score:-?}" "${findings:-?}"
+    printf 'grade %s - %s/100 - %s findings' "${grade:-?}" "${score:-?}" "${findings:-?}"
 }
 
 summary() {

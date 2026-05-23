@@ -1,6 +1,6 @@
 # gruff-go
 
-An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across nine pillars — complexity, dead code, design, documentation, naming, security, sensitive data, size, and test quality — and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
+An opinionated code-quality scanner for Go. `gruff-go` reads your packages, scores them across nine pillars - complexity, dead code, design, documentation, naming, security, sensitive data, size, and test quality - and writes a report you can pipe into a terminal, CI annotation, SARIF feed, static HTML page, or a local browser dashboard. It is heuristic, not a type checker; pair it with `go vet`, `staticcheck`, and `govulncheck`, not in place of them.
 
 ## Status
 
@@ -15,28 +15,43 @@ No runtime dependencies outside the Go standard library.
 
 ## Install
 
-Install the pinned release:
+### As a project-pinned dev tool (recommended, Go 1.24+)
+
+Add `gruff-go` to your project's `go.mod` so teammates and CI use the same version:
+
+```bash
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+go tool gruff-go analyse .
+```
+
+This is the closest equivalent to `composer require --dev` or an `npm` dev-dependency: the version is recorded in `go.mod`, and `go tool gruff-go` always resolves to the pinned build.
+
+### As a global binary
 
 ```bash
 go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
 gruff-go --help
 ```
 
-Use `@latest` only when you intentionally want the newest published release rather than a pinned build.
+The binary lands in `$GOBIN` (defaults to `$HOME/go/bin`). Use `@latest` only when you intentionally want the newest published release rather than a pinned build.
 
-From a source checkout:
+### Without installing
+
+```bash
+go run github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0 analyse .
+```
+
+### Prebuilt binaries
+
+Linux, macOS, and Windows archives are attached to each [GitHub Release](https://github.com/blundergoat/gruff-go/releases). Pick the matching `gruff-go_<version>_<os>_<arch>.tar.gz` (or `.zip` on Windows), extract, and move `gruff-go` somewhere on your `PATH`. Releases include a `checksums.txt` for verification.
+
+### From a source checkout
 
 ```bash
 git clone https://github.com/blundergoat/gruff-go.git
 cd gruff-go
 go install ./cmd/gruff-go
 gruff-go --help
-```
-
-Or use `go run` without installing:
-
-```bash
-go run ./cmd/gruff-go analyse .
 ```
 
 ## Quick start
@@ -69,7 +84,7 @@ gruff-go analyse --baseline gruff-baseline.json .
 | Command | Purpose |
 |---------|---------|
 | `analyse` | Run the rule registry over the supplied paths and emit a report in the chosen format. The main command. |
-| `summary` | Print a compact digest of a scan — composite score, per-pillar counts, top rules, top file offenders. |
+| `summary` | Print a compact digest of a scan - composite score, per-pillar counts, top rules, top file offenders. |
 | `report` | Convenience wrapper around `analyse` for static HTML or JSON reports written to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a JSON baseline so subsequent runs can suppress them. |
 | `list-rules` | Print rule metadata (id, pillar, default severity, threshold defaults) as text or JSON. |
@@ -96,7 +111,7 @@ gruff-go analyse --baseline gruff-baseline.json .
 | Format | Use it for |
 |--------|------------|
 | `text` *(default)* | Reading findings in a terminal. |
-| `json` | Full structured report — schema `gruff-go.analysis.v0.1`. |
+| `json` | Full structured report - schema `gruff-go.analysis.v0.1`. |
 | `summary-json` | Compact CI digest. Same shape as `json` minus the per-finding list. |
 | `sarif` | SARIF 2.1.0 for GitHub Code Scanning, GitLab, and tools that consume the format. |
 | `github` | GitHub Actions workflow commands (`::error`, `::warning`, `::notice`). |

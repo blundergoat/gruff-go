@@ -1,6 +1,6 @@
 # Configuration
 
-`gruff-go` is configurable through a single project-root file: `.gruff-go.yaml`. The file is **strict** — unknown keys, unknown rule IDs, unknown pillars, and out-of-range thresholds all fail closed with a clear diagnostic. The schema is versioned: `gruff-go.config.v0.1`.
+`gruff-go` is configurable through a single project-root file: `.gruff-go.yaml`. The file is **strict** - unknown keys, unknown rule IDs, unknown pillars, and out-of-range thresholds all fail closed with a clear diagnostic. The schema is versioned: `gruff-go.config.v0.1`.
 
 ## Discovery
 
@@ -15,7 +15,7 @@ gruff-go analyse --config configs/strict.yaml .
 gruff-go analyse --no-config .
 ```
 
-`--config` and `--no-config` are mutually exclusive — pass one or neither, never both.
+`--config` and `--no-config` are mutually exclusive - pass one or neither, never both.
 
 ## Full schema
 
@@ -108,11 +108,11 @@ The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--
 
 Per-rule overrides. Every field is optional:
 
-- `enabled` — toggle a rule on or off. All built-in rules are enabled by default except `docs.config-field-comment`; set `false` to disable a default-enabled rule or `true` to opt into the config-field rule.
-- `threshold` — shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
-- `thresholds` — for rules with multiple thresholds, name them explicitly.
-- `severity` — canonical severities `info`, `low`, `medium`, `high`, or `critical`. Config also accepts gruff-family aliases: `notice` maps to `low`, `warning` / `warn` map to `medium`, and `error` maps to `high`.
-- `options` — opaque per-rule map for rules with bespoke options.
+- `enabled` - toggle a rule on or off. All built-in rules are enabled by default except `docs.config-field-comment`; set `false` to disable a default-enabled rule or `true` to opt into the config-field rule.
+- `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
+- `thresholds` - for rules with multiple thresholds, name them explicitly.
+- `severity` - canonical severities `info`, `low`, `medium`, `high`, or `critical`. Config also accepts gruff-family aliases: `notice` maps to `low`, `warning` / `warn` map to `medium`, and `error` maps to `high`.
+- `options` - opaque per-rule map for rules with bespoke options.
 
 Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses medium severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `low` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-medium configured `severity` applies to test files too and disables that default downranking for the overridden rule.
 

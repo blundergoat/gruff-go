@@ -1,0 +1,63 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Ensure ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+
+      - name: Preflight checks
+        run: NO_COLOR=1 scripts/preflight-checks.sh
+
+  release:
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+
+      - name: Verify tag matches source version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          src=$(grep -oP '(?<=toolVersion = ")[^"]+' internal/cli/cli.go)
+          if [[ "$tag" != "$src" ]]; then
+            echo "tag $tag does not match toolVersion $src in internal/cli/cli.go" >&2
+            echo "run scripts/bump-version.sh before tagging" >&2
+            exit 1
+          fi
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

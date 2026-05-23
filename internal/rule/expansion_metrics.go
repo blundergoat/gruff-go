@@ -27,7 +27,7 @@ type ParameterCountRule struct {
 // maxParameters returns the configured cap, falling back to
 // parameterCountThreshold when MaxParameters is the zero value. This treats
 // "unconfigured" (rule registered without YAML overrides) as "use the default"
-// rather than "disable the check" — otherwise a stock registry entry would
+// rather than "disable the check" - otherwise a stock registry entry would
 // silently flag every multi-arg function as exceeding zero parameters.
 func (r ParameterCountRule) maxParameters() int {
 	if r.MaxParameters <= 0 {
@@ -108,7 +108,7 @@ type NestingDepthRule struct {
 
 // maxDepth returns the configured cap, falling back to nestingDepthThreshold
 // when MaxDepth is the zero value. Same zero-as-unconfigured convention as
-// maxParameters — see that helper for the rationale.
+// maxParameters - see that helper for the rationale.
 func (r NestingDepthRule) maxDepth() int {
 	if r.MaxDepth <= 0 {
 		return nestingDepthThreshold
@@ -164,7 +164,7 @@ func (r NestingDepthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 // blockNestingDepth is one corner of a mutual recursion with stmtNestingDepth
 // and clausesNestingDepth that finds the deepest control-flow nesting in a
 // function. The depth argument is the caller's inherited depth, not a starting
-// zero — recursion accumulates rather than restarts so a block inside an
+// zero - recursion accumulates rather than restarts so a block inside an
 // already-nested `if` reports the outer nesting too.
 func blockNestingDepth(block *ast.BlockStmt, depth int) int {
 	if block == nil {
@@ -182,7 +182,7 @@ func blockNestingDepth(block *ast.BlockStmt, depth int) int {
 // stmtNestingDepth is where depth actually increments: each control-flow
 // construct (if/for/range/switch/select) adds one. The `else if` arm is
 // recursed with the *original* depth (not depth+1) so a long if/else-if chain
-// counts as one level of nesting — matching how a human reads the code — while
+// counts as one level of nesting - matching how a human reads the code - while
 // a literal `else { ... }` block uses depth+1 like any other body.
 func stmtNestingDepth(stmt ast.Stmt, depth int) int {
 	switch s := stmt.(type) {
@@ -390,7 +390,7 @@ func hasDoc(group *ast.CommentGroup) bool {
 
 // funcKind picks the noun ("method" vs "function") for the user-visible
 // finding message based on receiver presence. The rule itself fires
-// identically for both — this only changes wording, so callers must not branch
+// identically for both - this only changes wording, so callers must not branch
 // on the return value for behaviour decisions.
 func funcKind(fn *ast.FuncDecl) string {
 	if fn.Recv != nil {

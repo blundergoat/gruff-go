@@ -41,13 +41,13 @@ Three thresholds stay where calibration evidence already placed them:
 
 One special case: `docs.comment-rubric` is path-scoped via `includePaths`. Default-on is a no-op for projects that don't configure paths, so flipping it on costs nothing and removes an awkward inconsistency in the policy table.
 
-One deliberate exception: `docs.config-field-comment` stays `defaultEnabled: false`. Its scoping options (`includePaths`/`excludePaths`) default to empty, which under its current `appliesToPath` semantics means the rule applies to every file — and the per-field check fires on every undocumented exported struct field. Unlike `docs.comment-rubric`, the rule is not a no-op without configuration, so defaulting it on would swamp adopters with documentation findings on every exported field across the codebase. The carve-out is recorded here so the rule's `DefaultEnabled: false` flag does not appear to contradict the rest of this ADR.
+One deliberate exception: `docs.config-field-comment` stays `defaultEnabled: false`. Its scoping options (`includePaths`/`excludePaths`) default to empty, which under its current `appliesToPath` semantics means the rule applies to every file - and the per-field check fires on every undocumented exported struct field. Unlike `docs.comment-rubric`, the rule is not a no-op without configuration, so defaulting it on would swamp adopters with documentation findings on every exported field across the codebase. The carve-out is recorded here so the rule's `DefaultEnabled: false` flag does not appear to contradict the rest of this ADR.
 
 ## Dogfood Evidence
 
 After implementation, with the project's `.gruff-go.yaml` honoured:
 
-- `go run ./cmd/gruff-go analyse --format json .` — 83 files, 3 findings (all `naming.receiver-consistency`, low severity), exit 0.
+- `go run ./cmd/gruff-go analyse --format json .` - 83 files, 3 findings (all `naming.receiver-consistency`, low severity), exit 0.
 
 With `--no-config` (pure default policy on top of unfiltered source):
 
@@ -78,5 +78,5 @@ This severity discipline is what makes the default-on flip safe: adopters won't 
 
 ## Follow-up
 
-- The 3 `naming.receiver-consistency` dogfood findings on `Registry` (`applyEnablement`, `applySeverities`, `refreshActiveRules`) are real — the right fix is to make `Registry` consistently pointer-receiver, not flip the three outliers. Tracked separately from this ADR.
+- The 3 `naming.receiver-consistency` dogfood findings on `Registry` (`applyEnablement`, `applySeverities`, `refreshActiveRules`) are real - the right fix is to make `Registry` consistently pointer-receiver, not flip the three outliers. Tracked separately from this ADR.
 - `.gruff-go.yaml` keeps explicit per-rule pins where the project's policy is stricter than the new defaults (e.g. `complexity.nesting-depth: threshold: 4`, `size.parameter-count: threshold: 5`). These are project overrides, not bugs in the new default table.

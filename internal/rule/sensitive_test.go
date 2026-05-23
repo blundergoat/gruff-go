@@ -206,7 +206,7 @@ func TestGCPServiceAccountRuleIgnoresTypeOnly(t *testing.T) {
 
 // TestGCPServiceAccountRuleIgnoresPrivateKeyOnly asserts a PEM private key
 // without the service-account type marker does not trigger a GCP finding.
-// (sensitive-data.private-key will still fire on this input — tested elsewhere.)
+// (sensitive-data.private-key will still fire on this input - tested elsewhere.)
 func TestGCPServiceAccountRuleIgnoresPrivateKeyOnly(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "key.pem", Type: source.FileTypeText},

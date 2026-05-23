@@ -197,7 +197,7 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 // Composite findings are line-stable by design (so baseline matching survives
 // underlying code shifts), which means diff.Filter treats them as "no location"
 // and keeps them whenever the file has any changed line. After the line-based
-// filter runs, prune composites whose underlying evidence did not survive —
+// filter runs, prune composites whose underlying evidence did not survive -
 // otherwise --diff-base scans surface composites for code the diff did not
 // touch.
 func applyDiff(root string, paths []string, findings []finding.Finding, diagnostics []Diagnostic, diffBase string) ([]finding.Finding, DiffSummary, []Diagnostic) {

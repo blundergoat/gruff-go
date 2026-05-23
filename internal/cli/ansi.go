@@ -66,7 +66,7 @@ func ansiEnabled(writer io.Writer, mode ansiMode) bool {
 // isTerminalWriter probes for a TTY by Stat()'ing the underlying *os.File and
 // checking for ModeCharDevice. Any writer that isn't an *os.File (e.g. the
 // bytes.Buffer used in tests, or a pipe wrapped through a custom writer)
-// returns false, which is the conservative choice — when in doubt, no colour.
+// returns false, which is the conservative choice - when in doubt, no colour.
 func isTerminalWriter(writer io.Writer) bool {
 	file, ok := writer.(*os.File)
 	if !ok {

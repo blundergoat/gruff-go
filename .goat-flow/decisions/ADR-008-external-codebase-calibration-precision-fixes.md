@@ -13,11 +13,11 @@ A spot-check pass on `blundergoat-platform/apps/api` with `--no-config` defaults
 
 | Rule | Findings | False-positive rate observed |
 | --- | --- | --- |
-| `sensitive-data.connection-string` (HIGH) | 10 | 10/10 — all comments, doc snippets, or `dev_password_change_me`-style fixtures |
-| `test-quality.no-failure-path` | 64 | ≈64/64 — tests delegate assertions to helpers (`testutil.AssertStatus(t, ...)`) that the parser-only rule cannot see across |
-| `test-quality.skipped-test` | 7 | 7/7 — every skip was `if !infrastructureAvailable() { t.Skipf(...) }`, the standard integration-test guard |
-| `size.function-length` | 14 | Multiple borderline — heavily commented dispatchers and Go's `func XHandler(deps) http.HandlerFunc { return func(w, r) {...} }` closure factories were measured by raw line span, including doc/comment lines |
-| `naming.get-prefix` | 0 | False **negative** — the rule explicitly required a receiver, so common context-value accessors (`middleware.GetLogger(ctx)`, `GetRequestID(ctx)`) went unflagged |
+| `sensitive-data.connection-string` (HIGH) | 10 | 10/10 - all comments, doc snippets, or `dev_password_change_me`-style fixtures |
+| `test-quality.no-failure-path` | 64 | ≈64/64 - tests delegate assertions to helpers (`testutil.AssertStatus(t, ...)`) that the parser-only rule cannot see across |
+| `test-quality.skipped-test` | 7 | 7/7 - every skip was `if !infrastructureAvailable() { t.Skipf(...) }`, the standard integration-test guard |
+| `size.function-length` | 14 | Multiple borderline - heavily commented dispatchers and Go's `func XHandler(deps) http.HandlerFunc { return func(w, r) {...} }` closure factories were measured by raw line span, including doc/comment lines |
+| `naming.get-prefix` | 0 | False **negative** - the rule explicitly required a receiver, so common context-value accessors (`middleware.GetLogger(ctx)`, `GetRequestID(ctx)`) went unflagged |
 
 The shared failure mode was a parser-only rule reasoning about raw text or AST shape without recognising widely-used idioms: Go-style doc snippets that contain example URLs, helper-function assertions, conditional test skips, golangci-lint's `//nolint` opt-outs, the closure-factory handler pattern, and the context-getter convention. Each pattern is conventional enough that calibrating against it is more valuable than weakening the underlying rule.
 
@@ -30,7 +30,7 @@ Operationally:
 1. **Calibration changes preserve precision direction.** A change must reduce false positives (or false negatives) without making the rule cease to fire on the genuine signal it was built for. New tests in the rule's `_test.go` lock both halves: at least one new test for the idiom we now accept (or now catch), and at least one for the dangerous shape we must still flag.
 2. **Convention-recognition belongs in the rule, not in user config.** Where Go ecosystem conventions already encode "this is fine" (gosec `#nosec`, golangci-lint `//nolint:<linter>` / `//nolint:all`, `if cond { t.Skip(...) }`, `Assert*`/`Require*` helper naming), the rule should recognise them out of the box. Per-project allowlists are still available for project-specific exceptions but should not be the first answer for a recognised convention.
 3. **Dogfood is the floor, not the ceiling.** A change that keeps dogfood grade A is the minimum bar. It must also be re-validated against the calibration codebase (or an equivalent sample) and the before/after counts recorded in the PR description.
-4. **The seed calibration corpus is `blundergoat-platform/apps/api`.** It is a real Go-Chi service with closure-factory handlers, sqlc-generated code, integration tests, and idiomatic helper packages — patterns that gruff-go's own source does not produce. The codebase is not vendored; calibration is run by pointing the locally-built scanner at the user's local checkout. Adding additional calibration corpora is a strict extension and does not require a new ADR.
+4. **The seed calibration corpus is `blundergoat-platform/apps/api`.** It is a real Go-Chi service with closure-factory handlers, sqlc-generated code, integration tests, and idiomatic helper packages - patterns that gruff-go's own source does not produce. The codebase is not vendored; calibration is run by pointing the locally-built scanner at the user's local checkout. Adding additional calibration corpora is a strict extension and does not require a new ADR.
 
 The six precision fixes shipped under this decision are the ones in `CHANGELOG.md [Unreleased]` and listed below. They are the worked example of the loop, not the entirety of the decision.
 

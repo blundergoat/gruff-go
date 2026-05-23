@@ -1,6 +1,6 @@
 # Dashboard
 
-`gruff-go dashboard` serves a local browser dashboard that wraps the HTML inspection report in an interactive shell. You point it at a project root, click `Run scan`, and the report renders in an iframe with the current findings — no terminal output to parse, no rebuild loop. The same report is what `gruff-go analyse --format html` emits, so what you see in the dashboard is what you'd commit to a static report artefact.
+`gruff-go dashboard` serves a local browser dashboard that wraps the HTML inspection report in an interactive shell. You point it at a project root, click `Run scan`, and the report renders in an iframe with the current findings - no terminal output to parse, no rebuild loop. The same report is what `gruff-go analyse --format html` emits, so what you see in the dashboard is what you'd commit to a static report artefact.
 
 ## Quick start
 
@@ -45,7 +45,7 @@ The dashboard is **local-only** by design:
 - When `--allow-public` is set with a non-loopback host, the server prints a `WARNING: binding dashboard to non-loopback host …` line at start-up.
 - The dashboard accepts only `GET` requests. `POST` returns `405 Method Not Allowed`; unknown paths return `404 Not Found`.
 - Every query-string value (project root, paths, config path, baseline path, fail-on, scope, include-ignored, and interactive-report state) is HTML-escaped before it reaches the rendered shell or report. The same escaping path the static HTML reporter uses is reused here.
-- `/scan` runs the analyser **in-process** — there is no `exec`, no template substitution into a shell command, no eval. The "command" string shown in the controls panel is a human-readable rendering of what the analyser would be invoked with, not a string passed to a shell.
+- `/scan` runs the analyser **in-process** - there is no `exec`, no template substitution into a shell command, no eval. The "command" string shown in the controls panel is a human-readable rendering of what the analyser would be invoked with, not a string passed to a shell.
 - The iframe `postMessage` listener accepts events only from `window.location.origin`. Cross-origin or sandboxed iframes attempting to spoof scan-complete metadata are ignored.
 
 If you need remote access, run the dashboard inside an SSH tunnel rather than enabling `--allow-public`:
@@ -126,11 +126,11 @@ When the scan includes ignored files or enables the interactive report UI, the m
 - Returns a `dashboardErrorHTML` document with HTTP status `200` (so the iframe still loads parseable HTML).
 - Sets the metadata `exitCode` to `124` and includes a `Scan exceeded Ns timeout.` headline.
 
-Set `--scan-timeout 0` to disable the deadline entirely — useful when bisecting a slow-rule issue.
+Set `--scan-timeout 0` to disable the deadline entirely - useful when bisecting a slow-rule issue.
 
 ## Interactive findings inside the iframe
 
-Check the **interactive findings** checkbox in the controls panel (or pass `--report-interactive` at start-up) to enable the filter form inside the iframe report. The filter is a self-contained client-side widget — severity multi-select, pillar multi-select, path / search text, group-by file/rule, clear-all. Filter state lives in the iframe's URL hash so deep-links and reload survive.
+Check the **interactive findings** checkbox in the controls panel (or pass `--report-interactive` at start-up) to enable the filter form inside the iframe report. The filter is a self-contained client-side widget - severity multi-select, pillar multi-select, path / search text, group-by file/rule, clear-all. Filter state lives in the iframe's URL hash so deep-links and reload survive.
 
 See [`output-formats.md`](output-formats.md) for the standalone behaviour of the same flag in `gruff-go analyse --format html --report-interactive`.
 

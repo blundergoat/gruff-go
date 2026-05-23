@@ -13,7 +13,7 @@ import (
 // aren't flagged for documentation density alone.
 func TestFunctionLengthCountsCodeLinesOnly(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 5}
-	// docHeavy spans 21 raw lines but only 4 code lines — should not fire.
+	// docHeavy spans 21 raw lines but only 4 code lines - should not fire.
 	unit := parseOne(t, "doc_heavy.go", `// Package sample is a test package.
 package sample
 

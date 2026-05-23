@@ -1,6 +1,6 @@
 # Security Policy
 
-`gruff-go` is a developer-facing static analysis tool. It runs locally, parses your code with the Go standard library, and (when the `dashboard` subcommand is in use) opens a single TCP listener on the loopback interface. We take security issues in the tool itself — and the security advice the tool gives — seriously.
+`gruff-go` is a developer-facing static analysis tool. It runs locally, parses your code with the Go standard library, and (when the `dashboard` subcommand is in use) opens a single TCP listener on the loopback interface. We take security issues in the tool itself - and the security advice the tool gives - seriously.
 
 ## Supported versions
 
@@ -17,7 +17,7 @@
 
 Send vulnerability reports privately by either:
 
-1. Opening a [GitHub security advisory](https://github.com/blundergoat/gruff-go/security/advisories/new) on this repository (preferred — keeps disclosure coordinated and auditable), or
+1. Opening a [GitHub security advisory](https://github.com/blundergoat/gruff-go/security/advisories/new) on this repository (preferred - keeps disclosure coordinated and auditable), or
 2. Emailing the maintainer at **mattyh@outlook.com** with the subject prefix `[gruff-go security]`.
 
 Include in your report:
@@ -35,7 +35,7 @@ We will acknowledge receipt within **3 business days** and aim to provide an ini
 In scope:
 
 - Remote or local code execution triggered by parsing untrusted Go source, config, baseline, or diff input.
-- The `dashboard` subcommand exposing more than the documented surface — e.g. binding to a non-loopback host without `--allow-public`, accepting unintended HTTP methods, leaking process state, or executing user-supplied strings as shell commands.
+- The `dashboard` subcommand exposing more than the documented surface - e.g. binding to a non-loopback host without `--allow-public`, accepting unintended HTTP methods, leaking process state, or executing user-supplied strings as shell commands.
 - HTML injection / XSS in the rendered report (`--format html`) or the dashboard shell from any user-controllable input (paths, rule IDs, messages, config values, query string keys).
 - Path traversal or arbitrary-file-read via config / baseline / diff inputs.
 - Credential or secret leakage from `sensitive-data.secret-pattern` findings into a transport (logs, dashboard postMessage payload, etc.) that wasn't the intended sink.

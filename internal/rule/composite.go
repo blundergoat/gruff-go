@@ -247,7 +247,7 @@ func sortedStringSet(values map[string]struct{}) []string {
 
 // sortedPillars returns the pillar names from the count map as a sorted
 // []string for composite metadata. The per-pillar counts are intentionally
-// dropped — the composite only needs the *set* of pillars crossed — and the
+// dropped - the composite only needs the *set* of pillars crossed - and the
 // string conversion produces a JSON-friendly slice of names rather than a
 // nested map.
 func sortedPillars(pillars map[finding.Pillar]int) []string {
@@ -260,7 +260,7 @@ func sortedPillars(pillars map[finding.Pillar]int) []string {
 }
 
 // firstEvidenceLine picks the earliest non-zero evidence line so a composite
-// finding — which has no source location of its own — still navigates the
+// finding - which has no source location of its own - still navigates the
 // reader somewhere useful in the IDE. Line 0 is treated as "missing" rather
 // than the literal first line; otherwise a file-level evidence finding (no
 // line info) would mask a real line further down.

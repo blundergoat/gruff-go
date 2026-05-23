@@ -4,13 +4,13 @@
 
 This page is a copy-paste cheat sheet for common runners and the recommended rollout pattern for existing codebases.
 
-> **Flag ordering.** Every `--flag` must appear before the path arguments — `gruff-go` uses the Go standard `flag` package, which stops parsing at the first non-flag token. Write `gruff-go analyse --baseline foo.json .`, not `gruff-go analyse . --baseline foo.json`.
+> **Flag ordering.** Every `--flag` must appear before the path arguments - `gruff-go` uses the Go standard `flag` package, which stops parsing at the first non-flag token. Write `gruff-go analyse --baseline foo.json .`, not `gruff-go analyse . --baseline foo.json`.
 
 ## Recommended rollout pattern
 
 Adopting any new static analysis tool on a real codebase tends to trigger a baseline avalanche. `gruff-go` handles this with a three-step rollout:
 
-1. **First run** — generate a baseline of the current state. Don't fail the build.
+1. **First run** - generate a baseline of the current state. Don't fail the build.
 
    ```bash
    gruff-go baseline --out gruff-baseline.json
@@ -18,13 +18,13 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    git commit -m "chore: capture initial gruff-go baseline"
    ```
 
-2. **Steady state** — fail on regressions against the baseline.
+2. **Steady state** - fail on regressions against the baseline.
 
    ```bash
    gruff-go analyse --baseline gruff-baseline.json .
    ```
 
-3. **Drift-down** — periodically regenerate the baseline as the team fixes findings.
+3. **Drift-down** - periodically regenerate the baseline as the team fixes findings.
 
    ```bash
    # In a clean-up branch.
@@ -109,7 +109,7 @@ Code Scanning will track findings over time, surface them in the Security tab, a
           path: gruff-report.html
 ```
 
-Reviewers can download the artefact and open it locally. The HTML report is self-contained — no external network requests.
+Reviewers can download the artefact and open it locally. The HTML report is self-contained - no external network requests.
 
 ## GitLab CI
 
@@ -208,10 +208,10 @@ Pair `--diff-base HEAD` with `--min-severity high` so the hook stays fast and on
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` — default `medium`. Set higher (`high` / `critical`) for noisy codebases that need a strict gate; set lower (`low` / `info`) for tight quality bars.
+- `--min-severity` - default `medium`. Set higher (`high` / `critical`) for noisy codebases that need a strict gate; set lower (`low` / `info`) for tight quality bars.
 - `--fail-on` is the dashboard's equivalent flag; the analyser uses `--min-severity` and they share the same severity vocabulary.
 
-If CI needs to **scan and report** without **failing**, run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and then upload the report artefact separately. The exit code is honest about whether findings are above threshold — you decide whether to act on it.
+If CI needs to **scan and report** without **failing**, run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and then upload the report artefact separately. The exit code is honest about whether findings are above threshold - you decide whether to act on it.
 
 ## Common pitfalls
 

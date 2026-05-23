@@ -16,45 +16,45 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 |---------|--------|----------|------------|-------------------|-------------|
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
-| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | — | Empty control-flow blocks that usually indicate unfinished code. |
-| [`design.god-function`](#designgod-function) | design | low | parser | — | Functions that already have both size and complexity findings. |
+| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
+| [`design.god-function`](#designgod-function) | design | low | parser | - | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
-| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | — | Opt-in: doc comments on every exported field of struct types inside configured `includePaths`. Default-disabled. |
-| [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | — | Exported declarations missing a doc comment. |
-| [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | — | Packages with no package-level comment in any file. |
-| [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | — | Identifiers that spell Go initialisms with mixed casing. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Opt-in: doc comments on every exported field of struct types inside configured `includePaths`. Default-disabled. |
+| [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | - | Exported declarations missing a doc comment. |
+| [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | - | Packages with no package-level comment in any file. |
+| [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | - | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
-| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | — | Accessor-style receiver methods with a discouraged `Get` prefix. |
-| [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | — | Local identifiers matching a placeholder name list. |
-| [`naming.misspelling`](#namingmisspelling) | naming | low | parser | — | Identifiers, doc comments, and struct tags containing common programming misspellings. |
-| [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | — | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
-| [`naming.package-stutter`](#namingpackage-stutter) | naming | low | parser | — | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
-| [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | — | Package names containing underscores. |
-| [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | — | Methods on the same type with inconsistent receiver names or pointer/value forms. |
-| [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | low | parser | — | Archive entry paths joined into extraction destinations without containment evidence. |
-| [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | low | parser | — | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
-| [`security.shell-command`](#securityshell-command) | security | medium | parser | — | `exec.Command` invocations that route through a shell interpreter. |
-| [`security.sql-string-query`](#securitysql-string-query) | security | low | parser | — | SQL execution calls with query arguments built by formatting or concatenation. |
-| [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | — | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
-| [`security.weak-crypto`](#securityweak-crypto) | security | low | parser | — | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
-| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | high | parser | — | Anthropic API key literals (`sk-ant-…`). |
-| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | — | AWS access key id (AKIA…) literals. |
-| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | — | Database/queue URLs with embedded passwords. |
-| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | critical | parser | — | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
-| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | high | parser | — | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
-| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | high | parser | — | Google API key literals (`AIza…`). |
-| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | — | JWT-shaped literals (`eyJ…`). |
-| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | — | PEM-encoded private keys embedded in source. |
-| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | — | High-risk secret-like key/value assignments. |
-| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | high | parser | — | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
-| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | high | parser | — | Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). |
+| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
+| [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | - | Local identifiers matching a placeholder name list. |
+| [`naming.misspelling`](#namingmisspelling) | naming | low | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
+| [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
+| [`naming.package-stutter`](#namingpackage-stutter) | naming | low | parser | - | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
+| [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | - | Package names containing underscores. |
+| [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
+| [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | low | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | low | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
+| [`security.shell-command`](#securityshell-command) | security | medium | parser | - | `exec.Command` invocations that route through a shell interpreter. |
+| [`security.sql-string-query`](#securitysql-string-query) | security | low | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
+| [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
+| [`security.weak-crypto`](#securityweak-crypto) | security | low | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
+| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | high | parser | - | Anthropic API key literals (`sk-ant-…`). |
+| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | - | AWS access key id (AKIA…) literals. |
+| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | - | Database/queue URLs with embedded passwords. |
+| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | critical | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
+| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | high | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
+| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | high | parser | - | Google API key literals (`AIza…`). |
+| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | - | JWT-shaped literals (`eyJ…`). |
+| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | - | PEM-encoded private keys embedded in source. |
+| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | - | High-risk secret-like key/value assignments. |
+| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | high | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
+| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | high | parser | - | Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). |
 | [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | — | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
-| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | — | Test functions that contain code but never reach a failure call or recognised assertion helper. |
-| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | — | Unconditional or debt-marked tests that call `t.Skip*`. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
+| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
 
@@ -217,7 +217,7 @@ rules:
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Options:** `ignoreInternalPackages bool` — default `true`
+- **Options:** `ignoreInternalPackages bool` - default `true`
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
 
@@ -245,7 +245,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
-- **Options:** `acronyms []string` — default `[HTTP, URL, JSON, ID, XML, API, JWT, AWS, OAUTH, CSS, HTML, YAML, SARIF, ASCII, SQL, CLI, TCP, UDP, TLS, SSL, DNS, IP, GPU, CPU, OS]`; `allow []string` — exact identifiers to skip
+- **Options:** `acronyms []string` - default `[HTTP, URL, JSON, ID, XML, API, JWT, AWS, OAUTH, CSS, HTML, YAML, SARIF, ASCII, SQL, CLI, TCP, UDP, TLS, SSL, DNS, IP, GPU, CPU, OS]`; `allow []string` - exact identifiers to skip
 
 Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Correct all-caps forms such as `HTTPClient`, `URLParser`, `JSONReport`, and `IDGenerator` pass; lowercase initialisms in unexported names such as `urlParser` also pass.
 
@@ -276,9 +276,9 @@ rules:
 - **Tags:** `naming`
 - **Thresholds:** `minBodyLines: 15`, `minFunctionLines: 50`
 - **Options:**
-  - `genericNames []string` — range value names to check. Default: `[item, value, entry, elem, v]`
-  - `accumulatorNames []string` — accumulator names to check. Default: `[out, result]`
-  - `requireMultiple bool` — require at least two matching accumulator declarations in a long function before flagging. Default: `true`
+  - `genericNames []string` - range value names to check. Default: `[item, value, entry, elem, v]`
+  - `accumulatorNames []string` - accumulator names to check. Default: `[out, result]`
+  - `requireMultiple bool` - require at least two matching accumulator declarations in a long function before flagging. Default: `true`
 
 Flags generic range value names only when the loop body exceeds `minBodyLines`. Short loops such as `for _, item := range items { ... }` pass because the range expression provides enough context; longer loops ask for a more specific role name. Test files and generated files are skipped.
 
@@ -330,7 +330,7 @@ rules:
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `naming`
-- **Options:** `placeholderNames []string` — default `[foo, bar, baz, tmp, temp, obj, todo, thing, stuff]`
+- **Options:** `placeholderNames []string` - default `[foo, bar, baz, tmp, temp, obj, todo, thing, stuff]`
 
 Flags local `:=` assignments, `var` declarations, and `const` declarations in non-test files whose name matches a configurable list of placeholder tokens. Test files are skipped because disposable identifier names are often appropriate there.
 
@@ -354,8 +354,8 @@ rules:
 - **Capability:** parser
 - **Tags:** `naming`
 - **Options:**
-  - `extra map[string]string` — additional `wrong → right` pairs to add to the built-in dictionary
-  - `ignore []string` — tokens to suppress (lowercased)
+  - `extra map[string]string` - additional `wrong → right` pairs to add to the built-in dictionary
+  - `ignore []string` - tokens to suppress (lowercased)
 
 Flags identifiers (`func`, `type`, `var`, `const`, struct field names), doc comments, and struct tags containing tokens from a conservative built-in dictionary of common programming misspellings (`recieve`, `seperate`, `lenght`, `occured`, `enviroment`, etc., ~40 entries). Tokens are extracted with camelCase / snake_case / non-letter splitting, lowercased, and matched exactly against the dictionary.
 
@@ -383,9 +383,9 @@ rules:
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
 - **Options:**
-  - `prefixes []string` — default `[No, Not, Disable, Disallow, Without, Suppress]`
-  - `allowList []string` — default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook]` (English words that begin with a prefix but are not negations)
-  - `scope string` — default `"exported"`; alternatives `"all"` and `"locals"`
+  - `prefixes []string` - default `[No, Not, Disable, Disallow, Without, Suppress]`
+  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook]` (English words that begin with a prefix but are not negations)
+  - `scope string` - default `"exported"`; alternatives `"all"` and `"locals"`
 
 Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if state.Baseline != "" && state.NoBaseline != "1"`) and obscure the actual intent.
 
@@ -415,7 +415,7 @@ rules:
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
 - **Options:**
-  - `allowStutter []string` — identifiers (PascalCase form) to exempt from the stutter check. Default: `[Config, Finding]`.
+  - `allowStutter []string` - identifiers (PascalCase form) to exempt from the stutter check. Default: `[Config, Finding]`.
 
 Flags exported top-level types, non-method functions, and exported package-scope variables/constants whose lowercase form starts with their own package name. Stuttering is caught two ways: (a) exact match (`type Rule` in `package rule`, unless allowlisted) and (b) prefix match with an uppercase letter following the package name (`type RuleRegistry` in `package rule`, `type HttpServerOptions` in `package httpserver`). Plain extensions of the package word like `type Rules` in `package rule` (next char is lowercase, the word continues) do *not* fire.
 
@@ -453,7 +453,7 @@ Flags Go package names that use underscores instead of short lowercase words (th
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
-- **Options:** `allowMixed []string` — receiver type names allowed to mix pointer/value receiver forms; `inspectGroup string` — `both` (default), `name`, or `pointer`
+- **Options:** `allowMixed []string` - receiver type names allowed to mix pointer/value receiver forms; `inspectGroup string` - `both` (default), `name`, or `pointer`
 
 Flags methods on the same receiver type that use inconsistent receiver names or pointer/value forms. The rule groups methods across the scanned project by receiver type name, strips leading `*`, and reports methods that use the minority receiver name or form.
 
@@ -591,7 +591,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags database / queue / cache connection URIs that embed a username and password in the URL — `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
+Flags database / queue / cache connection URIs that embed a username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
 
 Obvious dev/test placeholders are skipped only when both halves match: the host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the embedded password contains a placeholder token such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. Real-looking credentials at local hosts still fire.
 
@@ -606,7 +606,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the host 
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags files containing both a `"type": "service_account"` field and a PEM private-key header (`-----BEGIN ... PRIVATE KEY-----`) — the documented shape of a GCP service-account JSON key file. Neither marker alone triggers the rule: `"type": "service_account"` in a doc snippet is harmless, and an isolated PEM key is already covered by `sensitive-data.private-key`. The co-occurrence is the signal.
+Flags files containing both a `"type": "service_account"` field and a PEM private-key header (`-----BEGIN ... PRIVATE KEY-----`) - the documented shape of a GCP service-account JSON key file. Neither marker alone triggers the rule: `"type": "service_account"` in a doc snippet is harmless, and an isolated PEM key is already covered by `sensitive-data.private-key`. The co-occurrence is the signal.
 
 The finding is located at the line of the `"type"` marker. Both markers are redacted in the preview metadata; the raw private-key body never reaches any output format.
 
@@ -649,7 +649,7 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags JWT-shaped literals — three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
+Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
 **Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, set the preview into `allowlists.secretPreviews` so it stops triggering.
 
@@ -662,7 +662,7 @@ Flags JWT-shaped literals — three base64url segments separated by dots, the fi
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. The most severe of the sensitive-data rules — a leaked private key is almost always a real incident.
+Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
 
 **Remediation.** Remove the key, rotate it, and load it from a secret manager or environment-specific runtime configuration.
 
@@ -758,7 +758,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body contains no executable statements. An empty test is either an unfinished scaffold left behind by IDE generators or a stub waiting for content — both should be removed or filled in before the build is considered green.
+Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body contains no executable statements. An empty test is either an unfinished scaffold left behind by IDE generators or a stub waiting for content - both should be removed or filled in before the build is considered green.
 
 **Remediation.** Add an assertion that exercises the behaviour the test name claims, or remove the empty test entirely.
 
@@ -771,7 +771,7 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call — `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
+Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
 
 The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
 

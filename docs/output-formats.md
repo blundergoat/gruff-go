@@ -1,6 +1,6 @@
 # Output Formats
 
-`gruff-go analyse --format <fmt>` accepts six formats. Pick the one that matches the consumer — terminals get `text`, CI annotators get `github` or `sarif`, dashboards and report archives get `html`, automation gets `json` or `summary-json`. All formats share the same underlying `analysis.Report` data, so a JSON pipeline and a SARIF pipeline see the same findings, scores, and metadata.
+`gruff-go analyse --format <fmt>` accepts six formats. Pick the one that matches the consumer - terminals get `text`, CI annotators get `github` or `sarif`, dashboards and report archives get `html`, automation gets `json` or `summary-json`. All formats share the same underlying `analysis.Report` data, so a JSON pipeline and a SARIF pipeline see the same findings, scores, and metadata.
 
 The default is `text` if you omit `--format`.
 
@@ -71,7 +71,7 @@ Every finding looks like:
 }
 ```
 
-The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same — that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
+The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same - that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
 
 Each rule definition in `rules[]` includes a `capability` field. The closed enum is `parser`, `type`, `ssa`, or `dataflow`; all rules shipped in v0.1 currently report `parser` because they use source text, Go parser units, ASTs, or already-produced findings, not type loading or dataflow analysis.
 
@@ -87,7 +87,7 @@ Same shape as `json` minus the per-finding `findings` array. Useful for CI dashb
 gruff-go analyse --format summary-json .
 ```
 
-Schema is still `gruff-go.analysis.v0.1` — the missing `findings` field is the only difference.
+Schema is still `gruff-go.analysis.v0.1` - the missing `findings` field is the only difference.
 
 ## `sarif`
 
@@ -131,7 +131,7 @@ Map of severity to GitHub level:
 | `medium` | `warning` |
 | `low` / `info` | `notice` |
 
-This format works whether the workflow uses `actions/checkout` directly or an annotated runner — GitHub pulls the annotations from stdout/stderr without any extra step. For richer Code Scanning integration, prefer `sarif`.
+This format works whether the workflow uses `actions/checkout` directly or an annotated runner - GitHub pulls the annotations from stdout/stderr without any extra step. For richer Code Scanning integration, prefer `sarif`.
 
 ## `html`
 
@@ -152,9 +152,9 @@ gruff-go analyse --format html --report-interactive . > gruff-report.html
 
 Controls how file:line references render in the report:
 
-- `none` *(default)* — selectable copyable `<span data-path="…">` with no `href`. Safe to ship as an artefact that opens on any machine.
-- `vscode` — `<a href="vscode://file/{absPath}:{line}">` anchors. Clicking opens VS Code at the right line on a machine that has the editor installed.
-- `phpstorm` — `<a href="phpstorm://open?file={absPath}&line={line}">` anchors. Same idea for JetBrains.
+- `none` *(default)* - selectable copyable `<span data-path="…">` with no `href`. Safe to ship as an artefact that opens on any machine.
+- `vscode` - `<a href="vscode://file/{absPath}:{line}">` anchors. Clicking opens VS Code at the right line on a machine that has the editor installed.
+- `phpstorm` - `<a href="phpstorm://open?file={absPath}&line={line}">` anchors. Same idea for JetBrains.
 
 The absolute path is built relative to `--project` (when set) or the working directory at render time. The visible text always shows the project-relative path so it's portable; only the `href` carries the absolute path.
 
@@ -169,7 +169,7 @@ Adds an inline filter form above the findings list:
 - **Group by** radios: `none` (default), `file`, `rule`.
 - **Clear all** button + live count via `aria-live="polite"`.
 
-Filter state is mirrored into the URL hash with stable canonical ordering so deep-links and reload survive. Without `--report-interactive`, the report still emits `data-severity / data-pillar / data-file / data-rule / data-search` attributes on every finding row — only the form + script are omitted.
+Filter state is mirrored into the URL hash with stable canonical ordering so deep-links and reload survive. Without `--report-interactive`, the report still emits `data-severity / data-pillar / data-file / data-rule / data-search` attributes on every finding row - only the form + script are omitted.
 
 ### What the report contains
 

@@ -115,7 +115,7 @@ func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 // `MustX` calls (e.g. `json.MustDecode`) from being mistaken for assertions.
 //
 // Receivers are collected from the outer FuncDecl AND from any nested function
-// literal — fuzz tests put their assertions inside `f.Fuzz(func(t *testing.T,
+// literal - fuzz tests put their assertions inside `f.Fuzz(func(t *testing.T,
 // ...){ t.Fatal(...) })`, where the inner `t` is the only handle that calls
 // failure methods.
 func hasFailureCall(fn *ast.FuncDecl, testingPackages, assertionPackages map[string]bool) bool {
@@ -150,7 +150,7 @@ func isReceiverFailureCall(call *ast.CallExpr, receivers map[string]bool) bool {
 //   - Bare or selector calls whose function name begins with a known assertion
 //     prefix (`AssertX`, `RequireX`, `ExpectX`, `MustX`, `CheckX`).
 //   - Selector calls whose package qualifier names a well-known assertion
-//     library (`assert.X`, `require.X`, `expect.X`, `must.X`, `check.X`) —
+//     library (`assert.X`, `require.X`, `expect.X`, `must.X`, `check.X`) -
 //     this covers testify-style `require.NoError(t, err)` and `assert.Equal`
 //     where the function name itself does not carry an assertion prefix.
 //

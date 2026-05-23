@@ -87,7 +87,7 @@ make check    # gofmt -d, go vet ./..., go test ./...
 - Keep commits focused and reviewable. Prefer multiple small commits over one large one when the changes are independent.
 - Commit messages follow the convention recorded in [`.github/git-commit-instructions.md`](.github/git-commit-instructions.md). When in doubt, mirror the style in `git log`.
 - Open the PR against `main`. Describe what changed and why; link to the milestone or footgun if relevant. Run `make check` locally first.
-- If you broke a schema or CLI flag, note it explicitly in the PR. `gruff-go` is `v0.1.x` — semver minor bumps may carry breaking changes, but they should be intentional and called out in `CHANGELOG.md`, never incidental.
+- If you broke a schema or CLI flag, note it explicitly in the PR. `gruff-go` is `v0.1.x` - semver minor bumps may carry breaking changes, but they should be intentional and called out in `CHANGELOG.md`, never incidental.
 
 ## Security issues
 
