@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-24
+
+### Fixed
+
+- Local and CI Go commands now prefer Go 1.25.10 via `go.mod` toolchain metadata, clearing current standard-library `govulncheck` findings without suppressing the audit.
+
 ### Added
 
 - `gruff-go init` subcommand writes a default `.gruff-go.yaml` to the working directory, mirroring the registry's per-rule enablement, severity, and threshold defaults. Pass `--force` to overwrite an existing file.
@@ -23,5 +29,6 @@ Schemas `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, and `gruff-go.baseline
 
 Known limitations: parser-only (no type/SSA analysis yet); HTML dashboard accessibility review ongoing.
 
-[Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/blundergoat/gruff-go/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/blundergoat/gruff-go/releases/tag/v0.1.0
