@@ -11,16 +11,16 @@
 
 ## Context
 
-The scanner needed a default rule pack that catches concrete quality problems without making a new project fail on taste or unproven heuristics. M03 shipped five default-enabled rules: file length, function length, cyclomatic complexity, package comments, and secret-like assignments. M05 dogfood initially found one real maintainability issue: `internal/analysis/runner.go` had a 98-line `Run` function against an 80-line threshold.
+The scanner needed a default rule pack that catches concrete quality problems without making a new project fail on taste or unproven heuristics. The first default pack shipped five rules: file length, function length, cyclomatic complexity, package comments, and secret-like assignments. The initial dogfood scan found one real maintainability issue: `internal/analysis/runner.go` had a 98-line `Run` function against an 80-line threshold.
 
 Evidence from this session:
 
-- The initial dogfood scan after M04 reported one `size.function-length` finding in `internal/analysis/runner.go`.
+- The initial dogfood scan reported one `size.function-length` finding in `internal/analysis/runner.go`.
 - Refactoring `Run` into helper functions removed the finding without changing thresholds or adding config suppression.
 - The follow-up dogfood scan reported 41 files scanned, 0 findings, exit code 0, and score 100/A.
-- M08 dogfood after composite-rule implementation reported 78 files scanned, 0 default findings, exit code 0, and score 100/A.
-- M08 found `docs.exported-symbol-comment` was too strict when opted in with `ignoreInternalPackages: false`: it reported 185 internal-package findings. The option default is now `true`, and the same opt-in dogfood path reports 0 findings without local suppression.
-- 2026-05-18: `size.file-length` default `maxLines` raised from 400 to 500. M22 calibration on `blundergoat-platform` showed default reports were dominated by line-count rules; raising the threshold preserves the production handler size signal while reducing test/declarative-noise volume. Dogfood after the change: 83 files, 0 findings, exit 0, score 100/A. Single hard threshold retained; no tiered/banded confidence introduced.
+- After the composite-rule implementation, a follow-up dogfood scan reported 78 files scanned, 0 default findings, exit code 0, and score 100/A.
+- That same pass found `docs.exported-symbol-comment` was too strict when opted in with `ignoreInternalPackages: false`: it reported 185 internal-package findings. The option default is now `true`, and the same opt-in dogfood path reports 0 findings without local suppression.
+- 2026-05-18: `size.file-length` default `maxLines` raised from 400 to 500. Calibration on `blundergoat-platform` showed default reports were dominated by line-count rules; raising the threshold preserves the production handler size signal while reducing test/declarative-noise volume. Dogfood after the change: 83 files, 0 findings, exit 0, score 100/A. Single hard threshold retained; no tiered/banded confidence introduced.
 
 ## Decision
 
@@ -33,7 +33,7 @@ Keep v0.1 defaults narrow and evidence-backed:
 - When dogfood exposes noise or weak signal, tune implementation or rule shape rather than hiding default problems with local config.
 - Do not add default-disabled heuristic families until config and calibration evidence justify them.
 
-M08 default policy table:
+Default policy table at that point:
 
 | Rule or family | Decision | Evidence |
 | --- | --- | --- |

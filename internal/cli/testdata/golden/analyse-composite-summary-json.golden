@@ -2,7 +2,7 @@
   "schemaVersion": "gruff-go.analysis.v0.1",
   "tool": {
     "name": "gruff-go",
-    "version": "0.1.0"
+    "version": "0.1.1"
   },
   "run": {
     "workingDirectory": "<WORKDIR>",
@@ -26,8 +26,9 @@
     },
     "countsByPillar": {
       "complexity": 1,
-      "design": 2,
+      "design": 1,
       "documentation": 1,
+      "maintainability": 1,
       "size": 1
     },
     "exitCode": 1,

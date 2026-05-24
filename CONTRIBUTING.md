@@ -47,7 +47,7 @@ make check
 | `docs/` | User-facing docs. Updated alongside code that changes them. |
 | `.goat-flow/` | Project memory: architecture, decisions, milestone plans, footguns. |
 
-The application is parser-only by design (see [`.goat-flow/decisions/ADR-001`](.goat-flow/decisions/ADR-001-parser-only-scanner-pipeline.md)). Rules operate on `parser.Unit`s, source text, and project-level unit collections. Type-aware analysis is deferred until there is evidence the extra dependency and runtime cost is worth it.
+All current rules run at the parser layer (the `parser` capability). Rules operate on `parser.Unit`s, source text, and project-level unit collections. Type-aware analysis is not yet supported by the runtime; cross-file rules that need it should declare a higher capability tier and wait for runtime support.
 
 ## Tests
 
@@ -78,9 +78,9 @@ make check    # gofmt -d, go vet ./..., go test ./...
 3. Add a snapshot to `internal/cli/testdata/golden/` via `UPDATE_GOLDEN=1`.
 4. Document the format in [`docs/output-formats.md`](docs/output-formats.md).
 
-## Milestone-style workflow
+## Planning non-trivial work
 
-`gruff-go` uses a milestone discipline for non-trivial work. Each milestone is a markdown plan under `.goat-flow/tasks/0.1/MNN-kebab-title.md` with: objective, dependencies, kill criteria, read-first list, assumptions, tasks, exit criteria, and a testing gate. Read the existing M01–M38 plans for the cadence. Small fixes, doc tweaks, and isolated rule additions don't need a milestone; cross-cutting work usually does.
+For larger changes (cross-cutting refactors, new rule families, schema changes, CLI surface changes), write a short plan first: objective, dependencies, kill criteria, read-first list, assumptions, tasks, exit criteria, and the testing gate that proves you are done. Small fixes, doc tweaks, and isolated rule additions don't need a plan; cross-cutting work usually does.
 
 ## Commits and PRs
 

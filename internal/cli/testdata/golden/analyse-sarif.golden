@@ -6,8 +6,37 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.1.0",
+          "semanticVersion": "0.1.1",
           "rules": [
+            {
+              "id": "complexity.cognitive",
+              "name": "Cognitive complexity",
+              "shortDescription": {
+                "text": "Cognitive complexity"
+              },
+              "fullDescription": {
+                "text": "Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold."
+              },
+              "help": {
+                "text": "Flatten nested branches, return early, or extract cohesive helper functions."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "metric"
+                ],
+                "thresholds": {
+                  "maxComplexity": 35
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
             {
               "id": "complexity.cyclomatic",
               "name": "Cyclomatic complexity",
@@ -61,6 +90,35 @@
               }
             },
             {
+              "id": "complexity.npath",
+              "name": "NPath complexity",
+              "shortDescription": {
+                "text": "NPath complexity"
+              },
+              "fullDescription": {
+                "text": "Flags functions whose number of acyclic execution paths (NPath) exceeds the configured threshold. The modified NPath formula treats return/panic guards as exit points so idiomatic Go error chains grow linearly; genuine branch-combination blowups (nested switches, multi-way if/else without terminators) still flag."
+              },
+              "help": {
+                "text": "Collapse boolean conditions, extract helper functions, or replace nested switches with table-driven dispatch so the path-combination count drops."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "metric"
+                ],
+                "thresholds": {
+                  "maxComplexity": 1024
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "dead-code.empty-block",
               "name": "Empty control-flow block",
               "shortDescription": {
@@ -78,6 +136,59 @@
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unreachable-code",
+              "name": "Unreachable code",
+              "shortDescription": {
+                "text": "Unreachable code"
+              },
+              "fullDescription": {
+                "text": "Flags statements that appear after return, panic, break, continue, or goto in the same block."
+              },
+              "help": {
+                "text": "Remove the unreachable statement or move it before the terminating control-flow statement."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "control-flow"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unused-private-function",
+              "name": "Unused private function",
+              "shortDescription": {
+                "text": "Unused private function"
+              },
+              "fullDescription": {
+                "text": "Flags package-private (lowercase-leading) top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, init, main, and packages that import reflect are excluded so the rule stays precision-first."
+              },
+              "help": {
+                "text": "Delete the function, export it if other packages need it, or confirm it is only used through reflection or build-tag-gated code paths and suppress the finding locally."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "cross-file",
+                  "dead-code"
+                ]
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -126,7 +237,7 @@
                 "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
               },
               "properties": {
-                "pillar": "design",
+                "pillar": "maintainability",
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
@@ -194,7 +305,7 @@
                 "text": "Config field comment"
               },
               "fullDescription": {
-                "text": "Flags exported fields on struct types declared inside configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope. Default-disabled and intended for user-facing configuration schema types."
+                "text": "Flags exported fields on struct types in configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope."
               },
               "help": {
                 "text": "Add a doc comment to every exported field of structs declared in the configured includePaths."
@@ -204,11 +315,10 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "comments",
                   "documentation",
-                  "opt-in",
                   "struct-fields"
                 ],
                 "options": {
@@ -264,6 +374,219 @@
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.suppression-without-rationale",
+              "name": "Suppression without rationale",
+              "shortDescription": {
+                "text": "Suppression without rationale"
+              },
+              "fullDescription": {
+                "text": "Flags nolint and nosec suppression comments that do not explain why the suppression is intentional."
+              },
+              "help": {
+                "text": "Add a short reason after the suppression, such as `-- false positive because ...` or `// tracked in ISSUE-123`."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "comments",
+                  "documentation"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.context-todo-production",
+              "name": "Context TODO in production",
+              "shortDescription": {
+                "text": "Context TODO in production"
+              },
+              "fullDescription": {
+                "text": "Flags context.TODO calls in production files where cancellation ownership should be explicit."
+              },
+              "help": {
+                "text": "Accept a caller-provided context or use a documented bootstrap context where cancellation is intentionally unavailable."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "context"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.defer-in-loop",
+              "name": "Defer in loop",
+              "shortDescription": {
+                "text": "Defer in loop"
+              },
+              "fullDescription": {
+                "text": "Flags defer statements directly inside loops, where cleanup is delayed until the enclosing function returns."
+              },
+              "help": {
+                "text": "Move the loop body into a helper function or close the resource explicitly before the next iteration."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "lifecycle"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.ignored-error",
+              "name": "Ignored error",
+              "shortDescription": {
+                "text": "Ignored error"
+              },
+              "fullDescription": {
+                "text": "Flags error-looking values that are assigned directly to the blank identifier."
+              },
+              "help": {
+                "text": "Handle the error, return it to the caller, or document why ignoring it is safe."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "errors"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.log-fatal-library",
+              "name": "Library fatal exit",
+              "shortDescription": {
+                "text": "Library fatal exit"
+              },
+              "fullDescription": {
+                "text": "Flags log.Fatal and os.Exit calls outside command entrypoints and tests."
+              },
+              "help": {
+                "text": "Return an error to the caller and let command/bootstrap code decide whether to terminate the process."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "errors",
+                  "lifecycle"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.loop-variable-address",
+              "name": "Range variable address escapes",
+              "shortDescription": {
+                "text": "Range variable address escapes"
+              },
+              "fullDescription": {
+                "text": "Flags storing, returning, or appending the address of a range variable copy."
+              },
+              "help": {
+                "text": "Take the address of the indexed collection element, or copy the value into a deliberately scoped variable before storing its address."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "loops"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.production-panic",
+              "name": "Production panic",
+              "shortDescription": {
+                "text": "Production panic"
+              },
+              "fullDescription": {
+                "text": "Flags direct literal panic calls in non-test, non-main production code."
+              },
+              "help": {
+                "text": "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "errors"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "modernisation.ioutil-deprecated",
+              "name": "Deprecated ioutil API",
+              "shortDescription": {
+                "text": "Deprecated ioutil API"
+              },
+              "fullDescription": {
+                "text": "Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go."
+              },
+              "help": {
+                "text": "Replace io/ioutil calls with the matching io or os package API."
+              },
+              "properties": {
+                "pillar": "modernisation",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style"
+                ],
+                "options": {
+                  "minimumGoVersion": "1.16"
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -383,7 +706,7 @@
                 "text": "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit."
               },
               "properties": {
-                "pillar": "naming",
+                "pillar": "modernisation",
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
@@ -635,6 +958,60 @@
               }
             },
             {
+              "id": "security.http-client-no-timeout",
+              "name": "HTTP client without timeout",
+              "shortDescription": {
+                "text": "HTTP client without timeout"
+              },
+              "fullDescription": {
+                "text": "Flags http.Client composite literals in production files that do not set Timeout."
+              },
+              "help": {
+                "text": "Set http.Client.Timeout or use a shared client whose timeout ownership is explicit."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.http-server-no-timeout",
+              "name": "HTTP server without timeout",
+              "shortDescription": {
+                "text": "HTTP server without timeout"
+              },
+              "fullDescription": {
+                "text": "Flags production http.Server literals and ListenAndServe helpers that do not set explicit timeout controls."
+              },
+              "help": {
+                "text": "Configure ReadHeaderTimeout, ReadTimeout, or WriteTimeout on http.Server and call ListenAndServe on that server value."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.insecure-random-secret",
               "name": "Insecure random secret",
               "shortDescription": {
@@ -654,6 +1031,60 @@
                 "defaultEnabled": true,
                 "tags": [
                   "random",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.permissive-file-mode",
+              "name": "Permissive file mode",
+              "shortDescription": {
+                "text": "Permissive file mode"
+              },
+              "fullDescription": {
+                "text": "Flags os file and directory calls that use world-writable or overly permissive literal modes."
+              },
+              "help": {
+                "text": "Use the least permissive mode needed, such as 0600 for private files, 0644 for public files, or 0755 for directories."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "filesystem",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.request-body-without-limit",
+              "name": "Request body read without limit",
+              "shortDescription": {
+                "text": "Request body read without limit"
+              },
+              "fullDescription": {
+                "text": "Flags io.ReadAll-style reads of http.Request.Body in production handlers without nearby MaxBytesReader or LimitReader evidence."
+              },
+              "help": {
+                "text": "Wrap request bodies with http.MaxBytesReader or io.LimitReader before reading them fully."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
                   "security"
                 ]
               },
@@ -902,6 +1333,32 @@
               }
             },
             {
+              "id": "sensitive-data.gitlab-token",
+              "name": "GitLab token literal",
+              "shortDescription": {
+                "text": "GitLab token literal"
+              },
+              "fullDescription": {
+                "text": "Flags GitLab personal, trigger, runner, and application tokens (glpat-, glptt-, glrt-, gloas-) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the token in GitLab, then load credentials from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
               "id": "sensitive-data.google-api-key",
               "name": "Google API key literal",
               "shortDescription": {
@@ -943,6 +1400,32 @@
                 "pillar": "sensitive-data",
                 "defaultSeverity": "high",
                 "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.npm-token",
+              "name": "npm token literal",
+              "shortDescription": {
+                "text": "npm token literal"
+              },
+              "fullDescription": {
+                "text": "Flags npm access tokens (npm_ and npm_pat_ prefixes) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -1159,6 +1642,58 @@
               }
             },
             {
+              "id": "test-quality.fatal-in-goroutine",
+              "name": "Fatal call in goroutine",
+              "shortDescription": {
+                "text": "Fatal call in goroutine"
+              },
+              "fullDescription": {
+                "text": "Flags t.Fatal, t.Fatalf, and t.FailNow calls inside goroutines where they do not stop the parent test safely."
+              },
+              "help": {
+                "text": "Report the error back to the parent goroutine and fail the test from the parent with t.Fatal or t.Fatalf."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.helper-missing-t-helper",
+              "name": "Test helper missing t.Helper",
+              "shortDescription": {
+                "text": "Test helper missing t.Helper"
+              },
+              "fullDescription": {
+                "text": "Flags non-test helper functions that accept testing.TB, *testing.T, or *testing.B and can fail the test but never call Helper."
+              },
+              "help": {
+                "text": "Call t.Helper() at the start of the helper so failures report the caller's line."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "test-quality.no-failure-path",
               "name": "Test cannot fail",
               "shortDescription": {
@@ -1169,6 +1704,32 @@
               },
               "help": {
                 "text": "Add an assertion or document why the test cannot fail."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.parallel-range-capture",
+              "name": "Parallel subtest captures range variable",
+              "shortDescription": {
+                "text": "Parallel subtest captures range variable"
+              },
+              "fullDescription": {
+                "text": "Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics."
+              },
+              "help": {
+                "text": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics."
               },
               "properties": {
                 "pillar": "test-quality",
@@ -1209,6 +1770,59 @@
               "defaultConfiguration": {
                 "level": "note"
               }
+            },
+            {
+              "id": "test-quality.sleep-in-test",
+              "name": "Sleep in test",
+              "shortDescription": {
+                "text": "Sleep in test"
+              },
+              "fullDescription": {
+                "text": "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks."
+              },
+              "help": {
+                "text": "Replace time.Sleep with channel/WaitGroup synchronisation, polling against an observable condition, or a fake clock that advances deterministically."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "flake",
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.tempdir-misuse",
+              "name": "Test temp dir misuse",
+              "shortDescription": {
+                "text": "Test temp dir misuse"
+              },
+              "fullDescription": {
+                "text": "Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available."
+              },
+              "help": {
+                "text": "Use t.TempDir() for per-test isolation and automatic cleanup."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
             }
           ]
         }
@@ -1216,7 +1830,7 @@
       "results": [
         {
           "ruleId": "complexity.cyclomatic",
-          "ruleIndex": 0,
+          "ruleIndex": 1,
           "level": "warning",
           "message": {
             "text": "function cyclomatic complexity is 22, above threshold 20"
@@ -1228,18 +1842,18 @@
                   "uri": "complex.go"
                 },
                 "region": {
-                  "startLine": 4,
-                  "endLine": 26
+                  "startLine": 5,
+                  "endLine": 50
                 }
               }
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "eb7055e051158304"
+            "gruffFingerprint": "be37c390cfcd524d"
           },
           "properties": {
             "confidence": "high",
-            "fingerprint": "eb7055e051158304",
+            "fingerprint": "be37c390cfcd524d",
             "metadata": {
               "complexity": 22,
               "threshold": 20
@@ -1247,7 +1861,7 @@
             "pillar": "complexity",
             "remediation": "Split independent decisions or move branches into named helpers.",
             "severity": "medium",
-            "symbol": "risky"
+            "symbol": "Risky"
           }
         }
       ],

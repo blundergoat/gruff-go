@@ -10,7 +10,7 @@ import (
 )
 
 // configFieldRuleScoped returns a ConfigFieldCommentRule pinned to the canonical includePaths used
-// by the M29 fixture tests; tests that need different scopes build the rule inline.
+// by the configured-paths fixture tests; tests that need different scopes build the rule inline.
 func configFieldRuleScoped() ConfigFieldCommentRule {
 	return ConfigFieldCommentRule{IncludePaths: []string{"internal/config/**"}}
 }
@@ -169,9 +169,9 @@ type Config struct {
 	}
 }
 
-// TestConfigFieldCommentRuleNoIncludePathsAppliesEverywhere confirms an unconfigured rule applies
-// to every Go file. Projects are expected to set includePaths to keep noise down.
-func TestConfigFieldCommentRuleNoIncludePathsAppliesEverywhere(t *testing.T) {
+// TestConfigFieldCommentRuleNoIncludePathsIsNoop confirms an unconfigured rule stays quiet.
+// Projects must set includePaths to opt specific configuration-schema files into field enforcement.
+func TestConfigFieldCommentRuleNoIncludePathsIsNoop(t *testing.T) {
 	unit := parseOne(t, "anywhere.go", `package anywhere
 
 type Open struct {
@@ -180,13 +180,13 @@ type Open struct {
 `)
 	rule := ConfigFieldCommentRule{}
 	findings := rule.AnalyzeUnit(unit, Context{})
-	if len(findings) != 1 {
-		t.Fatalf("findings = %#v, want one finding when includePaths is unset", findings)
+	if len(findings) != 0 {
+		t.Fatalf("findings = %#v, want none when includePaths is unset", findings)
 	}
 }
 
-// TestConfigFieldCommentRuleDefaultsConfigured verifies the rule registers default-disabled and
-// that the strict-config path correctly threads includePaths.
+// TestConfigFieldCommentRuleDefaultsConfigured verifies the rule registers default-enabled but stays
+// quiet without includePaths, and that the strict-config path correctly threads includePaths.
 func TestConfigFieldCommentRuleDefaultsConfigured(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config
 
@@ -196,11 +196,10 @@ type Config struct {
 `)
 	defaults := Defaults()
 	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); containsRuleID(findings, "docs.config-field-comment") {
-		t.Fatalf("default findings = %#v, want docs.config-field-comment disabled", findings)
+		t.Fatalf("default findings = %#v, want docs.config-field-comment quiet without includePaths", findings)
 	}
 
 	registry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"docs.config-field-comment": true},
 		Options: map[string]map[string]any{
 			"docs.config-field-comment": {
 				"includePaths": []any{"internal/config/**"},

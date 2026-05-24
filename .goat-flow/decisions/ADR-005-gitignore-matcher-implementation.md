@@ -3,13 +3,13 @@
 **Status:** Accepted
 **Date:** 2026-05-16
 **Author(s):** Claude
-**Ticket/Context:** `.goat-flow/tasks/0.1/M12-respect-gitignore-in-discovery.md`
+**Ticket/Context:** gitignore-respecting discovery work (workspace-local plan)
 
 ## Context
 
 [ADR-004](./ADR-004-gitignore-respecting-discovery.md) committed `gruff-go` to honouring the working tree's own `.gitignore` files as the canonical exclusion source for discovery. That ADR settled the behavioural surface - what is matched, how the opt-out works, which sources are not consulted, how the JSON schema grows. It deliberately deferred the narrower question of how the matcher itself is built.
 
-The matcher has one job: given a slash-separated path relative to the discovery root and a boolean for "is this a directory", report whether the working tree's `.gitignore` files exclude it. The semantic surface required by ADR-004 and the M12 test fixtures is:
+The matcher has one job: given a slash-separated path relative to the discovery root and a boolean for "is this a directory", report whether the working tree's `.gitignore` files exclude it. The semantic surface required by ADR-004 and the gitignore-matcher test fixtures is:
 
 - Pattern lines with shell-style wildcards (`*`, `?`, `[...]`).
 - Negation lines (`!pattern`) that re-include a path the same file or a shallower file had previously excluded.
@@ -34,8 +34,8 @@ This ADR records which of two implementation routes the matcher takes and why.
 
 Rationale:
 
-- **Dependency surface.** `go.mod` currently declares zero non-standard imports. The codebase's ADR-001 commitment to parser-only analysis (no `golang.org/x/tools/go/packages`) and ADR-002's "narrow defaults, evidence-backed" posture both treat dependency cost as material. Adding a transitive tree for a feature whose semantic surface fits in ~200 lines is out of proportion with that posture.
-- **Semantic scope.** The cases the M12 test suite asserts are the cases the matcher needs to handle. Git's own `wildmatch` and `excludes` machinery cover more (e.g. case-folding controlled by `core.ignorecase`, sparse-checkout interactions, partial-clone semantics) than discovery has any business consulting. A library that implements the full spec brings code paths gruff will not exercise; a focused implementation is honest about the scope.
+- **Dependency surface.** `go.mod` currently declares zero non-standard imports. The codebase's historical avoidance of non-standard imports (no `golang.org/x/tools/go/packages`) and ADR-002's "narrow defaults, evidence-backed" posture both treat dependency cost as material. Adding a transitive tree for a feature whose semantic surface fits in ~200 lines is out of proportion with that posture.
+- **Semantic scope.** The cases the gitignore-matcher test suite asserts are the cases the matcher needs to handle. Git's own `wildmatch` and `excludes` machinery cover more (e.g. case-folding controlled by `core.ignorecase`, sparse-checkout interactions, partial-clone semantics) than discovery has any business consulting. A library that implements the full spec brings code paths gruff will not exercise; a focused implementation is honest about the scope.
 - **Maintenance cost.** The candidate libraries (`github.com/sabhiram/go-gitignore`, `github.com/denormal/go-gitignore`, the gitignore subpackage of `github.com/go-git/go-git/v5`) range from "one maintainer, low commit cadence" to "huge transitive tree pinned to v5". None is a clearly better long-term bet than the ~200 lines of focused code this scanner needs.
 - **Test confidence.** A custom implementation forces explicit fixtures covering the matched semantics. The fixtures *are* the contract; if the implementation drifts, the tests fail. Vendoring would replace those fixtures with trust in upstream releases.
 - **Supply-chain footprint.** Every external module introduces a release-cadence question, a CVE-watch question, and (for `go-git/v5`) a meaningful binary-size question. None of those costs is recovered by the gain in semantic coverage.

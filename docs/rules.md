@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **41 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **64 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -10,22 +10,34 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 `docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
 
-`docs.config-field-comment` is the only default-disabled rule; it enforces doc comments on every exported field of struct types declared inside its `includePaths`. Enable it for user-facing configuration types when you want every knob documented.
+`docs.config-field-comment` is path-scoped: it enforces doc comments on exported struct fields only for files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected configuration schema files in.
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
+| [`complexity.cognitive`](#complexitycognitive) | complexity | medium | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
+| [`complexity.npath`](#complexitynpath) | complexity | medium | parser | `maxComplexity: 1024` | Functions whose acyclic execution path count exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
+| [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | low | parser | - | Statements after terminal control flow in the same block. |
+| [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | low | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
 | [`design.god-function`](#designgod-function) | design | low | parser | - | Functions that already have both size and complexity findings. |
-| [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`design.hotspot-file`](#designhotspot-file) | maintainability | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
-| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Opt-in: doc comments on every exported field of struct types inside configured `includePaths`. Default-disabled. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | - | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | - | Packages with no package-level comment in any file. |
+| [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | low | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
+| [`maintainability.context-todo-production`](#maintainabilitycontext-todo-production) | maintainability | low | parser | - | `context.TODO()` calls in production files. |
+| [`maintainability.defer-in-loop`](#maintainabilitydefer-in-loop) | maintainability | low | parser | - | `defer` statements directly inside loops, where cleanup is delayed until the enclosing function returns. |
+| [`maintainability.ignored-error`](#maintainabilityignored-error) | maintainability | low | parser | - | Error-looking values assigned directly to the blank identifier. |
+| [`maintainability.log-fatal-library`](#maintainabilitylog-fatal-library) | maintainability | low | parser | - | `log.Fatal*` and `os.Exit` calls outside command entrypoints and tests. |
+| [`maintainability.loop-variable-address`](#maintainabilityloop-variable-address) | maintainability | low | parser | - | Storing, returning, or appending the address of a range variable copy. |
+| [`maintainability.production-panic`](#maintainabilityproduction-panic) | maintainability | low | parser | - | Literal panic calls in reusable production code. |
+| [`modernisation.ioutil-deprecated`](#modernisationioutil-deprecated) | modernisation | low | parser | - | Deprecated `io/ioutil` APIs with direct `io` or `os` replacements. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | - | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
-| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
+| [`naming.get-prefix`](#namingget-prefix) | modernisation | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | - | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | low | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
 | [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
@@ -33,7 +45,11 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | - | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | low | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | low | parser | - | `http.Client` literals in production files without `Timeout`. |
+| [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | low | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | low | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
+| [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | low | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
+| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | low | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.sql-string-query`](#securitysql-string-query) | security | low | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
@@ -43,8 +59,10 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | - | Database/queue URLs with embedded passwords. |
 | [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | critical | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
 | [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | high | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
+| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | high | parser | - | GitLab personal, trigger, runner, and application token literals. |
 | [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | high | parser | - | Google API key literals (`AIza…`). |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | - | JWT-shaped literals (`eyJ…`). |
+| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | high | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | - | PEM-encoded private keys embedded in source. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | high | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
@@ -53,8 +71,13 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | low | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
+| [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | low | parser | - | Failing test helpers that never call `t.Helper()`. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
+| [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | low | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
+| [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | low | parser | - | `time.Sleep` calls in tests. |
+| [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | low | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
 
@@ -73,6 +96,22 @@ Every rule has a default severity; configs can override per rule. The five-tier 
 The `--min-severity` flag (default `medium`) sets the threshold at which findings flip the exit code from `0` to `1`.
 
 ## Per-rule reference
+
+### `complexity.cognitive`
+
+- **Pillar:** complexity
+- **Default severity:** medium
+- **Default-enabled:** yes
+- **Threshold:** `maxComplexity` (default `35`)
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `metric`
+
+Flags Go functions whose parser-only cognitive complexity exceeds the configured threshold. The metric adds one point for each `if`, loop, `switch`, type switch, and `select`, adds the current nesting level for nested control flow, and adds one point for each `&&` / `||` operator inside conditions. Function literals reset the count.
+
+This is intentionally separate from `complexity.cyclomatic`: cyclomatic counts independent branch paths, while cognitive complexity emphasizes nesting and review difficulty.
+
+**Remediation.** Flatten nested branches, return early on guard conditions, or extract cohesive helper functions.
 
 ### `complexity.cyclomatic`
 
@@ -102,6 +141,22 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 
 **Remediation.** Extract nested branches into named helpers or return early on guard conditions.
 
+### `complexity.npath`
+
+- **Pillar:** complexity
+- **Default severity:** medium
+- **Default-enabled:** yes
+- **Threshold:** `maxComplexity` (default `1024`)
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `metric`
+
+Flags Go functions whose modified NPath count exceeds the configured threshold. The rule treats terminating guards such as `return`, `panic`, `os.Exit`, `log.Fatal*`, and `runtime.Goexit` as exit points so idiomatic Go error chains grow linearly; nested switches and multi-way if/else branches without terminators still expose combinatorial review paths.
+
+Each finding's metadata carries the measured path count and the active threshold.
+
+**Remediation.** Split independent decision trees, return early from guard branches, or extract nested switches and condition clusters into named helpers.
+
 ### `dead-code.empty-block`
 
 - **Pillar:** dead-code
@@ -113,6 +168,32 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usually indicate unfinished or accidentally orphaned code.
 
 **Remediation.** Remove the empty block or add the intended implementation.
+
+### `dead-code.unreachable-code`
+
+- **Pillar:** dead-code
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `control-flow`
+
+Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. Labels reset the same-block check because a `goto` may target the label. The rule stays conservative and does not try to prove full control-flow reachability across branches.
+
+**Remediation.** Remove the unreachable statement or move it before the terminating control-flow statement.
+
+### `dead-code.unused-private-function`
+
+- **Pillar:** dead-code
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `dead-code`
+
+Flags package-private top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, `init`, `main`, external `_test` packages, and packages that import `reflect` are excluded so reflection-heavy or entrypoint-driven code does not produce parser-only false positives.
+
+**Remediation.** Remove the unused helper, make the missing call explicit, or rename/export it only when another package is expected to call it.
 
 ### `design.god-function`
 
@@ -130,7 +211,7 @@ Flags functions that already have at least one size finding and at least one com
 
 ### `design.hotspot-file`
 
-- **Pillar:** design
+- **Pillar:** maintainability
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
@@ -187,15 +268,15 @@ rules:
 
 - **Pillar:** documentation
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `comments`, `documentation`, `opt-in`, `struct-fields`
+- **Tags:** `comments`, `documentation`, `struct-fields`
 - **Options:** `includePaths []string`, `excludePaths []string`
 
 Flags exported fields on struct types declared inside configured `includePaths` that have no useful doc comment. The "useful comment" check is shared with `docs.comment-rubric`: the comment must exist (at least one non-empty line) and must normalise differently from the field name itself. Embedded fields (no `Names` on the `*ast.Field`) and unexported fields are out of scope and never produce findings.
 
-The rule is default-disabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule applies to every Go file; projects are expected to scope it via `includePaths` to keep noise down.
+The rule is default-enabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule is a no-op; add the config/schema files you want enforced.
 
 ```yaml
 rules:
@@ -236,6 +317,115 @@ Set `ignoreInternalPackages: false` when internal package exports should follow 
 Flags Go packages that have no package-level comment in any file. Package comments are the standard `godoc` entry point and are cheap to add. `_test.go`-only external test packages such as `package foo_test` are skipped because they normally document black-box tests, not a production package API.
 
 **Remediation.** Add a package comment that explains the package's responsibility, scope, and the public surface.
+
+### `docs.suppression-without-rationale`
+
+- **Pillar:** documentation
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `comments`, `documentation`
+
+Flags `//nolint` and `#nosec` suppression comments that contain only the directive, rule list, or punctuation. Suppressions with explicit rationale markers such as `-- reason`, `// reason`, or a nearby `reason:` comment pass. Go files are inspected through parsed comment groups so raw string fixtures and prose that merely mention suppression syntax are ignored; text/config files are scanned only when the line itself starts with a suppression directive.
+
+**Remediation.** Add a short reason that explains why the suppression is intentional, or remove the suppression if it is no longer needed.
+
+### `maintainability.context-todo-production`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `context`
+
+Flags `context.TODO()` calls in production files. Test files, `testdata`, and example paths are skipped. The rule reports static evidence only: it does not claim cancellation is broken, only that ownership is still expressed as a TODO placeholder in production code.
+
+**Remediation.** Accept a caller-provided context or use a documented bootstrap context where cancellation is intentionally unavailable.
+
+### `maintainability.defer-in-loop`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `resources`
+
+Flags `defer` statements directly inside `for` and `range` loop bodies. Deferred cleanup runs when the enclosing function returns, not at the end of the current iteration, so loop-scoped resources can stay open longer than intended. Defers inside function literals launched or called from the loop are treated as their own function scope and are not reported.
+
+**Remediation.** Move the loop body into a helper function, call cleanup explicitly at the end of the iteration, or use `t.Cleanup` in tests when test lifecycle semantics are intended.
+
+### `maintainability.ignored-error`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `errors`
+
+Flags direct assignments of error-looking values to the blank identifier, such as `_ = err`, `_ = runErr`, or `_ = fmt.Errorf(...)`. The rule deliberately does not flag arbitrary `_ = call()` shapes because parser-only analysis cannot prove return types without type information.
+
+Each finding's metadata carries the ignored expression and the parser-only evidence kind.
+
+**Remediation.** Handle the error, return it to the caller, or document why ignoring it is safe.
+
+### `maintainability.log-fatal-library`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `errors`
+
+Flags `log.Fatal`, `log.Fatalf`, `log.Fatalln`, and `os.Exit` calls outside command entrypoints, `package main`, tests, and generated files. Reusable packages should return errors to callers rather than terminating the whole process.
+
+**Remediation.** Return an error and let the command or service bootstrap layer decide whether process termination is appropriate.
+
+### `maintainability.loop-variable-address`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `correctness`
+
+Flags storing, returning, or appending `&v` where `v` is a range value variable. The pointer refers to the range variable copy rather than the backing collection element; `&slice[i]` remains the accepted element-address form.
+
+**Remediation.** Take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
+
+### `maintainability.production-panic`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `errors`
+
+Flags direct `panic` calls with literal message evidence in reusable production code. Test files, `package main`, `cmd/` paths, `init`, `main`, `Defaults`, and `Must*` functions are exempt. `panic(err)` is not reported because this parser-only rule cannot distinguish impossible invariant failures from ordinary error flow.
+
+**Remediation.** Return an error or fail during command/bootstrap setup instead of panicking from reusable production code.
+
+### `modernisation.ioutil-deprecated`
+
+- **Pillar:** modernisation
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `go-style`
+- **Options:** `minimumGoVersion string` - default `"1.16"` metadata for the replacement floor
+
+Flags `io/ioutil` selectors that have direct modern replacements: `io.ReadAll`, `os.ReadFile`, `os.WriteFile`, `io.NopCloser`, `io.Discard`, `os.MkdirTemp`, and `os.CreateTemp`.
+
+Each finding's metadata carries the deprecated API and replacement API.
+
+**Remediation.** Replace `io/ioutil` calls with the matching `io` or `os` package API.
 
 ### `naming.acronym-case`
 
@@ -301,7 +491,7 @@ rules:
 
 ### `naming.get-prefix`
 
-- **Pillar:** naming
+- **Pillar:** modernisation
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Confidence:** medium
@@ -483,6 +673,32 @@ Each finding's metadata carries the archive entry expression and the missing che
 
 **Remediation.** Clean the joined path and verify it remains inside the extraction root before creating files.
 
+### `security.http-client-no-timeout`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `http`, `security`
+
+Flags `http.Client` composite literals in production files that do not set the `Timeout` field. Test files and example paths are skipped. The rule reports literal construction evidence only; it does not infer timeout ownership through wrapper factories or later assignments.
+
+**Remediation.** Set `http.Client.Timeout` or use a shared client whose timeout ownership is explicit.
+
+### `security.http-server-no-timeout`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`
+
+Flags production `http.Server` composite literals that omit all explicit timeout controls (`ReadHeaderTimeout`, `ReadTimeout`, and `WriteTimeout`) and direct `http.ListenAndServe` / `http.ListenAndServeTLS` helper calls. The rule reports static-risk evidence only; it does not claim exploitability without deployment context.
+
+**Remediation.** Construct an `http.Server` with explicit read/header/write timeout ownership before calling `ListenAndServe`.
+
 ### `security.insecure-random-secret`
 
 - **Pillar:** security
@@ -497,6 +713,34 @@ Flags Go files that import `math/rand` and use package-level random APIs in secr
 Each finding's metadata carries the random API and context word.
 
 **Remediation.** Use `crypto/rand` for security-sensitive random values and keep `math/rand` for sampling, tests, and simulations.
+
+### `security.permissive-file-mode`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `filesystem`, `security`
+
+Flags literal file and directory modes in `os.OpenFile`, `os.Chmod`, `os.Mkdir`, and `os.MkdirAll` when they are world-writable or, for file creation/chmod calls, world-executable. The rule recognises octal, `0o` literals, and `os.ModePerm`; it does not guess through named constants when the literal value is not visible in the expression.
+
+**Remediation.** Use least-privilege modes such as `0600`, `0640`, `0644`, `0700`, or `0755` depending on whether the target is a file or directory.
+
+### `security.request-body-without-limit`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`
+
+Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Request.Body` directly in production files without local evidence of `http.MaxBytesReader` or `io.LimitReader`. Reads of unrelated `io.Reader` values, test files, and already-limited wrapper expressions are ignored.
+
+Each finding's metadata carries the request parameter name and read call.
+
+**Remediation.** Wrap request bodies with `http.MaxBytesReader` or `io.LimitReader` before reading them fully.
 
 ### `security.shell-command`
 
@@ -627,6 +871,19 @@ Flags GitHub personal-access (`ghp_`), OAuth (`gho_`), user-to-server (`ghu_`), 
 
 **Remediation.** Revoke the token in GitHub's settings, then load credentials from a secret manager or environment-specific runtime configuration.
 
+### `sensitive-data.gitlab-token`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags GitLab personal, trigger, runner, and application token literals with provider-specific prefixes such as `glpat-`, `glptt-`, `glrt-`, and `gloas-`. Preview metadata is redacted through the shared sensitive-data output path.
+
+**Remediation.** Revoke the token in GitLab, then load credentials from a secret manager or environment-specific runtime configuration.
+
 ### `sensitive-data.google-api-key`
 
 - **Pillar:** sensitive-data
@@ -652,6 +909,19 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
 **Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, set the preview into `allowlists.secretPreviews` so it stops triggering.
+
+### `sensitive-data.npm-token`
+
+- **Pillar:** sensitive-data
+- **Default severity:** high
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes when the token body matches expected length and character constraints. Preview metadata is redacted through the shared sensitive-data output path.
+
+**Remediation.** Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration.
 
 ### `sensitive-data.private-key`
 
@@ -762,6 +1032,32 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 
 **Remediation.** Add an assertion that exercises the behaviour the test name claims, or remove the empty test entirely.
 
+### `test-quality.fatal-in-goroutine`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines in `_test.go` files. Those calls stop only the goroutine that invoked them, so the parent test may continue without the intended failure control flow.
+
+**Remediation.** Report the error back to the parent goroutine through a channel, use `t.Error` with explicit synchronisation, or move the fatal assertion back into the test goroutine.
+
+### `test-quality.helper-missing-t-helper`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`, or `*testing.B`, can fail the test through a testing failure call, and never call `Helper`. Runnable `Test…`, `Benchmark…`, and `Fuzz…` entrypoints are out of scope.
+
+**Remediation.** Call `t.Helper()` at the start of the helper so failures report the caller's line.
+
 ### `test-quality.no-failure-path`
 
 - **Pillar:** test-quality
@@ -777,6 +1073,23 @@ The rule walks the function body looking for those methods on the test function'
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
 
+### `test-quality.parallel-range-capture`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags table-driven `t.Run` closures that call `t.Parallel()` and reference a range variable without an explicit shadow copy before the subtest, but only when the nearest `go.mod` declares `go < 1.22`.
+
+Go 1.22 changed range-loop variable semantics so each iteration gets its own variables. For modules declaring `go 1.22` or newer, this rule stays silent. When no `go.mod` can be found between the file and scan root, the default-on rule also stays silent rather than guessing.
+
+The rule recognises the common `tc := tc` pattern as the local evidence that capture is intentional and stable in legacy modules.
+
+**Remediation.** Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics.
+
 ### `test-quality.skipped-test`
 
 - **Pillar:** test-quality
@@ -789,6 +1102,32 @@ The rule walks the function body looking for those methods on the test function'
 Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
 
 **Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
+
+### `test-quality.sleep-in-test`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load.
+
+**Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
+
+### `test-quality.tempdir-misuse`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags `os.MkdirTemp("", ...)` and `ioutil.TempDir("", ...)` in tests when a `*testing.T`, `*testing.B`, `*testing.F`, or `testing.TB` handle is in scope. `t.TempDir()` provides automatic cleanup and per-test isolation.
+
+**Remediation.** Replace process-wide temporary directory creation with `t.TempDir()` unless the test deliberately needs a non-test-owned parent directory.
 
 ## Configuring rules
 

@@ -32,6 +32,7 @@ ARROW_GLYPH="${BLUE}▸${RESET}"
 # Skip sentinel exit code for run_step (autotools convention).
 readonly SKIP_EXIT=77
 
+RELEASE_MODE=0
 TOTAL=0
 PASSED=0
 FAILED=0
@@ -167,6 +168,209 @@ repo_files() {
         } | sort -u
     else
         (cd "$REPO_ROOT" && find . -type f -name "$pattern" -print | sed 's#^\./##')
+    fi
+}
+
+tool_version() {
+    local version
+    version=$(grep -oE 'const toolVersion = "[^"]+"' "$REPO_ROOT/internal/cli/cli.go" \
+        | sed -E 's/.*"([^"]+)"/\1/')
+    if [[ -z "$version" ]]; then
+        printf 'could not parse toolVersion from internal/cli/cli.go'
+        return 1
+    fi
+    printf '%s' "$version"
+}
+
+check_file_contains() {
+    local file=$1 needle=$2
+    if ! grep -qF "$needle" "$REPO_ROOT/$file"; then
+        printf '%s missing %q\n' "$file" "$needle"
+        return 1
+    fi
+}
+
+check_package_versions() {
+    local version=$1
+    if ! command -v node >/dev/null 2>&1; then
+        # In release mode we insist on the package.json/package-lock.json check;
+        # locally we skip silently so Go-only developers can still run preflight,
+        # matching how check_npm_audit and check_go_vuln handle their tooling.
+        if ((RELEASE_MODE == 1)); then
+            printf 'node is required to verify package.json and package-lock.json versions'
+            return 1
+        fi
+        return 0
+    fi
+
+    node - "$REPO_ROOT/package.json" "$REPO_ROOT/package-lock.json" "$version" <<'NODE'
+const fs = require("fs");
+
+const [packagePath, lockPath, expectedVersion] = process.argv.slice(2);
+
+function readJSON(path) {
+  try {
+    return JSON.parse(fs.readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(`${path}: ${error.message}`);
+  }
+}
+
+function expectVersion(path, field, actual) {
+  if (actual !== expectedVersion) {
+    throw new Error(`${path}: expected ${field} to be ${expectedVersion}, got ${actual}`);
+  }
+}
+
+const packageJSON = readJSON(packagePath);
+expectVersion(packagePath, "version", packageJSON.version);
+
+const packageLock = readJSON(lockPath);
+expectVersion(lockPath, "version", packageLock.version);
+if (!packageLock.packages || !packageLock.packages[""]) {
+  throw new Error(`${lockPath}: missing packages[""] root package entry`);
+}
+expectVersion(lockPath, 'packages[""].version', packageLock.packages[""].version);
+NODE
+}
+
+check_golden_versions() {
+    local version=$1 drift
+    drift=$(grep -RInE '"(version|semanticVersion)": "[0-9]+\.[0-9]+\.[0-9]+([+-][^"]*)?"' \
+        "$REPO_ROOT/internal/cli/testdata/golden" 2>/dev/null \
+        | grep -v '"version": "2.1.0"' \
+        | grep -vF "\"$version\"" || true)
+    if [[ -n "$drift" ]]; then
+        printf 'CLI golden version drift:\n%s' "$drift"
+        return 1
+    fi
+}
+
+release_tag_at_head() {
+    local tags=()
+
+    if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == v[0-9]* ]]; then
+        printf '%s' "$GITHUB_REF_NAME"
+        return 0
+    fi
+
+    if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        return 1
+    fi
+
+    mapfile -t tags < <(git -C "$REPO_ROOT" tag --points-at HEAD --list 'v[0-9]*' | sort)
+    if ((${#tags[@]} > 1)); then
+        printf 'multiple release tags point at HEAD: %s' "${tags[*]}"
+        return 2
+    fi
+    if ((${#tags[@]} == 1)); then
+        printf '%s' "${tags[0]}"
+        return 0
+    fi
+    return 1
+}
+
+check_release_version() {
+    local version=$1 tag status existing latest
+
+    tag=$(release_tag_at_head)
+    status=$?
+    if ((status == 2)); then
+        printf '%s' "$tag"
+        return 1
+    fi
+    if ((status == 0)); then
+        if [[ "${tag#v}" != "$version" ]]; then
+            printf 'release tag %s does not match toolVersion %s; run scripts/bump-version.sh before tagging' "$tag" "$version"
+            return 1
+        fi
+        printf 'version %s matches %s' "$version" "$tag"
+        return 0
+    fi
+
+    if ((RELEASE_MODE == 0)); then
+        printf 'version %s' "$version"
+        return 0
+    fi
+
+    if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        printf '--release requires git metadata to compare release tags'
+        return 1
+    fi
+
+    existing=$(git -C "$REPO_ROOT" tag --list "v$version")
+    if [[ -n "$existing" ]]; then
+        printf 'toolVersion %s already has release tag %s; run scripts/bump-version.sh <next-version>' "$version" "$existing"
+        return 1
+    fi
+
+    latest=$(git -C "$REPO_ROOT" tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+    if [[ -n "$latest" ]]; then
+        printf 'version %s (latest tag %s)' "$version" "$latest"
+    else
+        printf 'version %s (no prior release tags)' "$version"
+    fi
+}
+
+check_version_metadata() {
+    local version detail
+    if ! version=$(tool_version); then
+        printf '%s' "$version"
+        return 1
+    fi
+    if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+        printf 'toolVersion %s is not SemVer' "$version"
+        return 1
+    fi
+
+    check_file_contains "internal/analysis/report.go" "Version: \"$version\"" || return 1
+    check_file_contains "internal/report/machine_test.go" "SemanticVersion != \"$version\"" || return 1
+    check_package_versions "$version" || return 1
+    check_golden_versions "$version" || return 1
+    detail=$(check_release_version "$version") || {
+        printf '%s' "$detail"
+        return 1
+    }
+    printf '%s' "$detail"
+}
+
+check_npm_audit() {
+    local output
+    if [[ ! -f "$REPO_ROOT/package-lock.json" ]]; then
+        printf 'no package-lock.json'
+        return "$SKIP_EXIT"
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        printf 'npm not installed'
+        return "$SKIP_EXIT"
+    fi
+
+    if ! output=$(npm audit --audit-level=moderate 2>&1); then
+        printf '%s' "$output"
+        return 1
+    fi
+    printf '%s' "${output:-npm audit passed}"
+}
+
+check_go_vuln() {
+    local output
+    if [[ ! -f "$REPO_ROOT/go.mod" ]]; then
+        printf 'no go.mod'
+        return "$SKIP_EXIT"
+    fi
+    if ! command -v govulncheck >/dev/null 2>&1; then
+        printf 'govulncheck not installed (go install golang.org/x/vuln/cmd/govulncheck@latest)'
+        return "$SKIP_EXIT"
+    fi
+
+    if ! output=$(govulncheck ./... 2>&1); then
+        printf '%s' "$output"
+        return 1
+    fi
+    if grep -q 'No vulnerabilities found.' <<<"$output"; then
+        printf 'no vulnerabilities'
+    else
+        printf 'govulncheck passed'
     fi
 }
 
@@ -312,6 +516,9 @@ usage() {
 Usage: scripts/preflight-checks.sh
 
 Runs the local verification gates for gruff-go:
+  - Version metadata consistency
+  - Node dependency audit (npm audit)
+  - Go vulnerability audit (govulncheck, skipped locally if unavailable)
   - Shell syntax (bash -n)
   - Shellcheck
   - Formatting (gofmt -l)
@@ -320,6 +527,7 @@ Runs the local verification gates for gruff-go:
   - Gruff-go self-scan (go run ./cmd/gruff-go summary .)
 
 Options:
+  --release     Also require the source version to be unreleased unless HEAD is the matching v* tag.
   -h, --help    Show this help.
 
 Environment:
@@ -330,6 +538,10 @@ USAGE
 main() {
     while (($# > 0)); do
         case "$1" in
+            --release)
+                RELEASE_MODE=1
+                shift
+                ;;
             -h|--help)
                 usage
                 return 0
@@ -346,6 +558,9 @@ main() {
 
     header
 
+    run_step "Version metadata"           check_version_metadata
+    run_step "Node dependency audit"      check_npm_audit
+    run_step "Go vulnerability audit"     check_go_vuln
     run_step "Shell syntax (bash -n)"     check_shell_syntax
     run_step "Shellcheck"                 check_shellcheck
     run_step "Formatting (gofmt -l)"      check_gofmt

@@ -13,7 +13,7 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
 1. **First run** - generate a baseline of the current state. Don't fail the build.
 
    ```bash
-   gruff-go baseline --out gruff-baseline.json
+   gruff-go analyse --generate-baseline gruff-baseline.json .
    git add gruff-baseline.json
    git commit -m "chore: capture initial gruff-go baseline"
    ```
@@ -28,7 +28,7 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
 
    ```bash
    # In a clean-up branch.
-   gruff-go baseline --out gruff-baseline.json
+   gruff-go analyse --generate-baseline gruff-baseline.json .
    ```
 
 Inside a PR, prefer `--diff-base origin/main` to scope findings to changed lines only:

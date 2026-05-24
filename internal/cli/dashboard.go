@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ import (
 )
 
 // runDashboard parses dashboard flags and starts the local HTTP dashboard.
-func runDashboard(args []string, stdout, stderr io.Writer) int {
+func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int {
 	flags := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	host := flags.String("host", dashboard.DefaultHost, "dashboard bind host (default 127.0.0.1)")
@@ -60,6 +61,13 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	if interactive {
+		if err := maybeBootstrapDashboardConfig(*project, *configPath, *noConfig, stderr); err != nil {
+			fmt.Fprintf(stderr, "config: %v\n", err)
+			return 2
+		}
+	}
+
 	opts := dashboard.Options{
 		Host:              *host,
 		Port:              *port,
@@ -83,6 +91,23 @@ func runDashboard(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// maybeBootstrapDashboardConfig runs the same interactive bootstrap as the
+// analyse / summary / report path, scoped to the dashboard's effective project
+// root: the explicit --project value when set, otherwise the working directory.
+// The dashboard loads config lazily per scan, so the prompt must fire before
+// the HTTP server starts to remain usable.
+func maybeBootstrapDashboardConfig(projectRoot, configPath string, noConfig bool, promptWriter io.Writer) error {
+	root := projectRoot
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		root = cwd
+	}
+	return maybeBootstrapConfigInRoot(root, configPath, noConfig, promptWriter)
 }
 
 // parseDashboardTimeout interprets the --scan-timeout flag value as a duration.

@@ -186,8 +186,6 @@ Even without flags, the HTML report includes:
 
 `design.*` composite findings appear in the findings list and summary counts, but they do not contribute to per-pillar grades, top-offender penalties, or the numeric composite score.
 
-The visual identity is documented in [`.goat-flow/tasks/0.1/M09-html-report-visual-parity.md`](../.goat-flow/tasks/0.1/M09-html-report-visual-parity.md).
-
 ## Exit codes (shared across formats)
 
 The chosen format does **not** change the exit code. All formats use:

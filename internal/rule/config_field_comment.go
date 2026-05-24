@@ -1,6 +1,6 @@
 // Package rule defines gruff-go's rule registry and analysers.
 // This file implements the config-field-comment rule that requires doc comments
-// on exported struct fields inside opt-in paths (typically configuration types).
+// on exported struct fields, usually scoped to configuration types.
 package rule
 
 import (
@@ -14,9 +14,9 @@ import (
 )
 
 // ConfigFieldCommentRule flags exported struct fields without a doc comment within configured paths.
-// It is default-disabled and only scopes via includePaths/excludePaths because broad enforcement on
-// every struct produces noise on obvious fields (`Name string`, `Path string`). The rule is meant to
-// be opted-in for user-facing configuration schema types so maintainers document each knob.
+// IncludePaths is required because broad enforcement on every struct can produce noise on obvious
+// fields (`Name string`, `Path string`). Scope it to user-facing configuration schema types when
+// maintainers want every knob documented.
 type ConfigFieldCommentRule struct {
 	// IncludePaths restricts enforcement to file paths matching at least one of the supplied globs.
 	IncludePaths []string
@@ -24,22 +24,22 @@ type ConfigFieldCommentRule struct {
 	ExcludePaths []string
 }
 
-// Definition declares the docs.config-field-comment opt-in rule that requires doc comments on exported struct fields inside includePaths.
+// Definition declares the docs.config-field-comment rule that requires doc comments on exported struct fields.
 func (r ConfigFieldCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.config-field-comment",
 		Title:          "Config field comment",
-		Description:    "Flags exported fields on struct types declared inside configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope. Default-disabled and intended for user-facing configuration schema types.",
+		Description:    "Flags exported fields on struct types in configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope.",
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Options: map[string]any{
 			"excludePaths": []string{},
 			"includePaths": []string{},
 		},
-		Tags:        []string{"comments", "documentation", "opt-in", "struct-fields"},
+		Tags:        []string{"comments", "documentation", "struct-fields"},
 		Remediation: "Add a doc comment to every exported field of structs declared in the configured includePaths.",
 	}
 }
@@ -72,7 +72,7 @@ func (r ConfigFieldCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 
 // appliesToPath reports whether the rule should analyse the given file path under its include/exclude config.
 func (r ConfigFieldCommentRule) appliesToPath(path string) bool {
-	if len(r.IncludePaths) > 0 && !pathfilter.MatchesAny(r.IncludePaths, path) {
+	if len(r.IncludePaths) == 0 || !pathfilter.MatchesAny(r.IncludePaths, path) {
 		return false
 	}
 	if len(r.ExcludePaths) > 0 && pathfilter.MatchesAny(r.ExcludePaths, path) {

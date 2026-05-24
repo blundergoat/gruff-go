@@ -49,6 +49,18 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
+// TestAnalyseFailOnAlias verifies --fail-on remains an alias for Go's existing threshold flag.
+func TestAnalyseFailOnAlias(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	t.Chdir(root)
+
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"analyse", "--fail-on", "critical", "."}, &out, &errBuf); code != 0 {
+		t.Fatalf("analyse --fail-on exit = %d, stderr = %s", code, errBuf.String())
+	}
+}
+
 // TestAnalyseJSONDeterministicShape verifies that repeated scans yield identical JSON.
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	root := t.TempDir()
@@ -111,33 +123,7 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 // TestAnalyseJSONIncludesFindingsAndScore asserts findings and score appear in JSON output.
 func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "complex.go", `// Package sample is a test package.
-package sample
-
-func risky(a bool) {
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-}
-`)
+	writeFile(t, root, "complex.go", complexFixture())
 	t.Chdir(root)
 
 	var out, errOut bytes.Buffer
@@ -192,6 +178,66 @@ rules:
 	}
 	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.FindingsCount != 0 {
 		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
+	}
+}
+
+// TestAnalyseGenerateBaselineWritesUsableBaseline verifies the analyse-side
+// onboarding flag writes the same kind of baseline the steady-state
+// --baseline flow can apply on the next run.
+func TestAnalyseGenerateBaselineWritesUsableBaseline(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "complex.go", complexFixture())
+	t.Chdir(root)
+
+	var generateOut, generateErr bytes.Buffer
+	if code := Main([]string{"analyse", "--generate-baseline", "baseline.json", "complex.go"}, &generateOut, &generateErr); code != 0 {
+		t.Fatalf("generate-baseline exit = %d, stderr = %s, stdout = %s", code, generateErr.String(), generateOut.String())
+	}
+	if !strings.Contains(generateOut.String(), "baseline: wrote 1 findings to baseline.json") {
+		t.Fatalf("generate-baseline stdout = %s, want write confirmation", generateOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "baseline.json")); err != nil {
+		t.Fatalf("expected baseline.json to be written: %v", err)
+	}
+
+	var analysisOut, analysisErr bytes.Buffer
+	if code := Main([]string{"analyse", "--format", "json", "--baseline", "baseline.json", "complex.go"}, &analysisOut, &analysisErr); code != 0 {
+		t.Fatalf("baseline analyse exit = %d, stderr = %s, stdout = %s", code, analysisErr.String(), analysisOut.String())
+	}
+	var parsed analysis.Report
+	if err := json.Unmarshal(analysisOut.Bytes(), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.FindingsCount != 0 {
+		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
+	}
+}
+
+// TestAnalyseGenerateBaselineRejectsPartialScopeFlags protects the baseline
+// from being generated after suppression, diff filtering, or display filters.
+func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "complex.go", complexFixture())
+	t.Chdir(root)
+
+	cases := [][]string{
+		{"analyse", "--generate-baseline", "baseline.json", "--baseline", "existing.json", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--diff-base", "HEAD", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--include-rules", "complexity.cyclomatic", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--exclude-rules", "complexity.cyclomatic", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--include-pillars", "complexity", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--exclude-pillars", "complexity", "complex.go"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args[2:4], "_"), func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			if code := Main(args, &out, &errOut); code != 2 {
+				t.Fatalf("%v exit = %d, want 2; stdout=%s stderr=%s", args, code, out.String(), errOut.String())
+			}
+			if !strings.Contains(errOut.String(), "--generate-baseline cannot be combined") {
+				t.Fatalf("%v stderr = %s, want incompatibility message", args, errOut.String())
+			}
+		})
 	}
 }
 
@@ -292,33 +338,60 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 	}
 }
 
-// complexFixture returns a Go source string that triggers complexity findings.
+// complexFixture returns a Go source string that triggers a complexity finding.
+// The switch shape (sum semantics under NPath, product under cyclomatic) keeps
+// only complexity.cyclomatic above threshold; npath stays under its 200 cap and
+// the exported name keeps dead-code.unused-private-function from firing.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
 
-func risky(a bool) {
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
+// Risky is intentionally over the cyclomatic threshold for fixture use.
+func Risky(a int) {
+	switch a {
+	case 1:
+		_ = a
+	case 2:
+		_ = a
+	case 3:
+		_ = a
+	case 4:
+		_ = a
+	case 5:
+		_ = a
+	case 6:
+		_ = a
+	case 7:
+		_ = a
+	case 8:
+		_ = a
+	case 9:
+		_ = a
+	case 10:
+		_ = a
+	case 11:
+		_ = a
+	case 12:
+		_ = a
+	case 13:
+		_ = a
+	case 14:
+		_ = a
+	case 15:
+		_ = a
+	case 16:
+		_ = a
+	case 17:
+		_ = a
+	case 18:
+		_ = a
+	case 19:
+		_ = a
+	case 20:
+		_ = a
+	case 21:
+		_ = a
+	}
 }
 `
 }

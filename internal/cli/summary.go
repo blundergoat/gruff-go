@@ -14,7 +14,7 @@ import (
 )
 
 // runSummary parses summary flags, runs analysis, and prints the compact digest.
-func runSummary(args []string, stdout, stderr io.Writer) int {
+func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	flags := flag.NewFlagSet("summary", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text or json")
@@ -22,7 +22,9 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
+	minSeverity := string(finding.SeverityMedium)
+	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
+	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -34,13 +36,13 @@ func runSummary(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "--top must be zero or a positive integer")
 		return 2
 	}
-	failOn, err := finding.ParseSeverity(*minSeverity)
+	failOn, err := finding.ParseSeverity(minSeverity)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	started := time.Now()
-	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
+	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

@@ -10,10 +10,10 @@
 
 ADR-002 established a narrow 5-rule default pack with 20 opt-in expansion rules: file length, function length, cyclomatic complexity, package comment, and secret-like assignment ran out of the box; everything else required explicit `rules.<id>.enabled: true`. The stance was "low-noise defaults, evidence-backed promotion."
 
-Operating experience after M06–M24 changed the picture:
+Operating experience after several iterations changed the picture:
 
 - The opt-in catalogue grew to 20 rules across naming, design composites, sensitive-data detectors, security, dead-code, test-quality, and maintainer-comment families.
-- Dogfood evidence on `gruff-go` itself with all 20 opt-ins active produced **3 low-severity findings** (all `naming.receiver-consistency` on the `Registry` type), exit 0. Calibration on `blundergoat-platform` (M22) shaped the production-vs-test discriminators inside the size rules, so noisy test bulk no longer dominates default scores.
+- Dogfood evidence on `gruff-go` itself with all 20 opt-ins active produced **3 low-severity findings** (all `naming.receiver-consistency` on the `Registry` type), exit 0. Calibration on `blundergoat-platform` shaped the production-vs-test discriminators inside the size rules, so noisy test bulk no longer dominates default scores.
 - Adopters running `gruff-go` for the first time generally want full coverage, not a 5-rule baseline that requires reading docs to discover the remaining 80% of the catalogue.
 - The opt-in promotion gate ("second corpus + explicit human accept") was never going to clear all 20 rules one at a time; the policy became a perpetual block on coverage.
 
@@ -26,7 +26,11 @@ Two thresholds also drifted from common Go-tool defaults:
 
 Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override. At decision time the catalogue shipped 30 rules (`list-rules --format json` is the source of truth); the number grows as new rule families land.
 
-2026-05-23 update: the policy still holds after the security and sensitive-data expansions. The live registry now has 41 rules, with 40 default-enabled and `docs.config-field-comment` remaining the single deliberate opt-in carve-out.
+2026-05-23 update: the policy still held after the security and sensitive-data expansions. The live registry had 41 rules, with 40 default-enabled and `docs.config-field-comment` remaining the single deliberate opt-in carve-out.
+
+2026-05-24 update: `docs.config-field-comment` now follows the `docs.comment-rubric` path-scoped pattern. It is default-enabled in registry metadata but is a no-op until `includePaths` is configured, preserving first-run low noise without carrying a default-disabled exception.
+
+2026-05-24 update: the registry now has 64 rules across 11 pillars, all default-enabled. The catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
 
 Two threshold adjustments toward industry-mainstream values:
 
@@ -41,7 +45,7 @@ Three thresholds stay where calibration evidence already placed them:
 
 One special case: `docs.comment-rubric` is path-scoped via `includePaths`. Default-on is a no-op for projects that don't configure paths, so flipping it on costs nothing and removes an awkward inconsistency in the policy table.
 
-One deliberate exception: `docs.config-field-comment` stays `defaultEnabled: false`. Its scoping options (`includePaths`/`excludePaths`) default to empty, which under its current `appliesToPath` semantics means the rule applies to every file - and the per-field check fires on every undocumented exported struct field. Unlike `docs.comment-rubric`, the rule is not a no-op without configuration, so defaulting it on would swamp adopters with documentation findings on every exported field across the codebase. The carve-out is recorded here so the rule's `DefaultEnabled: false` flag does not appear to contradict the rest of this ADR.
+`docs.config-field-comment` originally stayed `defaultEnabled: false` because empty `includePaths` applied to every file and the per-field check would swamp adopters with documentation findings on every exported field across the codebase. That failure mode is now removed: empty `includePaths` is a no-op, matching `docs.comment-rubric`. The rule can stay default-enabled in metadata while still requiring explicit path opt-in before it emits findings.
 
 ## Dogfood Evidence
 

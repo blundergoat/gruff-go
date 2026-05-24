@@ -1,7 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
 // This file implements vendor-prefixed token detectors that piggyback on the
 // shared scanLinesForSecret plumbing in sensitive.go: GitHub, Slack, Stripe,
-// Google, and Anthropic API key shapes.
+// Google, Anthropic, npm, and GitLab API key shapes.
 package rule
 
 import (
@@ -27,6 +27,11 @@ var (
 	googleAPIKeyPattern = regexp.MustCompile(`AIza[A-Za-z0-9_\-]{35}`)
 	// Anthropic API keys: sk-ant- prefix plus an alphanumeric body.
 	anthropicAPIKeyPattern = regexp.MustCompile(`sk-ant-[A-Za-z0-9_\-]{20,}`)
+	// npm tokens: legacy npm_ and granular npm_pat_ prefixes with provider-style
+	// alphanumeric bodies.
+	npmTokenPattern = regexp.MustCompile(`npm_(?:pat_)?[A-Za-z0-9]{20,}`)
+	// GitLab tokens: personal, trigger, runner, and OAuth/application secret prefixes.
+	gitLabTokenPattern = regexp.MustCompile(`(?:glpat|glptt|glrt|gloas)-[A-Za-z0-9_\-]{20,}`)
 )
 
 // GitHubTokenRule flags GitHub personal-access, OAuth, user-to-server, server-to-server, and refresh tokens embedded in source.
@@ -142,4 +147,50 @@ func (AnthropicAPIKeyRule) Definition() Definition {
 // AnalyzeUnit scans the unit's source for Anthropic API key literals.
 func (AnthropicAPIKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return scanLinesForSecret(unit, anthropicAPIKeyPattern, "Anthropic API key literal detected")
+}
+
+// NPMTokenRule flags npm access token literals embedded in source.
+type NPMTokenRule struct{}
+
+// Definition declares the sensitive-data.npm-token rule that flags npm_-prefixed npm tokens with high severity and high confidence.
+func (NPMTokenRule) Definition() Definition {
+	return Definition{
+		ID:             "sensitive-data.npm-token",
+		Title:          "npm token literal",
+		Description:    "Flags npm access tokens (npm_ and npm_pat_ prefixes) embedded in source or text files.",
+		Pillar:         finding.PillarSensitiveData,
+		Severity:       finding.SeverityHigh,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+		Tags:           []string{"secrets"},
+		Remediation:    "Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration.",
+	}
+}
+
+// AnalyzeUnit scans the unit's source for npm token literals.
+func (NPMTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, npmTokenPattern, "npm token literal detected")
+}
+
+// GitLabTokenRule flags GitLab access token literals embedded in source.
+type GitLabTokenRule struct{}
+
+// Definition declares the sensitive-data.gitlab-token rule that flags GitLab provider token prefixes with high severity and high confidence.
+func (GitLabTokenRule) Definition() Definition {
+	return Definition{
+		ID:             "sensitive-data.gitlab-token",
+		Title:          "GitLab token literal",
+		Description:    "Flags GitLab personal, trigger, runner, and application tokens (glpat-, glptt-, glrt-, gloas-) embedded in source or text files.",
+		Pillar:         finding.PillarSensitiveData,
+		Severity:       finding.SeverityHigh,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+		Tags:           []string{"secrets"},
+		Remediation:    "Revoke the token in GitLab, then load credentials from a secret manager or environment-specific runtime configuration.",
+	}
+}
+
+// AnalyzeUnit scans the unit's source for GitLab token literals.
+func (GitLabTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, gitLabTokenPattern, "GitLab token literal detected")
 }

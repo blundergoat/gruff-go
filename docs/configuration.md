@@ -108,7 +108,7 @@ The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--
 
 Per-rule overrides. Every field is optional:
 
-- `enabled` - toggle a rule on or off. All built-in rules are enabled by default except `docs.config-field-comment`; set `false` to disable a default-enabled rule or `true` to opt into the config-field rule.
+- `enabled` - toggle a rule on or off. All built-in rules are enabled by default; set `false` to disable a rule that does not fit the project.
 - `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
 - `thresholds` - for rules with multiple thresholds, name them explicitly.
 - `severity` - canonical severities `info`, `low`, `medium`, `high`, or `critical`. Config also accepts gruff-family aliases: `notice` maps to `low`, `warning` / `warn` map to `medium`, and `error` maps to `high`.
@@ -164,7 +164,7 @@ rules:
       requireVarComments: true
 
   # Require doc comments on every exported field of configuration-style struct types.
-  # Default-disabled; enable per-path via includePaths so general struct fields stay un-enforced.
+  # No-op until includePaths selects the config/schema files to enforce.
   docs.config-field-comment:
     enabled: true
     severity: low

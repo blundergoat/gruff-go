@@ -65,13 +65,16 @@ func TestAnsiForcesEscapes(t *testing.T) {
 
 // TestHelpForCommandShowsUsage verifies help renders usage for each known subcommand.
 func TestHelpForCommandShowsUsage(t *testing.T) {
-	for _, cmd := range []string{"analyse", "baseline", "list-rules", "summary", "report", "dashboard"} {
+	for _, cmd := range []string{"analyse", "baseline", "completion", "init", "list-rules", "summary", "report", "dashboard"} {
 		var out, errBuf bytes.Buffer
 		if code := Main([]string{"help", cmd}, &out, &errBuf); code != 0 {
 			t.Errorf("help %s exit = %d, stderr = %s", cmd, code, errBuf.String())
 		}
 		if !strings.Contains(out.String(), "gruff-go "+cmd) {
 			t.Errorf("help %s missing command name; got %q", cmd, out.String())
+		}
+		if cmd == "init" && !strings.Contains(out.String(), "[--force [--reset]]") {
+			t.Errorf("help init missing reset usage; got %q", out.String())
 		}
 	}
 }
@@ -101,6 +104,28 @@ func TestListAliasMatchesUsage(t *testing.T) {
 	}
 }
 
+// TestGlobalCompatibilityAliases verifies cross-gruff global aliases are accepted.
+func TestGlobalCompatibilityAliases(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"--silent", "-v", "list"}, &out, &errBuf); code != 0 {
+		t.Fatalf("list with compatibility aliases exit = %d, stderr = %s", code, errBuf.String())
+	}
+	if out.String() != "" {
+		t.Fatalf("--silent should suppress normal output, got %q", out.String())
+	}
+}
+
+// TestCompletionCommand emits a shell completion script.
+func TestCompletionCommand(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"completion"}, &out, &errBuf); code != 0 {
+		t.Fatalf("completion exit = %d, stderr = %s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "complete -F _gruff_go_complete gruff-go") {
+		t.Fatalf("completion output missing bash registration: %s", out.String())
+	}
+}
+
 // TestSummaryCommandText verifies the summary text output contains expected fragments.
 func TestSummaryCommandText(t *testing.T) {
 	root := t.TempDir()
@@ -124,6 +149,45 @@ func TestSummaryCommandText(t *testing.T) {
 	} {
 		if !strings.Contains(out.String(), fragment) {
 			t.Errorf("summary missing %q; got: %s", fragment, out.String())
+		}
+	}
+}
+
+// TestSummaryCommandShowsGitignoredCount gives new users a quick explanation
+// for skipped files without changing machine-readable summary JSON.
+func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "ignored.go\n")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "ignored.go", "package main\n")
+	t.Chdir(root)
+
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"summary", "."}, &out, &errBuf); code != 0 {
+		t.Fatalf("summary exit = %d, stderr = %s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "ignored by .gitignore: 1") {
+		t.Fatalf("summary missing gitignored count; got: %s", out.String())
+	}
+}
+
+// TestSummaryCommandSuggestsGeneratedBaseline checks the text-only fresh-start
+// hint appears when a first summary finds existing debt.
+func TestSummaryCommandSuggestsGeneratedBaseline(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "complex path.go", complexFixture())
+	t.Chdir(root)
+
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"summary", "complex path.go"}, &out, &errBuf); code != 1 {
+		t.Fatalf("summary exit = %d, stderr = %s", code, errBuf.String())
+	}
+	for _, fragment := range []string{
+		"fresh start: gruff-go analyse --generate-baseline gruff-baseline.json \"complex path.go\"",
+		"then scan with: gruff-go analyse --baseline gruff-baseline.json \"complex path.go\"",
+	} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("summary missing %q; got: %s", fragment, out.String())
 		}
 	}
 }

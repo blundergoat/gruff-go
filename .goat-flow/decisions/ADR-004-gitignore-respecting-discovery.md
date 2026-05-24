@@ -4,11 +4,11 @@
 **Date:** 2026-05-16
 **Updated:** 2026-05-18
 **Author(s):** Claude
-**Ticket/Context:** `.goat-flow/tasks/0.1/M12-respect-gitignore-in-discovery.md`
+**Ticket/Context:** gitignore-respecting discovery work (workspace-local plan)
 
 ## Context
 
-`internal/source.Discover` is the boundary that decides which files the rule registry sees. Its v0.1 design (ADR-001) walks the working directory, classifies files by extension, and drops a hardcoded set of directory names (`.git`, `vendor`, `node_modules`, `dist`, `build`, `coverage`, `.idea`, `.vscode`, plus agent/workflow metadata directories such as `.agents`, `.claude`, `.codex`, `.github`, and `.goat-flow`). Anything else is offered to the parser and the text-rule passes.
+`internal/source.Discover` is the boundary that decides which files the rule registry sees. Its initial design walks the working directory, classifies files by extension, and drops a hardcoded set of directory names (`.git`, `vendor`, `node_modules`, `dist`, `build`, `coverage`, `.idea`, `.vscode`, plus agent/workflow metadata directories such as `.agents`, `.claude`, `.codex`, `.github`, and `.goat-flow`). Anything else is offered to the parser and the text-rule passes.
 
 That model conflates two boundaries that the working tree already separates:
 

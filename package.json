@@ -1,6 +1,6 @@
 {
   "name": "gruff-go",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Opinionated Go code-quality scanner (npm tooling metadata; the application is the Go binary under cmd/gruff-go).",
   "main": "index.js",
   "scripts": {
