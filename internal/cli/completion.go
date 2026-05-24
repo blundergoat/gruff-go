@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// completionCommands lists the top-level subcommand names emitted into the
+// generated shell completion scripts. Keep this in sync with the dispatch
+// switch in cli.go so completion never advertises an unknown command.
 var completionCommands = []string{
 	"analyse",
 	"analyze",
@@ -43,6 +46,9 @@ func runCompletion(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// completionScript returns the inline completion script for the requested
+// shell. Supports bash, zsh, and fish; any other value returns an error so the
+// CLI can exit with a clear message rather than emitting an empty script.
 func completionScript(shell string) (string, error) {
 	commands := strings.Join(completionCommands, " ")
 	switch shell {

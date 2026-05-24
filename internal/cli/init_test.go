@@ -97,6 +97,100 @@ func TestInitForceOverwritesExistingConfig(t *testing.T) {
 	}
 }
 
+// TestInitForcePreservesExistingTuning is the regression test for the
+// 8282478-style wipe: a hand-tuned .gruff-go.yaml must survive `init --force`
+// with its paths.ignore, allowlists, and per-rule overrides intact. The
+// regenerate is a merge, not a clobber.
+func TestInitForcePreservesExistingTuning(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	tuned := `schemaVersion: "gruff-go.config.v0.1"
+paths:
+  ignore:
+    - '.claude/**'
+    - 'internal/rule/sensitive_test.go'
+allowlists:
+  acceptedAbbreviations:
+    - ID
+    - HTTP
+rules:
+  complexity.nesting-depth:
+    enabled: true
+    severity: warning
+    threshold: 4
+  docs.comment-rubric:
+    enabled: true
+    severity: warning
+    threshold: 2
+    options:
+      requirePackageSummary: true
+      requireFunctionComments: true
+      minWordsBeyondSymbol: 3
+`
+	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(tuned), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Main([]string{"init", "--force"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init --force exit = %d, stderr = %s", code, stderr.String())
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".gruff-go.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(body)
+	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "- HTTP", "minWordsBeyondSymbol: 3", "requirePackageSummary: true"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("init --force lost preserved value %q\nrendered:\n%s", want, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "threshold: 4") {
+		t.Fatalf("init --force lost preserved complexity.nesting-depth threshold:\n%s", rendered)
+	}
+	if !strings.Contains(stderr.String(), "preserved existing tuning") {
+		t.Fatalf("stderr should describe preservation: %s", stderr.String())
+	}
+	cfg, err := cfgpkg.Parse(body, ruleDefinitionsForTest())
+	if err != nil {
+		t.Fatalf("merged config did not parse back: %v\nbody:\n%s", err, body)
+	}
+	if len(cfg.IgnorePaths) != 2 {
+		t.Fatalf("merged config IgnorePaths = %#v, want 2 entries", cfg.IgnorePaths)
+	}
+}
+
+// TestInitForceResetDiscardsExistingTuning verifies the explicit escape hatch:
+// `init --force --reset` performs the old destructive overwrite for callers
+// who really do want a fresh defaults file.
+func TestInitForceResetDiscardsExistingTuning(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	tuned := `schemaVersion: "gruff-go.config.v0.1"
+paths:
+  ignore:
+    - '.claude/**'
+`
+	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(tuned), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Main([]string{"init", "--force", "--reset"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init --force --reset exit = %d, stderr = %s", code, stderr.String())
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".gruff-go.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), ".claude/**") {
+		t.Fatalf("--reset must wipe preserved values; got:\n%s", body)
+	}
+	if !strings.Contains(string(body), "ignore: []") {
+		t.Fatalf("--reset must emit empty paths.ignore; got:\n%s", body)
+	}
+}
+
 // TestBootstrapPromptCreatesConfigOnYes runs the analyse path with a faked
 // TTY stdin that answers "y" and confirms the file gets written before the
 // scan continues with the configured registry.

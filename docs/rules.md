@@ -10,7 +10,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 `docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
 
-`docs.config-field-comment` enforces doc comments on exported struct fields. Use `includePaths` for user-facing configuration types when you want every knob documented without applying the check to every struct in the project.
+`docs.config-field-comment` is path-scoped: it enforces doc comments on exported struct fields only for files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected configuration schema files in.
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
@@ -195,7 +195,7 @@ rules:
 
 Flags exported fields on struct types declared inside configured `includePaths` that have no useful doc comment. The "useful comment" check is shared with `docs.comment-rubric`: the comment must exist (at least one non-empty line) and must normalise differently from the field name itself. Embedded fields (no `Names` on the `*ast.Field`) and unexported fields are out of scope and never produce findings.
 
-The rule is default-enabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule applies to every Go file; scope it via `includePaths` when broad struct-field enforcement is too noisy.
+The rule is default-enabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule is a no-op; add the config/schema files you want enforced.
 
 ```yaml
 rules:

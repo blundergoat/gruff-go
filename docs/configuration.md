@@ -164,7 +164,7 @@ rules:
       requireVarComments: true
 
   # Require doc comments on every exported field of configuration-style struct types.
-  # Scope via includePaths when general struct fields are too noisy.
+  # No-op until includePaths selects the config/schema files to enforce.
   docs.config-field-comment:
     enabled: true
     severity: low

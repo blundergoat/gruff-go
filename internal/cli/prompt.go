@@ -81,11 +81,11 @@ func maybeBootstrapConfigInRoot(root, configPath string, noConfig bool, stdout i
 		return nil
 	}
 	target := filepath.Join(root, defaultConfigFileName)
-	written, err := writeDefaultConfig(target, false)
+	result, err := writeDefaultConfig(target, false, false)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "wrote default config to %s (%d rules)\n", defaultConfigFileName, written)
+	fmt.Fprintf(stdout, "wrote default config to %s (%d rules)\n", defaultConfigFileName, result.ruleCount)
 	writeFreshStartSetupHint(stdout)
 	return nil
 }

@@ -15,7 +15,7 @@ import (
 // registry's built-in policy on first load.
 func TestRenderRoundTripsThroughParse(t *testing.T) {
 	definitions := defaultDefinitions()
-	rendered := Render(definitions)
+	rendered := Render(definitions, RenderOptions{})
 	if !strings.Contains(string(rendered), "schemaVersion") {
 		t.Fatalf("rendered config missing schemaVersion line:\n%s", rendered)
 	}
@@ -50,7 +50,7 @@ func TestRenderRoundTripsThroughParse(t *testing.T) {
 // the gruff-family vocabulary (notice/warning/error) so the file matches the
 // hand-written .gruff-go.yaml style adopters see in docs and existing configs.
 func TestRenderEmitsGruffSeverityAliases(t *testing.T) {
-	body := string(Render(defaultDefinitions()))
+	body := string(Render(defaultDefinitions(), RenderOptions{}))
 	for _, alias := range []string{"notice", "warning", "error"} {
 		if !strings.Contains(body, "severity: "+alias) {
 			t.Fatalf("rendered body missing gruff severity alias %q:\n%s", alias, body)
@@ -66,7 +66,7 @@ func TestRenderEmitsGruffSeverityAliases(t *testing.T) {
 // above proves field-level fidelity.
 func TestRenderPreservesEveryDefaultEnabledRule(t *testing.T) {
 	definitions := defaultDefinitions()
-	body := string(Render(definitions))
+	body := string(Render(definitions, RenderOptions{}))
 	for _, definition := range definitions {
 		if !strings.Contains(body, "\n  "+definition.ID+":\n") {
 			t.Fatalf("rendered config missing rule block %q", definition.ID)
@@ -74,11 +74,80 @@ func TestRenderPreservesEveryDefaultEnabledRule(t *testing.T) {
 	}
 }
 
+// TestRenderPreservesExistingScaffoldTuning verifies that paths.ignore,
+// allowlists.acceptedAbbreviations, and allowlists.secretPreviews survive
+// a regenerate when supplied via RenderOptions.Existing. This is the core
+// safeguard that turns `gruff-go init --force` into a merge rather than a
+// clobber of project-wide tuning.
+func TestRenderPreservesExistingScaffoldTuning(t *testing.T) {
+	definitions := defaultDefinitions()
+	existing := &Config{
+		IgnorePaths:           []string{".claude/**", "internal/rule/sensitive_test.go"},
+		AcceptedAbbreviations: []string{"ID", "HTTP"},
+		SensitiveData:         SensitiveDataConfig{PreviewAllowlist: []string{"testdata/**"}},
+	}
+	body := string(Render(definitions, RenderOptions{Existing: existing}))
+	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "- HTTP", "testdata/**"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rendered body missing preserved value %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "ignore: []") {
+		t.Fatalf("paths.ignore should not be empty when preserved values were supplied:\n%s", body)
+	}
+}
+
+// TestRenderPreservesPerRuleOverrides confirms that per-rule severity,
+// threshold, and options overrides from an existing config carry into the
+// regenerated output. Rules without overrides still emit registry defaults.
+func TestRenderPreservesPerRuleOverrides(t *testing.T) {
+	definitions := defaultDefinitions()
+	customThreshold := 4.0
+	enabled := false
+	existing := &Config{
+		Rules: map[string]RuleConfig{
+			"complexity.nesting-depth": {
+				Severity:  "warning",
+				Threshold: &customThreshold,
+			},
+			"docs.comment-rubric": {
+				Options: map[string]any{
+					"requirePackageSummary":   true,
+					"requireFunctionComments": true,
+					"minWordsBeyondSymbol":    3,
+				},
+			},
+			"naming.acronym-case": {
+				Enabled: &enabled,
+			},
+		},
+	}
+	body := string(Render(definitions, RenderOptions{Existing: existing}))
+	cfg, err := Parse([]byte(body), definitions)
+	if err != nil {
+		t.Fatalf("rendered body did not parse: %v\nbody:\n%s", err, body)
+	}
+	options := cfg.RuleOptions()
+	if got := options.Thresholds["complexity.nesting-depth"]["maxDepth"]; got != 4 {
+		t.Fatalf("complexity.nesting-depth maxDepth = %v, want 4 (preserved)", got)
+	}
+	if got := options.Enabled["naming.acronym-case"]; got {
+		t.Fatalf("naming.acronym-case enabled = true, want false (preserved disable)")
+	}
+	rubricOpts := options.Options["docs.comment-rubric"]
+	if rubricOpts["requirePackageSummary"] != true {
+		t.Fatalf("docs.comment-rubric.requirePackageSummary = %v, want true (preserved)", rubricOpts["requirePackageSummary"])
+	}
+	if rubricOpts["minWordsBeyondSymbol"] == nil {
+		t.Fatalf("docs.comment-rubric.minWordsBeyondSymbol missing from preserved options: %#v", rubricOpts)
+	}
+}
+
 // TestRenderEmitsSingleThresholdAsScalar checks the singular `threshold:` form
 // when a rule has exactly one knob, matching the convention used in the
 // dogfood .gruff-go.yaml and in adopters' configs.
 func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
-	body := string(Render(defaultDefinitions()))
+	body := string(Render(defaultDefinitions(), RenderOptions{}))
 	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: warning\n    threshold: 500\n") {
 		t.Fatalf("expected singular threshold form for size.file-length; got:\n%s", body)
 	}

@@ -194,7 +194,7 @@
                 "text": "Config field comment"
               },
               "fullDescription": {
-                "text": "Flags exported fields on struct types that have no useful doc comment. Embedded and unexported fields are out of scope; includePaths can scope enforcement to user-facing configuration schema types."
+                "text": "Flags exported fields on struct types in configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope."
               },
               "help": {
                 "text": "Add a doc comment to every exported field of structs declared in the configured includePaths."

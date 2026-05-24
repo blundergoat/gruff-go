@@ -2,29 +2,49 @@
 // Render walks the supplied rule definitions and writes the canonical YAML shape
 // that Load can round-trip, so `gruff-go init` and the interactive bootstrap
 // produce a file that already expresses the registry's effective defaults.
+//
+// When RenderOptions.Existing is set, Render layers the project-specific values
+// from the previously-loaded config onto the new template: `paths.ignore`,
+// `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, and any
+// per-rule `enabled`/`severity`/`threshold`/`thresholds`/`options` overrides
+// for rules that are still in the registry. Rules that no longer exist are
+// dropped; rules that are new since the previous config land at registry
+// defaults. This makes `gruff-go init --force` a safe regenerate-with-merge
+// rather than a destructive clobber.
 package config
 
 import (
 	"bytes"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
+// RenderOptions controls how Render layers project-specific overrides onto the
+// default template. A zero-value RenderOptions reproduces the original
+// fresh-from-defaults output.
+type RenderOptions struct {
+	// Existing carries previously-tuned config to splice into the new file.
+	// When nil, scaffolds emit empty lists and rule blocks use registry defaults.
+	Existing *Config
+}
+
 // Render returns a default .gruff-go.yaml body that mirrors the registry's
 // per-rule enablement, severity, and threshold defaults. The output is sorted
-// by rule ID and parses back through Load without modification.
-func Render(definitions []rule.Definition) []byte {
+// by rule ID and parses back through Load without modification. When opts.Existing
+// is non-nil its scaffolds and per-rule overrides are layered into the output.
+func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 	sorted := append([]rule.Definition(nil), definitions...)
 	slices.SortFunc(sorted, func(a, b rule.Definition) int { return strings.Compare(a.ID, b.ID) })
 
 	var buf bytes.Buffer
 	writeRenderHeader(&buf)
-	writeRenderScaffolds(&buf)
-	writeRenderRules(&buf, sorted)
+	writeRenderScaffolds(&buf, opts)
+	writeRenderRules(&buf, sorted, opts)
 	return buf.Bytes()
 }
 
@@ -39,22 +59,24 @@ func writeRenderHeader(buf *bytes.Buffer) {
 	fmt.Fprintln(buf)
 }
 
-// writeRenderScaffolds writes the paths/allowlists/selection sections with
-// empty defaults and short comments explaining what each one would do.
-func writeRenderScaffolds(buf *bytes.Buffer) {
+// writeRenderScaffolds writes the paths/allowlists/selection sections. When
+// opts.Existing supplies values for paths.ignore, acceptedAbbreviations, or
+// secretPreviews, those lists are emitted in place of the empty defaults so
+// regenerate-with-merge preserves project-wide allowlists.
+func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "# Discovery reads .gitignore first. paths.ignore is only for committed")
 	fmt.Fprintln(buf, "# metadata, fixtures, or generated artifacts that should stay out of scans")
 	fmt.Fprintln(buf, "# even when they are not ignored by Git.")
 	fmt.Fprintln(buf, "paths:")
-	fmt.Fprintln(buf, "  ignore: []")
+	writeRenderStringList(buf, "  ignore", preservedIgnorePaths(opts))
 	fmt.Fprintln(buf)
 
 	fmt.Fprintln(buf, "# Project-wide allowlists for noisy signals.")
 	fmt.Fprintln(buf, "# acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path")
 	fmt.Fprintln(buf, "# globs where sensitive-data rules may include the matched preview.")
 	fmt.Fprintln(buf, "allowlists:")
-	fmt.Fprintln(buf, "  acceptedAbbreviations: []")
-	fmt.Fprintln(buf, "  secretPreviews: []")
+	writeRenderStringList(buf, "  acceptedAbbreviations", preservedAcceptedAbbreviations(opts))
+	writeRenderStringList(buf, "  secretPreviews", preservedSecretPreviews(opts))
 	fmt.Fprintln(buf)
 
 	fmt.Fprintln(buf, "# Selection narrows the active rule set. Empty lists keep the default")
@@ -67,28 +89,191 @@ func writeRenderScaffolds(buf *bytes.Buffer) {
 	fmt.Fprintln(buf)
 }
 
+// preservedIgnorePaths returns the existing config's paths.ignore (canonically
+// folded into IgnorePaths by Normalized) or nil when nothing is preserved.
+func preservedIgnorePaths(opts RenderOptions) []string {
+	if opts.Existing == nil {
+		return nil
+	}
+	return opts.Existing.IgnorePaths
+}
+
+// preservedAcceptedAbbreviations returns the existing config's
+// allowlists.acceptedAbbreviations or nil.
+func preservedAcceptedAbbreviations(opts RenderOptions) []string {
+	if opts.Existing == nil {
+		return nil
+	}
+	return opts.Existing.AcceptedAbbreviations
+}
+
+// preservedSecretPreviews returns the existing config's
+// allowlists.secretPreviews (canonically folded into
+// SensitiveData.PreviewAllowlist by Normalized) or nil.
+func preservedSecretPreviews(opts RenderOptions) []string {
+	if opts.Existing == nil {
+		return nil
+	}
+	return opts.Existing.SensitiveData.PreviewAllowlist
+}
+
+// writeRenderStringList emits a YAML list under indent+name. Empty or nil lists
+// render as the inline `[]` form so the round-trip parses cleanly.
+func writeRenderStringList(buf *bytes.Buffer, indentedName string, values []string) {
+	if len(values) == 0 {
+		fmt.Fprintf(buf, "%s: []\n", indentedName)
+		return
+	}
+	fmt.Fprintf(buf, "%s:\n", indentedName)
+	childIndent := strings.Repeat(" ", indentWidth(indentedName)+2)
+	for _, value := range values {
+		fmt.Fprintf(buf, "%s- %s\n", childIndent, yamlQuoteIfNeeded(value))
+	}
+}
+
+// indentWidth returns the leading space count of a `  key`-style string.
+func indentWidth(s string) int {
+	count := 0
+	for _, r := range s {
+		if r != ' ' {
+			break
+		}
+		count++
+	}
+	return count
+}
+
 // writeRenderRules writes every rule block under the top-level `rules:` map,
-// preserving sort order and emitting the registry's default knobs verbatim.
-func writeRenderRules(buf *bytes.Buffer, definitions []rule.Definition) {
+// preserving sort order, layering any per-rule overrides from opts.Existing,
+// and emitting the registry's default knobs for rules without overrides.
+func writeRenderRules(buf *bytes.Buffer, definitions []rule.Definition, opts RenderOptions) {
 	fmt.Fprintln(buf, "rules:")
 	for index, definition := range definitions {
 		if index > 0 {
 			fmt.Fprintln(buf)
 		}
-		writeRenderRuleBlock(buf, definition)
+		writeRenderRuleBlock(buf, definition, ruleOverrideFor(opts, definition.ID))
 	}
 }
 
+// ruleOverrideFor returns the existing per-rule override for id, or a zero
+// RuleConfig when none is recorded.
+func ruleOverrideFor(opts RenderOptions, id string) RuleConfig {
+	if opts.Existing == nil {
+		return RuleConfig{}
+	}
+	return opts.Existing.Rules[id]
+}
+
 // writeRenderRuleBlock writes one rule entry: a description comment followed
-// by enabled, severity, and threshold/thresholds in singular or plural form.
-func writeRenderRuleBlock(buf *bytes.Buffer, definition rule.Definition) {
+// by enabled, severity, threshold/thresholds, and an optional options block.
+// Each knob prefers the override value when set; otherwise it falls back to
+// the rule's registry default.
+func writeRenderRuleBlock(buf *bytes.Buffer, definition rule.Definition, override RuleConfig) {
 	if definition.Description != "" {
 		fmt.Fprintf(buf, "  # %s\n", definition.Description)
 	}
 	fmt.Fprintf(buf, "  %s:\n", definition.ID)
-	fmt.Fprintf(buf, "    enabled: %t\n", definition.DefaultEnabled)
-	fmt.Fprintf(buf, "    severity: %s\n", renderSeverityAlias(definition.Severity))
-	writeRenderThresholds(buf, definition.Thresholds)
+
+	enabled := definition.DefaultEnabled
+	if override.Enabled != nil {
+		enabled = *override.Enabled
+	}
+	fmt.Fprintf(buf, "    enabled: %t\n", enabled)
+
+	severity := definition.Severity
+	if override.Severity != "" {
+		if parsed, ok := tryParseSeverity(override.Severity); ok {
+			severity = parsed
+		}
+	}
+	fmt.Fprintf(buf, "    severity: %s\n", renderSeverityAlias(severity))
+
+	writeRenderThresholdsWithOverride(buf, definition.Thresholds, override)
+	writeRenderOptionsBlock(buf, override.Options)
+}
+
+// writeRenderThresholdsWithOverride emits the threshold/thresholds section,
+// preferring override values when present and otherwise falling back to the
+// registry defaults the rule advertises.
+func writeRenderThresholdsWithOverride(buf *bytes.Buffer, defaults map[string]float64, override RuleConfig) {
+	if override.Threshold != nil || len(override.Thresholds) > 0 {
+		writeRenderOverrideThresholds(buf, defaults, override)
+		return
+	}
+	writeRenderThresholds(buf, defaults)
+}
+
+// writeRenderOverrideThresholds emits threshold values from an override. When
+// the rule advertises exactly one default knob and the override only sets the
+// singular Threshold, the rendered form stays as `threshold:`. When the rule
+// advertises multiple knobs, the override's named Thresholds map (or a
+// fallback singleton) is rendered under `thresholds:`.
+func writeRenderOverrideThresholds(buf *bytes.Buffer, defaults map[string]float64, override RuleConfig) {
+	if len(defaults) <= 1 && len(override.Thresholds) == 0 && override.Threshold != nil {
+		fmt.Fprintf(buf, "    threshold: %s\n", renderThresholdValue(*override.Threshold))
+		return
+	}
+	merged := map[string]float64{}
+	for name, value := range defaults {
+		merged[name] = value
+	}
+	for name, value := range override.Thresholds {
+		merged[name] = value
+	}
+	if override.Threshold != nil && len(merged) == 1 {
+		for name := range merged {
+			merged[name] = *override.Threshold
+		}
+	}
+	writeRenderThresholds(buf, merged)
+}
+
+// writeRenderOptionsBlock writes a YAML `options:` block for the override map.
+// Supports bool, string, integer, float, and string-list values, which covers
+// every option shape the shipped rules use today.
+func writeRenderOptionsBlock(buf *bytes.Buffer, options map[string]any) {
+	if len(options) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(options))
+	for key := range options {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	fmt.Fprintln(buf, "    options:")
+	for _, key := range keys {
+		writeRenderOptionEntry(buf, key, options[key])
+	}
+}
+
+// writeRenderOptionEntry renders one option key/value pair under `    options:`.
+// Unsupported value types fall through to a fmt.Sprint string form so the call
+// always emits something rather than silently dropping the entry; Load will
+// surface any resulting parse error during the round-trip.
+func writeRenderOptionEntry(buf *bytes.Buffer, key string, value any) {
+	switch typed := value.(type) {
+	case bool:
+		fmt.Fprintf(buf, "      %s: %t\n", key, typed)
+	case string:
+		fmt.Fprintf(buf, "      %s: %s\n", key, yamlQuoteIfNeeded(typed))
+	case int:
+		fmt.Fprintf(buf, "      %s: %d\n", key, typed)
+	case int64:
+		fmt.Fprintf(buf, "      %s: %d\n", key, typed)
+	case float64:
+		fmt.Fprintf(buf, "      %s: %s\n", key, renderThresholdValue(typed))
+	case []string:
+		writeRenderStringList(buf, "      "+key, typed)
+	case []any:
+		strs := make([]string, 0, len(typed))
+		for _, item := range typed {
+			strs = append(strs, fmt.Sprint(item))
+		}
+		writeRenderStringList(buf, "      "+key, strs)
+	default:
+		fmt.Fprintf(buf, "      %s: %v\n", key, typed)
+	}
 }
 
 // writeRenderThresholds picks the singular `threshold:` form when a rule has
@@ -130,6 +315,26 @@ func renderSeverityAlias(severity finding.Severity) string {
 	}
 }
 
+// tryParseSeverity converts a config-level severity string (gruff alias or
+// canonical level) back into a finding.Severity, returning ok=false when the
+// input does not name a known level. Used when honouring a preserved override.
+func tryParseSeverity(value string) (finding.Severity, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "notice", "low":
+		return finding.SeverityLow, true
+	case "warning", "medium":
+		return finding.SeverityMedium, true
+	case "error", "high":
+		return finding.SeverityHigh, true
+	case "critical":
+		return finding.SeverityCritical, true
+	case "info":
+		return finding.SeverityInfo, true
+	default:
+		return "", false
+	}
+}
+
 // renderThresholdValue prints whole numbers without the float suffix so the
 // rendered file matches the hand-written dogfood config style (`threshold: 80`,
 // not `threshold: 80.0`).
@@ -138,4 +343,18 @@ func renderThresholdValue(value float64) string {
 		return fmt.Sprintf("%d", int64(value))
 	}
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", value), "0"), ".")
+}
+
+// yamlQuoteIfNeeded wraps a string in single quotes when it contains glob
+// characters, leading/trailing whitespace, or other tokens that the YAML
+// parser would otherwise interpret. Plain identifiers are left bare.
+func yamlQuoteIfNeeded(value string) string {
+	if value == "" {
+		return "''"
+	}
+	if strings.ContainsAny(value, "*?[]{}:#&!|>'\",%@`") || strings.TrimSpace(value) != value {
+		escaped := strings.ReplaceAll(value, "'", "''")
+		return "'" + escaped + "'"
+	}
+	return value
 }
