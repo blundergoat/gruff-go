@@ -63,7 +63,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | low | parser | - | Failing test helpers that never call `t.Helper()`. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
-| [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | low | parser | - | Parallel subtests that capture range variables without an explicit shadow copy. |
+| [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | low | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
@@ -923,9 +923,13 @@ The rule walks the function body looking for those methods on the test function'
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags table-driven `t.Run` closures that call `t.Parallel()` and reference a range variable without an explicit shadow copy before the subtest. The rule recognises the common `tc := tc` pattern as the local evidence that capture is intentional and stable.
+Flags table-driven `t.Run` closures that call `t.Parallel()` and reference a range variable without an explicit shadow copy before the subtest, but only when the nearest `go.mod` declares `go < 1.22`.
 
-**Remediation.** Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest.
+Go 1.22 changed range-loop variable semantics so each iteration gets its own variables. For modules declaring `go 1.22` or newer, this rule stays silent. When no `go.mod` can be found between the file and scan root, the default-on rule also stays silent rather than guessing.
+
+The rule recognises the common `tc := tc` pattern as the local evidence that capture is intentional and stable in legacy modules.
+
+**Remediation.** Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics.
 
 ### `test-quality.skipped-test`
 

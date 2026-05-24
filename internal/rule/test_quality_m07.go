@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -69,19 +72,22 @@ func (ParallelRangeCaptureRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.parallel-range-capture",
 		Title:          "Parallel subtest captures range variable",
-		Description:    "Flags t.Parallel subtests that close over range variables without an explicit shadow copy.",
+		Description:    "Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics.",
 		Pillar:         finding.PillarTestQuality,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"tests"},
-		Remediation:    "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest.",
+		Remediation:    "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics.",
 	}
 }
 
 // AnalyzeUnit emits findings for table-driven parallel subtests that capture range variables.
-func (ParallelRangeCaptureRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+func (ParallelRangeCaptureRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
+		return nil
+	}
+	if !usesLegacyRangeLoopVariables(unit, ctx) {
 		return nil
 	}
 	testingPackages := testingPackageNames(unit.AST)
@@ -319,4 +325,98 @@ func funcLitUsesIdent(lit *ast.FuncLit, name string) bool {
 		return true
 	})
 	return used
+}
+
+// usesLegacyRangeLoopVariables reports whether the nearest module still uses
+// the pre-Go 1.22 range-loop capture semantics. Without module metadata the
+// default-on rule stays silent instead of guessing.
+func usesLegacyRangeLoopVariables(unit parser.Unit, ctx Context) bool {
+	major, minor, ok := nearestGoModVersion(unit, ctx)
+	return ok && majorMinorLessThan(major, minor, 1, 22)
+}
+
+// nearestGoModVersion finds the nearest go.mod from the unit's directory up to
+// the scan root and returns its `go` directive major/minor version.
+func nearestGoModVersion(unit parser.Unit, ctx Context) (int, int, bool) {
+	if unit.File.AbsPath == "" {
+		return 0, 0, false
+	}
+	fileDir, err := filepath.Abs(filepath.Dir(unit.File.AbsPath))
+	if err != nil {
+		return 0, 0, false
+	}
+	root := ctx.Root
+	if root == "" {
+		root = fileDir
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return 0, 0, false
+	}
+	for dir := fileDir; pathWithinOrEqual(dir, rootAbs); dir = filepath.Dir(dir) {
+		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+		if err == nil {
+			return parseGoDirective(data)
+		}
+		if dir == rootAbs || filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return 0, 0, false
+}
+
+// pathWithinOrEqual reports whether path is root or under root.
+func pathWithinOrEqual(path string, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// parseGoDirective returns the major/minor version from the first `go` directive.
+func parseGoDirective(data []byte) (int, int, bool) {
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "go" {
+			continue
+		}
+		return parseGoMajorMinor(fields[1])
+	}
+	return 0, 0, false
+}
+
+// parseGoMajorMinor parses Go directives such as 1.21, 1.22.0, or 1.25rc1.
+func parseGoMajorMinor(version string) (int, int, bool) {
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minorText := ""
+	for _, r := range parts[1] {
+		if r < '0' || r > '9' {
+			break
+		}
+		minorText += string(r)
+	}
+	if minorText == "" {
+		return 0, 0, false
+	}
+	minor, err := strconv.Atoi(minorText)
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// majorMinorLessThan compares two Go major/minor versions.
+func majorMinorLessThan(major, minor, thresholdMajor, thresholdMinor int) bool {
+	if major != thresholdMajor {
+		return major < thresholdMajor
+	}
+	return minor < thresholdMinor
 }

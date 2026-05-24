@@ -331,7 +331,7 @@ rules:
     enabled: true
     severity: notice
 
-  # Parallel table subtests should shadow range variables before capture.
+  # Legacy Go modules should shadow range variables before parallel table-subtest capture.
   test-quality.parallel-range-capture:
     enabled: true
     severity: notice

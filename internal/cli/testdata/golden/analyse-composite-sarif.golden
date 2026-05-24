@@ -1432,10 +1432,10 @@
                 "text": "Parallel subtest captures range variable"
               },
               "fullDescription": {
-                "text": "Flags t.Parallel subtests that close over range variables without an explicit shadow copy."
+                "text": "Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics."
               },
               "help": {
-                "text": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest."
+                "text": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics."
               },
               "properties": {
                 "pillar": "test-quality",
