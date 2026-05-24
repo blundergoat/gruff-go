@@ -21,7 +21,9 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	output := flags.String("output", "", "write the report to this file (default: stdout)")
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
-	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
+	minSeverity := string(finding.SeverityMedium)
+	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
+	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
@@ -42,7 +44,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return 2
 	}
-	failOn, err := finding.ParseSeverity(*minSeverity)
+	failOn, err := finding.ParseSeverity(minSeverity)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2

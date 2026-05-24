@@ -49,6 +49,18 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
+// TestAnalyseFailOnAlias verifies --fail-on remains an alias for Go's existing threshold flag.
+func TestAnalyseFailOnAlias(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	t.Chdir(root)
+
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"analyse", "--fail-on", "critical", "."}, &out, &errBuf); code != 0 {
+		t.Fatalf("analyse --fail-on exit = %d, stderr = %s", code, errBuf.String())
+	}
+}
+
 // TestAnalyseJSONDeterministicShape verifies that repeated scans yield identical JSON.
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	root := t.TempDir()

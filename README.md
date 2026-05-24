@@ -33,24 +33,12 @@ The project-pinned install flow uses Go's `tool` support, introduced before this
 
 ## Install
 
-Project-pinned dev tool:
+Install as a project-pinned dev tool:
 
 ```bash
 go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
-go tool gruff-go analyse .
-```
-
-Global binary:
-
-```bash
-go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
-gruff-go --help
-```
-
-Without installing:
-
-```bash
-go run github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0 analyse .
+go tool gruff-go init
+go tool gruff-go summary .
 ```
 
 From a source checkout:
@@ -58,7 +46,8 @@ From a source checkout:
 ```bash
 git clone https://github.com/blundergoat/gruff-go.git
 cd gruff-go
-go install ./cmd/gruff-go
+go build -o ./bin/gruff-go ./cmd/gruff-go
+./bin/gruff-go --help
 ```
 
 Linux, macOS, and Windows archives are attached to each [GitHub Release](https://github.com/blundergoat/gruff-go/releases). Releases include `checksums.txt`.
@@ -66,20 +55,26 @@ Linux, macOS, and Windows archives are attached to each [GitHub Release](https:/
 ## Quick Start
 
 ```bash
+# Create the project config.
+go tool gruff-go init
+
+# Review the current finding mix.
+go tool gruff-go summary .
+
 # Inspect the current module.
-gruff-go analyse .
+go tool gruff-go analyse .
 
 # Raise the failure floor while exploring an existing codebase.
-gruff-go analyse --min-severity critical .
+go tool gruff-go analyse --min-severity critical .
 
 # Emit SARIF for code scanning.
-gruff-go analyse --format sarif --min-severity critical . > gruff.sarif
+go tool gruff-go analyse --format sarif --min-severity critical . > gruff.sarif
 
 # Generate a fresh-start baseline.
-gruff-go analyse --generate-baseline gruff-baseline.json .
+go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 
 # Start the local dashboard.
-gruff-go dashboard --project .
+go tool gruff-go dashboard --project .
 ```
 
 Go's standard `flag` package stops parsing flags at the first non-flag argument. Put every `--flag` before path arguments.
@@ -97,11 +92,11 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | `dashboard` | Serve the local browser dashboard. |
 | `list`, `help` | Show command lists and command-specific help. |
 
-Run `gruff-go help <command>` for command-specific flags.
+Run `go tool gruff-go help <command>` for command-specific flags.
 
 ## Output Formats
 
-`gruff-go analyse --format <fmt>` accepts:
+`go tool gruff-go analyse --format <fmt>` accepts:
 
 | Format | Use it for |
 | --- | --- |
@@ -112,7 +107,7 @@ Run `gruff-go help <command>` for command-specific flags.
 | `github` | GitHub Actions workflow annotations. |
 | `html` | Self-contained inspection report. |
 
-`gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](docs/output-formats.md) for schema details and HTML flags.
+`go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](docs/output-formats.md) for schema details and HTML flags.
 
 ## Exit Codes
 
@@ -129,13 +124,13 @@ Run `gruff-go help <command>` for command-specific flags.
 Generic CI command:
 
 ```bash
-gruff-go analyse --format github --min-severity medium .
+go tool gruff-go analyse --format github --min-severity medium .
 ```
 
 SARIF upload jobs can use:
 
 ```bash
-gruff-go analyse --format sarif --min-severity critical . > gruff-go.sarif
+go tool gruff-go analyse --format sarif --min-severity critical . > gruff-go.sarif
 ```
 
 For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](docs/ci-integration.md) for GitHub Actions and GitLab examples.
@@ -185,19 +180,21 @@ The current checkout contains 41 rules across 9 pillars. `docs.config-field-comm
 
 See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 
+`list-rules` reports the effective rule state after applying project config. Use `go tool gruff-go list-rules --no-config` to inspect built-in defaults.
+
 ## Baselines And Changed-Code Scans
 
 Baselines suppress reviewed findings by fingerprint without disabling rules:
 
 ```bash
-gruff-go analyse --generate-baseline gruff-baseline.json .
-gruff-go analyse --baseline gruff-baseline.json .
+go tool gruff-go analyse --generate-baseline gruff-baseline.json .
+go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
 
 Changed-line scans use Git only when requested:
 
 ```bash
-gruff-go analyse --diff-base origin/main .
+go tool gruff-go analyse --diff-base origin/main .
 ```
 
 Display filters such as `--include-pillars`, `--exclude-rules`, and `--include-rules` reduce report noise without changing which rules execute.
@@ -205,11 +202,13 @@ Display filters such as `--include-pillars`, `--exclude-rules`, and `--include-r
 ## Dashboard
 
 ```bash
-gruff-go dashboard --project .
+go tool gruff-go dashboard --project .
 # Open http://127.0.0.1:8765/ in a browser.
 ```
 
 The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
+
+In polyglot repositories, remember that `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
 
 ## Trust Boundary
 

@@ -25,6 +25,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	args, ansiPref := extractAnsiFlags(args)
 	args, quiet := extractQuiet(args)
 	args, noInteraction := extractNoInteraction(args)
+	args = extractVerbose(args)
 	if quiet {
 		stdout = io.Discard
 	}
@@ -49,6 +50,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runBaseline(args[1:], stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
+	case "completion":
+		return runCompletion(args[1:], stdout, stderr)
 	case "list-rules":
 		return runListRules(args[1:], stdout, stderr)
 	case "summary":
@@ -81,13 +84,29 @@ func extractQuiet(args []string) ([]string, bool) {
 	quiet := false
 	for _, arg := range args {
 		switch arg {
-		case "-q", "--quiet":
+		case "-q", "--quiet", "--silent":
 			quiet = true
 		default:
 			out = append(out, arg)
 		}
 	}
 	return out, quiet
+}
+
+// extractVerbose accepts common Symfony-style verbosity flags. gruff-go does
+// not currently vary output by verbosity, but accepting these flags keeps the
+// global surface consistent across gruff implementations.
+func extractVerbose(args []string) []string {
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		switch arg {
+		case "-v", "-vv", "-vvv", "--verbose":
+			continue
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out
 }
 
 // isVersionFlag reports whether the argument requests version output.
@@ -166,7 +185,9 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
-	minSeverity := flags.String("min-severity", string(finding.SeverityMedium), "minimum severity that causes exit 1")
+	minSeverity := string(finding.SeverityMedium)
+	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
+	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
@@ -190,7 +211,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return flags, analyseFlagValues{}, false
 	}
-	failOn, err := finding.ParseSeverity(*minSeverity)
+	failOn, err := finding.ParseSeverity(minSeverity)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return flags, analyseFlagValues{}, false

@@ -65,7 +65,7 @@ func TestAnsiForcesEscapes(t *testing.T) {
 
 // TestHelpForCommandShowsUsage verifies help renders usage for each known subcommand.
 func TestHelpForCommandShowsUsage(t *testing.T) {
-	for _, cmd := range []string{"analyse", "baseline", "init", "list-rules", "summary", "report", "dashboard"} {
+	for _, cmd := range []string{"analyse", "baseline", "completion", "init", "list-rules", "summary", "report", "dashboard"} {
 		var out, errBuf bytes.Buffer
 		if code := Main([]string{"help", cmd}, &out, &errBuf); code != 0 {
 			t.Errorf("help %s exit = %d, stderr = %s", cmd, code, errBuf.String())
@@ -98,6 +98,28 @@ func TestListAliasMatchesUsage(t *testing.T) {
 	}
 	if listOut.String() != helpOut.String() {
 		t.Errorf("list and --help should produce identical output")
+	}
+}
+
+// TestGlobalCompatibilityAliases verifies cross-gruff global aliases are accepted.
+func TestGlobalCompatibilityAliases(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"--silent", "-v", "list"}, &out, &errBuf); code != 0 {
+		t.Fatalf("list with compatibility aliases exit = %d, stderr = %s", code, errBuf.String())
+	}
+	if out.String() != "" {
+		t.Fatalf("--silent should suppress normal output, got %q", out.String())
+	}
+}
+
+// TestCompletionCommand emits a shell completion script.
+func TestCompletionCommand(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"completion"}, &out, &errBuf); code != 0 {
+		t.Fatalf("completion exit = %d, stderr = %s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "complete -F _gruff_go_complete gruff-go") {
+		t.Fatalf("completion output missing bash registration: %s", out.String())
 	}
 }
 
