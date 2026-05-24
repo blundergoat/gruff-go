@@ -114,7 +114,7 @@ A score-neutral `design.*` finding derived from already-emitted base findings. C
 
 ### Default-Enabled Rule
 
-Built-in default state before config is applied. `docs.config-field-comment` is opt-in by default; this repository's dogfood config may enable it, which is why `list-rules --no-config` matters.
+Built-in default state before config is applied. Every shipped rule is enabled in registry metadata; path-scoped rules such as `docs.comment-rubric` and `docs.config-field-comment` may still be no-ops until `includePaths` is configured, which is why `list-rules --no-config` matters.
 
 ### Gitignored Discovery Skip
 

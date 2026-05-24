@@ -22,7 +22,25 @@ func TestDefaultsListRules(t *testing.T) {
 		got = append(got, definition.ID)
 		enabled[definition.ID] = definition.DefaultEnabled
 	}
-	want := []string{
+	want := defaultRuleIDs()
+	if len(got) != len(want) {
+		t.Fatalf("rules = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("rules = %#v, want %#v", got, want)
+		}
+	}
+	for _, id := range want {
+		if !enabled[id] {
+			t.Fatalf("rule %s should be default enabled", id)
+		}
+	}
+}
+
+// defaultRuleIDs returns the sorted built-in rule IDs expected from Defaults.
+func defaultRuleIDs() []string {
+	return []string{
 		"complexity.cognitive",
 		"complexity.cyclomatic",
 		"complexity.nesting-depth",
@@ -34,8 +52,12 @@ func TestDefaultsListRules(t *testing.T) {
 		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
 		"docs.package-comment",
+		"docs.suppression-without-rationale",
 		"maintainability.context-todo-production",
+		"maintainability.defer-in-loop",
 		"maintainability.ignored-error",
+		"maintainability.log-fatal-library",
+		"maintainability.loop-variable-address",
 		"maintainability.production-panic",
 		"modernisation.ioutil-deprecated",
 		"naming.acronym-case",
@@ -49,7 +71,9 @@ func TestDefaultsListRules(t *testing.T) {
 		"naming.receiver-consistency",
 		"security.archive-path-traversal",
 		"security.http-client-no-timeout",
+		"security.http-server-no-timeout",
 		"security.insecure-random-secret",
+		"security.permissive-file-mode",
 		"security.request-body-without-limit",
 		"security.shell-command",
 		"security.sql-string-query",
@@ -60,8 +84,10 @@ func TestDefaultsListRules(t *testing.T) {
 		"sensitive-data.connection-string",
 		"sensitive-data.gcp-service-account",
 		"sensitive-data.github-token",
+		"sensitive-data.gitlab-token",
 		"sensitive-data.google-api-key",
 		"sensitive-data.jwt-token",
+		"sensitive-data.npm-token",
 		"sensitive-data.private-key",
 		"sensitive-data.secret-pattern",
 		"sensitive-data.slack-token",
@@ -70,23 +96,12 @@ func TestDefaultsListRules(t *testing.T) {
 		"size.function-length",
 		"size.parameter-count",
 		"test-quality.empty-test",
+		"test-quality.fatal-in-goroutine",
 		"test-quality.helper-missing-t-helper",
 		"test-quality.no-failure-path",
 		"test-quality.parallel-range-capture",
 		"test-quality.skipped-test",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("rules = %#v, want %#v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("rules = %#v, want %#v", got, want)
-		}
-	}
-	for _, id := range want {
-		if !enabled[id] {
-			t.Fatalf("rule %s should be default enabled", id)
-		}
+		"test-quality.tempdir-misuse",
 	}
 }
 

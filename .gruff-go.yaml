@@ -1,7 +1,6 @@
 # gruff-go dogfood configuration.
-# Hand-tuned for this repository; `gruff-go init` will OVERWRITE this file
-# from the stock template and silently wipe project-specific tuning - see
-# .goat-flow/footguns/setup.md "init overwrites dogfood config" before regenerating.
+# Hand-tuned for this repository; `gruff-go init --force` safely merges existing
+# tuning and adds new registry rules, while `--force --reset` discards local tuning.
 # Run `gruff-go list-rules --format json` for the live rule catalogue.
 # Fresh start for existing findings: `gruff-go analyse --generate-baseline gruff-baseline.json .`.
 
@@ -18,19 +17,19 @@ paths:
     - '.codex/**'
     - '.github/**'
     - '.goat-flow/**'
-    - 'internal/rule/sensitive_test.go'
-    - 'internal/report/sensitive_redaction_test.go'
+    - internal/report/sensitive_redaction_test.go
+    - internal/rule/sensitive_test.go
 
 # Project-wide allowlists for noisy signals.
 # acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path
 # globs where sensitive-data rules may include the matched preview.
 allowlists:
   acceptedAbbreviations:
-    - ID
-    - HTTP
-    - JSON
-    - CLI
     - AST
+    - CLI
+    - HTTP
+    - ID
+    - JSON
   secretPreviews: []
 
 # Selection narrows the active rule set. Empty lists keep the default
@@ -42,43 +41,40 @@ selection:
   excludePillars: []
 
 rules:
-  # Nested control flow and boolean decisions add review cost even when branch
-  # count alone is below the cyclomatic threshold.
+  # Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.
   complexity.cognitive:
     enabled: true
     severity: warning
     threshold: 35
 
-  # Too many branches make a function harder to test and safely change.
+  # Flags Go functions whose branch count exceeds the default cyclomatic threshold.
   complexity.cyclomatic:
     enabled: true
     severity: warning
     threshold: 20
 
-  # Deeply nested control flow hides edge cases and makes review slower.
-  # Dogfood threshold is one stricter than the default (4 vs 5).
+  # Flags functions whose maximum control-flow nesting depth exceeds the configured threshold. Function literals reset the count.
   complexity.nesting-depth:
     enabled: true
     severity: warning
     threshold: 4
 
-  # Empty control-flow blocks usually mean unfinished or obsolete logic.
-  # Escalated above default (warning vs notice) for this project.
+  # Flags empty control-flow blocks that usually indicate unfinished or unnecessary code.
   dead-code.empty-block:
     enabled: true
     severity: warning
 
-  # Statements after terminal control flow are dead code and often hide stale logic.
+  # Flags statements that appear after return, panic, break, continue, or goto in the same block.
   dead-code.unreachable-code:
     enabled: true
     severity: notice
 
-  # Size plus complexity on the same function marks a structural refactor candidate.
+  # Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition.
   design.god-function:
     enabled: true
     severity: notice
 
-  # Files with findings across multiple pillars deserve whole-file triage.
+  # Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.
   design.hotspot-file:
     enabled: true
     severity: notice
@@ -86,57 +82,73 @@ rules:
       minFindings: 3
       minPillars: 2
 
-  # Dogfood scans hold maintainer-facing comments to a stricter floor than the
-  # default rule pack: every declaration needs context, and every package needs
-  # a summary. minWordsBeyondSymbol rejects comments that mostly restate names.
+  # Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply.
   docs.comment-rubric:
     enabled: true
     severity: warning
     threshold: 2
     options:
-      requirePackageSummary: true
-      requireFunctionComments: true
-      requireNamedTypeComments: true
-      requireConstComments: true
-      requireVarComments: true
       ignoreTests: false
       minWordsBeyondSymbol: 3
+      requireConstComments: true
+      requireFunctionComments: true
+      requireNamedTypeComments: true
+      requirePackageSummary: true
+      requireVarComments: true
 
-  # Exported struct fields should explain the config/report contracts they expose.
-  # Escalated above default (warning vs notice) for this project.
+  # Flags exported fields on struct types in configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope.
   docs.config-field-comment:
     enabled: true
     severity: warning
 
-  # Exported API symbols should carry Go doc comments for downstream readers.
-  # ignoreInternalPackages keeps internal/ package symbols out of scope.
+  # Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
   docs.exported-symbol-comment:
     enabled: true
     severity: notice
     options:
       ignoreInternalPackages: true
 
-  # Package comments give godoc users a clear entry point for each package.
+  # Flags Go packages that do not have a package-level comment in any file.
   docs.package-comment:
     enabled: true
     severity: notice
 
-  # TODO contexts in production code leave cancellation ownership ambiguous.
+  # Flags nolint and nosec suppression comments that do not explain why the suppression is intentional.
+  docs.suppression-without-rationale:
+    enabled: true
+    severity: notice
+
+  # Flags context.TODO calls in production files where cancellation ownership should be explicit.
   maintainability.context-todo-production:
     enabled: true
     severity: notice
 
-  # Error-looking values assigned to `_` should be handled or justified.
+  # Flags defer statements directly inside loops, where cleanup is delayed until the enclosing function returns.
+  maintainability.defer-in-loop:
+    enabled: true
+    severity: notice
+
+  # Flags error-looking values that are assigned directly to the blank identifier.
   maintainability.ignored-error:
     enabled: true
     severity: notice
 
-  # Reusable production code should return errors rather than panic with literal messages.
+  # Flags log.Fatal and os.Exit calls outside command entrypoints and tests.
+  maintainability.log-fatal-library:
+    enabled: true
+    severity: notice
+
+  # Flags storing, returning, or appending the address of a range variable copy.
+  maintainability.loop-variable-address:
+    enabled: true
+    severity: notice
+
+  # Flags direct literal panic calls in non-test, non-main production code.
   maintainability.production-panic:
     enabled: true
     severity: notice
 
-  # io/ioutil has direct io/os replacements in modern Go.
+  # Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go.
   modernisation.ioutil-deprecated:
     enabled: true
     severity: notice
@@ -159,7 +171,7 @@ rules:
     enabled: true
     severity: notice
 
-  # Placeholder names such as tmp or obj hide the role an identifier plays.
+  # Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review.
   naming.identifier-quality:
     enabled: true
     severity: notice
@@ -190,7 +202,7 @@ rules:
     enabled: true
     severity: notice
 
-  # Go package names should be short lowercase words without underscores.
+  # Flags Go package names that use underscores instead of short lowercase words.
   naming.package-underscore:
     enabled: true
     severity: notice
@@ -200,143 +212,170 @@ rules:
     enabled: true
     severity: notice
 
-  # Archive entry names must stay contained inside the extraction root.
+  # Flags archive extraction paths built from entry names without an obvious containment check.
   security.archive-path-traversal:
     enabled: true
     severity: notice
 
-  # HTTP clients should have explicit timeout ownership.
+  # Flags http.Client composite literals in production files that do not set Timeout.
   security.http-client-no-timeout:
     enabled: true
     severity: notice
 
-  # math/rand must not generate tokens, nonces, sessions, keys, or other secrets.
+  # Flags production http.Server literals and ListenAndServe helpers that do not set explicit timeout controls.
+  security.http-server-no-timeout:
+    enabled: true
+    severity: notice
+
+  # Flags math/rand use when the result is assigned to or returned from token, nonce, session, password, key, or other secret-looking contexts.
   security.insecure-random-secret:
     enabled: true
     severity: notice
 
-  # Request bodies should be size-limited before full reads.
+  # Flags os file and directory calls that use world-writable or overly permissive literal modes.
+  security.permissive-file-mode:
+    enabled: true
+    severity: notice
+
+  # Flags io.ReadAll-style reads of http.Request.Body in production handlers without nearby MaxBytesReader or LimitReader evidence.
   security.request-body-without-limit:
     enabled: true
     severity: notice
 
-  # Shell-routed exec.Command calls can turn string interpolation into command injection.
-  # Escalated above default (error vs warning) for this project.
+  # Flags exec.Command calls that invoke a shell interpreter with command strings.
   security.shell-command:
     enabled: true
     severity: error
 
-  # Dynamically constructed SQL query strings are injection-prone.
+  # Flags SQL execution calls whose query argument is constructed with string formatting or concatenation.
   security.sql-string-query:
     enabled: true
     severity: notice
 
-  # TLS configs that disable verification or allow obsolete protocols expose traffic.
+  # Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.
   security.tls-insecure-config:
     enabled: true
     severity: warning
 
-  # Weak crypto primitives need explicit security review before use.
+  # Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits.
   security.weak-crypto:
     enabled: true
     severity: notice
 
-  # Anthropic API keys grant model access billed against the owning org.
+  # Flags Anthropic API keys (sk-ant- prefix) embedded in source or text files.
   sensitive-data.anthropic-api-key:
     enabled: true
     severity: error
 
-  # AWS access key IDs in source can expose cloud credentials.
+  # Flags AWS access key identifiers (AKIA...) embedded in source or text files.
   sensitive-data.aws-access-key:
     enabled: true
     severity: error
 
-  # Connection strings with embedded passwords leak direct service access.
+  # Flags database/queue connection URLs that embed a username and password in the URI.
   sensitive-data.connection-string:
     enabled: true
     severity: error
 
-  # GCP service-account JSON key files leak full impersonation rights.
+  # Flags files containing both a `"type": "service_account"` marker and a PEM private-key header - the documented shape of a GCP service-account JSON key file. Fires independently of sensitive-data.private-key, so a real key file produces two findings.
   sensitive-data.gcp-service-account:
     enabled: true
     severity: critical
 
-  # GitHub PAT / OAuth / user / server / refresh tokens leak repo and org access.
+  # Flags GitHub personal-access, OAuth, user-to-server, server-to-server, and refresh tokens (gh[pousr]_ prefix) embedded in source or text files.
   sensitive-data.github-token:
     enabled: true
     severity: error
 
-  # Google API keys grant access to GCP services billed against the owning project.
+  # Flags GitLab personal, trigger, runner, and application tokens (glpat-, glptt-, glrt-, gloas-) embedded in source or text files.
+  sensitive-data.gitlab-token:
+    enabled: true
+    severity: error
+
+  # Flags Google API keys (AIza prefix plus 35 base64url characters) embedded in source or text files.
   sensitive-data.google-api-key:
     enabled: true
     severity: error
 
-  # JWT-shaped literals in source can expose signed tokens or test data copied from production.
+  # Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.
   sensitive-data.jwt-token:
     enabled: true
     severity: error
 
-  # Private keys in source require immediate rotation and removal.
+  # Flags npm access tokens (npm_ and npm_pat_ prefixes) embedded in source or text files.
+  sensitive-data.npm-token:
+    enabled: true
+    severity: error
+
+  # Flags PEM-encoded private keys embedded directly in source or text files.
   sensitive-data.private-key:
     enabled: true
     severity: critical
 
-  # Secret-like assignments catch broad API key, token, and password patterns.
+  # Flags high-risk secret-like key/value assignments in Go and text/config files.
   sensitive-data.secret-pattern:
     enabled: true
     severity: error
 
-  # Slack bot / user / app / refresh tokens leak workspace access.
+  # Flags Slack bot, user, app, and refresh tokens (xox[bpar]- prefix) embedded in source or text files.
   sensitive-data.slack-token:
     enabled: true
     severity: error
 
-  # Stripe live secret / publishable / restricted keys move real money.
+  # Flags Stripe secret, publishable, and restricted live-environment keys ((sk|pk|rk)_live_ prefix) embedded in source or text files.
   sensitive-data.stripe-key:
     enabled: true
     severity: error
 
-  # Very large files slow navigation and usually mix responsibilities.
+  # Flags Go files that exceed the default line-count threshold.
   size.file-length:
     enabled: true
     severity: warning
     threshold: 500
 
-  # Long functions are harder to understand, test, and refactor.
+  # Flags Go functions that exceed the default line-count threshold.
   size.function-length:
     enabled: true
     severity: warning
     threshold: 80
 
-  # Long parameter lists make call sites brittle and suggest an options struct.
-  # Dogfood threshold is stricter than the default (5 vs 8) and escalated to warning.
+  # Flags functions and methods whose parameter list exceeds the configured maximum, excluding the method receiver.
   size.parameter-count:
     enabled: true
     severity: warning
     threshold: 5
 
-  # Empty tests create false confidence without exercising behavior.
-  # Escalated above default (warning vs notice) for this project.
+  # Flags Go test functions whose body contains no executable statements.
   test-quality.empty-test:
     enabled: true
     severity: warning
 
-  # Test helpers that can fail should call t.Helper for accurate failure lines.
+  # Flags t.Fatal, t.Fatalf, and t.FailNow calls inside goroutines where they do not stop the parent test safely.
+  test-quality.fatal-in-goroutine:
+    enabled: true
+    severity: notice
+
+  # Flags non-test helper functions that accept testing.TB, *testing.T, or *testing.B and can fail the test but never call Helper.
   test-quality.helper-missing-t-helper:
     enabled: true
     severity: notice
 
-  # Tests need a path that can fail, not just execute code.
+  # Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.).
   test-quality.no-failure-path:
     enabled: true
     severity: notice
 
-  # Legacy Go modules should shadow range variables before parallel table-subtest capture.
+  # Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics.
   test-quality.parallel-range-capture:
     enabled: true
     severity: notice
 
-  # Skipped tests should stay visible so they do not become hidden debt.
+  # Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.
   test-quality.skipped-test:
+    enabled: true
+    severity: notice
+
+  # Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.
+  test-quality.tempdir-misuse:
     enabled: true
     severity: notice

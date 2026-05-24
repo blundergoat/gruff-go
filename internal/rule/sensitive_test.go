@@ -22,6 +22,9 @@ const (
 	rawStripeKey         = "sk_live_0000000000000000000000ZZ"
 	rawGoogleAPIKey      = "AIza00000000000000000000000000000000ZZZ"
 	rawAnthropicAPIKey   = "sk-ant-00000000000000000000ZZ"
+	rawNPMToken          = "npm_00000000000000000000ZZ"
+	rawNPMPatToken       = "npm_pat_00000000000000000000ZZ"
+	rawGitLabToken       = "glpat-aBcDeFgHiJkLmNoPqRsTuVwXyZ"
 	rawGCPServiceAccount = `{
   "type": "service_account",
   "project_id": "example-project",
@@ -139,6 +142,31 @@ func TestAnthropicAPIKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawAnthropicAPIKey)
 }
 
+func TestNPMTokenRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "npm_token = " + rawNPMToken + "\npat = " + rawNPMPatToken + "\n",
+	}
+	findings := NPMTokenRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 2 {
+		t.Fatalf("got %d findings, want 2", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawNPMToken)
+	assertNoRawSecret(t, findings[1], rawNPMPatToken)
+}
+
+func TestGitLabTokenRuleDetectsAndRedacts(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "gitlab_token = " + rawGitLabToken + "\n",
+	}
+	findings := GitLabTokenRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], rawGitLabToken)
+}
+
 // TestGoogleAPIKeyRuleRejectsShortPrefix asserts the regex's fixed-width
 // suffix requirement prevents a bare AIza prefix from firing as a finding.
 func TestGoogleAPIKeyRuleRejectsShortPrefix(t *testing.T) {
@@ -160,6 +188,28 @@ func TestSlackTokenRuleRejectsBarePrefix(t *testing.T) {
 	}
 	if got := (SlackTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
 		t.Fatalf("expected no findings for bare prefix, got %#v", got)
+	}
+}
+
+// TestNPMTokenRuleRejectsBarePrefix asserts a bare npm_ prefix is not matched as a token.
+func TestNPMTokenRuleRejectsBarePrefix(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "npm_token = npm_short\n",
+	}
+	if got := (NPMTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected no findings for bare npm prefix, got %#v", got)
+	}
+}
+
+// TestGitLabTokenRuleRejectsShortPrefix asserts a bare glpat- prefix is not matched as a token.
+func TestGitLabTokenRuleRejectsShortPrefix(t *testing.T) {
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "gitlab_token = glpat-short\n",
+	}
+	if got := (GitLabTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("expected no findings for short GitLab prefix, got %#v", got)
 	}
 }
 
@@ -265,6 +315,8 @@ func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 		StripeLiveKeyRule{}.Definition(),
 		GoogleAPIKeyRule{}.Definition(),
 		AnthropicAPIKeyRule{}.Definition(),
+		NPMTokenRule{}.Definition(),
+		GitLabTokenRule{}.Definition(),
 		GCPServiceAccountRule{}.Definition(),
 	} {
 		if !definition.DefaultEnabled {
@@ -288,6 +340,8 @@ func TestSensitiveDetectorsAreCleanOnInnocuousInput(t *testing.T) {
 		StripeLiveKeyRule{},
 		GoogleAPIKeyRule{},
 		AnthropicAPIKeyRule{},
+		NPMTokenRule{},
+		GitLabTokenRule{},
 		GCPServiceAccountRule{},
 	} {
 		if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {

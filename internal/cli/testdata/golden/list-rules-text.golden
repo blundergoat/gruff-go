@@ -9,8 +9,12 @@ docs.comment-rubric	documentation	low	parser	Comment rubric
 docs.config-field-comment	documentation	low	parser	Config field comment
 docs.exported-symbol-comment	documentation	low	parser	Exported symbol comment
 docs.package-comment	documentation	low	parser	Package comment
+docs.suppression-without-rationale	documentation	low	parser	Suppression without rationale
 maintainability.context-todo-production	maintainability	low	parser	Context TODO in production
+maintainability.defer-in-loop	maintainability	low	parser	Defer in loop
 maintainability.ignored-error	maintainability	low	parser	Ignored error
+maintainability.log-fatal-library	maintainability	low	parser	Library fatal exit
+maintainability.loop-variable-address	maintainability	low	parser	Range variable address escapes
 maintainability.production-panic	maintainability	low	parser	Production panic
 modernisation.ioutil-deprecated	modernisation	low	parser	Deprecated ioutil API
 naming.acronym-case	naming	low	parser	Acronym case
@@ -24,7 +28,9 @@ naming.package-underscore	naming	low	parser	Package name contains underscore
 naming.receiver-consistency	naming	low	parser	Receiver consistency
 security.archive-path-traversal	security	low	parser	Archive path traversal
 security.http-client-no-timeout	security	low	parser	HTTP client without timeout
+security.http-server-no-timeout	security	low	parser	HTTP server without timeout
 security.insecure-random-secret	security	low	parser	Insecure random secret
+security.permissive-file-mode	security	low	parser	Permissive file mode
 security.request-body-without-limit	security	low	parser	Request body read without limit
 security.shell-command	security	medium	parser	Shell command execution
 security.sql-string-query	security	low	parser	SQL string query construction
@@ -35,8 +41,10 @@ sensitive-data.aws-access-key	sensitive-data	high	parser	AWS access key id
 sensitive-data.connection-string	sensitive-data	high	parser	Connection string with embedded password
 sensitive-data.gcp-service-account	sensitive-data	critical	parser	GCP service-account JSON key
 sensitive-data.github-token	sensitive-data	high	parser	GitHub token literal
+sensitive-data.gitlab-token	sensitive-data	high	parser	GitLab token literal
 sensitive-data.google-api-key	sensitive-data	high	parser	Google API key literal
 sensitive-data.jwt-token	sensitive-data	high	parser	JWT token literal
+sensitive-data.npm-token	sensitive-data	high	parser	npm token literal
 sensitive-data.private-key	sensitive-data	critical	parser	Embedded private key
 sensitive-data.secret-pattern	sensitive-data	high	parser	Secret-like literal
 sensitive-data.slack-token	sensitive-data	high	parser	Slack token literal
@@ -45,7 +53,9 @@ size.file-length	size	medium	parser	File length
 size.function-length	size	medium	parser	Function length
 size.parameter-count	size	low	parser	Parameter count
 test-quality.empty-test	test-quality	low	parser	Empty test
+test-quality.fatal-in-goroutine	test-quality	low	parser	Fatal call in goroutine
 test-quality.helper-missing-t-helper	test-quality	low	parser	Test helper missing t.Helper
 test-quality.no-failure-path	test-quality	low	parser	Test cannot fail
 test-quality.parallel-range-capture	test-quality	low	parser	Parallel subtest captures range variable
 test-quality.skipped-test	test-quality	low	parser	Skipped test
+test-quality.tempdir-misuse	test-quality	low	parser	Test temp dir misuse

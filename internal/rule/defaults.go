@@ -25,34 +25,76 @@ func DefaultsConfigured(config Config) (Registry, error) {
 
 // defaultUnitRules builds the per-unit rule slice from strict config so DefaultsConfigured stays small.
 func defaultUnitRules(config Config) []UnitRule {
+	rules := []UnitRule{}
+	rules = append(rules, defaultMetricUnitRules(config)...)
+	rules = append(rules, defaultMaintainabilityUnitRules()...)
+	rules = append(rules, defaultSecurityUnitRules()...)
+	rules = append(rules, defaultDocumentationUnitRules(config)...)
+	rules = append(rules, defaultSensitiveDataUnitRules(config)...)
+	rules = append(rules, defaultNamingUnitRules(config)...)
+	rules = append(rules, defaultTestQualityUnitRules()...)
+	return rules
+}
+
+// defaultMetricUnitRules returns size, complexity, and dead-code unit rules.
+func defaultMetricUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
 		CognitiveComplexityRule{MaxComplexity: intThreshold(config, "complexity.cognitive", "maxComplexity", cognitiveComplexityThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
-		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
 		EmptyBlockRule{},
 		UnreachableCodeRule{},
+		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
+		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
+	}
+}
+
+// defaultMaintainabilityUnitRules returns lifecycle and production maintainability checks.
+func defaultMaintainabilityUnitRules() []UnitRule {
+	return []UnitRule{
 		IgnoredErrorRule{},
 		ContextTODOProductionRule{},
 		ProductionPanicRule{},
+		DeferInLoopRule{},
+		LogFatalLibraryRule{},
+		LoopVariableAddressRule{},
 		IoutilDeprecatedRule{},
+	}
+}
+
+// defaultSecurityUnitRules returns parser-only security checks.
+func defaultSecurityUnitRules() []UnitRule {
+	return []UnitRule{
 		ShellCommandRule{},
 		TLSInsecureConfigRule{},
 		HTTPClientNoTimeoutRule{},
+		HTTPServerNoTimeoutRule{},
+		PermissiveFileModeRule{},
 		RequestBodyWithoutLimitRule{},
 		SQLStringQueryRule{},
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
 		WeakCryptoRule{},
-		SkippedTestRule{},
-		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
-		NestingDepthRule{MaxDepth: intThreshold(config, "complexity.nesting-depth", "maxDepth", nestingDepthThreshold)},
+	}
+}
+
+// defaultDocumentationUnitRules returns documentation checks that run per source unit.
+func defaultDocumentationUnitRules(config Config) []UnitRule {
+	return []UnitRule{
+		SuppressionWithoutRationaleRule{},
 		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
 		ConfigFieldCommentRule{
 			IncludePaths: stringSliceOption(config, "docs.config-field-comment", "includePaths"),
 			ExcludePaths: stringSliceOption(config, "docs.config-field-comment", "excludePaths"),
 		},
+	}
+}
+
+// defaultSensitiveDataUnitRules returns vendor and generic sensitive-data checks.
+func defaultSensitiveDataUnitRules(config Config) []UnitRule {
+	return []UnitRule{
+		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
 		PrivateKeyRule{},
 		AWSAccessKeyRule{},
 		JWTTokenRule{},
@@ -63,6 +105,14 @@ func defaultUnitRules(config Config) []UnitRule {
 		GoogleAPIKeyRule{},
 		AnthropicAPIKeyRule{},
 		GCPServiceAccountRule{},
+		NPMTokenRule{},
+		GitLabTokenRule{},
+	}
+}
+
+// defaultNamingUnitRules returns identifier and package-local naming checks.
+func defaultNamingUnitRules(config Config) []UnitRule {
+	return []UnitRule{
 		AcronymCaseRule{
 			Acronyms:              stringSliceOption(config, "naming.acronym-case", "acronyms"),
 			Allow:                 stringSliceOption(config, "naming.acronym-case", "allow"),
@@ -89,10 +139,19 @@ func defaultUnitRules(config Config) []UnitRule {
 			MinFunctionLines: intThreshold(config, "naming.contextual-generic", "minFunctionLines", contextualGenericFunctionLinesThreshold),
 			RequireMultiple:  boolPointer(boolOption(config, "naming.contextual-generic", "requireMultiple", true)),
 		},
+	}
+}
+
+// defaultTestQualityUnitRules returns unit-level test-quality checks.
+func defaultTestQualityUnitRules() []UnitRule {
+	return []UnitRule{
+		SkippedTestRule{},
 		EmptyTestRule{},
 		HelperMissingTHelperRule{},
 		NoFailurePathTestRule{},
 		ParallelRangeCaptureRule{},
+		FatalInGoroutineRule{},
+		TempDirMisuseRule{},
 	}
 }
 

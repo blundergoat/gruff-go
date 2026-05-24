@@ -324,6 +324,33 @@
               }
             },
             {
+              "id": "docs.suppression-without-rationale",
+              "name": "Suppression without rationale",
+              "shortDescription": {
+                "text": "Suppression without rationale"
+              },
+              "fullDescription": {
+                "text": "Flags nolint and nosec suppression comments that do not explain why the suppression is intentional."
+              },
+              "help": {
+                "text": "Add a short reason after the suppression, such as `-- false positive because ...` or `// tracked in ISSUE-123`."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "comments",
+                  "documentation"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "maintainability.context-todo-production",
               "name": "Context TODO in production",
               "shortDescription": {
@@ -350,6 +377,32 @@
               }
             },
             {
+              "id": "maintainability.defer-in-loop",
+              "name": "Defer in loop",
+              "shortDescription": {
+                "text": "Defer in loop"
+              },
+              "fullDescription": {
+                "text": "Flags defer statements directly inside loops, where cleanup is delayed until the enclosing function returns."
+              },
+              "help": {
+                "text": "Move the loop body into a helper function or close the resource explicitly before the next iteration."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "lifecycle"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "maintainability.ignored-error",
               "name": "Ignored error",
               "shortDescription": {
@@ -369,6 +422,59 @@
                 "defaultEnabled": true,
                 "tags": [
                   "errors"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.log-fatal-library",
+              "name": "Library fatal exit",
+              "shortDescription": {
+                "text": "Library fatal exit"
+              },
+              "fullDescription": {
+                "text": "Flags log.Fatal and os.Exit calls outside command entrypoints and tests."
+              },
+              "help": {
+                "text": "Return an error to the caller and let command/bootstrap code decide whether to terminate the process."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "errors",
+                  "lifecycle"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.loop-variable-address",
+              "name": "Range variable address escapes",
+              "shortDescription": {
+                "text": "Range variable address escapes"
+              },
+              "fullDescription": {
+                "text": "Flags storing, returning, or appending the address of a range variable copy."
+              },
+              "help": {
+                "text": "Take the address of the indexed collection element, or copy the value into a deliberately scoped variable before storing its address."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "loops"
                 ]
               },
               "defaultConfiguration": {
@@ -823,6 +929,33 @@
               }
             },
             {
+              "id": "security.http-server-no-timeout",
+              "name": "HTTP server without timeout",
+              "shortDescription": {
+                "text": "HTTP server without timeout"
+              },
+              "fullDescription": {
+                "text": "Flags production http.Server literals and ListenAndServe helpers that do not set explicit timeout controls."
+              },
+              "help": {
+                "text": "Configure ReadHeaderTimeout, ReadTimeout, or WriteTimeout on http.Server and call ListenAndServe on that server value."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.insecure-random-secret",
               "name": "Insecure random secret",
               "shortDescription": {
@@ -842,6 +975,33 @@
                 "defaultEnabled": true,
                 "tags": [
                   "random",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.permissive-file-mode",
+              "name": "Permissive file mode",
+              "shortDescription": {
+                "text": "Permissive file mode"
+              },
+              "fullDescription": {
+                "text": "Flags os file and directory calls that use world-writable or overly permissive literal modes."
+              },
+              "help": {
+                "text": "Use the least permissive mode needed, such as 0600 for private files, 0644 for public files, or 0755 for directories."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "filesystem",
                   "security"
                 ]
               },
@@ -1117,6 +1277,32 @@
               }
             },
             {
+              "id": "sensitive-data.gitlab-token",
+              "name": "GitLab token literal",
+              "shortDescription": {
+                "text": "GitLab token literal"
+              },
+              "fullDescription": {
+                "text": "Flags GitLab personal, trigger, runner, and application tokens (glpat-, glptt-, glrt-, gloas-) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the token in GitLab, then load credentials from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
               "id": "sensitive-data.google-api-key",
               "name": "Google API key literal",
               "shortDescription": {
@@ -1158,6 +1344,32 @@
                 "pillar": "sensitive-data",
                 "defaultSeverity": "high",
                 "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.npm-token",
+              "name": "npm token literal",
+              "shortDescription": {
+                "text": "npm token literal"
+              },
+              "fullDescription": {
+                "text": "Flags npm access tokens (npm_ and npm_pat_ prefixes) embedded in source or text files."
+              },
+              "help": {
+                "text": "Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "high",
+                "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -1374,6 +1586,32 @@
               }
             },
             {
+              "id": "test-quality.fatal-in-goroutine",
+              "name": "Fatal call in goroutine",
+              "shortDescription": {
+                "text": "Fatal call in goroutine"
+              },
+              "fullDescription": {
+                "text": "Flags t.Fatal, t.Fatalf, and t.FailNow calls inside goroutines where they do not stop the parent test safely."
+              },
+              "help": {
+                "text": "Report the error back to the parent goroutine and fail the test from the parent with t.Fatal or t.Fatalf."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "test-quality.helper-missing-t-helper",
               "name": "Test helper missing t.Helper",
               "shortDescription": {
@@ -1467,6 +1705,32 @@
                 "pillar": "test-quality",
                 "defaultSeverity": "low",
                 "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.tempdir-misuse",
+              "name": "Test temp dir misuse",
+              "shortDescription": {
+                "text": "Test temp dir misuse"
+              },
+              "fullDescription": {
+                "text": "Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available."
+              },
+              "help": {
+                "text": "Use t.TempDir() for per-test isolation and automatic cleanup."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [

@@ -22,6 +22,8 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	rawSecret := "AKIAIOSFODNN7EXAMPLE"
 	rawPassword := "supersecretpassword"
 	rawPrivateKey := "-----BEGIN RSA PRIVATE KEY-----"
+	rawNPMToken := "npm_00000000000000000000ZZ"
+	rawGitLabToken := "glpat-aBcDeFgHiJkLmNoPqRsTuVwXyZ"
 
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:    "/repo",
@@ -60,6 +62,26 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Pillar:     finding.PillarSensitiveData,
 				Metadata:   map[string]any{"preview": "-----B..." + "KEY-"},
 			},
+			{
+				RuleID:     "sensitive-data.npm-token",
+				Message:    "npm token literal detected",
+				File:       "secrets.env",
+				Location:   &finding.Location{Line: 4},
+				Severity:   finding.SeverityHigh,
+				Confidence: finding.ConfidenceHigh,
+				Pillar:     finding.PillarSensitiveData,
+				Metadata:   map[string]any{"preview": "npm_00..." + "00ZZ"},
+			},
+			{
+				RuleID:     "sensitive-data.gitlab-token",
+				Message:    "GitLab token literal detected",
+				File:       "secrets.env",
+				Location:   &finding.Location{Line: 5},
+				Severity:   finding.SeverityHigh,
+				Confidence: finding.ConfidenceHigh,
+				Pillar:     finding.PillarSensitiveData,
+				Metadata:   map[string]any{"preview": "glpat-..." + "VwXyZ"},
+			},
 		},
 		Definitions: defaultDefinitions(),
 	})
@@ -76,7 +98,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		{"html", func(buf *bytes.Buffer) error { return WriteHTML(buf, report, HTMLOptions{}) }},
 	}
 
-	leaks := []string{rawSecret, rawPassword, rawPrivateKey}
+	leaks := []string{rawSecret, rawPassword, rawPrivateKey, rawNPMToken, rawGitLabToken}
 
 	for _, format := range formats {
 		t.Run(format.name, func(t *testing.T) {
