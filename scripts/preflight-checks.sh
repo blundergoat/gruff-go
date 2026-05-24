@@ -193,8 +193,14 @@ check_file_contains() {
 check_package_versions() {
     local version=$1
     if ! command -v node >/dev/null 2>&1; then
-        printf 'node is required to verify package.json and package-lock.json versions'
-        return 1
+        # In release mode we insist on the package.json/package-lock.json check;
+        # locally we skip silently so Go-only developers can still run preflight,
+        # matching how check_npm_audit and check_go_vuln handle their tooling.
+        if ((RELEASE_MODE == 1)); then
+            printf 'node is required to verify package.json and package-lock.json versions'
+            return 1
+        fi
+        return 0
     fi
 
     node - "$REPO_ROOT/package.json" "$REPO_ROOT/package-lock.json" "$version" <<'NODE'

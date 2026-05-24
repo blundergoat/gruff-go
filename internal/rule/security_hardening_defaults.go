@@ -100,25 +100,34 @@ func (PermissiveFileModeRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding
 		if !ok {
 			return true
 		}
-		operation, modeIndex, fileCreation, ok := fileModeCallShape(call, osPackages)
-		if !ok || len(call.Args) <= modeIndex {
+		shape, ok := fileModeCallShape(call, osPackages)
+		if !ok || len(call.Args) <= shape.modeIndex {
 			return true
 		}
-		mode, rendered, ok := literalFileMode(call.Args[modeIndex], osPackages, fsPackages)
+		// The kernel ignores the mode argument unless the flags include O_CREATE,
+		// so flagging "permissive" modes on a read-only OpenFile is a false positive.
+		// Only skip when we can statically prove O_CREATE is absent; opaque flag
+		// expressions fall through to the existing mode check to avoid false negatives.
+		if shape.creationFlagsIndex >= 0 && shape.creationFlagsIndex < len(call.Args) {
+			if hasCreate, decoded := openFileFlagsCanCreate(call.Args[shape.creationFlagsIndex], osPackages); decoded && !hasCreate {
+				return true
+			}
+		}
+		mode, rendered, ok := literalFileMode(call.Args[shape.modeIndex], osPackages, fsPackages)
 		if !ok {
 			return true
 		}
-		reason, ok := permissiveModeReason(mode, fileCreation)
+		reason, ok := permissiveModeReason(mode, shape.fileCreation)
 		if !ok {
 			return true
 		}
-		position := unit.FileSet.Position(call.Args[modeIndex].Pos())
+		position := unit.FileSet.Position(call.Args[shape.modeIndex].Pos())
 		findings = append(findings, finding.Finding{
 			Message:  "filesystem call uses a permissive file mode",
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: position.Line, Column: position.Column},
 			Metadata: map[string]any{
-				"call":   operation,
+				"call":   shape.operation,
 				"mode":   rendered,
 				"reason": reason,
 			},
@@ -163,26 +172,65 @@ func isHTTPListenAndServeHelper(call *ast.CallExpr, httpPackages map[string]bool
 		selectorCallMatches(call, httpPackages, "ListenAndServeTLS")
 }
 
+// fileModeCallInfo captures the shape of an os filesystem call that takes a mode argument.
+// creationFlagsIndex is the position of a flags argument whose O_CREATE bit gates whether
+// the OS applies the mode at all; it is -1 when the mode is always honoured.
+type fileModeCallInfo struct {
+	operation          string
+	modeIndex          int
+	creationFlagsIndex int
+	fileCreation       bool
+}
+
 // fileModeCallShape returns the call name and mode argument offset for os helpers with file modes.
-func fileModeCallShape(call *ast.CallExpr, osPackages map[string]bool) (string, int, bool, bool) {
+func fileModeCallShape(call *ast.CallExpr, osPackages map[string]bool) (fileModeCallInfo, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return "", 0, false, false
+		return fileModeCallInfo{}, false
 	}
 	receiver, ok := selector.X.(*ast.Ident)
 	if !ok || !osPackages[receiver.Name] {
-		return "", 0, false, false
+		return fileModeCallInfo{}, false
 	}
 	switch selector.Sel.Name {
 	case "OpenFile":
-		return receiver.Name + ".OpenFile", 2, true, true
+		return fileModeCallInfo{operation: receiver.Name + ".OpenFile", modeIndex: 2, creationFlagsIndex: 1, fileCreation: true}, true
 	case "Chmod":
-		return receiver.Name + ".Chmod", 1, false, true
+		return fileModeCallInfo{operation: receiver.Name + ".Chmod", modeIndex: 1, creationFlagsIndex: -1, fileCreation: false}, true
 	case "Mkdir", "MkdirAll":
-		return receiver.Name + "." + selector.Sel.Name, 1, false, true
+		return fileModeCallInfo{operation: receiver.Name + "." + selector.Sel.Name, modeIndex: 1, creationFlagsIndex: -1, fileCreation: false}, true
 	default:
-		return "", 0, false, false
+		return fileModeCallInfo{}, false
 	}
+}
+
+// openFileFlagsCanCreate walks an os.OpenFile flags expression (typically an OR-chain
+// of os.O_* selectors) and reports whether O_CREATE appears. The second return value is
+// true only when every leaf in the expression is a recognisable os.O_* selector; an
+// unrecognised leaf (variable, function call, foreign package) flips decoded to false
+// so the caller falls back to assuming creation is possible.
+func openFileFlagsCanCreate(expr ast.Expr, osPackages map[string]bool) (hasCreate, decoded bool) {
+	switch node := expr.(type) {
+	case *ast.ParenExpr:
+		return openFileFlagsCanCreate(node.X, osPackages)
+	case *ast.BinaryExpr:
+		if node.Op.String() != "|" {
+			return false, false
+		}
+		xCreate, xDecoded := openFileFlagsCanCreate(node.X, osPackages)
+		yCreate, yDecoded := openFileFlagsCanCreate(node.Y, osPackages)
+		return xCreate || yCreate, xDecoded && yDecoded
+	case *ast.SelectorExpr:
+		receiver, ok := node.X.(*ast.Ident)
+		if !ok || !osPackages[receiver.Name] {
+			return false, false
+		}
+		if len(node.Sel.Name) < 2 || node.Sel.Name[:2] != "O_" {
+			return false, false
+		}
+		return node.Sel.Name == "O_CREATE", true
+	}
+	return false, false
 }
 
 // literalFileMode extracts a literal or ModePerm value from an expression.

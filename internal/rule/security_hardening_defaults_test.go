@@ -188,6 +188,49 @@ func fixture() {
 `,
 			want: 0,
 		},
+		{
+			name: "open file without O_CREATE ignores permissive mode",
+			file: "files.go",
+			code: `// Package sample is a test package.
+package sample
+
+import "os"
+
+func readOnly() {
+	_, _ = os.OpenFile("secret.txt", os.O_RDONLY, 0666)
+	_, _ = os.OpenFile("script.sh", os.O_RDWR, 0755)
+}
+`,
+			want: 0,
+		},
+		{
+			name: "open file with opaque flags falls back to flagging",
+			file: "files.go",
+			code: `// Package sample is a test package.
+package sample
+
+import "os"
+
+func dynamic(flags int) {
+	_, _ = os.OpenFile("secret.txt", flags, 0666)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "open file with O_CREATE buried in OR chain still flags",
+			file: "files.go",
+			code: `// Package sample is a test package.
+package sample
+
+import "os"
+
+func writeFile() {
+	_, _ = os.OpenFile("secret.txt", os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0666)
+}
+`,
+			want: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -12,6 +12,9 @@
 - Fresh-start summary hints now quote shell-sensitive input paths before rendering copy/paste commands.
 - `gruff-go completion` now reports completion-script write failures instead of returning success after a failed stdout write.
 - Local and CI Go commands now prefer Go 1.25.10 via `go.mod` toolchain metadata, clearing current standard-library `govulncheck` findings without suppressing the audit.
+- `security.permissive-file-mode` no longer flags `os.OpenFile` calls whose flags are statically known to omit `O_CREATE`, since the kernel ignores the mode argument in that case. Opaque (variable or function-call) flag expressions still flag conservatively to avoid false negatives.
+- `scripts/preflight-checks.sh` now skips the `package.json`/`package-lock.json` version check when `node` is not installed in local mode, matching the existing `SKIP_EXIT` behaviour of `check_npm_audit` and `check_go_vuln`. `--release` mode still hard-fails so release-time invariants stay strict.
+- Renamed ten `internal/rule/*_m[07|08|37|38]*.go` files to topic-based names (`security_hardening_defaults.go`, `security_sql_and_archive_test.go`, `security_crypto_strength_test.go`, `maintainability_runtime_pitfalls.go`, `test_quality_helper_and_parallel.go`, `test_quality_async_and_tempdir.go`, and their `_test.go` peers). The prior `_m08`/`_m37`/`_m38` filenames survived an earlier milestone-identifier cleanup that only touched markdown and doc comments.
 
 ### Changed
 

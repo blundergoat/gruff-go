@@ -5,6 +5,14 @@ last_reviewed: 2026-05-24
 
 # Workflow Lessons
 
+## Lesson: Never name source files after internal milestone identifiers
+
+**Created:** 2026-05-24
+
+**Incident:** `internal/rule/` carried ten files named after retired internal milestone IDs: `security_m08.go`, `security_m08_test.go`, `security_m37_test.go`, `security_m38_test.go`, `maintainability_m08.go`, `maintainability_m08_test.go`, `test_quality_m07.go`, `test_quality_m07_test.go`, `test_quality_m08.go`, `test_quality_m08_test.go`. Commit `57dbcab` ("update rule registry to 64 default-enabled rules") and its predecessors had explicitly cleaned `M01`-`M38` milestone references out of ADR titles, doc comments, footguns, `CONTRIBUTING.md`, and `docs/output-formats.md` (see the CHANGELOG entry under `[0.1.1]`), but the cleanup only touched markdown and doc-comment prose — file names were never audited. When the user discovered the leftover file names mid-review, they pushed back hard ("files should NEVER have milestone m* name!!!!"). Subsequent rule additions in commits `e027997`, `4ba27c5`, and `29efb39` had also propagated the legacy pattern by following the closest existing example rather than checking the cleanup contract. The ten files were renamed in the same `0.1.1` release to topic-based names (`security_hardening_defaults.go`, `maintainability_runtime_pitfalls.go`, `test_quality_helper_and_parallel.go`, `test_quality_async_and_tempdir.go`, `security_sql_and_archive_test.go`, `security_crypto_strength_test.go`, and matching `_test.go` peers).
+
+**Do differently:** When creating a new file under `internal/rule/` (or anywhere else), name it after its subject — `security_permissive_file_mode.go`, `security_request_body_limit.go`, `test_quality_sleep_in_test.go` — not after an internal milestone, sprint, or ticket identifier. When doing a cleanup pass that removes internal vocabulary from prose, also run `git ls-files | grep -iE "(_m[0-9]+|m[0-9]+_)"` (and any project-specific identifier patterns) before declaring the pass complete, because file names survive every grep against `*.md` and doc-comment text. Pattern-matching against the closest existing file is a primary vector for this kind of drift: when the directory already contains legacy-named files, copy the *naming convention* the user wants, not the *filename shape* of a peer.
+
 ## Lesson: Check git history before treating dogfood noise as a rubric gap
 
 **Created:** 2026-05-24
