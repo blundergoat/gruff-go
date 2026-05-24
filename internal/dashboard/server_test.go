@@ -44,17 +44,22 @@ func TestServeShutsDownOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var stdout, stderr bytes.Buffer
 
+	ready := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
 		done <- Serve(ctx, &stdout, &stderr, Options{
 			Host:        "127.0.0.1",
 			Port:        ephemeralPort(t),
 			ScanTimeout: time.Second,
+			Ready:       ready,
 		})
 	}()
 
-	// Give the server a moment to bind.
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not signal ready within 2s")
+	}
 	cancel()
 
 	select {

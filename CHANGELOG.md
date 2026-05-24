@@ -3,8 +3,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- `test-quality.sleep-in-test` flags `time.Sleep` call sites inside `_test.go` files. Sleeps are the dominant cause of flaky Go tests; the rule directs maintainers toward channel- or fake-clock-based synchronisation. Low severity, parser capability.
+- `complexity.npath` flags functions whose acyclic-path count (modified NPath) exceeds the configured threshold. The formula treats `return`, `panic`, `os.Exit`, `log.Fatal*`, and `runtime.Goexit` as terminating so idiomatic Go error-as-value chains grow linearly; nested switches and multi-way if/else without terminators still flag. Default threshold `1024` (medium severity, parser capability). `gruff-go`'s own dogfood config raises the threshold to `9000` because the scanner's dispatchers (rule registry, config validators, comment-rubric aggregator) have legitimately wide branch fan-out.
+- `dead-code.unused-private-function` flags package-private (lowercase-leading) top-level functions whose names are not referenced anywhere else in the same parsed package. The rule is project-level and precision-first: methods, `init`/`main`, external `_test` packages, and packages that import `reflect` are excluded. Low severity, parser capability.
+- `dashboard.Options.Ready` is an optional `chan<- struct{}` that closes once the listener has bound and the start-up banner has been written. Tests and supervised launchers use it to synchronise teardown without polling or sleeping.
+
 ### Changed
 
+- Removed the parser-only-as-architectural-commitment ADR. v0.1 rules still report `parser` capability — that is now documented as the current runtime state rather than a binding design ceiling. Future rules that need type or SSA capability declare the higher tier and depend on the matching runtime support landing.
+- Rewrote tracked ADRs, footguns, `CONTRIBUTING.md`, `docs/output-formats.md`, and the `config_field_comment_test.go` doc comment to remove references to internal milestone identifiers (`M01`–`M38`). Milestone task files live under the workspace-local `.goat-flow/tasks/` directory which is gitignored, so external readers had no way to resolve those references.
+- Refactored `dashboard.Serve` to close the new `Ready` channel after the listener binds and the start-up banner prints; `TestServeShutsDownOnContextCancel` now waits on `Ready` instead of sleeping 50ms before cancelling, eliminating a long-standing flake-prone pattern.
 - `test-quality.parallel-range-capture` now reports only when the nearest `go.mod` declares `go < 1.22`; modules using Go 1.22+ range-loop semantics, and files with no module metadata, are treated as out of scope.
 - `gruff-go init --force` is now a safe regenerate-with-merge: it parses the existing `.gruff-go.yaml`, splices `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, and every per-rule `enabled`/`severity`/`threshold`/`thresholds`/`options` override into the rendered output, then adds blocks for rules new to the registry at defaults. The legacy destructive overwrite is now opt-in via the new `--force --reset` combination. Prevents the dogfood-config wipe behaviour that previously destroyed project-specific tuning on every regenerate (see `.goat-flow/footguns/setup.md`).
 - `docs.config-field-comment` remains default-enabled but now does nothing until `includePaths` is configured, preventing broad exported-field documentation noise while preserving opt-in checks for configuration schema files.

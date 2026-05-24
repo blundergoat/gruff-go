@@ -43,6 +43,7 @@ func defaultMetricUnitRules(config Config) []UnitRule {
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
 		CognitiveComplexityRule{MaxComplexity: intThreshold(config, "complexity.cognitive", "maxComplexity", cognitiveComplexityThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
+		NPathComplexityRule{MaxComplexity: intThreshold(config, "complexity.npath", "maxComplexity", npathThreshold)},
 		EmptyBlockRule{},
 		UnreachableCodeRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
@@ -152,6 +153,7 @@ func defaultTestQualityUnitRules() []UnitRule {
 		ParallelRangeCaptureRule{},
 		FatalInGoroutineRule{},
 		TempDirMisuseRule{},
+		SleepInTestRule{},
 	}
 }
 
@@ -165,6 +167,7 @@ func defaultProjectRules(config Config) []ProjectRule {
 			AllowMixed:   stringSliceOption(config, "naming.receiver-consistency", "allowMixed"),
 			InspectGroup: stringOption(config, "naming.receiver-consistency", "inspectGroup", "both"),
 		},
+		UnusedPrivateFunctionRule{},
 		CommentRubricRule{
 			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
 			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),

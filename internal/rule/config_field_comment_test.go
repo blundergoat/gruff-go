@@ -10,7 +10,7 @@ import (
 )
 
 // configFieldRuleScoped returns a ConfigFieldCommentRule pinned to the canonical includePaths used
-// by the M29 fixture tests; tests that need different scopes build the rule inline.
+// by the configured-paths fixture tests; tests that need different scopes build the rule inline.
 func configFieldRuleScoped() ConfigFieldCommentRule {
 	return ConfigFieldCommentRule{IncludePaths: []string{"internal/config/**"}}
 }

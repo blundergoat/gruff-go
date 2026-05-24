@@ -3,11 +3,11 @@
 **Status:** Accepted
 **Date:** 2026-05-18
 **Author(s):** Codex, human direction
-**Ticket/Context:** `.goat-flow/tasks/0.1/M23-comment-rubrics-for-human-maintainers.md`, `.goat-flow/tasks/0.1/M24-naming-rubric-expansion.md`
+**Ticket/Context:** comment-rubric and naming-rubric expansion work (workspace-local plans)
 
 ## Context
 
-M23 added `docs.comment-rubric` as a stricter, default-disabled maintainer-comment rubric. The first implementation exposed two configured values for the package-summary check: `minPackageCommentLines` and `minPackageCommentWords`. That made the rubric look like a compound warning/error-style range even though the project wanted one calibrated value and one configured severity.
+The first implementation of `docs.comment-rubric` (a stricter, default-disabled maintainer-comment rubric) exposed two configured values for the package-summary check: `minPackageCommentLines` and `minPackageCommentWords`. That made the rubric look like a compound warning/error-style range even though the project wanted one calibrated value and one configured severity.
 
 The human correction was explicit: rubric configuration should not be a warning/error range, and it should not expose multiple rubric values. A rubric should have one value and one severity.
 

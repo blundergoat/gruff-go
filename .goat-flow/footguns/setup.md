@@ -94,7 +94,7 @@ Evidence:
 
 The repo name plus `go.mod` can make agents assume a working Go application, test suite, or conventional runtime layout. Current files prove only module metadata and placeholder Makefile behavior, so Go-specific behavior claims are unsupported until source files are added.
 
-Resolved 2026-05-13 by M02 adding `cmd/gruff-go/` and `internal/` packages.
+Resolved 2026-05-13 by adding `cmd/gruff-go/` and `internal/` packages.
 
 ## Footgun: Scanner foundation exists, but no built-in rules exist yet
 
@@ -103,10 +103,10 @@ Resolved 2026-05-13 by M02 adding `cmd/gruff-go/` and `internal/` packages.
 hallucination-risk: high
 
 Evidence:
-- Historical implementation detail: the M02 default registry was empty before M03.
+- Historical implementation detail: the initial default registry was empty before the rule pack landed.
 - Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` printed `"rules": []` and exited 0.
 - Command measured 2026-05-13: `go run ./cmd/gruff-go analyse --format json .` printed `"findingsCount": 0` and exited 0.
 
-The CLI can discover files, parse Go, emit diagnostics, and render deterministic reports, but it does not yet enforce code-quality rules. Do not claim quality scanning coverage until M03 adds default-enabled rules and fixtures.
+The CLI can discover files, parse Go, emit diagnostics, and render deterministic reports, but it does not yet enforce code-quality rules. Do not claim quality scanning coverage until default-enabled rules and fixtures land.
 
-Resolved 2026-05-13 by M03 adding five default-enabled MVP rules and scoring.
+Resolved 2026-05-13 by adding five default-enabled MVP rules and scoring.

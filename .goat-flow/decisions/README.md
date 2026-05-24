@@ -29,7 +29,7 @@ Do not write an ADR for routine implementation details, temporary workarounds, b
 
 ## Naming
 
-ADR files must be named `ADR-NNN-kebab-case-title.md`, for example `ADR-001-cache-signature-policy.md`.
+ADR files must be named `ADR-NNN-kebab-case-title.md`, for example `ADR-042-cache-signature-policy.md`.
 
 Allowed non-ADR file: `README.md`.
 

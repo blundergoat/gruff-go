@@ -8,7 +8,7 @@
 
 ## Context
 
-M04 added operational scanner surfaces after core findings became deterministic: config, baselines, diff filtering, summary JSON, SARIF, and GitHub annotations. A follow-up aligned `gruff-go` with a language-specific config convention by making `.gruff-go.yaml` the only auto-discovered config file before public release.
+Operational scanner surfaces were added after core findings became deterministic: config, baselines, diff filtering, summary JSON, SARIF, and GitHub annotations. A follow-up aligned `gruff-go` with a language-specific config convention by making `.gruff-go.yaml` the only auto-discovered config file before public release.
 
 Evidence from this session:
 

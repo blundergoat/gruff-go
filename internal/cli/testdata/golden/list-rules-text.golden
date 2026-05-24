@@ -1,8 +1,10 @@
 complexity.cognitive	complexity	medium	parser	Cognitive complexity
 complexity.cyclomatic	complexity	medium	parser	Cyclomatic complexity
 complexity.nesting-depth	complexity	medium	parser	Nesting depth
+complexity.npath	complexity	medium	parser	NPath complexity
 dead-code.empty-block	dead-code	low	parser	Empty control-flow block
 dead-code.unreachable-code	dead-code	low	parser	Unreachable code
+dead-code.unused-private-function	dead-code	low	parser	Unused private function
 design.god-function	design	low	parser	God function
 design.hotspot-file	maintainability	low	parser	Hotspot file
 docs.comment-rubric	documentation	low	parser	Comment rubric
@@ -58,4 +60,5 @@ test-quality.helper-missing-t-helper	test-quality	low	parser	Test helper missing
 test-quality.no-failure-path	test-quality	low	parser	Test cannot fail
 test-quality.parallel-range-capture	test-quality	low	parser	Parallel subtest captures range variable
 test-quality.skipped-test	test-quality	low	parser	Skipped test
+test-quality.sleep-in-test	test-quality	low	parser	Sleep in test
 test-quality.tempdir-misuse	test-quality	low	parser	Test temp dir misuse

@@ -10,10 +10,10 @@
 
 ADR-002 established a narrow 5-rule default pack with 20 opt-in expansion rules: file length, function length, cyclomatic complexity, package comment, and secret-like assignment ran out of the box; everything else required explicit `rules.<id>.enabled: true`. The stance was "low-noise defaults, evidence-backed promotion."
 
-Operating experience after M06–M24 changed the picture:
+Operating experience after several iterations changed the picture:
 
 - The opt-in catalogue grew to 20 rules across naming, design composites, sensitive-data detectors, security, dead-code, test-quality, and maintainer-comment families.
-- Dogfood evidence on `gruff-go` itself with all 20 opt-ins active produced **3 low-severity findings** (all `naming.receiver-consistency` on the `Registry` type), exit 0. Calibration on `blundergoat-platform` (M22) shaped the production-vs-test discriminators inside the size rules, so noisy test bulk no longer dominates default scores.
+- Dogfood evidence on `gruff-go` itself with all 20 opt-ins active produced **3 low-severity findings** (all `naming.receiver-consistency` on the `Registry` type), exit 0. Calibration on `blundergoat-platform` shaped the production-vs-test discriminators inside the size rules, so noisy test bulk no longer dominates default scores.
 - Adopters running `gruff-go` for the first time generally want full coverage, not a 5-rule baseline that requires reading docs to discover the remaining 80% of the catalogue.
 - The opt-in promotion gate ("second corpus + explicit human accept") was never going to clear all 20 rules one at a time; the policy became a perpetual block on coverage.
 
@@ -30,7 +30,7 @@ Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default
 
 2026-05-24 update: `docs.config-field-comment` now follows the `docs.comment-rubric` path-scoped pattern. It is default-enabled in registry metadata but is a no-op until `includePaths` is configured, preserving first-run low noise without carrying a default-disabled exception.
 
-2026-05-24 M08 update: the registry now has 61 rules across 11 pillars, all default-enabled. The M08 catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
+2026-05-24 update: the registry now has 61 rules across 11 pillars, all default-enabled. The catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
 
 Two threshold adjustments toward industry-mainstream values:
 

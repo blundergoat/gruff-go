@@ -7,7 +7,7 @@
 
 ## Context
 
-The default rule pack (ADR-007) ships every rule enabled. Until M29 the only calibration loop was the dogfood scan against `gruff-go` itself, which has roughly 80 source files of careful, well-styled Go. Running gruff-go against a foreign codebase exposed precision problems that dogfood could not surface, because the dogfood codebase never produces the patterns where the rules misfire.
+The default rule pack (ADR-007) ships every rule enabled. Until external-codebase calibration began, the only calibration loop was the dogfood scan against `gruff-go` itself, which has roughly 80 source files of careful, well-styled Go. Running gruff-go against a foreign codebase exposed precision problems that dogfood could not surface, because the dogfood codebase never produces the patterns where the rules misfire.
 
 A spot-check pass on `blundergoat-platform/apps/api` with `--no-config` defaults produced **119 findings** across 115 files. Sampling ~100 of those findings revealed a clear pattern:
 

@@ -44,8 +44,10 @@ func defaultRuleIDs() []string {
 		"complexity.cognitive",
 		"complexity.cyclomatic",
 		"complexity.nesting-depth",
+		"complexity.npath",
 		"dead-code.empty-block",
 		"dead-code.unreachable-code",
+		"dead-code.unused-private-function",
 		"design.god-function",
 		"design.hotspot-file",
 		"docs.comment-rubric",
@@ -101,6 +103,7 @@ func defaultRuleIDs() []string {
 		"test-quality.no-failure-path",
 		"test-quality.parallel-range-capture",
 		"test-quality.skipped-test",
+		"test-quality.sleep-in-test",
 		"test-quality.tempdir-misuse",
 	}
 }

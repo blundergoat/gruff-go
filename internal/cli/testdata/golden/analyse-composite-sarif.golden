@@ -90,6 +90,35 @@
               }
             },
             {
+              "id": "complexity.npath",
+              "name": "NPath complexity",
+              "shortDescription": {
+                "text": "NPath complexity"
+              },
+              "fullDescription": {
+                "text": "Flags functions whose number of acyclic execution paths (NPath) exceeds the configured threshold. The modified NPath formula treats return/panic guards as exit points so idiomatic Go error chains grow linearly; genuine branch-combination blowups (nested switches, multi-way if/else without terminators) still flag."
+              },
+              "help": {
+                "text": "Collapse boolean conditions, extract helper functions, or replace nested switches with table-driven dispatch so the path-combination count drops."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "metric"
+                ],
+                "thresholds": {
+                  "maxComplexity": 1024
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "dead-code.empty-block",
               "name": "Empty control-flow block",
               "shortDescription": {
@@ -132,6 +161,33 @@
                 "defaultEnabled": true,
                 "tags": [
                   "control-flow"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unused-private-function",
+              "name": "Unused private function",
+              "shortDescription": {
+                "text": "Unused private function"
+              },
+              "fullDescription": {
+                "text": "Flags package-private (lowercase-leading) top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, init, main, and packages that import reflect are excluded so the rule stays precision-first."
+              },
+              "help": {
+                "text": "Delete the function, export it if other packages need it, or confirm it is only used through reflection or build-tag-gated code paths and suppress the finding locally."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "cross-file",
+                  "dead-code"
                 ]
               },
               "defaultConfiguration": {
@@ -1716,6 +1772,33 @@
               }
             },
             {
+              "id": "test-quality.sleep-in-test",
+              "name": "Sleep in test",
+              "shortDescription": {
+                "text": "Sleep in test"
+              },
+              "fullDescription": {
+                "text": "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks."
+              },
+              "help": {
+                "text": "Replace time.Sleep with channel/WaitGroup synchronisation, polling against an observable condition, or a fake clock that advances deterministically."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "flake",
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "test-quality.tempdir-misuse",
               "name": "Test temp dir misuse",
               "shortDescription": {
@@ -1747,7 +1830,7 @@
       "results": [
         {
           "ruleId": "design.god-function",
-          "ruleIndex": 5,
+          "ruleIndex": 7,
           "level": "note",
           "message": {
             "text": "function Hot combines size and complexity findings"
@@ -1792,7 +1875,7 @@
         },
         {
           "ruleId": "design.hotspot-file",
-          "ruleIndex": 6,
+          "ruleIndex": 8,
           "level": "note",
           "message": {
             "text": "file has findings across multiple quality pillars"
@@ -1876,7 +1959,7 @@
         },
         {
           "ruleId": "docs.exported-symbol-comment",
-          "ruleIndex": 9,
+          "ruleIndex": 11,
           "level": "note",
           "message": {
             "text": "exported function \"Hot\" has no doc comment"
@@ -1911,7 +1994,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 52,
+          "ruleIndex": 54,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"

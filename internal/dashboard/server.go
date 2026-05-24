@@ -63,6 +63,10 @@ type Options struct {
 	Registry rule.Registry
 	// IgnorePaths lists path patterns suppressed from discovery on every scan.
 	IgnorePaths []string
+	// Ready, if non-nil, is closed once the listener is bound and the
+	// start-up banner has been written. Tests and supervised launchers use
+	// it to synchronise teardown without polling or sleeping.
+	Ready chan<- struct{}
 }
 
 // Serve binds the dashboard listener and processes HTTP clients until shut down.
@@ -104,6 +108,9 @@ func Serve(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 
 	fmt.Fprintf(stdout, "Serving gruff-go dashboard at %s\n", initialURL(host, port, opts))
 	fmt.Fprintln(stdout, "Use the controls panel to refresh the scan or point gruff at another project. Ctrl+C to stop.")
+	if opts.Ready != nil {
+		close(opts.Ready)
+	}
 
 	shutdownCtx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()

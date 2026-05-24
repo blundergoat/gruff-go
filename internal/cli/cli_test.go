@@ -123,33 +123,7 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 // TestAnalyseJSONIncludesFindingsAndScore asserts findings and score appear in JSON output.
 func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "complex.go", `// Package sample is a test package.
-package sample
-
-func risky(a bool) {
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-}
-`)
+	writeFile(t, root, "complex.go", complexFixture())
 	t.Chdir(root)
 
 	var out, errOut bytes.Buffer
@@ -364,33 +338,60 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 	}
 }
 
-// complexFixture returns a Go source string that triggers complexity findings.
+// complexFixture returns a Go source string that triggers a complexity finding.
+// The switch shape (sum semantics under NPath, product under cyclomatic) keeps
+// only complexity.cyclomatic above threshold; npath stays under its 200 cap and
+// the exported name keeps dead-code.unused-private-function from firing.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
 
-func risky(a bool) {
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
-	if a { _ = a }
+// Risky is intentionally over the cyclomatic threshold for fixture use.
+func Risky(a int) {
+	switch a {
+	case 1:
+		_ = a
+	case 2:
+		_ = a
+	case 3:
+		_ = a
+	case 4:
+		_ = a
+	case 5:
+		_ = a
+	case 6:
+		_ = a
+	case 7:
+		_ = a
+	case 8:
+		_ = a
+	case 9:
+		_ = a
+	case 10:
+		_ = a
+	case 11:
+		_ = a
+	case 12:
+		_ = a
+	case 13:
+		_ = a
+	case 14:
+		_ = a
+	case 15:
+		_ = a
+	case 16:
+		_ = a
+	case 17:
+		_ = a
+	case 18:
+		_ = a
+	case 19:
+		_ = a
+	case 20:
+		_ = a
+	case 21:
+		_ = a
+	}
 }
 `
 }
