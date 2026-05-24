@@ -116,7 +116,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 		ID:             "design.hotspot-file",
 		Title:          "Hotspot file",
 		Description:    "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.",
-		Pillar:         finding.PillarDesign,
+		Pillar:         finding.PillarMaintain,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,

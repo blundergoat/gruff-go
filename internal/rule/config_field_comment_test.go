@@ -185,7 +185,7 @@ type Open struct {
 	}
 }
 
-// TestConfigFieldCommentRuleDefaultsConfigured verifies the rule registers default-disabled and
+// TestConfigFieldCommentRuleDefaultsConfigured verifies the rule registers default-enabled and
 // that the strict-config path correctly threads includePaths.
 func TestConfigFieldCommentRuleDefaultsConfigured(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config
@@ -195,12 +195,11 @@ type Config struct {
 }
 `)
 	defaults := Defaults()
-	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); containsRuleID(findings, "docs.config-field-comment") {
-		t.Fatalf("default findings = %#v, want docs.config-field-comment disabled", findings)
+	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); !containsRuleID(findings, "docs.config-field-comment") {
+		t.Fatalf("default findings = %#v, want docs.config-field-comment enabled", findings)
 	}
 
 	registry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"docs.config-field-comment": true},
 		Options: map[string]map[string]any{
 			"docs.config-field-comment": {
 				"includePaths": []any{"internal/config/**"},

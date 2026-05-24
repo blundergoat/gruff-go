@@ -16,7 +16,7 @@
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 41 rules across 9 pillars; 40 enabled by default |
+| Rule catalogue | 41 rules across 11 pillars; 40 enabled by default |
 | Primary config | `.gruff-go.yaml` |
 | Analysis schema | `gruff-go.analysis.v0.1` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
@@ -164,15 +164,17 @@ See [`docs/configuration.md`](docs/configuration.md) for the full schema and val
 
 ## Rules And Pillars
 
-The current checkout contains 41 rules across 9 pillars. `docs.config-field-comment` is the single opt-in rule; the other 40 are enabled by default.
+The current checkout contains 41 rules across 11 pillars. All 41 rules are enabled by default.
 
 | Pillar | Rules |
 | --- | ---: |
 | `complexity` | 2 |
 | `dead-code` | 1 |
-| `design` | 2 |
+| `design` | 1 |
 | `documentation` | 4 |
-| `naming` | 9 |
+| `maintainability` | 1 |
+| `modernisation` | 1 |
+| `naming` | 8 |
 | `security` | 6 |
 | `sensitive-data` | 11 |
 | `size` | 3 |

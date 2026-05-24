@@ -218,7 +218,7 @@ func MissingTestHelper() {}
 	}
 }
 
-// TestCommentRubricRuleDefaultsConfigured confirms the rule activates only after explicit opt-in configuration.
+// TestCommentRubricRuleDefaultsConfigured confirms stricter comment-rubric options are threaded from config.
 func TestCommentRubricRuleDefaultsConfigured(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 

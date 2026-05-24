@@ -27,7 +27,7 @@ func (r GetPrefixRule) Definition() Definition {
 		ID:             "naming.get-prefix",
 		Title:          "Get prefix",
 		Description:    "Flags receiver accessor methods that use a Get prefix instead of a direct noun phrase.",
-		Pillar:         finding.PillarNaming,
+		Pillar:         finding.PillarModernisation,
 		Severity:       finding.SeverityLow,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,

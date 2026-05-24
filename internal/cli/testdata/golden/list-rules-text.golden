@@ -2,14 +2,14 @@ complexity.cyclomatic	complexity	medium	parser	Cyclomatic complexity
 complexity.nesting-depth	complexity	medium	parser	Nesting depth
 dead-code.empty-block	dead-code	low	parser	Empty control-flow block
 design.god-function	design	low	parser	God function
-design.hotspot-file	design	low	parser	Hotspot file
+design.hotspot-file	maintainability	low	parser	Hotspot file
 docs.comment-rubric	documentation	low	parser	Comment rubric
 docs.config-field-comment	documentation	low	parser	Config field comment
 docs.exported-symbol-comment	documentation	low	parser	Exported symbol comment
 docs.package-comment	documentation	low	parser	Package comment
 naming.acronym-case	naming	low	parser	Acronym case
 naming.contextual-generic	naming	low	parser	Contextual generic name
-naming.get-prefix	naming	low	parser	Get prefix
+naming.get-prefix	modernisation	low	parser	Get prefix
 naming.identifier-quality	naming	low	parser	Identifier quality
 naming.misspelling	naming	low	parser	Misspelled identifier or comment
 naming.negated-boolean	naming	low	parser	Negated boolean

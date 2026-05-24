@@ -26,8 +26,9 @@
     },
     "countsByPillar": {
       "complexity": 1,
-      "design": 2,
+      "design": 1,
       "documentation": 1,
+      "maintainability": 1,
       "size": 1
     },
     "exitCode": 1,

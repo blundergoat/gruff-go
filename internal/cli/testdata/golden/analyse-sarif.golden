@@ -126,7 +126,7 @@
                 "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
               },
               "properties": {
-                "pillar": "design",
+                "pillar": "maintainability",
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
@@ -194,7 +194,7 @@
                 "text": "Config field comment"
               },
               "fullDescription": {
-                "text": "Flags exported fields on struct types declared inside configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope. Default-disabled and intended for user-facing configuration schema types."
+                "text": "Flags exported fields on struct types that have no useful doc comment. Embedded and unexported fields are out of scope; includePaths can scope enforcement to user-facing configuration schema types."
               },
               "help": {
                 "text": "Add a doc comment to every exported field of structs declared in the configured includePaths."
@@ -204,11 +204,10 @@
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "comments",
                   "documentation",
-                  "opt-in",
                   "struct-fields"
                 ],
                 "options": {
@@ -383,7 +382,7 @@
                 "text": "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit."
               },
               "properties": {
-                "pillar": "naming",
+                "pillar": "modernisation",
                 "defaultSeverity": "low",
                 "confidence": "medium",
                 "capability": "parser",

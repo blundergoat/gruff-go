@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **41 rules** across **9 pillars**. **All rules are enabled by default except `docs.config-field-comment`, which is opt-in.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **41 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -10,7 +10,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 `docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
 
-`docs.config-field-comment` is the only default-disabled rule; it enforces doc comments on every exported field of struct types declared inside its `includePaths`. Enable it for user-facing configuration types when you want every knob documented.
+`docs.config-field-comment` enforces doc comments on exported struct fields. Use `includePaths` for user-facing configuration types when you want every knob documented without applying the check to every struct in the project.
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
@@ -18,14 +18,14 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`design.god-function`](#designgod-function) | design | low | parser | - | Functions that already have both size and complexity findings. |
-| [`design.hotspot-file`](#designhotspot-file) | design | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`design.hotspot-file`](#designhotspot-file) | maintainability | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
-| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Opt-in: doc comments on every exported field of struct types inside configured `includePaths`. Default-disabled. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | - | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | - | Packages with no package-level comment in any file. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | - | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
-| [`naming.get-prefix`](#namingget-prefix) | naming | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
+| [`naming.get-prefix`](#namingget-prefix) | modernisation | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | - | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | low | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
 | [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
@@ -130,7 +130,7 @@ Flags functions that already have at least one size finding and at least one com
 
 ### `design.hotspot-file`
 
-- **Pillar:** design
+- **Pillar:** maintainability
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
@@ -187,15 +187,15 @@ rules:
 
 - **Pillar:** documentation
 - **Default severity:** low
-- **Default-enabled:** no (opt-in)
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `comments`, `documentation`, `opt-in`, `struct-fields`
+- **Tags:** `comments`, `documentation`, `struct-fields`
 - **Options:** `includePaths []string`, `excludePaths []string`
 
 Flags exported fields on struct types declared inside configured `includePaths` that have no useful doc comment. The "useful comment" check is shared with `docs.comment-rubric`: the comment must exist (at least one non-empty line) and must normalise differently from the field name itself. Embedded fields (no `Names` on the `*ast.Field`) and unexported fields are out of scope and never produce findings.
 
-The rule is default-disabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule applies to every Go file; projects are expected to scope it via `includePaths` to keep noise down.
+The rule is default-enabled and intended for user-facing configuration schema types where every knob deserves documentation. When `includePaths` is unset the rule applies to every Go file; scope it via `includePaths` when broad struct-field enforcement is too noisy.
 
 ```yaml
 rules:
@@ -239,7 +239,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 
 ### `naming.acronym-case`
 
-- **Pillar:** naming
+- **Pillar:** modernisation
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Confidence:** medium
