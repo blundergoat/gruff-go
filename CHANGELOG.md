@@ -12,6 +12,7 @@
 
 ### Added
 
+- Added ten default-enabled parser rules to bring the Go catalogue to 51 rules: `complexity.cognitive`, `dead-code.unreachable-code`, `maintainability.context-todo-production`, `maintainability.ignored-error`, `maintainability.production-panic`, `modernisation.ioutil-deprecated`, `security.http-client-no-timeout`, `security.request-body-without-limit`, `test-quality.helper-missing-t-helper`, and `test-quality.parallel-range-capture`.
 - `gruff-go init --force --reset` flag combination performs the legacy destructive overwrite, wiping existing tuning and writing fresh registry defaults. Use only when you explicitly want a clean slate.
 
 ## [0.1.1] - 2026-05-24

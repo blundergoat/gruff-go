@@ -9,6 +9,35 @@
           "semanticVersion": "0.1.1",
           "rules": [
             {
+              "id": "complexity.cognitive",
+              "name": "Cognitive complexity",
+              "shortDescription": {
+                "text": "Cognitive complexity"
+              },
+              "fullDescription": {
+                "text": "Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold."
+              },
+              "help": {
+                "text": "Flatten nested branches, return early, or extract cohesive helper functions."
+              },
+              "properties": {
+                "pillar": "complexity",
+                "defaultSeverity": "medium",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "metric"
+                ],
+                "thresholds": {
+                  "maxComplexity": 35
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "complexity.cyclomatic",
               "name": "Cyclomatic complexity",
               "shortDescription": {
@@ -78,6 +107,32 @@
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unreachable-code",
+              "name": "Unreachable code",
+              "shortDescription": {
+                "text": "Unreachable code"
+              },
+              "fullDescription": {
+                "text": "Flags statements that appear after return, panic, break, continue, or goto in the same block."
+              },
+              "help": {
+                "text": "Remove the unreachable statement or move it before the terminating control-flow statement."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "control-flow"
+                ]
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -263,6 +318,113 @@
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.context-todo-production",
+              "name": "Context TODO in production",
+              "shortDescription": {
+                "text": "Context TODO in production"
+              },
+              "fullDescription": {
+                "text": "Flags context.TODO calls in production files where cancellation ownership should be explicit."
+              },
+              "help": {
+                "text": "Accept a caller-provided context or use a documented bootstrap context where cancellation is intentionally unavailable."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "context"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.ignored-error",
+              "name": "Ignored error",
+              "shortDescription": {
+                "text": "Ignored error"
+              },
+              "fullDescription": {
+                "text": "Flags error-looking values that are assigned directly to the blank identifier."
+              },
+              "help": {
+                "text": "Handle the error, return it to the caller, or document why ignoring it is safe."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "errors"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "maintainability.production-panic",
+              "name": "Production panic",
+              "shortDescription": {
+                "text": "Production panic"
+              },
+              "fullDescription": {
+                "text": "Flags direct literal panic calls in non-test, non-main production code."
+              },
+              "help": {
+                "text": "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code."
+              },
+              "properties": {
+                "pillar": "maintainability",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "errors"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "modernisation.ioutil-deprecated",
+              "name": "Deprecated ioutil API",
+              "shortDescription": {
+                "text": "Deprecated ioutil API"
+              },
+              "fullDescription": {
+                "text": "Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go."
+              },
+              "help": {
+                "text": "Replace io/ioutil calls with the matching io or os package API."
+              },
+              "properties": {
+                "pillar": "modernisation",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "go-style"
+                ],
+                "options": {
+                  "minimumGoVersion": "1.16"
+                }
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -634,6 +796,33 @@
               }
             },
             {
+              "id": "security.http-client-no-timeout",
+              "name": "HTTP client without timeout",
+              "shortDescription": {
+                "text": "HTTP client without timeout"
+              },
+              "fullDescription": {
+                "text": "Flags http.Client composite literals in production files that do not set Timeout."
+              },
+              "help": {
+                "text": "Set http.Client.Timeout or use a shared client whose timeout ownership is explicit."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.insecure-random-secret",
               "name": "Insecure random secret",
               "shortDescription": {
@@ -653,6 +842,33 @@
                 "defaultEnabled": true,
                 "tags": [
                   "random",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.request-body-without-limit",
+              "name": "Request body read without limit",
+              "shortDescription": {
+                "text": "Request body read without limit"
+              },
+              "fullDescription": {
+                "text": "Flags io.ReadAll-style reads of http.Request.Body in production handlers without nearby MaxBytesReader or LimitReader evidence."
+              },
+              "help": {
+                "text": "Wrap request bodies with http.MaxBytesReader or io.LimitReader before reading them fully."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
                   "security"
                 ]
               },
@@ -1158,6 +1374,32 @@
               }
             },
             {
+              "id": "test-quality.helper-missing-t-helper",
+              "name": "Test helper missing t.Helper",
+              "shortDescription": {
+                "text": "Test helper missing t.Helper"
+              },
+              "fullDescription": {
+                "text": "Flags non-test helper functions that accept testing.TB, *testing.T, or *testing.B and can fail the test but never call Helper."
+              },
+              "help": {
+                "text": "Call t.Helper() at the start of the helper so failures report the caller's line."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "test-quality.no-failure-path",
               "name": "Test cannot fail",
               "shortDescription": {
@@ -1168,6 +1410,32 @@
               },
               "help": {
                 "text": "Add an assertion or document why the test cannot fail."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "low",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "test-quality.parallel-range-capture",
+              "name": "Parallel subtest captures range variable",
+              "shortDescription": {
+                "text": "Parallel subtest captures range variable"
+              },
+              "fullDescription": {
+                "text": "Flags t.Parallel subtests that close over range variables without an explicit shadow copy."
+              },
+              "help": {
+                "text": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest."
               },
               "properties": {
                 "pillar": "test-quality",
@@ -1215,7 +1483,7 @@
       "results": [
         {
           "ruleId": "complexity.cyclomatic",
-          "ruleIndex": 0,
+          "ruleIndex": 1,
           "level": "warning",
           "message": {
             "text": "function cyclomatic complexity is 22, above threshold 20"

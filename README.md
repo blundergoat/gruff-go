@@ -16,7 +16,7 @@
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 41 rules across 11 pillars; 40 enabled by default |
+| Rule catalogue | 51 rules across 11 pillars; 51 enabled by default |
 | Primary config | `.gruff-go.yaml` |
 | Analysis schema | `gruff-go.analysis.v0.1` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
@@ -164,21 +164,21 @@ See [`docs/configuration.md`](docs/configuration.md) for the full schema and val
 
 ## Rules And Pillars
 
-The current checkout contains 41 rules across 11 pillars. All 41 rules are enabled by default.
+The current checkout contains 51 rules across 11 pillars. All 51 rules are enabled by default.
 
 | Pillar | Rules |
 | --- | ---: |
-| `complexity` | 2 |
-| `dead-code` | 1 |
+| `complexity` | 3 |
+| `dead-code` | 2 |
 | `design` | 1 |
 | `documentation` | 4 |
-| `maintainability` | 1 |
-| `modernisation` | 1 |
+| `maintainability` | 4 |
+| `modernisation` | 2 |
 | `naming` | 8 |
-| `security` | 6 |
+| `security` | 8 |
 | `sensitive-data` | 11 |
 | `size` | 3 |
-| `test-quality` | 3 |
+| `test-quality` | 5 |
 
 See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 

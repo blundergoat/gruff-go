@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **41 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **51 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -14,15 +14,21 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
+| [`complexity.cognitive`](#complexitycognitive) | complexity | medium | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
+| [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | low | parser | - | Statements after terminal control flow in the same block. |
 | [`design.god-function`](#designgod-function) | design | low | parser | - | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | maintainability | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | - | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | - | Packages with no package-level comment in any file. |
+| [`maintainability.context-todo-production`](#maintainabilitycontext-todo-production) | maintainability | low | parser | - | `context.TODO()` calls in production files. |
+| [`maintainability.ignored-error`](#maintainabilityignored-error) | maintainability | low | parser | - | Error-looking values assigned directly to the blank identifier. |
+| [`maintainability.production-panic`](#maintainabilityproduction-panic) | maintainability | low | parser | - | Literal panic calls in reusable production code. |
+| [`modernisation.ioutil-deprecated`](#modernisationioutil-deprecated) | modernisation | low | parser | - | Deprecated `io/ioutil` APIs with direct `io` or `os` replacements. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | - | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
 | [`naming.get-prefix`](#namingget-prefix) | modernisation | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
@@ -33,7 +39,9 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | - | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | low | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | low | parser | - | `http.Client` literals in production files without `Timeout`. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | low | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
+| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | low | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.shell-command`](#securityshell-command) | security | medium | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.sql-string-query`](#securitysql-string-query) | security | low | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
@@ -53,7 +61,9 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | low | parser | - | Failing test helpers that never call `t.Helper()`. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
+| [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | low | parser | - | Parallel subtests that capture range variables without an explicit shadow copy. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
@@ -73,6 +83,22 @@ Every rule has a default severity; configs can override per rule. The five-tier 
 The `--min-severity` flag (default `medium`) sets the threshold at which findings flip the exit code from `0` to `1`.
 
 ## Per-rule reference
+
+### `complexity.cognitive`
+
+- **Pillar:** complexity
+- **Default severity:** medium
+- **Default-enabled:** yes
+- **Threshold:** `maxComplexity` (default `35`)
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `metric`
+
+Flags Go functions whose parser-only cognitive complexity exceeds the configured threshold. The metric adds one point for each `if`, loop, `switch`, type switch, and `select`, adds the current nesting level for nested control flow, and adds one point for each `&&` / `||` operator inside conditions. Function literals reset the count.
+
+This is intentionally separate from `complexity.cyclomatic`: cyclomatic counts independent branch paths, while cognitive complexity emphasizes nesting and review difficulty.
+
+**Remediation.** Flatten nested branches, return early on guard conditions, or extract cohesive helper functions.
 
 ### `complexity.cyclomatic`
 
@@ -113,6 +139,19 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usually indicate unfinished or accidentally orphaned code.
 
 **Remediation.** Remove the empty block or add the intended implementation.
+
+### `dead-code.unreachable-code`
+
+- **Pillar:** dead-code
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `control-flow`
+
+Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. Labels reset the same-block check because a `goto` may target the label. The rule stays conservative and does not try to prove full control-flow reachability across branches.
+
+**Remediation.** Remove the unreachable statement or move it before the terminating control-flow statement.
 
 ### `design.god-function`
 
@@ -236,6 +275,63 @@ Set `ignoreInternalPackages: false` when internal package exports should follow 
 Flags Go packages that have no package-level comment in any file. Package comments are the standard `godoc` entry point and are cheap to add. `_test.go`-only external test packages such as `package foo_test` are skipped because they normally document black-box tests, not a production package API.
 
 **Remediation.** Add a package comment that explains the package's responsibility, scope, and the public surface.
+
+### `maintainability.context-todo-production`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `context`
+
+Flags `context.TODO()` calls in production files. Test files, `testdata`, and example paths are skipped. The rule reports static evidence only: it does not claim cancellation is broken, only that ownership is still expressed as a TODO placeholder in production code.
+
+**Remediation.** Accept a caller-provided context or use a documented bootstrap context where cancellation is intentionally unavailable.
+
+### `maintainability.ignored-error`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `errors`
+
+Flags direct assignments of error-looking values to the blank identifier, such as `_ = err`, `_ = runErr`, or `_ = fmt.Errorf(...)`. The rule deliberately does not flag arbitrary `_ = call()` shapes because parser-only analysis cannot prove return types without type information.
+
+Each finding's metadata carries the ignored expression and the parser-only evidence kind.
+
+**Remediation.** Handle the error, return it to the caller, or document why ignoring it is safe.
+
+### `maintainability.production-panic`
+
+- **Pillar:** maintainability
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `errors`
+
+Flags direct `panic` calls with literal message evidence in reusable production code. Test files, `package main`, `cmd/` paths, `init`, `main`, `Defaults`, and `Must*` functions are exempt. `panic(err)` is not reported because this parser-only rule cannot distinguish impossible invariant failures from ordinary error flow.
+
+**Remediation.** Return an error or fail during command/bootstrap setup instead of panicking from reusable production code.
+
+### `modernisation.ioutil-deprecated`
+
+- **Pillar:** modernisation
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `go-style`
+- **Options:** `minimumGoVersion string` - default `"1.16"` metadata for the replacement floor
+
+Flags `io/ioutil` selectors that have direct modern replacements: `io.ReadAll`, `os.ReadFile`, `os.WriteFile`, `io.NopCloser`, `io.Discard`, `os.MkdirTemp`, and `os.CreateTemp`.
+
+Each finding's metadata carries the deprecated API and replacement API.
+
+**Remediation.** Replace `io/ioutil` calls with the matching `io` or `os` package API.
 
 ### `naming.acronym-case`
 
@@ -483,6 +579,19 @@ Each finding's metadata carries the archive entry expression and the missing che
 
 **Remediation.** Clean the joined path and verify it remains inside the extraction root before creating files.
 
+### `security.http-client-no-timeout`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `http`, `security`
+
+Flags `http.Client` composite literals in production files that do not set the `Timeout` field. Test files and example paths are skipped. The rule reports literal construction evidence only; it does not infer timeout ownership through wrapper factories or later assignments.
+
+**Remediation.** Set `http.Client.Timeout` or use a shared client whose timeout ownership is explicit.
+
 ### `security.insecure-random-secret`
 
 - **Pillar:** security
@@ -497,6 +606,21 @@ Flags Go files that import `math/rand` and use package-level random APIs in secr
 Each finding's metadata carries the random API and context word.
 
 **Remediation.** Use `crypto/rand` for security-sensitive random values and keep `math/rand` for sampling, tests, and simulations.
+
+### `security.request-body-without-limit`
+
+- **Pillar:** security
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`
+
+Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Request.Body` directly in production files without local evidence of `http.MaxBytesReader` or `io.LimitReader`. Reads of unrelated `io.Reader` values, test files, and already-limited wrapper expressions are ignored.
+
+Each finding's metadata carries the request parameter name and read call.
+
+**Remediation.** Wrap request bodies with `http.MaxBytesReader` or `io.LimitReader` before reading them fully.
 
 ### `security.shell-command`
 
@@ -762,6 +886,19 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 
 **Remediation.** Add an assertion that exercises the behaviour the test name claims, or remove the empty test entirely.
 
+### `test-quality.helper-missing-t-helper`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`, or `*testing.B`, can fail the test through a testing failure call, and never call `Helper`. Runnable `Test…`, `Benchmark…`, and `Fuzz…` entrypoints are out of scope.
+
+**Remediation.** Call `t.Helper()` at the start of the helper so failures report the caller's line.
+
 ### `test-quality.no-failure-path`
 
 - **Pillar:** test-quality
@@ -776,6 +913,19 @@ Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable s
 The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
+
+### `test-quality.parallel-range-capture`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags table-driven `t.Run` closures that call `t.Parallel()` and reference a range variable without an explicit shadow copy before the subtest. The rule recognises the common `tc := tc` pattern as the local evidence that capture is intentional and stable.
+
+**Remediation.** Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest.
 
 ### `test-quality.skipped-test`
 

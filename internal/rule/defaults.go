@@ -28,11 +28,19 @@ func defaultUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
+		CognitiveComplexityRule{MaxComplexity: intThreshold(config, "complexity.cognitive", "maxComplexity", cognitiveComplexityThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
 		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
 		EmptyBlockRule{},
+		UnreachableCodeRule{},
+		IgnoredErrorRule{},
+		ContextTODOProductionRule{},
+		ProductionPanicRule{},
+		IoutilDeprecatedRule{},
 		ShellCommandRule{},
 		TLSInsecureConfigRule{},
+		HTTPClientNoTimeoutRule{},
+		RequestBodyWithoutLimitRule{},
 		SQLStringQueryRule{},
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
@@ -82,7 +90,9 @@ func defaultUnitRules(config Config) []UnitRule {
 			RequireMultiple:  boolPointer(boolOption(config, "naming.contextual-generic", "requireMultiple", true)),
 		},
 		EmptyTestRule{},
+		HelperMissingTHelperRule{},
 		NoFailurePathTestRule{},
+		ParallelRangeCaptureRule{},
 	}
 }
 

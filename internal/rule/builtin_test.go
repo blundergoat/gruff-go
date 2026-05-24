@@ -23,15 +23,21 @@ func TestDefaultsListRules(t *testing.T) {
 		enabled[definition.ID] = definition.DefaultEnabled
 	}
 	want := []string{
+		"complexity.cognitive",
 		"complexity.cyclomatic",
 		"complexity.nesting-depth",
 		"dead-code.empty-block",
+		"dead-code.unreachable-code",
 		"design.god-function",
 		"design.hotspot-file",
 		"docs.comment-rubric",
 		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
 		"docs.package-comment",
+		"maintainability.context-todo-production",
+		"maintainability.ignored-error",
+		"maintainability.production-panic",
+		"modernisation.ioutil-deprecated",
 		"naming.acronym-case",
 		"naming.contextual-generic",
 		"naming.get-prefix",
@@ -42,7 +48,9 @@ func TestDefaultsListRules(t *testing.T) {
 		"naming.package-underscore",
 		"naming.receiver-consistency",
 		"security.archive-path-traversal",
+		"security.http-client-no-timeout",
 		"security.insecure-random-secret",
+		"security.request-body-without-limit",
 		"security.shell-command",
 		"security.sql-string-query",
 		"security.tls-insecure-config",
@@ -62,7 +70,9 @@ func TestDefaultsListRules(t *testing.T) {
 		"size.function-length",
 		"size.parameter-count",
 		"test-quality.empty-test",
+		"test-quality.helper-missing-t-helper",
 		"test-quality.no-failure-path",
+		"test-quality.parallel-range-capture",
 		"test-quality.skipped-test",
 	}
 	if len(got) != len(want) {

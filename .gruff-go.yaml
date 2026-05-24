@@ -42,6 +42,13 @@ selection:
   excludePillars: []
 
 rules:
+  # Nested control flow and boolean decisions add review cost even when branch
+  # count alone is below the cyclomatic threshold.
+  complexity.cognitive:
+    enabled: true
+    severity: warning
+    threshold: 35
+
   # Too many branches make a function harder to test and safely change.
   complexity.cyclomatic:
     enabled: true
@@ -60,6 +67,11 @@ rules:
   dead-code.empty-block:
     enabled: true
     severity: warning
+
+  # Statements after terminal control flow are dead code and often hide stale logic.
+  dead-code.unreachable-code:
+    enabled: true
+    severity: notice
 
   # Size plus complexity on the same function marks a structural refactor candidate.
   design.god-function:
@@ -106,6 +118,26 @@ rules:
 
   # Package comments give godoc users a clear entry point for each package.
   docs.package-comment:
+    enabled: true
+    severity: notice
+
+  # TODO contexts in production code leave cancellation ownership ambiguous.
+  maintainability.context-todo-production:
+    enabled: true
+    severity: notice
+
+  # Error-looking values assigned to `_` should be handled or justified.
+  maintainability.ignored-error:
+    enabled: true
+    severity: notice
+
+  # Reusable production code should return errors rather than panic with literal messages.
+  maintainability.production-panic:
+    enabled: true
+    severity: notice
+
+  # io/ioutil has direct io/os replacements in modern Go.
+  modernisation.ioutil-deprecated:
     enabled: true
     severity: notice
 
@@ -173,8 +205,18 @@ rules:
     enabled: true
     severity: notice
 
+  # HTTP clients should have explicit timeout ownership.
+  security.http-client-no-timeout:
+    enabled: true
+    severity: notice
+
   # math/rand must not generate tokens, nonces, sessions, keys, or other secrets.
   security.insecure-random-secret:
+    enabled: true
+    severity: notice
+
+  # Request bodies should be size-limited before full reads.
+  security.request-body-without-limit:
     enabled: true
     severity: notice
 
@@ -279,8 +321,18 @@ rules:
     enabled: true
     severity: warning
 
+  # Test helpers that can fail should call t.Helper for accurate failure lines.
+  test-quality.helper-missing-t-helper:
+    enabled: true
+    severity: notice
+
   # Tests need a path that can fail, not just execute code.
   test-quality.no-failure-path:
+    enabled: true
+    severity: notice
+
+  # Parallel table subtests should shadow range variables before capture.
+  test-quality.parallel-range-capture:
     enabled: true
     severity: notice
 
