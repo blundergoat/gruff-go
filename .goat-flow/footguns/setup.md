@@ -5,6 +5,25 @@ last_reviewed: 2026-05-24
 
 # Setup Footguns
 
+## Footgun: `allowlists.secretPreviews` gates the preview field only - it does not suppress sensitive-data findings
+
+**Status:** active | **Created:** 2026-05-24 | **Evidence:** OBSERVED
+
+hallucination-risk: medium (the field name and sibling configuration invite an incorrect mental model)
+
+Evidence:
+- `internal/rule/builtin.go` (search: `pathfilter.MatchesAny(r.PreviewAllowlist`) - the path match decides whether `preview` is attached to the finding metadata; the `findings = append(findings, finding.Finding{...})` call that follows runs unconditionally, so the finding itself is always emitted.
+- `internal/config/config.go` (search: `SecretPreviews lists path patterns where the sensitive-data rules may emit the matched preview`) - the doc string is technically accurate but easy to misread.
+- `internal/config/config.go` (search: `cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)`) - the user-facing `allowlists.secretPreviews` key folds into the preview-attachment allowlist, not into any finding-suppression list.
+
+The field sits next to `allowlists.acceptedAbbreviations`, which IS a suppression-style allowlist for `naming.acronym-case`. The visual parallel plus the name `secretPreviews` (plural noun, "the previews we accept") makes adopters reach for it to silence noisy sensitive-data findings in test fixtures or documented dummies. It does not do that. A file matching `secretPreviews` still produces a sensitive-data finding at the same severity; only the redacted `preview: AKIAIO...MPLE` metadata field appears (when matched) or is omitted (when not).
+
+To actually suppress sensitive-data findings on a path the available levers are:
+- `paths.ignore` glob, which skips discovery entirely (loses all rule coverage on that path).
+- Inline `#nosec` or `//nolint:gosec` / `//nolint:all` on the matching source line - the secret-scan helpers in `internal/rule/sensitive.go` (search: `hasSecretSuppressionAnnotation`) honour both forms.
+
+There is currently no path-scoped finding-allowlist for the sensitive-data rules. If a reviewer or adopter is reaching for `secretPreviews` to silence a known fixture, the right answer is one of the two suppression mechanisms above, not the preview-allowlist field.
+
 ## Footgun: `gruff-go init --reset` wipes hand-tuned `.gruff-go.yaml` policy
 
 **Status:** active | **Created:** 2026-05-24 | **Evidence:** OBSERVED
