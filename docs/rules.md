@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **61 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` v0.1 ships **64 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -17,8 +17,10 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`complexity.cognitive`](#complexitycognitive) | complexity | medium | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
+| [`complexity.npath`](#complexitynpath) | complexity | medium | parser | `maxComplexity: 1024` | Functions whose acyclic execution path count exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | low | parser | - | Statements after terminal control flow in the same block. |
+| [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | low | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
 | [`design.god-function`](#designgod-function) | design | low | parser | - | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | maintainability | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
@@ -74,6 +76,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
 | [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | low | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
+| [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | low | parser | - | `time.Sleep` calls in tests. |
 | [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | low | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
@@ -138,6 +141,22 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 
 **Remediation.** Extract nested branches into named helpers or return early on guard conditions.
 
+### `complexity.npath`
+
+- **Pillar:** complexity
+- **Default severity:** medium
+- **Default-enabled:** yes
+- **Threshold:** `maxComplexity` (default `1024`)
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `metric`
+
+Flags Go functions whose modified NPath count exceeds the configured threshold. The rule treats terminating guards such as `return`, `panic`, `os.Exit`, `log.Fatal*`, and `runtime.Goexit` as exit points so idiomatic Go error chains grow linearly; nested switches and multi-way if/else branches without terminators still expose combinatorial review paths.
+
+Each finding's metadata carries the measured path count and the active threshold.
+
+**Remediation.** Split independent decision trees, return early from guard branches, or extract nested switches and condition clusters into named helpers.
+
 ### `dead-code.empty-block`
 
 - **Pillar:** dead-code
@@ -162,6 +181,19 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. Labels reset the same-block check because a `goto` may target the label. The rule stays conservative and does not try to prove full control-flow reachability across branches.
 
 **Remediation.** Remove the unreachable statement or move it before the terminating control-flow statement.
+
+### `dead-code.unused-private-function`
+
+- **Pillar:** dead-code
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `dead-code`
+
+Flags package-private top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, `init`, `main`, external `_test` packages, and packages that import `reflect` are excluded so reflection-heavy or entrypoint-driven code does not produce parser-only false positives.
+
+**Remediation.** Remove the unused helper, make the missing call explicit, or rename/export it only when another package is expected to call it.
 
 ### `design.god-function`
 
@@ -397,7 +429,7 @@ Each finding's metadata carries the deprecated API and replacement API.
 
 ### `naming.acronym-case`
 
-- **Pillar:** modernisation
+- **Pillar:** naming
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Confidence:** medium
@@ -459,7 +491,7 @@ rules:
 
 ### `naming.get-prefix`
 
-- **Pillar:** naming
+- **Pillar:** modernisation
 - **Default severity:** low
 - **Default-enabled:** yes
 - **Confidence:** medium
@@ -1070,6 +1102,19 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
 
 **Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
+
+### `test-quality.sleep-in-test`
+
+- **Pillar:** test-quality
+- **Default severity:** low
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `tests`
+
+Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load.
+
+**Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
 
 ### `test-quality.tempdir-misuse`
 

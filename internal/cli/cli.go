@@ -119,7 +119,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
-	registry, ignorePaths, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stdout)
+	registry, ignorePaths, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

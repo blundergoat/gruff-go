@@ -7,6 +7,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -191,6 +192,24 @@ paths:
 	}
 }
 
+// TestInitResetRequiresForce locks in the destructive-reset guard documented in
+// the setup footgun: --reset is only meaningful with --force.
+func TestInitResetRequiresForce(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	var stdout, stderr bytes.Buffer
+	if code := Main([]string{"init", "--reset"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("init --reset exit = %d, stdout = %s, stderr = %s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--reset requires --force") {
+		t.Fatalf("stderr missing reset guard: %s", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gruff-go.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("bare --reset must not create a config; stat err = %v", err)
+	}
+}
+
 // TestBootstrapPromptCreatesConfigOnYes runs the analyse path with a faked
 // TTY stdin that answers "y" and confirms the file gets written before the
 // scan continues with the configured registry.
@@ -208,14 +227,41 @@ func TestBootstrapPromptCreatesConfigOnYes(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".gruff-go.yaml")); err != nil {
 		t.Fatalf("expected .gruff-go.yaml to be created: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Generate one with default settings?") {
-		t.Fatalf("stdout missing prompt: %s", stdout.String())
+	if strings.Contains(stdout.String(), "Generate one with default settings?") {
+		t.Fatalf("stdout must not contain prompt text: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "wrote default config to .gruff-go.yaml") {
-		t.Fatalf("stdout missing write confirmation: %s", stdout.String())
+	if !strings.Contains(stderr.String(), "Generate one with default settings?") {
+		t.Fatalf("stderr missing prompt: %s", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "gruff-go analyse --generate-baseline gruff-baseline.json .") {
-		t.Fatalf("stdout missing baseline fresh-start hint: %s", stdout.String())
+	if !strings.Contains(stderr.String(), "wrote default config to .gruff-go.yaml") {
+		t.Fatalf("stderr missing write confirmation: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "gruff-go analyse --generate-baseline gruff-baseline.json .") {
+		t.Fatalf("stderr missing baseline fresh-start hint: %s", stderr.String())
+	}
+}
+
+// TestBootstrapPromptDoesNotCorruptJSONOutput verifies interactive bootstrap
+// text never precedes machine-readable stdout.
+func TestBootstrapPromptDoesNotCorruptJSONOutput(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+
+	withFakeTerminalStdin(t, strings.NewReader("y\n"))
+
+	var stdout, stderr bytes.Buffer
+	if code := Main([]string{"analyse", "--format", "json", "."}, &stdout, &stderr); code != 0 {
+		t.Fatalf("analyse json exit = %d, stderr = %s, stdout = %s", code, stderr.String(), stdout.String())
+	}
+	if strings.Contains(stdout.String(), "Generate one with default settings?") {
+		t.Fatalf("stdout must not contain prompt text: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Generate one with default settings?") {
+		t.Fatalf("stderr missing prompt: %s", stderr.String())
+	}
+	if !json.Valid(stdout.Bytes()) {
+		t.Fatalf("stdout is not valid JSON:\n%s", stdout.String())
 	}
 }
 
@@ -278,8 +324,11 @@ func TestBootstrapPromptDecliningKeepsBuiltInDefaults(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".gruff-go.yaml")); !os.IsNotExist(err) {
 		t.Fatalf("declining the prompt must not create a config; stat err = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Generate one with default settings?") {
-		t.Fatalf("stdout missing prompt: %s", stdout.String())
+	if strings.Contains(stdout.String(), "Generate one with default settings?") {
+		t.Fatalf("stdout must not contain prompt text: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Generate one with default settings?") {
+		t.Fatalf("stderr missing prompt: %s", stderr.String())
 	}
 }
 

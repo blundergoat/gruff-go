@@ -49,7 +49,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stdout)
+	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

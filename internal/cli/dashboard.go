@@ -62,7 +62,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 	}
 
 	if interactive {
-		if err := maybeBootstrapDashboardConfig(*project, *configPath, *noConfig, stdout); err != nil {
+		if err := maybeBootstrapDashboardConfig(*project, *configPath, *noConfig, stderr); err != nil {
 			fmt.Fprintf(stderr, "config: %v\n", err)
 			return 2
 		}
@@ -98,7 +98,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 // root: the explicit --project value when set, otherwise the working directory.
 // The dashboard loads config lazily per scan, so the prompt must fire before
 // the HTTP server starts to remain usable.
-func maybeBootstrapDashboardConfig(projectRoot, configPath string, noConfig bool, stdout io.Writer) error {
+func maybeBootstrapDashboardConfig(projectRoot, configPath string, noConfig bool, promptWriter io.Writer) error {
 	root := projectRoot
 	if root == "" {
 		cwd, err := os.Getwd()
@@ -107,7 +107,7 @@ func maybeBootstrapDashboardConfig(projectRoot, configPath string, noConfig bool
 		}
 		root = cwd
 	}
-	return maybeBootstrapConfigInRoot(root, configPath, noConfig, stdout)
+	return maybeBootstrapConfigInRoot(root, configPath, noConfig, promptWriter)
 }
 
 // parseDashboardTimeout interprets the --scan-timeout flag value as a duration.

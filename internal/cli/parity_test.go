@@ -73,6 +73,9 @@ func TestHelpForCommandShowsUsage(t *testing.T) {
 		if !strings.Contains(out.String(), "gruff-go "+cmd) {
 			t.Errorf("help %s missing command name; got %q", cmd, out.String())
 		}
+		if cmd == "init" && !strings.Contains(out.String(), "[--force [--reset]]") {
+			t.Errorf("help init missing reset usage; got %q", out.String())
+		}
 	}
 }
 
@@ -172,16 +175,16 @@ func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
 // hint appears when a first summary finds existing debt.
 func TestSummaryCommandSuggestsGeneratedBaseline(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "complex.go", complexFixture())
+	writeFile(t, root, "complex path.go", complexFixture())
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer
-	if code := Main([]string{"summary", "complex.go"}, &out, &errBuf); code != 1 {
+	if code := Main([]string{"summary", "complex path.go"}, &out, &errBuf); code != 1 {
 		t.Fatalf("summary exit = %d, stderr = %s", code, errBuf.String())
 	}
 	for _, fragment := range []string{
-		"fresh start: gruff-go analyse --generate-baseline gruff-baseline.json complex.go",
-		"then scan with: gruff-go analyse --baseline gruff-baseline.json complex.go",
+		"fresh start: gruff-go analyse --generate-baseline gruff-baseline.json \"complex path.go\"",
+		"then scan with: gruff-go analyse --baseline gruff-baseline.json \"complex path.go\"",
 	} {
 		if !strings.Contains(out.String(), fragment) {
 			t.Fatalf("summary missing %q; got: %s", fragment, out.String())

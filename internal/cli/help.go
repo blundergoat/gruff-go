@@ -90,7 +90,7 @@ var commandUsages = map[string]string{
 	"analyze":    "[--format text|json|summary-json|sarif|github|html] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
 	"baseline":   "--out path [--config path|--no-config] [--include-ignored] [path ...]",
 	"completion": "[bash|zsh|fish]",
-	"init":       "[--force]",
+	"init":       "[--force [--reset]]",
 	"list-rules": "[--format text|json] [--config path|--no-config]",
 	"summary":    "[--format text|json] [--top N] [--fail-on severity|--min-severity severity] [--config path|--no-config] [--include-ignored] [path ...]",
 	"report":     "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity|--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",

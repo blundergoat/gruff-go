@@ -45,13 +45,13 @@ func extractNoInteraction(args []string) ([]string, bool) {
 // configuredRegistryInteractive resolves the rule registry and, when no config
 // file is on disk and the shell can answer a prompt, offers to generate one
 // before falling back to the built-in defaults.
-func configuredRegistryInteractive(configPath string, noConfig, interactive bool, stdout io.Writer) (rule.Registry, []string, error) {
+func configuredRegistryInteractive(configPath string, noConfig, interactive bool, promptWriter io.Writer) (rule.Registry, []string, error) {
 	if interactive {
 		root, err := os.Getwd()
 		if err != nil {
 			return rule.Registry{}, nil, err
 		}
-		if err := maybeBootstrapConfigInRoot(root, configPath, noConfig, stdout); err != nil {
+		if err := maybeBootstrapConfigInRoot(root, configPath, noConfig, promptWriter); err != nil {
 			return rule.Registry{}, nil, err
 		}
 	}
@@ -62,22 +62,21 @@ func configuredRegistryInteractive(configPath string, noConfig, interactive bool
 // inside root would otherwise return no config. It is a no-op when the caller
 // supplied --config, asked for --no-config, the shell isn't a TTY, or an
 // existing config file is already on disk under root.
-func maybeBootstrapConfigInRoot(root, configPath string, noConfig bool, stdout io.Writer) error {
+func maybeBootstrapConfigInRoot(root, configPath string, noConfig bool, promptWriter io.Writer) error {
 	if configPath != "" || noConfig {
 		return nil
 	}
 	if !stdinTerminalCheck() {
 		return nil
 	}
-	resolved, ok, err := cfgpkg.ResolvePath(root, "")
+	_, ok, err := cfgpkg.ResolvePath(root, "")
 	if err != nil {
 		return err
 	}
 	if ok {
-		_ = resolved
 		return nil
 	}
-	if !promptForDefaultConfig(stdout) {
+	if !promptForDefaultConfig(promptWriter) {
 		return nil
 	}
 	target := filepath.Join(root, defaultConfigFileName)
@@ -85,8 +84,12 @@ func maybeBootstrapConfigInRoot(root, configPath string, noConfig bool, stdout i
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "wrote default config to %s (%d rules)\n", defaultConfigFileName, result.ruleCount)
-	writeFreshStartSetupHint(stdout)
+	if _, err := fmt.Fprintf(promptWriter, "wrote default config to %s (%d rules)\n", defaultConfigFileName, result.ruleCount); err != nil {
+		return err
+	}
+	if err := writeFreshStartSetupHint(promptWriter); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -94,13 +97,19 @@ func maybeBootstrapConfigInRoot(root, configPath string, noConfig bool, stdout i
 // file. Anything other than an explicit "y" or "yes" (case-insensitive) keeps
 // the existing built-in defaults so accidental newline-only input never lands
 // a file on disk the user did not ask for.
-func promptForDefaultConfig(stdout io.Writer) bool {
-	fmt.Fprintf(stdout, "no %s found in this directory.\n", defaultConfigFileName)
-	fmt.Fprint(stdout, "Generate one with default settings? [y/N]: ")
+func promptForDefaultConfig(promptWriter io.Writer) bool {
+	if _, err := fmt.Fprintf(promptWriter, "no %s found in this directory.\n", defaultConfigFileName); err != nil {
+		return false
+	}
+	if _, err := fmt.Fprint(promptWriter, "Generate one with default settings? [y/N]: "); err != nil {
+		return false
+	}
 	reader := bufio.NewReader(promptStdin)
 	line, err := reader.ReadString('\n')
 	if err != nil && line == "" {
-		fmt.Fprintln(stdout)
+		if _, writeErr := fmt.Fprintln(promptWriter); writeErr != nil {
+			return false
+		}
 		return false
 	}
 	answer := strings.TrimSpace(strings.ToLower(line))

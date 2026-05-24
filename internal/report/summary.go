@@ -7,6 +7,7 @@ import (
 	"io"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -232,7 +233,15 @@ func summaryCommandInputs(inputs []string) string {
 	if len(inputs) == 0 {
 		return "."
 	}
-	return strings.Join(inputs, " ")
+	args := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		if strings.HasPrefix(input, "-") || strings.ContainsAny(input, " \t\n\"'`$&;|()<>") {
+			args = append(args, strconv.Quote(input))
+			continue
+		}
+		args = append(args, input)
+	}
+	return strings.Join(args, " ")
 }
 
 // summaryWorkingDir renders the absolute working directory for the scanned line, returning "?" when the field is empty.

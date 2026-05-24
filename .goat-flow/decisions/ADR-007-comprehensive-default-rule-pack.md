@@ -30,7 +30,7 @@ Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default
 
 2026-05-24 update: `docs.config-field-comment` now follows the `docs.comment-rubric` path-scoped pattern. It is default-enabled in registry metadata but is a no-op until `includePaths` is configured, preserving first-run low noise without carrying a default-disabled exception.
 
-2026-05-24 update: the registry now has 61 rules across 11 pillars, all default-enabled. The catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
+2026-05-24 update: the registry now has 64 rules across 11 pillars, all default-enabled. The catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
 
 Two threshold adjustments toward industry-mainstream values:
 

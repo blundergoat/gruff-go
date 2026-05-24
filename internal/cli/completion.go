@@ -42,7 +42,10 @@ func runCompletion(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	fmt.Fprint(stdout, script)
+	if _, err := fmt.Fprint(stdout, script); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	return 0
 }
 

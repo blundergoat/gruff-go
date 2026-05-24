@@ -40,6 +40,10 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
+	if *reset && !*force {
+		fmt.Fprintln(stderr, "--reset requires --force")
+		return 2
+	}
 	if flags.NArg() > 0 {
 		fmt.Fprintln(stderr, "init takes no positional arguments")
 		return 2
@@ -59,14 +63,20 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "wrote default config to %s (%d rules)\n", defaultConfigFileName, result.ruleCount)
+	if _, err := fmt.Fprintf(stdout, "wrote default config to %s (%d rules)\n", defaultConfigFileName, result.ruleCount); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	if result.preservedNotice != "" {
 		fmt.Fprintln(stderr, result.preservedNotice)
 	}
 	if result.parseError != nil {
 		fmt.Fprintf(stderr, "warning: existing %s could not be parsed (%v); fresh defaults were written and prior tuning was lost\n", defaultConfigFileName, result.parseError)
 	}
-	writeFreshStartSetupHint(stdout)
+	if err := writeFreshStartSetupHint(stdout); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	return 0
 }
 
@@ -90,13 +100,12 @@ type writeDefaultConfigResult struct {
 // regenerate unless reset is also true.
 func writeDefaultConfig(path string, force, reset bool) (writeDefaultConfigResult, error) {
 	existed := false
-	if _, err := os.Stat(path); err == nil {
-		existed = true
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return writeDefaultConfigResult{}, err
-	}
-	if existed && !force {
-		return writeDefaultConfigResult{}, errConfigExists
+	if force {
+		if _, err := os.Stat(path); err == nil {
+			existed = true
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return writeDefaultConfigResult{}, err
+		}
 	}
 
 	defaults := rule.Defaults()
@@ -113,7 +122,24 @@ func writeDefaultConfig(path string, force, reset bool) (writeDefaultConfigResul
 		}
 	}
 	body := cfgpkg.Render(definitions, opts)
-	if err := os.WriteFile(path, body, 0o644); err != nil {
+	if force {
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			return writeDefaultConfigResult{}, err
+		}
+		return result, nil
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return writeDefaultConfigResult{}, errConfigExists
+		}
+		return writeDefaultConfigResult{}, err
+	}
+	if _, err := file.Write(body); err != nil {
+		_ = file.Close()
+		return writeDefaultConfigResult{}, err
+	}
+	if err := file.Close(); err != nil {
 		return writeDefaultConfigResult{}, err
 	}
 	return result, nil
@@ -156,7 +182,12 @@ func summarisePreserved(cfg cfgpkg.Config) string {
 
 // writeFreshStartSetupHint points new adopters at the first-run baseline flow
 // without creating a baseline implicitly.
-func writeFreshStartSetupHint(stdout io.Writer) {
-	fmt.Fprintf(stdout, "fresh start for existing findings: gruff-go analyse --generate-baseline %s .\n", defaultBaselineFileName)
-	fmt.Fprintf(stdout, "then scan with: gruff-go analyse --baseline %s .\n", defaultBaselineFileName)
+func writeFreshStartSetupHint(stdout io.Writer) error {
+	if _, err := fmt.Fprintf(stdout, "fresh start for existing findings: gruff-go analyse --generate-baseline %s .\n", defaultBaselineFileName); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "then scan with: gruff-go analyse --baseline %s .\n", defaultBaselineFileName); err != nil {
+		return err
+	}
+	return nil
 }

@@ -42,7 +42,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 		return 2
 	}
 	started := time.Now()
-	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stdout)
+	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
