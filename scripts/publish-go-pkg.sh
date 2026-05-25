@@ -29,9 +29,9 @@ that proxy.golang.org can resolve and install it. If version is omitted, the
 script uses internal/cli/cli.go's toolVersion.
 
 Examples:
-  scripts/publish-go-pkg.sh 0.1.1
-  scripts/publish-go-pkg.sh v0.1.1
-  scripts/publish-go-pkg.sh --dry-run 0.1.1
+  scripts/publish-go-pkg.sh 0.1.2
+  scripts/publish-go-pkg.sh v0.1.2
+  scripts/publish-go-pkg.sh --dry-run 0.1.2
 
 Options:
   --remote <name>       Git remote to publish to (default: origin, or REMOTE).
@@ -90,7 +90,7 @@ normalize_version() {
     local raw=$1 version
     version="${raw#v}"
     if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-        fail "version '$raw' does not look like SemVer (expected 0.1.1, not arbitrary text)"
+        fail "version '$raw' does not look like SemVer (expected 0.1.2, not arbitrary text)"
     fi
     printf '%s' "$version"
 }

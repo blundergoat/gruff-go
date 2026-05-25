@@ -213,7 +213,7 @@ func NewReport(input ReportInput) Report {
 		SchemaVersion: SchemaVersion,
 		Tool: Tool{
 			Name:    "gruff-go",
-			Version: "0.1.1",
+			Version: "0.1.2",
 		},
 		Run: RunMetadata{
 			WorkingDirectory: input.Root,

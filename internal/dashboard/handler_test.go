@@ -248,7 +248,7 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 		Paths:        []string{"internal"},
 		ConfigPath:   ".gruff-go.yaml",
 		BaselinePath: "baseline.json",
-		FailOn:       "high",
+		FailOn:       "error",
 	}
 	values := map[string][]string{}
 	state := stateFromQuery(opts, values)
@@ -258,24 +258,24 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 	if state.Paths != "internal" {
 		t.Errorf("paths = %q, want internal", state.Paths)
 	}
-	if state.FailOn != "high" {
-		t.Errorf("failOn = %q, want high", state.FailOn)
+	if state.FailOn != "error" {
+		t.Errorf("failOn = %q, want error", state.FailOn)
 	}
 }
 
 // TestStateFromQueryOverridesDefaults verifies explicit query values override defaults.
 func TestStateFromQueryOverridesDefaults(t *testing.T) {
-	opts := Options{ProjectRoot: "/repo", FailOn: "high"}
+	opts := Options{ProjectRoot: "/repo", FailOn: "advisory"}
 	values := map[string][]string{
 		"project":           {"/elsewhere"},
-		"failOn":            {"critical"},
+		"failOn":            {"error"},
 		"reportInteractive": {"1"},
 	}
 	state := stateFromQuery(opts, values)
 	if state.Project != "/elsewhere" {
 		t.Errorf("project override failed: %q", state.Project)
 	}
-	if state.FailOn != "critical" {
+	if state.FailOn != "error" {
 		t.Errorf("failOn override failed: %q", state.FailOn)
 	}
 	if state.ReportInteractive != "1" {
@@ -287,7 +287,7 @@ func TestStateFromQueryOverridesDefaults(t *testing.T) {
 func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	state := report.DashboardState{
 		Project:        "/repo",
-		FailOn:         "medium",
+		FailOn:         "warning",
 		IncludeIgnored: "1",
 	}
 	scan := buildScanOptions(Options{}, state)
@@ -298,7 +298,7 @@ func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 
 // TestBuildScanOptionsIncludeIgnoredFromOptionsDefault confirms that when the dashboard state leaves IncludeIgnored unset, the dashboard Options.IncludeIgnored default is the fallback honoured by buildScanOptions.
 func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
-	state := report.DashboardState{Project: "/repo", FailOn: "medium"}
+	state := report.DashboardState{Project: "/repo", FailOn: "warning"}
 	scan := buildScanOptions(Options{IncludeIgnored: true}, state)
 	if !scan.includeIgnored {
 		t.Fatalf("includeIgnored should be true when Options.IncludeIgnored is true and state is unset")

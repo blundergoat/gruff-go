@@ -129,6 +129,6 @@ func TestSleepInTestRuleIsDefaultEnabled(t *testing.T) {
 		t.Errorf("capability = %q, want parser", def.Capability)
 	}
 	if def.Severity != finding.SeverityAdvisory {
-		t.Errorf("severity = %q, want low", def.Severity)
+		t.Errorf("severity = %q, want advisory", def.Severity)
 	}
 }

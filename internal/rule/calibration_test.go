@@ -54,7 +54,7 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 		t.Fatalf("findings = %#v, want one", findings)
 	}
 	if findings[0].Severity != finding.SeverityError || findings[0].Confidence != finding.ConfidenceHigh {
-		t.Fatalf("severity/confidence = %s/%s, want high/high", findings[0].Severity, findings[0].Confidence)
+		t.Fatalf("severity/confidence = %s/%s, want error/high", findings[0].Severity, findings[0].Confidence)
 	}
 }
 
@@ -65,7 +65,7 @@ func assertCalibratedTestSizeFinding(t *testing.T, ruleID string, item finding.F
 		t.Fatalf("missing %s finding", ruleID)
 	}
 	if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceMedium {
-		t.Fatalf("%s severity/confidence = %s/%s, want low/medium", ruleID, item.Severity, item.Confidence)
+		t.Fatalf("%s severity/confidence = %s/%s, want advisory/medium", ruleID, item.Severity, item.Confidence)
 	}
 	if item.Metadata["testFile"] != true {
 		t.Fatalf("%s missing testFile metadata: %#v", ruleID, item.Metadata)

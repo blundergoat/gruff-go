@@ -24,9 +24,7 @@ func (r htmlRenderer) findingFilters() string {
 
 	severityOrder := []string{
 		string(finding.SeverityError),
-		string(finding.SeverityError),
 		string(finding.SeverityWarning),
-		string(finding.SeverityAdvisory),
 		string(finding.SeverityAdvisory),
 	}
 

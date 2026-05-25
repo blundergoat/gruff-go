@@ -59,7 +59,7 @@ The new penalty weights `1 / 8 / 30` retain the rough stair-step of the old `1+3
 
 ## Consequences
 
-- **User-visible breaking change.** Configs with `severity: critical|high|medium|low|info|notice|warn` no longer load. Migration is mechanical: `critical|high → error`, `medium → warning`, `low|info|notice → advisory`. CHANGELOG `[Unreleased]` carries the explicit list of replacements.
+- **User-visible breaking change.** Configs with `severity: critical|high|medium|low|info|notice|warn` no longer load. Migration is mechanical: `critical|high → error`, `medium|warn → warning`, `low|info|notice → advisory`. CHANGELOG `[Unreleased]` carries the explicit list of replacements.
 - **Default CLI behaviour change.** `--min-severity` default goes from `medium` (≈ new `warning`) to `advisory`. Default scans show roughly 40-60% more findings depending on rule pack. CI integrations that relied on the implicit default for gate sizing should pin `--min-severity warning` explicitly.
 - **Schema bump.** `gruff-go.analysis.v0.1` → `gruff-go.analysis.v0.2`. JSON consumers (dashboards, history readers, third-party scripts) parsing `Report.Summary.CountsBySeverity` or `PillarDetail` see renamed keys. Both fields drop the `Critical`/`High`/`Medium`/`Low`/`Info` keys and gain `Advisory`/`Warning`/`Error`.
 - **Score values shift slightly.** Penalty weights move from `1/3/8/15/30` (5-bucket) to `1/8/30` (3-bucket). A pillar previously scored against 10 `low` + 5 `medium` (penalty `10×3 + 5×8 = 70`) scores against 10 `advisory` + 5 `warning` (`10×1 + 5×8 = 50`) under the new weights — a numeric reduction even though the rule mix is unchanged. Golden snapshots regenerated in the same change reflect the new equilibrium.

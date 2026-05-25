@@ -3,19 +3,32 @@
 
 ## [Unreleased]
 
+
+## [0.1.2] - 2026-05-25
+
+### Breaking
+
+- Severity model collapses from 5 buckets to 3 (`advisory`, `warning`, `error`), matching gruff-rs, gruff-ts, gruff-py, and gruff-php. The old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are no longer accepted — existing `.gruff-go.yaml` files using them fail to load with `unknown severity "<name>"`. Mapping: `critical` + `high` → `error`; `medium` → `warning`; `low` + `notice` → `advisory`; `info` is dropped (no rule emitted it). See [ADR-009](.goat-flow/decisions/ADR-009-three-severity-model.md).
+- Default `--min-severity` (and its `--fail-on` alias) lowers from `medium` to `advisory`, so default scans now surface every applicable finding. CI gates that previously failed only on `medium`+ should pass `--min-severity warning` to retain the prior behaviour.
+- Analysis schema bumps `gruff-go.analysis.v0.1` → `gruff-go.analysis.v0.2`. The keys in `Report.Summary.CountsBySeverity` and the `PillarDetail.{Critical,High,Medium,Low,Info}` fields change shape; consumers should re-pin against `v0.2`.
+- Per-severity penalty weights collapse from `1 / 3 / 8 / 15 / 30` to `1 / 8 / 30` for `advisory / warning / error`. Pillar scores shift at the margin; CLI golden snapshots are regenerated in the same release.
+
 ### Added
 
-- The canonical `gruff.summary.v2` JSON pillar object and the analyse `pillarDetails` entries now carry a `penalty` field. Penalty is the raw, unclamped score deduction accumulated for the pillar (score is still `max(0, 100 - penalty)`), preserving the worst-pillar ranking signal when scores floor at zero (e.g. a pillar with 200 advisory findings reports penalty=200, score=0, distinct from a pillar with 1 critical error reporting penalty=12, score=88). Text, markdown, and HTML pillar tables are unchanged.
+- The canonical `gruff.summary.v2` JSON pillar object and the analyse `pillarDetails` entries now carry a `penalty` field. Penalty is the raw, unclamped score deduction accumulated for the pillar (score is still `max(0, 100 - penalty)`), preserving the worst-pillar ranking signal when scores floor at zero (e.g. a pillar with 200 advisory findings reports penalty=200, score=0, distinct from a pillar with 1 error finding reporting penalty=30, score=70). Text, markdown, and HTML pillar tables are unchanged.
 - `analyse --format=markdown` (alias `md`) renders a CommonMark-flavoured digest tuned for CI logs and GitHub PR comments. The output includes a short header, severity totals, the canonical 7-column Pillars table (pillar, grade, score, findings, advisory, warning, error sorted by findings descending then pillar ascending), and a compact top-rules block when findings exist.
 - `scripts/publish-go-pkg.sh` publishes a tagged Go module release, verifies the tag against source metadata, warms `proxy.golang.org`, and checks a temporary `go install`.
 - `summary` now renders the cross-port canonical `Pillars` block in text output, listing every applicable pillar with grade, score, and per-severity counts sorted by findings descending. The text block always covers all ten gruff-go pillars so clean scans surface as grade A rows with zero findings.
 - New `gruff-go.summary.v0.1` schema for `summary --format=json`. The dedicated digest payload exposes `schemaVersion` and a `pillars` array with `grade`, `score`, `applicable`, and per-severity counts. The heavier `analyse --format=summary-json` output continues to use `gruff-go.analysis.v0.2`.
 - `analyse --format=html` now renders the canonical Pillars table (pillar, grade, score, findings, advisory, warning, error) shared with the text and JSON summaries. The table covers every applicable pillar sorted by findings descending then pillar ascending, so clean scans surface as grade A rows with score 100.00 and zero counts.
+- Added [ADR-009](.goat-flow/decisions/ADR-009-three-severity-model.md) capturing the cross-port severity-model migration: rationale, mapping table, rejected alternatives, and the schema-bump and golden-regeneration plan.
 
 ### Changed
 
 - `summary --format=json` no longer reuses the analysis schema. Existing consumers should migrate to either `analyse --format=summary-json` (full analysis payload at `gruff-go.analysis.v0.2`) or the new `gruff-go.summary.v0.1` digest.
 - The HTML report's per-pillar section now renders as a 7-column table replacing the previous card grid. Scores render with two decimal places to match the canonical Pillars block, and every applicable pillar is always shown (clean pillars surface as grade A rows with zero counts).
+- `allowlists.acceptedAbbreviations` validation now rejects only blank entries; the previous validator required every entry to be uppercase. Entries are normalised to lowercase before matching, so both `ID` and `id` resolve to the same allowlist key. Documented in `.goat-flow/footguns/setup.md`, including that rule consumers must read the normalised list rather than the raw config and that `acceptedAbbreviations` carries different rule-consumer semantics in gruff-go than in sibling ports.
+- `.gruff-go.yaml` per-rule overrides migrate from the old severity vocabulary to the new one (`notice` → `advisory`, `critical` → `error`) as part of the 5→3 collapse; the dogfood configuration remains grade A under the new defaults.
 
 ## [0.1.1] - 2026-05-24
 
@@ -74,6 +87,7 @@ Schemas `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, and `gruff-go.baseline
 
 Known limitations: parser-only (no type/SSA analysis yet); HTML dashboard accessibility review ongoing.
 
-[Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/blundergoat/gruff-go/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/blundergoat/gruff-go/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/blundergoat/gruff-go/releases/tag/v0.1.0

@@ -310,11 +310,12 @@ func writeRenderThresholds(buf *bytes.Buffer, thresholds map[string]float64) {
 	}
 }
 
-// renderSeverityAlias inverts parseConfigSeverity so the rendered file uses the
-// gruff-family aliases (notice/warning/error) that adopters see in docs and
-// renderSeverityAlias emits the canonical 3-bucket severity name. The name is
-// unchanged from the internal Severity value after ADR-009; this helper is kept
-// so callers stay in one place if a future ADR needs to reintroduce aliasing.
+// renderSeverityAlias emits the canonical 3-bucket severity name for the
+// rendered config file. After ADR-009 the rendered name equals the internal
+// Severity value verbatim; this helper is kept as a single indirection point
+// so a future ADR that reintroduces output aliasing only has to change one
+// place. Paired with parseConfigSeverity (which still goes through
+// finding.ParseSeverity) so round-tripping a rendered file stays a no-op.
 func renderSeverityAlias(severity finding.Severity) string {
 	return string(severity)
 }
