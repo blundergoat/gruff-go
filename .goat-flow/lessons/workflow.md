@@ -1,11 +1,41 @@
 ---
 category: workflow
-last_reviewed: 2026-05-24
+last_reviewed: 2026-05-25
 ---
 
 # Workflow Lessons
 
-## Lesson: Never name source files after internal milestone identifiers
+## Lesson: A vocabulary migration is not complete until `docs/` is swept
+
+**Created:** 2026-05-25
+
+**Incident:** PR #3 (`v0.1.2`) executes ADR-009: a hard-break migration of the severity vocabulary from 5 buckets (`critical/high/medium/low/info`, plus the `notice`/`warn` aliases) to 3 (`advisory/warning/error`). The code migrated cleanly — `internal/finding/types.go`, every rule definition under `internal/rule/`, the config parser, golden snapshots, the dogfood `.gruff-go.yaml`, ADR-009 itself, and the CHANGELOG `[0.1.2]` entry all use the new vocabulary. But the user-facing docs were untouched:
+
+- `docs/configuration.md` still enumerates `severity: info | low | medium | high | critical | notice | warning | warn | error` as the valid set (search: `severity: info | low | medium`); the strict-validation list further down still says severities must be in `info / low / medium / high / critical`; multiple example configs use `severity: high` and `severity: low`.
+- `docs/rules.md` carries 64 `**Default severity:**` lines, every single one of them on the old vocabulary (43 × `low`, 11 × `high`, 8 × `medium`, 2 × `critical`).
+- `docs/ci-integration.md` recommends `--min-severity high` and claims the default is `medium`.
+- `docs/output-formats.md` has a JSON example with `"severity": "medium"`, describes the interactive-report severity multi-select order as `critical → high → medium → low → info`, and says the default `--min-severity` is `medium`.
+- `docs/dashboard.md` lists `--fail-on` default as `medium` and embeds a `--min-severity medium` example URL.
+
+A user following the v0.1.2 docs would write a config that fails to load. Worse, the strict-validation section says blank-rejection-only for `acceptedAbbreviations` is no longer the rule (it claims uppercase-only) — also a stale claim that PR #3's validator relaxation contradicts.
+
+The agent that produced PR #3 had already updated CHANGELOG and ADR-009 in the same commit set, so the user-facing prose was *partly* migrated. That partial migration is the trap: a quick eyeball check at the top-level files (CHANGELOG, ADR, README) looked clean and gave false confidence that the migration was done.
+
+**Do differently:** When a vocabulary changes (severity bucket names, pillar names, schema field names, CLI flag names, config keys), run `rg -nF '<old-term>' docs/` for every old term *before* declaring the migration complete. For ADR-009 the sweep would have been `rg -nE '\b(critical|high|medium|low|info|notice|warn)\b' docs/` and produced a punch list of every stale reference in one shot. The CHANGELOG entry for the breaking change is not a substitute — it documents the migration, it does not perform it. Add the `docs/` sweep to the Definition of Done in `CLAUDE.md` for any change that renames a user-visible identifier.
+
+The same lesson applies to confidence (`info/low/medium/high`), pillar names, severity-mapping tables in SARIF output, and any future cross-port vocabulary harmonisation: docs go stale silently because they don't have tests.
+
+## Lesson: After an enum rename, sweep test failure messages for the old name
+
+**Created:** 2026-05-25
+
+**Incident:** ADR-009 renamed severity constants (`SeverityMedium` → `SeverityWarning`, `SeverityLow` → `SeverityAdvisory`, etc.) across the rule package and its tests. The assertion *predicates* were migrated (`if def.Severity != finding.SeverityWarning {`), but the failure-message *format strings* were not: at least five tests still printed `want medium` or `want low` when they failed — `internal/rule/complexity_npath_test.go`, `internal/rule/test_quality_sleep_test.go`, `internal/rule/dead_code_unused_private_test.go`, `internal/rule/calibration_test.go` (twice, once with `want high/high` and once with `want low/medium`). The tests still pass because the predicate matches the new constant, so the rename looked clean — but on failure the operator sees an error message that names a severity bucket that no longer exists.
+
+Worse, the same drift hit non-test code that *stores* user-supplied severity strings verbatim: `internal/dashboard/handler_test.go` had setup constants like `FailOn: "high"` and assertions like `state.FailOn != "high"` that drove the test through a passthrough store path. The tests pass because the code preserves the string as-is, but the test inputs are now invalid severities under the new parser, so the test is documenting wrong behaviour for the new world.
+
+CodeRabbit flagged two of the seven stale strings; codex and CodeRabbit missed the other five.
+
+**Do differently:** After an enum-like rename (severity, pillar, capability, status, log level), grep for `want <oldname>` and old-vocabulary string literals across the whole tree, not just the package that defines the enum. Concretely: `rg -nE '"(want |"|, |= ")(<old1>|<old2>|...)"\b'` flushes out format strings and test input literals in one pass. Plain `grep` for the assertion predicate (`SeverityMedium`) won't catch these because the predicate was already migrated; you have to grep for the *human-readable* name in string form. Treat this as a mandatory step in the verify phase of any enum rename.
 
 **Created:** 2026-05-24
 
