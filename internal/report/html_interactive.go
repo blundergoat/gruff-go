@@ -23,11 +23,11 @@ func (r htmlRenderer) findingFilters() string {
 	slices.Sort(pillarKeys)
 
 	severityOrder := []string{
-		string(finding.SeverityCritical),
-		string(finding.SeverityHigh),
-		string(finding.SeverityMedium),
-		string(finding.SeverityLow),
-		string(finding.SeverityInfo),
+		string(finding.SeverityError),
+		string(finding.SeverityError),
+		string(finding.SeverityWarning),
+		string(finding.SeverityAdvisory),
+		string(finding.SeverityAdvisory),
 	}
 
 	var builder strings.Builder

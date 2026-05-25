@@ -35,7 +35,7 @@ func (r NegatedBooleanRule) Definition() Definition {
 		Title:          "Negated boolean",
 		Description:    "Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites.",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

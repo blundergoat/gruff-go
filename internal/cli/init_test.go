@@ -216,7 +216,7 @@ func TestInitResetRequiresForce(t *testing.T) {
 func TestBootstrapPromptCreatesConfigOnYes(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 
 	withFakeTerminalStdin(t, strings.NewReader("y\n"))
 
@@ -246,7 +246,7 @@ func TestBootstrapPromptCreatesConfigOnYes(t *testing.T) {
 func TestBootstrapPromptDoesNotCorruptJSONOutput(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 
 	withFakeTerminalStdin(t, strings.NewReader("y\n"))
 
@@ -270,7 +270,7 @@ func TestBootstrapPromptDoesNotCorruptJSONOutput(t *testing.T) {
 func TestBootstrapPromptSkippedOnNoInteraction(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 
 	withFakeTerminalStdin(t, strings.NewReader("y\n"))
 
@@ -291,7 +291,7 @@ func TestBootstrapPromptSkippedOnNoInteraction(t *testing.T) {
 func TestBootstrapPromptSkippedWithNoConfig(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 
 	withFakeTerminalStdin(t, strings.NewReader("y\n"))
 
@@ -313,7 +313,7 @@ func TestBootstrapPromptSkippedWithNoConfig(t *testing.T) {
 func TestBootstrapPromptDecliningKeepsBuiltInDefaults(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 
 	withFakeTerminalStdin(t, strings.NewReader("n\n"))
 

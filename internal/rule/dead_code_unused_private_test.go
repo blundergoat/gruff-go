@@ -149,7 +149,7 @@ func TestUnusedPrivateFunctionIsDefaultEnabled(t *testing.T) {
 	if def.Capability != CapabilityParser {
 		t.Errorf("capability = %q, want parser", def.Capability)
 	}
-	if def.Severity != finding.SeverityLow {
+	if def.Severity != finding.SeverityAdvisory {
 		t.Errorf("severity = %q, want low", def.Severity)
 	}
 }

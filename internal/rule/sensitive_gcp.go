@@ -31,7 +31,7 @@ func (GCPServiceAccountRule) Definition() Definition {
 		Title:          "GCP service-account JSON key",
 		Description:    "Flags files containing both a `\"type\": \"service_account\"` marker and a PEM private-key header - the documented shape of a GCP service-account JSON key file. Fires independently of sensitive-data.private-key, so a real key file produces two findings.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityCritical,
+		Severity:       finding.SeverityError,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},

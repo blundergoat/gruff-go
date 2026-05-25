@@ -127,7 +127,7 @@ func TestNPathIsDefaultEnabled(t *testing.T) {
 	if def.Capability != CapabilityParser {
 		t.Errorf("capability = %q, want parser", def.Capability)
 	}
-	if def.Severity != finding.SeverityMedium {
+	if def.Severity != finding.SeverityWarning {
 		t.Errorf("severity = %q, want medium", def.Severity)
 	}
 	if def.Thresholds["maxComplexity"] != npathThreshold {

@@ -216,7 +216,7 @@ func validDefinition(id string) Definition {
 		ID:             id,
 		Title:          "Test rule",
 		Pillar:         finding.PillarSize,
-		Severity:       finding.SeverityMedium,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 	}

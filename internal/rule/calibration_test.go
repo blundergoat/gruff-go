@@ -39,7 +39,7 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 // TestSizeRuleConfiguredSeverityOverridesTestCalibration verifies configured severity wins over calibration.
 func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	registry, err := DefaultsConfigured(Config{
-		Severities: map[string]finding.Severity{"size.file-length": finding.SeverityHigh},
+		Severities: map[string]finding.Severity{"size.file-length": finding.SeverityError},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	if len(findings) != 1 {
 		t.Fatalf("findings = %#v, want one", findings)
 	}
-	if findings[0].Severity != finding.SeverityHigh || findings[0].Confidence != finding.ConfidenceHigh {
+	if findings[0].Severity != finding.SeverityError || findings[0].Confidence != finding.ConfidenceHigh {
 		t.Fatalf("severity/confidence = %s/%s, want high/high", findings[0].Severity, findings[0].Confidence)
 	}
 }
@@ -64,7 +64,7 @@ func assertCalibratedTestSizeFinding(t *testing.T, ruleID string, item finding.F
 	if item.RuleID == "" {
 		t.Fatalf("missing %s finding", ruleID)
 	}
-	if item.Severity != finding.SeverityLow || item.Confidence != finding.ConfidenceMedium {
+	if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceMedium {
 		t.Fatalf("%s severity/confidence = %s/%s, want low/medium", ruleID, item.Severity, item.Confidence)
 	}
 	if item.Metadata["testFile"] != true {

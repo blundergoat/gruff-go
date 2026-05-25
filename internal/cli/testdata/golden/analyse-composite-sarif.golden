@@ -22,7 +22,7 @@
               },
               "properties": {
                 "pillar": "complexity",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -51,7 +51,7 @@
               },
               "properties": {
                 "pillar": "complexity",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -77,7 +77,7 @@
               },
               "properties": {
                 "pillar": "complexity",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -103,7 +103,7 @@
               },
               "properties": {
                 "pillar": "complexity",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -132,7 +132,7 @@
               },
               "properties": {
                 "pillar": "dead-code",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true
@@ -155,7 +155,7 @@
               },
               "properties": {
                 "pillar": "dead-code",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -181,7 +181,7 @@
               },
               "properties": {
                 "pillar": "dead-code",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -212,7 +212,7 @@
                   "size",
                   "complexity"
                 ],
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -238,7 +238,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -268,7 +268,7 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -312,7 +312,7 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -344,7 +344,7 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -370,7 +370,7 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true
@@ -393,7 +393,7 @@
               },
               "properties": {
                 "pillar": "documentation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -420,7 +420,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -446,7 +446,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -472,7 +472,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -498,7 +498,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -525,7 +525,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -551,7 +551,7 @@
               },
               "properties": {
                 "pillar": "maintainability",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -577,7 +577,7 @@
               },
               "properties": {
                 "pillar": "modernisation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -606,7 +606,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -663,7 +663,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -707,7 +707,7 @@
               },
               "properties": {
                 "pillar": "modernisation",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -738,7 +738,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -777,7 +777,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -807,7 +807,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -854,7 +854,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -887,7 +887,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -913,7 +913,7 @@
               },
               "properties": {
                 "pillar": "naming",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -944,7 +944,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -971,7 +971,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -998,7 +998,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1025,7 +1025,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1052,7 +1052,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1079,7 +1079,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1109,7 +1109,7 @@
                 "secondaryPillars": [
                   "sensitive-data"
                 ],
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1135,7 +1135,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1162,7 +1162,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1189,7 +1189,7 @@
               },
               "properties": {
                 "pillar": "security",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1216,7 +1216,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1242,7 +1242,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1268,7 +1268,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1294,7 +1294,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "critical",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1320,7 +1320,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1346,7 +1346,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1372,7 +1372,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1398,7 +1398,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1424,7 +1424,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1450,7 +1450,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "critical",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1476,7 +1476,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true
@@ -1499,7 +1499,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1525,7 +1525,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "high",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1551,7 +1551,7 @@
               },
               "properties": {
                 "pillar": "size",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1577,7 +1577,7 @@
               },
               "properties": {
                 "pillar": "size",
-                "defaultSeverity": "medium",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1603,7 +1603,7 @@
               },
               "properties": {
                 "pillar": "size",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1629,7 +1629,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1655,7 +1655,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1681,7 +1681,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1707,7 +1707,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1733,7 +1733,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1759,7 +1759,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1785,7 +1785,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1812,7 +1812,7 @@
               },
               "properties": {
                 "pillar": "test-quality",
-                "defaultSeverity": "low",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1869,7 +1869,7 @@
               "size",
               "complexity"
             ],
-            "severity": "low",
+            "severity": "advisory",
             "symbol": "Hot"
           }
         },
@@ -1918,7 +1918,7 @@
             },
             "pillar": "maintainability",
             "remediation": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
-            "severity": "low"
+            "severity": "advisory"
           }
         },
         {
@@ -1953,7 +1953,7 @@
             },
             "pillar": "complexity",
             "remediation": "Split independent decisions or move branches into named helpers.",
-            "severity": "medium",
+            "severity": "warning",
             "symbol": "Hot"
           }
         },
@@ -1988,7 +1988,7 @@
             },
             "pillar": "documentation",
             "remediation": "Add a Go-style doc comment that begins with the symbol name.",
-            "severity": "low",
+            "severity": "advisory",
             "symbol": "Hot"
           }
         },
@@ -2025,13 +2025,13 @@
             },
             "pillar": "size",
             "remediation": "Extract cohesive helper functions or split independent branches.",
-            "severity": "medium",
+            "severity": "warning",
             "symbol": "Hot"
           }
         }
       ],
       "properties": {
-        "gruffSchemaVersion": "gruff-go.analysis.v0.1",
+        "gruffSchemaVersion": "gruff-go.analysis.v0.2",
         "score": 94,
         "grade": "A"
       }

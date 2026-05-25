@@ -126,7 +126,7 @@ func analysisRoot(root string) (string, error) {
 // normalizeOptions fills defaults for empty Options fields.
 func normalizeOptions(opts Options) Options {
 	if opts.FailOn == "" {
-		opts.FailOn = finding.SeverityMedium
+		opts.FailOn = finding.SeverityWarning
 	}
 	if opts.Format == "" {
 		opts.Format = "text"
@@ -142,7 +142,7 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 			Stage:    "discovery",
 			Message:  "path does not exist",
 			File:     missing,
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 	}
 	return diagnostics
@@ -157,7 +157,7 @@ func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 			Message:  item.Message,
 			File:     item.File,
 			Location: parserLocation(item),
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 	}
 	return diagnostics
@@ -182,7 +182,7 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 			Stage:    "baseline",
 			Message:  err.Error(),
 			File:     displayPath,
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 		return findings, baselineSummary, diagnostics
 	}
@@ -212,7 +212,7 @@ func applyDiff(root string, paths []string, findings []finding.Finding, diagnost
 		diagnostics = append(diagnostics, Diagnostic{
 			Stage:    "diff",
 			Message:  err.Error(),
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 		return findings, diffSummary, diagnostics
 	}

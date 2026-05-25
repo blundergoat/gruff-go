@@ -17,7 +17,7 @@ func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	t.Chdir(t.TempDir())
 	report, err := Analyze(Options{
 		Paths:    []string{"missing.go"},
-		FailOn:   finding.SeverityMedium,
+		FailOn:   finding.SeverityWarning,
 		Registry: rule.Defaults(),
 	})
 	if err != nil {
@@ -37,11 +37,11 @@ func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
-	first, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
+	first, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityWarning})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityMedium})
+	second, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityWarning})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 
 	report, err := Analyze(Options{
 		Registry: registry,
-		FailOn:   finding.SeverityMedium,
+		FailOn:   finding.SeverityWarning,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func (findingRule) Definition() rule.Definition {
 		ID:             "size.file-length",
 		Title:          "File length",
 		Pillar:         finding.PillarSize,
-		Severity:       finding.SeverityMedium,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 	}

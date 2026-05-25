@@ -41,11 +41,15 @@ func validatePatterns(label string, patterns []string) error {
 	return nil
 }
 
-// validateAbbreviations rejects non-uppercase accepted-abbreviation entries.
+// validateAbbreviations rejects blank accepted-abbreviation entries. Case is
+// not enforced: the rule consumer (naming.acronym-case, see
+// internal/rule/naming_acronym.go `lowerStringSet`) trims and lowercases
+// entries for matching, and the sibling gruff-rs / gruff-ts / gruff-py /
+// gruff-php ports all accept the same lowercase universal vocabulary list.
 func validateAbbreviations(values []string) error {
 	for index, abbreviation := range values {
-		if abbreviation == "" || abbreviation != strings.ToUpper(abbreviation) {
-			return fmt.Errorf("acceptedAbbreviations[%d] must be uppercase", index)
+		if strings.TrimSpace(abbreviation) == "" {
+			return fmt.Errorf("acceptedAbbreviations[%d] must not be blank", index)
 		}
 	}
 	return nil

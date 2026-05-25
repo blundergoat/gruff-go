@@ -36,7 +36,7 @@ func TestWriteHTMLRendersCoreSections(t *testing.T) {
 		`<div class="wordmark">gruff</div>`,
 		`<section class="verdict">`,
 		`<div class="grade-stamp `,
-		`<h2 class="section-head">pillar grades`,
+		`<h2 class="section-head">pillars`,
 		`<h2 class="section-head">top offenders`,
 		`<th scope="col">file</th>`,
 		`<h2 class="section-head">distribution`,
@@ -77,7 +77,7 @@ func TestWriteHTMLCelebrationSubtitle(t *testing.T) {
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "html",
-		FailOn:      finding.SeverityMedium,
+		FailOn:      finding.SeverityWarning,
 		Scanned:     []string{"main.go"},
 		Definitions: defaultDefinitions(),
 	})
@@ -85,7 +85,7 @@ func TestWriteHTMLCelebrationSubtitle(t *testing.T) {
 	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
 		t.Fatalf("WriteHTML: %v", err)
 	}
-	if !strings.Contains(out.String(), "No medium or higher severity findings flagged.") {
+	if !strings.Contains(out.String(), "No warning or higher severity findings flagged.") {
 		t.Errorf("expected celebration subtitle, got: %s", out.String())
 	}
 }
@@ -98,7 +98,7 @@ func TestWriteHTMLDataDrivenSubtitle(t *testing.T) {
 		t.Fatalf("WriteHTML: %v", err)
 	}
 	body := out.String()
-	if !strings.Contains(body, "at medium or higher severity across") {
+	if !strings.Contains(body, "at warning or higher severity across") {
 		t.Errorf("expected data-driven subtitle, got: %s", body)
 	}
 }
@@ -115,10 +115,9 @@ func TestWriteHTMLSeverityTiers(t *testing.T) {
 		fragment string
 		desc     string
 	}{
-		{`<div class="severity fail">critical</div>`, "critical severity uses fail tier"},
-		{`<div class="severity fail">high</div>`, "high severity uses fail tier"},
-		{`<div class="severity warn">medium</div>`, "medium severity uses warn tier"},
-		{`<div class="severity note">low</div>`, "low severity uses note tier"},
+		{`<div class="severity fail">error</div>`, "error severity uses fail tier"},
+		{`<div class="severity warn">warning</div>`, "warning severity uses warn tier"},
+		{`<div class="severity note">advisory</div>`, "advisory severity uses note tier"},
 	}
 	for _, tc := range cases {
 		if !strings.Contains(body, tc.fragment) {
@@ -194,7 +193,7 @@ func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 		RuleID:     "test.rule",
 		Message:    `<script>alert("xss")</script>`,
 		File:       `evil.go"`,
-		Severity:   finding.SeverityHigh,
+		Severity:   finding.SeverityError,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarSize,
 	}
@@ -202,7 +201,7 @@ func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 		Root:        "/repo",
 		Inputs:      []string{`<img src=x>`},
 		Format:      "html",
-		FailOn:      finding.SeverityMedium,
+		FailOn:      finding.SeverityWarning,
 		Scanned:     []string{"evil.go"},
 		Findings:    []finding.Finding{malicious},
 		Definitions: defaultDefinitions(),
@@ -229,13 +228,13 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 		Root:    "/repo",
 		Inputs:  []string{"."},
 		Format:  "html",
-		FailOn:  finding.SeverityMedium,
+		FailOn:  finding.SeverityWarning,
 		Scanned: []string{"a.go"},
 		Diagnostics: []analysis.Diagnostic{{
 			Stage:    "parse",
 			Message:  "syntax error",
 			File:     "broken.go",
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		}},
 		Definitions: defaultDefinitions(),
 	})
@@ -252,13 +251,99 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 	}
 }
 
+// TestWriteHTMLPillarsTableMatchesCanonicalShape confirms the HTML pillars
+// section mirrors the canonical Pillars block: every applicable pillar appears
+// as a row with grade, 2-decimal score, findings, advisory, warning, and error
+// columns, sorted by findings DESC then pillar ASC.
+func TestWriteHTMLPillarsTableMatchesCanonicalShape(t *testing.T) {
+	report := buildHTMLFixture()
+	var out bytes.Buffer
+	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML: %v", err)
+	}
+	body := out.String()
+	for _, header := range []string{
+		`<th scope="col">pillar</th>`,
+		`<th scope="col" class="num">grade</th>`,
+		`<th scope="col" class="num">score</th>`,
+		`<th scope="col" class="num">findings</th>`,
+		`<th scope="col" class="num">advisory</th>`,
+		`<th scope="col" class="num">warning</th>`,
+		`<th scope="col" class="num">error</th>`,
+	} {
+		if !strings.Contains(body, header) {
+			t.Errorf("missing pillar table header %q", header)
+		}
+	}
+	wantPillars := []string{
+		"size", "complexity", "documentation", "sensitive-data", "security",
+		"test-quality", "naming", "maintainability", "dead-code", "modernisation",
+	}
+	for _, pillar := range wantPillars {
+		marker := `<td class="pillar-name">` + pillar + `</td>`
+		if !strings.Contains(body, marker) {
+			t.Errorf("pillar table missing row for %q", pillar)
+		}
+	}
+	// Score must render with two decimal places (e.g. 100.00, not 100).
+	if !strings.Contains(body, `>100.00<`) {
+		t.Errorf("pillar score should render with 2 decimals; body did not contain 100.00")
+	}
+	// Sort order: findings DESC, pillar ASC. The fixture has complexity (3),
+	// naming (1), size (1), and the remaining seven pillars with 0 findings.
+	// complexity comes first by count; naming precedes size by ASC tie-break.
+	indexComplexity := strings.Index(body, `<td class="pillar-name">complexity</td>`)
+	indexSize := strings.Index(body, `<td class="pillar-name">size</td>`)
+	indexNaming := strings.Index(body, `<td class="pillar-name">naming</td>`)
+	if indexComplexity < 0 || indexSize < 0 || indexNaming < 0 {
+		t.Fatalf("expected complexity, size, naming rows; got indices %d/%d/%d", indexComplexity, indexSize, indexNaming)
+	}
+	if !(indexComplexity < indexNaming && indexNaming < indexSize) {
+		t.Errorf("pillar rows not sorted findings DESC then pillar ASC: complexity=%d naming=%d size=%d", indexComplexity, indexNaming, indexSize)
+	}
+}
+
+// TestWriteHTMLPillarsTableCleanScan asserts a zero-finding scan still emits
+// every canonical pillar row (10 entries) at grade A and score 100.00.
+func TestWriteHTMLPillarsTableCleanScan(t *testing.T) {
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "html",
+		FailOn:      finding.SeverityWarning,
+		Scanned:     []string{"main.go"},
+		Definitions: defaultDefinitions(),
+	})
+	var out bytes.Buffer
+	if err := WriteHTML(&out, report, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML: %v", err)
+	}
+	body := out.String()
+	wantPillars := []string{
+		"size", "complexity", "documentation", "sensitive-data", "security",
+		"test-quality", "naming", "maintainability", "dead-code", "modernisation",
+	}
+	for _, pillar := range wantPillars {
+		marker := `<td class="pillar-name">` + pillar + `</td>`
+		if !strings.Contains(body, marker) {
+			t.Errorf("clean-scan pillar table missing row for %q", pillar)
+		}
+	}
+	if strings.Count(body, `<span class="grade-pill a">A</span>`) < len(wantPillars) {
+		t.Errorf("clean-scan pillar table should render every row at grade A; got body:\n%s", body)
+	}
+	if strings.Count(body, `>100.00<`) < len(wantPillars) {
+		t.Errorf("clean-scan pillar table should render every row at score 100.00")
+	}
+}
+
 // TestWriteHTMLDiffScopeLabel checks the masthead scope label reflects diff-scope runs.
 func TestWriteHTMLDiffScopeLabel(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "html",
-		FailOn:      finding.SeverityMedium,
+		FailOn:      finding.SeverityWarning,
 		Scanned:     []string{"a.go"},
 		Definitions: defaultDefinitions(),
 		Diff:        analysis.DiffSummary{Enabled: true, Base: "main", ChangedFiles: []string{"a.go", "b.go"}},
@@ -280,7 +365,7 @@ func buildHTMLFixture() analysis.Report {
 			Message:    "function exceeds cyclomatic threshold",
 			File:       "hot.go",
 			Location:   &finding.Location{Line: 42},
-			Severity:   finding.SeverityHigh,
+			Severity:   finding.SeverityError,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarComplexity,
 			Metadata:   map[string]any{"complexity": 24},
@@ -290,7 +375,7 @@ func buildHTMLFixture() analysis.Report {
 			Message:    "function exceeds cyclomatic threshold",
 			File:       "hot.go",
 			Location:   &finding.Location{Line: 90},
-			Severity:   finding.SeverityCritical,
+			Severity:   finding.SeverityError,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarComplexity,
 			Metadata:   map[string]any{"complexity": 45},
@@ -300,7 +385,7 @@ func buildHTMLFixture() analysis.Report {
 			Message:    "file is long",
 			File:       "warm.go",
 			Location:   &finding.Location{Line: 1},
-			Severity:   finding.SeverityMedium,
+			Severity:   finding.SeverityWarning,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarSize,
 		},
@@ -309,7 +394,7 @@ func buildHTMLFixture() analysis.Report {
 			Message:    "identifier is short",
 			File:       "warm.go",
 			Location:   &finding.Location{Line: 10},
-			Severity:   finding.SeverityLow,
+			Severity:   finding.SeverityAdvisory,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarNaming,
 		},
@@ -320,7 +405,7 @@ func buildHTMLFixture() analysis.Report {
 		Message:    "function exceeds cyclomatic threshold",
 		File:       "medium.go",
 		Location:   &finding.Location{Line: 5},
-		Severity:   finding.SeverityMedium,
+		Severity:   finding.SeverityWarning,
 		Confidence: finding.ConfidenceMedium,
 		Pillar:     finding.PillarComplexity,
 		Metadata:   map[string]any{"complexity": 12},
@@ -329,7 +414,7 @@ func buildHTMLFixture() analysis.Report {
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "html",
-		FailOn:      finding.SeverityMedium,
+		FailOn:      finding.SeverityWarning,
 		Scanned:     []string{"hot.go", "warm.go", "medium.go"},
 		Findings:    findings,
 		Definitions: defaultDefinitions(),

@@ -35,7 +35,7 @@ func (r CognitiveComplexityRule) Definition() Definition {
 		Title:          "Cognitive complexity",
 		Description:    "Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
 		Pillar:         finding.PillarComplexity,
-		Severity:       finding.SeverityMedium,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxComplexity": float64(max)},

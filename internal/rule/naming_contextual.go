@@ -61,7 +61,7 @@ func (r ContextualGenericRule) Definition() Definition {
 		Title:          "Contextual generic name",
 		Description:    "Flags generic range variables and accumulator names only when surrounding context is large enough that the name loses meaning.",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

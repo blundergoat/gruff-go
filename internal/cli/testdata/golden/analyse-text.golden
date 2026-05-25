@@ -1,9 +1,9 @@
 gruff-go analysis
-schema: gruff-go.analysis.v0.1
+schema: gruff-go.analysis.v0.2
 files: 1 scanned, 0 skipped
 score coverage: complexity
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
 complexity distribution: finding-only
 findings:
-  [medium] complex.go:5 complexity.cyclomatic: function cyclomatic complexity is 22, above threshold 20
+  [warning] complex.go:5 complexity.cyclomatic: function cyclomatic complexity is 22, above threshold 20
 exit: 1

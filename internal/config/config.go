@@ -382,16 +382,10 @@ func definitionsByID(definitions []rule.Definition) map[string]rule.Definition {
 	return out
 }
 
-// parseConfigSeverity maps gruff-family severity aliases to scanner severities.
+// parseConfigSeverity validates a per-rule severity override. Per ADR-009 the
+// hard-break migration accepts only the 3-bucket names; legacy 5-bucket names
+// (critical/high/medium/low/info) and the old aliases (notice/warn) must be
+// migrated in the user's config before the file will load.
 func parseConfigSeverity(input string) (finding.Severity, error) {
-	switch input {
-	case "notice":
-		return finding.SeverityLow, nil
-	case "warning", "warn":
-		return finding.SeverityMedium, nil
-	case "error":
-		return finding.SeverityHigh, nil
-	default:
-		return finding.ParseSeverity(input)
-	}
+	return finding.ParseSeverity(input)
 }

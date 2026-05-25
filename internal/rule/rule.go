@@ -310,7 +310,7 @@ func applyDefinition(item finding.Finding, definition Definition) finding.Findin
 		item.Remediation = definition.Remediation
 	}
 	if !hadSeverity && shouldCalibrateTestSizeFinding(item, definition) {
-		item.Severity = finding.SeverityLow
+		item.Severity = finding.SeverityAdvisory
 		item.Confidence = finding.ConfidenceMedium
 	}
 	return item.WithFingerprint()

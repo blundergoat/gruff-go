@@ -50,7 +50,7 @@ func (WeakCryptoRule) Definition() Definition {
 		Title:          "Weak crypto primitive",
 		Description:    "Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits.",
 		Pillar:         finding.PillarSecurity,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"crypto", "security"},

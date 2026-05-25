@@ -69,7 +69,7 @@ func (InsecureRandomSecretRule) Definition() Definition {
 		Title:          "Insecure random secret",
 		Description:    "Flags math/rand use when the result is assigned to or returned from token, nonce, session, password, key, or other secret-looking contexts.",
 		Pillar:         finding.PillarSecurity,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"random", "security"},

@@ -3,6 +3,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- The canonical `gruff.summary.v2` JSON pillar object and the analyse `pillarDetails` entries now carry a `penalty` field. Penalty is the raw, unclamped score deduction accumulated for the pillar (score is still `max(0, 100 - penalty)`), preserving the worst-pillar ranking signal when scores floor at zero (e.g. a pillar with 200 advisory findings reports penalty=200, score=0, distinct from a pillar with 1 critical error reporting penalty=12, score=88). Text, markdown, and HTML pillar tables are unchanged.
+- `analyse --format=markdown` (alias `md`) renders a CommonMark-flavoured digest tuned for CI logs and GitHub PR comments. The output includes a short header, severity totals, the canonical 7-column Pillars table (pillar, grade, score, findings, advisory, warning, error sorted by findings descending then pillar ascending), and a compact top-rules block when findings exist.
+- `scripts/publish-go-pkg.sh` publishes a tagged Go module release, verifies the tag against source metadata, warms `proxy.golang.org`, and checks a temporary `go install`.
+- `summary` now renders the cross-port canonical `Pillars` block in text output, listing every applicable pillar with grade, score, and per-severity counts sorted by findings descending. The text block always covers all ten gruff-go pillars so clean scans surface as grade A rows with zero findings.
+- New `gruff-go.summary.v0.1` schema for `summary --format=json`. The dedicated digest payload exposes `schemaVersion` and a `pillars` array with `grade`, `score`, `applicable`, and per-severity counts. The heavier `analyse --format=summary-json` output continues to use `gruff-go.analysis.v0.2`.
+- `analyse --format=html` now renders the canonical Pillars table (pillar, grade, score, findings, advisory, warning, error) shared with the text and JSON summaries. The table covers every applicable pillar sorted by findings descending then pillar ascending, so clean scans surface as grade A rows with score 100.00 and zero counts.
+
+### Changed
+
+- `summary --format=json` no longer reuses the analysis schema. Existing consumers should migrate to either `analyse --format=summary-json` (full analysis payload at `gruff-go.analysis.v0.2`) or the new `gruff-go.summary.v0.1` digest.
+- The HTML report's per-pillar section now renders as a 7-column table replacing the previous card grid. Scores render with two decimal places to match the canonical Pillars block, and every applicable pillar is always shown (clean pillars surface as grade A rows with zero counts).
+
 ## [0.1.1] - 2026-05-24
 
 ### Fixed

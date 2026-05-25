@@ -22,7 +22,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	minSeverity := string(finding.SeverityMedium)
+	minSeverity := string(finding.SeverityWarning)
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	if err := flags.Parse(args); err != nil {
@@ -62,7 +62,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	scanDuration := time.Since(started)
 	switch *format {
 	case "json":
-		if err := report.WriteSummaryJSON(stdout, analysisReport); err != nil {
+		if err := report.WriteSummaryV01JSON(stdout, analysisReport); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}

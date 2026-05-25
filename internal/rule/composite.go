@@ -26,7 +26,7 @@ func (DesignGodFunctionRule) Definition() Definition {
 		Description:      "Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition.",
 		Pillar:           finding.PillarDesign,
 		SecondaryPillars: []finding.Pillar{finding.PillarSize, finding.PillarComplexity},
-		Severity:         finding.SeverityLow,
+		Severity:         finding.SeverityAdvisory,
 		Confidence:       finding.ConfidenceHigh,
 		DefaultEnabled:   true,
 		Tags:             []string{"composite"},
@@ -117,7 +117,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 		Title:          "Hotspot file",
 		Description:    "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.",
 		Pillar:         finding.PillarMaintain,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Thresholds: map[string]float64{

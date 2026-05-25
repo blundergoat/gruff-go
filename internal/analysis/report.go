@@ -14,7 +14,10 @@ import (
 )
 
 // SchemaVersion identifies the stable analysis report schema emitted by gruff-go.
-const SchemaVersion = "gruff-go.analysis.v0.1"
+// SchemaVersion bumped from v0.1 to v0.2 by ADR-009 when the 5-bucket severity
+// fields (Critical/High/Medium/Low/Info on PillarDetail; same keys on
+// CountsBySeverity) were replaced with the 3-bucket Advisory/Warning/Error.
+const SchemaVersion = "gruff-go.analysis.v0.2"
 
 // Diagnostic describes a non-finding problem encountered while building a report.
 type Diagnostic struct {
@@ -338,14 +341,12 @@ func locationLine(location *finding.Location) int {
 	return location.Line
 }
 
-// countSeverity tallies findings into a map keyed by severity label, pre-populating the five canonical buckets so absent severities still appear with a zero count.
+// countSeverity tallies findings into a map keyed by severity label, pre-populating the three canonical buckets so absent severities still appear with a zero count.
 func countSeverity(findings []finding.Finding) map[string]int {
 	counts := map[string]int{
-		string(finding.SeverityInfo):     0,
-		string(finding.SeverityLow):      0,
-		string(finding.SeverityMedium):   0,
-		string(finding.SeverityHigh):     0,
-		string(finding.SeverityCritical): 0,
+		string(finding.SeverityAdvisory): 0,
+		string(finding.SeverityWarning):  0,
+		string(finding.SeverityError):    0,
 	}
 	for _, item := range findings {
 		counts[string(item.Severity)]++

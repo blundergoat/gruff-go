@@ -1,9 +1,31 @@
 ---
 category: setup
-last_reviewed: 2026-05-24
+last_reviewed: 2026-05-25
 ---
 
 # Setup Footguns
+
+## Footgun: `allowlists.acceptedAbbreviations` has different rule-consumer semantics than sibling gruff ports
+
+**Status:** active | **Created:** 2026-05-25 | **Evidence:** OBSERVED
+
+hallucination-risk: high (the shared key name across gruff-go / gruff-rs / gruff-ts / gruff-py / gruff-php invites assuming shared semantics; the rules that consume the list are different in each port)
+
+Evidence:
+- `internal/rule/naming_acronym.go` (search: `AcceptedAbbreviations lists project-specific abbreviations whose lowercase form should not be flagged as a mis-cased initialism`) — the field exempts identifiers whose lowercase form matches a Go initialism the rule would otherwise want cased as `HTTP`/`URL`/`ID`. Entries are normalised via `lowerStringSet` (trim + lowercase) before matching, so case in the config is purely cosmetic for rule behaviour.
+- `internal/config/validate.go` (search: `validateAbbreviations`) — rejects blank entries only (as of 2026-05-25). The earlier "must be uppercase" check was relaxed when the cross-port seed was lowercased; see the `acceptedAbbreviations validator required UPPERCASE` entry under `## Resolved Entries` for the trail.
+- Sibling-port consumers (cross-checked 2026-05-25):
+  - `gruff-rs/src/built_in_rules/naming_rules.rs` (search: `accepted_abbreviations.contains`) — consumed inside `naming.short-variable` as a lowercase 2-char identifier allowlist.
+  - `gruff-ts/src/config.ts` (search: `acceptedAbbreviations: new Set`) — lowercased on import; the rule that reads it has not been confirmed in this checkout.
+  - `gruff-php/src/Rule/Naming/AbbreviationAllowlistRule.php` (search: `'naming.abbreviation-allowlist'`) — its own rule for 2–3 char lowercase identifiers.
+  - `gruff-py/src/gruffpy/rule/naming/abbreviation_rule.py` (search: `accepted_abbreviations`) — same pattern as PHP, rule id `naming.abbreviation`.
+
+What this means in practice: the same 16-entry seed is shared across all five ports, but each port consumes it for a different rule. In gruff-go, `naming.acronym-case` only fires on identifiers that look like mis-cased acronyms (`Url` vs `URL`), so the non-acronym entries from the shared list (`age, app, key, log, max, min, now, raw`) pass validation and lowercase normalisation but are inert here — they never match anything because no naming heuristic in gruff-go cares about those words. They earn their place in the rs/php/py rules.
+
+How to avoid:
+- Do not assume removing an inert entry from gruff-go's seed is safe — the entry exists for cross-port symmetry; pruning it here would create a drift another agent will eventually try to "fix" by re-adding it.
+- When investigating "why doesn't `naming.acronym-case` flag identifier X in this file", check whether X actually contains an initialism shape — the rule won't fire on regular English words even if they appear in `acceptedAbbreviations`.
+- Project-specific Go initialisms (`AST`, `CLI`, `JSON`, `API`, project-domain acronyms) belong in the user's `.gruff-go.yaml` `allowlists.acceptedAbbreviations`, not in `defaultAcceptedAbbreviations` — the latter is the cross-port shared list.
 
 ## Footgun: `allowlists.secretPreviews` gates the preview field only - it does not suppress sensitive-data findings
 
@@ -76,6 +98,16 @@ Evidence:
 The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a GitHub Actions dogfood workflow. Per [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) the current rule catalogue has 64 default-enabled rules. The previous "small opt-in expansion pack" framing is superseded - projects opt *out* of individual rules instead of opting in. Two documentation rules are path-scoped no-ops until configured with `includePaths`: `docs.comment-rubric` and `docs.config-field-comment`. Trend storage, hosted dashboard/service surfaces, external linter ingestion, package-manager distribution, and automated release publishing are still not implemented. Do not claim those published integration surfaces until later milestones add them.
 
 ## Resolved Entries
+
+## Footgun: `acceptedAbbreviations` validator required UPPERCASE
+
+**Status:** resolved | **Created:** 2026-05-25 | **Evidence:** OBSERVED
+
+Trap: `internal/config/validate.go` originally rejected any entry where `abbreviation != strings.ToUpper(abbreviation)`, returning `acceptedAbbreviations[%d] must be uppercase`. The rule consumer (`internal/rule/naming_acronym.go` `lowerStringSet`) already trims and lowercases entries for matching, so the uppercase check was purely cosmetic but blocked cross-port harmonisation. Sibling ports (gruff-rs / gruff-ts / gruff-py / gruff-php) all accept lowercase.
+
+Measured break (2026-05-25): seeding `defaultAcceptedAbbreviations` with the lowercase universal list to match sibling ports made `TestInitForceOverwritesExistingConfig`, `TestBootstrapPromptCreatesConfigOnYes`, and `TestBootstrapPromptDoesNotCorruptJSONOutput` fail with `acceptedAbbreviations[0] must be uppercase` — `init` emitted lowercase, `Parse` rejected what `init` had just written.
+
+Resolved 2026-05-25 by relaxing `validateAbbreviations` to only reject blank entries (`internal/config/validate.go` search: `must not be blank`). The pre-existing config test `{name: "invalid abbreviation", ..., want: "must be uppercase"}` was rewritten as `{name: "blank abbreviation", yaml: "...''...", want: "must not be blank"}` (`internal/config/config_test.go` search: `blank abbreviation`).
 
 ## Footgun: Go metadata exists, but no Go packages exist
 

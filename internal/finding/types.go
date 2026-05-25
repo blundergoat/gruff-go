@@ -4,25 +4,23 @@ package finding
 
 import "fmt"
 
-// Severity is the ordered urgency tier attached to a finding.
+// Severity is the ordered urgency tier attached to a finding. The 3-bucket
+// vocabulary matches the sibling gruff-rs / gruff-ts / gruff-py / gruff-php
+// ports; see ADR-009 for the migration from the previous 5-bucket model.
 type Severity string
 
-// Severity tier constants ordered from informational to critical.
+// Severity tier constants ordered from informational to error.
 const (
-	SeverityInfo     Severity = "info"
-	SeverityLow      Severity = "low"
-	SeverityMedium   Severity = "medium"
-	SeverityHigh     Severity = "high"
-	SeverityCritical Severity = "critical"
+	SeverityAdvisory Severity = "advisory"
+	SeverityWarning  Severity = "warning"
+	SeverityError    Severity = "error"
 )
 
 // severityRank maps each Severity to its numeric comparison order.
 var severityRank = map[Severity]int{
-	SeverityInfo:     0,
-	SeverityLow:      1,
-	SeverityMedium:   2,
-	SeverityHigh:     3,
-	SeverityCritical: 4,
+	SeverityAdvisory: 0,
+	SeverityWarning:  1,
+	SeverityError:    2,
 }
 
 // ParseSeverity converts a raw string into a known Severity value.

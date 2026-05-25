@@ -12,7 +12,7 @@ func TestFingerprintIsStableAndIdentityBased(t *testing.T) {
 		File:       "internal/foo/foo.go",
 		Location:   &Location{Line: 10, Column: 1},
 		Symbol:     "Foo",
-		Severity:   SeverityMedium,
+		Severity:   SeverityWarning,
 		Confidence: ConfidenceHigh,
 		Pillar:     PillarSize,
 	}

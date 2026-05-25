@@ -30,7 +30,7 @@ func (IoutilDeprecatedRule) Definition() Definition {
 		Title:          "Deprecated ioutil API",
 		Description:    "Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go.",
 		Pillar:         finding.PillarModernisation,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Options:        map[string]any{"minimumGoVersion": "1.16"},

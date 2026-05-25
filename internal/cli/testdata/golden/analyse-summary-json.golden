@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "gruff-go.analysis.v0.1",
+  "schemaVersion": "gruff-go.analysis.v0.2",
   "tool": {
     "name": "gruff-go",
     "version": "0.1.1"
@@ -10,7 +10,7 @@
       "complex.go"
     ],
     "format": "summary-json",
-    "failOn": "medium"
+    "failOn": "advisory"
   },
   "summary": {
     "filesScanned": 1,
@@ -18,11 +18,9 @@
     "diagnosticsCount": 0,
     "findingsCount": 1,
     "countsBySeverity": {
-      "critical": 0,
-      "high": 0,
-      "info": 0,
-      "low": 0,
-      "medium": 1
+      "advisory": 0,
+      "error": 0,
+      "warning": 1
     },
     "countsByPillar": {
       "complexity": 1
@@ -62,11 +60,10 @@
         "score": 92,
         "grade": "A",
         "findings": 1,
-        "critical": 0,
-        "high": 0,
-        "medium": 1,
-        "low": 0,
-        "info": 0
+        "advisory": 0,
+        "warning": 1,
+        "error": 0,
+        "penalty": 8
       }
     ],
     "coverage": {

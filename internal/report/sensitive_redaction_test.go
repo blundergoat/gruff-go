@@ -29,7 +29,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		Root:    "/repo",
 		Inputs:  []string{"."},
 		Format:  "json",
-		FailOn:  finding.SeverityMedium,
+		FailOn:  finding.SeverityWarning,
 		Scanned: []string{"secrets.env"},
 		Findings: []finding.Finding{
 			{
@@ -37,7 +37,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Message:    "AWS access key id detected",
 				File:       "secrets.env",
 				Location:   &finding.Location{Line: 1},
-				Severity:   finding.SeverityHigh,
+				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
 				Metadata:   map[string]any{"preview": "AKIAIO..." + "PLE"},
@@ -47,7 +47,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Message:    "connection string with embedded password detected",
 				File:       "secrets.env",
 				Location:   &finding.Location{Line: 2},
-				Severity:   finding.SeverityHigh,
+				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceMedium,
 				Pillar:     finding.PillarSensitiveData,
 				Metadata:   map[string]any{"preview": "postgres://app:su..." + "ders"},
@@ -57,7 +57,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Message:    "private key literal detected",
 				File:       "secrets.env",
 				Location:   &finding.Location{Line: 3},
-				Severity:   finding.SeverityCritical,
+				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
 				Metadata:   map[string]any{"preview": "-----B..." + "KEY-"},
@@ -67,7 +67,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Message:    "npm token literal detected",
 				File:       "secrets.env",
 				Location:   &finding.Location{Line: 4},
-				Severity:   finding.SeverityHigh,
+				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
 				Metadata:   map[string]any{"preview": "npm_00..." + "00ZZ"},
@@ -77,7 +77,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Message:    "GitLab token literal detected",
 				File:       "secrets.env",
 				Location:   &finding.Location{Line: 5},
-				Severity:   finding.SeverityHigh,
+				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
 				Metadata:   map[string]any{"preview": "glpat-..." + "VwXyZ"},
@@ -96,6 +96,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		{"sarif", func(buf *bytes.Buffer) error { return WriteSARIF(buf, report) }},
 		{"github", func(buf *bytes.Buffer) error { return WriteGitHub(buf, report) }},
 		{"html", func(buf *bytes.Buffer) error { return WriteHTML(buf, report, HTMLOptions{}) }},
+		{"markdown", func(buf *bytes.Buffer) error { return WriteMarkdown(buf, report) }},
 	}
 
 	leaks := []string{rawSecret, rawPassword, rawPrivateKey, rawNPMToken, rawGitLabToken}
@@ -128,7 +129,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		Root:     root,
 		Paths:    []string{"secrets.env"},
 		Format:   "json",
-		FailOn:   finding.SeverityMedium,
+		FailOn:   finding.SeverityWarning,
 		Registry: rule.Defaults(),
 	})
 	if err != nil {
@@ -168,6 +169,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		{"sarif", func(buf *bytes.Buffer) error { return WriteSARIF(buf, reportData) }},
 		{"github", func(buf *bytes.Buffer) error { return WriteGitHub(buf, reportData) }},
 		{"html", func(buf *bytes.Buffer) error { return WriteHTML(buf, reportData, HTMLOptions{Interactive: true}) }},
+		{"markdown", func(buf *bytes.Buffer) error { return WriteMarkdown(buf, reportData) }},
 	} {
 		var buf bytes.Buffer
 		if err := format.emit(&buf); err != nil {

@@ -18,7 +18,7 @@ type DashboardState struct {
 	Paths string
 	// ScanScope selects "full" or "diff" scan mode for the next run.
 	ScanScope string
-	// FailOn is the severity threshold used for the scan exit code ("info", "low", "medium", "high", "critical").
+	// FailOn is the severity threshold used for the scan exit code ("advisory", "warning", "error").
 	FailOn string
 	// Config is the configured .gruff-go.yaml path.
 	Config string
@@ -138,7 +138,7 @@ func dashboardHTML(state DashboardState) string {
 	builder.WriteString(dashboardOption("diff", state.ScanScope, "diff only"))
 	builder.WriteString(`</select></label>`)
 	builder.WriteString(`<label>Fail on<select name="failOn">`)
-	for _, value := range []string{"info", "low", "medium", "high", "critical"} {
+	for _, value := range []string{"advisory", "warning", "error"} {
 		builder.WriteString(dashboardOption(value, state.FailOn, value))
 	}
 	builder.WriteString(`</select></label>`)

@@ -46,18 +46,21 @@ func TestRenderRoundTripsThroughParse(t *testing.T) {
 	}
 }
 
-// TestRenderEmitsGruffSeverityAliases checks that severity emission stays in
-// the gruff-family vocabulary (notice/warning/error) so the file matches the
-// hand-written .gruff-go.yaml style adopters see in docs and existing configs.
-func TestRenderEmitsGruffSeverityAliases(t *testing.T) {
+// TestRenderEmitsCanonicalSeverityNames asserts the rendered severity matches
+// the canonical 3-bucket vocabulary verbatim (advisory/warning/error) per
+// ADR-009. The old gruff-family alias layer (notice/warn) was removed; the
+// internal name now equals the rendered name.
+func TestRenderEmitsCanonicalSeverityNames(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
-	for _, alias := range []string{"notice", "warning", "error"} {
-		if !strings.Contains(body, "severity: "+alias) {
-			t.Fatalf("rendered body missing gruff severity alias %q:\n%s", alias, body)
+	for _, name := range []string{"advisory", "warning", "error"} {
+		if !strings.Contains(body, "severity: "+name) {
+			t.Fatalf("rendered body missing canonical severity name %q:\n%s", name, body)
 		}
 	}
-	if strings.Contains(body, "severity: low") || strings.Contains(body, "severity: medium") || strings.Contains(body, "severity: high") {
-		t.Fatalf("rendered body should use gruff aliases instead of canonical severity names:\n%s", body)
+	for _, legacy := range []string{"low", "medium", "high", "critical", "info", "notice"} {
+		if strings.Contains(body, "severity: "+legacy+"\n") {
+			t.Fatalf("rendered body should not emit legacy severity name %q:\n%s", legacy, body)
+		}
 	}
 }
 
@@ -151,7 +154,7 @@ func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
 	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: warning\n    threshold: 500\n") {
 		t.Fatalf("expected singular threshold form for size.file-length; got:\n%s", body)
 	}
-	if !strings.Contains(body, "design.hotspot-file:\n    enabled: true\n    severity: notice\n    thresholds:\n      minFindings: 3\n      minPillars: 2\n") {
+	if !strings.Contains(body, "design.hotspot-file:\n    enabled: true\n    severity: advisory\n    thresholds:\n      minFindings: 3\n      minPillars: 2\n") {
 		t.Fatalf("expected plural thresholds form for design.hotspot-file; got:\n%s", body)
 	}
 }

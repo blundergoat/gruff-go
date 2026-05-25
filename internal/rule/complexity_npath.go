@@ -64,7 +64,7 @@ func (r NPathComplexityRule) Definition() Definition {
 		Title:          "NPath complexity",
 		Description:    "Flags functions whose number of acyclic execution paths (NPath) exceeds the configured threshold. The modified NPath formula treats return/panic guards as exit points so idiomatic Go error chains grow linearly; genuine branch-combination blowups (nested switches, multi-way if/else without terminators) still flag.",
 		Pillar:         finding.PillarComplexity,
-		Severity:       finding.SeverityMedium,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

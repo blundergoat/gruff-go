@@ -1,6 +1,6 @@
 # Output Formats
 
-`gruff-go analyse --format <fmt>` accepts six formats. Pick the one that matches the consumer - terminals get `text`, CI annotators get `github` or `sarif`, dashboards and report archives get `html`, automation gets `json` or `summary-json`. All formats share the same underlying `analysis.Report` data, so a JSON pipeline and a SARIF pipeline see the same findings, scores, and metadata.
+`gruff-go analyse --format <fmt>` accepts seven formats. Pick the one that matches the consumer - terminals get `text`, CI annotators get `github` or `sarif`, dashboards and report archives get `html`, GitHub PR comments and CI logs get `markdown`, automation gets `json` or `summary-json`. All formats share the same underlying `analysis.Report` data, so a JSON pipeline and a SARIF pipeline see the same findings, scores, and metadata.
 
 The default is `text` if you omit `--format`.
 
@@ -185,6 +185,37 @@ Even without flags, the HTML report includes:
 - Footer with version + schema metadata.
 
 `design.*` composite findings appear in the findings list and summary counts, but they do not contribute to per-pillar grades, top-offender penalties, or the numeric composite score.
+
+## `markdown`
+
+CommonMark-flavoured markdown digest tuned for CI logs and GitHub PR comments. Use `--format markdown` (or the `md` alias) to emit a short header, severity totals, the canonical Pillars table, and a compact top-rules block.
+
+```bash
+gruff-go analyse --format markdown . > gruff-report.md
+gruff-go analyse --format md .
+```
+
+Output shape:
+
+```markdown
+# gruff-go report
+
+**Grade:** A (100 / 100)
+**Schema:** `gruff-go.analysis.v0.2`
+**Files:** 148 scanned, 13 skipped
+**Findings:** 0 total - 0 error, 0 warning, 0 advisory
+
+## Pillars
+
+| Pillar | Grade | Score | Findings | Advisory | Warning | Error |
+|---|---|---:|---:|---:|---:|---:|
+| complexity | A | 100.00 | 0 | 0 | 0 | 0 |
+| ...
+```
+
+The Pillars table mirrors the cross-port summary harmonisation shape used by the text and HTML reporters: every applicable pillar is shown with grade, two-decimal score, finding count, and per-severity counts, sorted by findings descending then pillar ascending. Clean scans surface as grade A rows with score `100.00` and zero counts. The optional `## Top rules` section is omitted when no findings fired.
+
+Pipe characters inside pillar names or rule IDs are escaped (`\|`) so the surrounding table row stays valid.
 
 ## Exit codes (shared across formats)
 

@@ -183,8 +183,10 @@ type analyseFlagValues struct {
 func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
-	minSeverity := string(finding.SeverityMedium)
+	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
+	// ADR-009: default is `advisory` (show everything). The previous default `medium`
+	// mapped to today's `warning` under the new 3-bucket model; intentionally permissive.
+	minSeverity := string(finding.SeverityAdvisory)
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
@@ -285,6 +287,8 @@ func writeAnalysisReport(writer io.Writer, format string, analysisReport analysi
 		return report.WriteGitHub(writer, analysisReport)
 	case "html":
 		return report.WriteHTML(writer, analysisReport, htmlOpts)
+	case "markdown", "md":
+		return report.WriteMarkdown(writer, analysisReport)
 	default:
 		return report.WriteText(writer, analysisReport)
 	}
@@ -356,7 +360,7 @@ func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []stri
 // supportedAnalysisFormat reports whether format names a known analyse output.
 func supportedAnalysisFormat(format string) bool {
 	switch format {
-	case "text", "json", "summary-json", "sarif", "github", "html":
+	case "text", "json", "summary-json", "sarif", "github", "html", "markdown", "md":
 		return true
 	default:
 		return false

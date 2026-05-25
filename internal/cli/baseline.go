@@ -62,7 +62,7 @@ func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) i
 	analysisReport, err := analysis.Analyze(analysis.Options{
 		Paths:          opts.paths,
 		Format:         "json",
-		FailOn:         finding.SeverityCritical,
+		FailOn:         finding.SeverityError,
 		Registry:       opts.registry,
 		IgnorePaths:    opts.ignorePaths,
 		IncludeIgnored: opts.includeIgnored,

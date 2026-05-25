@@ -150,7 +150,7 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 		if err == nil {
 			failOn = parsed
 		} else {
-			failOn = finding.SeverityMedium
+			failOn = finding.SeverityWarning
 		}
 	}
 

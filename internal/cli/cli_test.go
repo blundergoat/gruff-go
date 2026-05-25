@@ -17,7 +17,7 @@ import (
 // TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output.
 func TestAnalyseTextAndJSON(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var textOut, textErr bytes.Buffer
@@ -49,23 +49,27 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
-// TestAnalyseFailOnAlias verifies --fail-on remains an alias for Go's existing threshold flag.
-func TestAnalyseFailOnAlias(t *testing.T) {
+// TestAnalyseFailOnRejectsLegacySeverity confirms the 5-bucket alias parser is
+// gone (ADR-009): --fail-on critical is now an unknown severity, exit 2.
+func TestAnalyseFailOnRejectsLegacySeverity(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer
-	if code := Main([]string{"analyse", "--fail-on", "critical", "."}, &out, &errBuf); code != 0 {
-		t.Fatalf("analyse --fail-on exit = %d, stderr = %s", code, errBuf.String())
+	if code := Main([]string{"analyse", "--fail-on", "critical", "."}, &out, &errBuf); code != 2 {
+		t.Fatalf("analyse --fail-on critical exit = %d, want 2; stderr = %s", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), `unknown severity "critical"`) {
+		t.Fatalf(`stderr should contain unknown severity "critical"; got: %s`, errBuf.String())
 	}
 }
 
 // TestAnalyseJSONDeterministicShape verifies that repeated scans yield identical JSON.
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "b.go", "package main\n")
-	writeFile(t, root, "a.go", "package main\n")
+	writeFile(t, root, "b.go", "// Package main is a test fixture.\npackage main\n")
+	writeFile(t, root, "a.go", "// Package main is a test fixture.\npackage main\n")
 	t.Chdir(root)
 
 	var first, second bytes.Buffer
@@ -309,7 +313,7 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n")
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	writeFile(t, root, "ignored.go", "package main\n")
 	t.Chdir(root)
 

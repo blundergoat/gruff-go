@@ -26,7 +26,7 @@ func (SleepInTestRule) Definition() Definition {
 		Title:          "Sleep in test",
 		Description:    "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks.",
 		Pillar:         finding.PillarTestQuality,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,
