@@ -24,7 +24,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Keep `CLAUDE.md` concise; move domain and architecture detail to cold-path docs.
 - Use `rg`/`rg --files` for search. Open matching learning-loop entries before acting.
 - When a goat-* skill is active, its Step 0 satisfies READ/SCOPE; resume this loop at ACT.
-- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/decisions/ADR-007-comprehensive-default-rule-pack.md). A new rule that shouldn't fire on default `--min-severity medium` scans should land at `low` severity.
+- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--min-severity` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
 
 ## Key Resources

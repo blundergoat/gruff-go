@@ -25,7 +25,7 @@ paths:
   ignore: []          # extra path prefixes/globs to skip; merged with built-in ignores
 
 allowlists:
-  acceptedAbbreviations: []   # uppercase identifiers naming rules treat as words (e.g. ID, HTTP)
+  acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
   secretPreviews: []          # literal strings that look like secrets but are documented dummies
 
 selection:
@@ -41,7 +41,7 @@ rules:
     threshold: <int>            # convenience for single-threshold rules
     thresholds:                 # for rules with named thresholds
       <name>: <int>
-    severity: info | low | medium | high | critical | notice | warning | warn | error
+    severity: advisory | warning | error
     options:                    # rule-specific opaque map
       <key>: <value>
 ```
@@ -64,7 +64,7 @@ Patterns are matched against the project-relative path. Trailing slashes mark di
 
 ### `allowlists.acceptedAbbreviations`
 
-Uppercase identifiers that naming rules will treat as accepted words. `naming.acronym-case` uses this list to suppress configured initialism findings for project-specific terms.
+Identifiers that naming rules will treat as accepted words. `naming.acronym-case` uses this list to suppress configured initialism findings for project-specific terms.
 
 ```yaml
 allowlists:
@@ -77,7 +77,7 @@ allowlists:
     - DTO
 ```
 
-Entries must be uppercase. Mixed-case values are rejected with a `config:` diagnostic.
+Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/footguns/setup.md` for the cross-port consumer matrix.
 
 ### `allowlists.secretPreviews`
 
@@ -111,10 +111,10 @@ Per-rule overrides. Every field is optional:
 - `enabled` - toggle a rule on or off. All built-in rules are enabled by default; set `false` to disable a rule that does not fit the project.
 - `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
 - `thresholds` - for rules with multiple thresholds, name them explicitly.
-- `severity` - canonical severities `info`, `low`, `medium`, `high`, or `critical`. Config also accepts gruff-family aliases: `notice` maps to `low`, `warning` / `warn` map to `medium`, and `error` maps to `high`.
+- `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.1.2 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
 - `options` - opaque per-rule map for rules with bespoke options.
 
-Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses medium severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `low` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-medium configured `severity` applies to test files too and disables that default downranking for the overridden rule.
+Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-warning configured `severity` applies to test files too and disables that default downranking for the overridden rule.
 
 Examples:
 
@@ -123,7 +123,7 @@ rules:
   # Tighten cyclomatic complexity and bump severity.
   complexity.cyclomatic:
     threshold: 12
-    severity: high
+    severity: error
 
   # Disable the package comment rule for this repo.
   docs.package-comment:
@@ -133,10 +133,10 @@ rules:
   naming.package-underscore:
     enabled: false
 
-  # Raise shell-routed command execution to a high-severity gate.
+  # Raise shell-routed command execution to a hard-error gate.
   security.shell-command:
     enabled: true
-    severity: high
+    severity: error
 
   # Require doc comments for module-private exported symbols too.
   docs.exported-symbol-comment:
@@ -152,7 +152,7 @@ rules:
   docs.comment-rubric:
     enabled: true
     threshold: 2
-    severity: low
+    severity: advisory
     options:
       includePaths:
         - internal/analysis/report.go
@@ -167,7 +167,7 @@ rules:
   # No-op until includePaths selects the config/schema files to enforce.
   docs.config-field-comment:
     enabled: true
-    severity: low
+    severity: advisory
     options:
       includePaths:
         - internal/config/config.go
@@ -185,8 +185,8 @@ The loader rejects:
 - Unknown pillar names in `selection.pillars` or `selection.excludePillars`.
 - Non-integer or negative threshold values.
 - A rule config that combines `threshold` and `thresholds`.
-- Severity values outside `info / low / medium / high / critical` and their accepted aliases (`notice`, `warning`, `warn`, `error`).
-- Lowercase abbreviations in `allowlists.acceptedAbbreviations`.
+- Severity values outside `advisory / warning / error`. The pre-v0.1.2 names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected with `unknown severity "<name>"`.
+- Blank entries in `allowlists.acceptedAbbreviations`. Case is no longer enforced - the validator only rejects empty / whitespace-only entries.
 
 Any of these failures emits a `config:` diagnostic and exits the scan with code `2`. Treat config errors as build breaks, not silent warnings.
 

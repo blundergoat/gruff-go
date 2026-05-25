@@ -65,7 +65,7 @@ make check    # gofmt -d, go vet ./..., go test ./...
 ## Adding a rule
 
 1. Read `internal/rule/builtin.go`, `internal/rule/expansion.go`, and the rule-specific files (`naming_*.go`, `sensitive.go`, `composite.go`, `comment_rubric.go`) for the existing patterns. Pick the file whose pillar the new rule fits.
-2. Implement the rule type with `Definition() Definition` and either `AnalyzeUnit(unit parser.Unit, ctx Context)` or a project-level analyzer. All shipped rules carry `DefaultEnabled: true` per [ADR-007](.goat-flow/decisions/ADR-007-comprehensive-default-rule-pack.md); pick a default severity that won't flip default `--min-severity medium` CI gates for an unrelated codebase (most new naming/test-quality rules ship at `low`).
+2. Implement the rule type with `Definition() Definition` and either `AnalyzeUnit(unit parser.Unit, ctx Context)` or a project-level analyzer. All shipped rules carry `DefaultEnabled: true` per [ADR-007](.goat-flow/decisions/ADR-007-comprehensive-default-rule-pack.md); pick a default severity that won't push existing CI gates into a stricter bucket for an unrelated codebase. Default `--min-severity` is `advisory` (every finding surfaces), so most new naming/test-quality rules ship at `advisory` and only escalate to `warning` or `error` when the failure mode is unambiguous.
 3. Register the rule in `Defaults()` (`internal/rule/defaults.go`) so `list-rules` picks it up.
 4. Add a fixture and a unit test in `internal/rule/*_test.go`.
 5. Update [`docs/rules.md`](docs/rules.md) and `.gruff-go.yaml` so dogfood reflects the new policy.

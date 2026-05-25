@@ -196,19 +196,19 @@ repos:
     hooks:
       - id: gruff-go
         name: gruff-go
-        entry: gruff-go analyse --diff-base HEAD --min-severity high .
+        entry: gruff-go analyse --diff-base HEAD --min-severity error .
         language: system
         pass_filenames: false
         types: [go]
 ```
 
-Pair `--diff-base HEAD` with `--min-severity high` so the hook stays fast and only blocks on serious regressions in the working tree.
+Pair `--diff-base HEAD` with `--min-severity error` so the hook stays fast and only blocks on serious regressions in the working tree.
 
 ## Threshold knobs
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - default `medium`. Set higher (`high` / `critical`) for noisy codebases that need a strict gate; set lower (`low` / `info`) for tight quality bars.
+- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. The three buckets (`advisory`, `warning`, `error`) replaced the previous five-bucket scale in v0.1.2 - see [ADR-009](../.goat-flow/decisions/ADR-009-three-severity-model.md).
 - `--fail-on` is the dashboard's equivalent flag; the analyser uses `--min-severity` and they share the same severity vocabulary.
 
 If CI needs to **scan and report** without **failing**, run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and then upload the report artefact separately. The exit code is honest about whether findings are above threshold - you decide whether to act on it.

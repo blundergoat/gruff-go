@@ -14,93 +14,91 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
-| [`complexity.cognitive`](#complexitycognitive) | complexity | medium | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
-| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | medium | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
-| [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | medium | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
-| [`complexity.npath`](#complexitynpath) | complexity | medium | parser | `maxComplexity: 1024` | Functions whose acyclic execution path count exceeds the threshold. |
-| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | low | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
-| [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | low | parser | - | Statements after terminal control flow in the same block. |
-| [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | low | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
-| [`design.god-function`](#designgod-function) | design | low | parser | - | Functions that already have both size and complexity findings. |
-| [`design.hotspot-file`](#designhotspot-file) | maintainability | low | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
-| [`docs.comment-rubric`](#docscomment-rubric) | documentation | low | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
-| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | low | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
-| [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | low | parser | - | Exported declarations missing a doc comment. |
-| [`docs.package-comment`](#docspackage-comment) | documentation | low | parser | - | Packages with no package-level comment in any file. |
-| [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | low | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
-| [`maintainability.context-todo-production`](#maintainabilitycontext-todo-production) | maintainability | low | parser | - | `context.TODO()` calls in production files. |
-| [`maintainability.defer-in-loop`](#maintainabilitydefer-in-loop) | maintainability | low | parser | - | `defer` statements directly inside loops, where cleanup is delayed until the enclosing function returns. |
-| [`maintainability.ignored-error`](#maintainabilityignored-error) | maintainability | low | parser | - | Error-looking values assigned directly to the blank identifier. |
-| [`maintainability.log-fatal-library`](#maintainabilitylog-fatal-library) | maintainability | low | parser | - | `log.Fatal*` and `os.Exit` calls outside command entrypoints and tests. |
-| [`maintainability.loop-variable-address`](#maintainabilityloop-variable-address) | maintainability | low | parser | - | Storing, returning, or appending the address of a range variable copy. |
-| [`maintainability.production-panic`](#maintainabilityproduction-panic) | maintainability | low | parser | - | Literal panic calls in reusable production code. |
-| [`modernisation.ioutil-deprecated`](#modernisationioutil-deprecated) | modernisation | low | parser | - | Deprecated `io/ioutil` APIs with direct `io` or `os` replacements. |
-| [`naming.acronym-case`](#namingacronym-case) | naming | low | parser | - | Identifiers that spell Go initialisms with mixed casing. |
-| [`naming.contextual-generic`](#namingcontextual-generic) | naming | low | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
-| [`naming.get-prefix`](#namingget-prefix) | modernisation | low | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
-| [`naming.identifier-quality`](#namingidentifier-quality) | naming | low | parser | - | Local identifiers matching a placeholder name list. |
-| [`naming.misspelling`](#namingmisspelling) | naming | low | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
-| [`naming.negated-boolean`](#namingnegated-boolean) | naming | low | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
-| [`naming.package-stutter`](#namingpackage-stutter) | naming | low | parser | - | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
-| [`naming.package-underscore`](#namingpackage-underscore) | naming | low | parser | - | Package names containing underscores. |
-| [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | low | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
-| [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | low | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
-| [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | low | parser | - | `http.Client` literals in production files without `Timeout`. |
-| [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | low | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
-| [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | low | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
-| [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | low | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
-| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | low | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
-| [`security.shell-command`](#securityshell-command) | security | medium | parser | - | `exec.Command` invocations that route through a shell interpreter. |
-| [`security.sql-string-query`](#securitysql-string-query) | security | low | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
-| [`security.tls-insecure-config`](#securitytls-insecure-config) | security | medium | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
-| [`security.weak-crypto`](#securityweak-crypto) | security | low | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
-| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | high | parser | - | Anthropic API key literals (`sk-ant-…`). |
-| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | high | parser | - | AWS access key id (AKIA…) literals. |
-| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | high | parser | - | Database/queue URLs with embedded passwords. |
-| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | critical | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
-| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | high | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
-| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | high | parser | - | GitLab personal, trigger, runner, and application token literals. |
-| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | high | parser | - | Google API key literals (`AIza…`). |
-| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | high | parser | - | JWT-shaped literals (`eyJ…`). |
-| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | high | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
-| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | critical | parser | - | PEM-encoded private keys embedded in source. |
-| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | high | parser | - | High-risk secret-like key/value assignments. |
-| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | high | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
-| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | high | parser | - | Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). |
-| [`size.file-length`](#sizefile-length) | size | medium | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
-| [`size.function-length`](#sizefunction-length) | size | medium | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
-| [`size.parameter-count`](#sizeparameter-count) | size | low | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | low | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
-| [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | low | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
-| [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | low | parser | - | Failing test helpers that never call `t.Helper()`. |
-| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | low | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
-| [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | low | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
-| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | low | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
-| [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | low | parser | - | `time.Sleep` calls in tests. |
-| [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | low | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
+| [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
+| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
+| [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
+| [`complexity.npath`](#complexitynpath) | complexity | warning | parser | `maxComplexity: 1024` | Functions whose acyclic execution path count exceeds the threshold. |
+| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
+| [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
+| [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
+| [`design.god-function`](#designgod-function) | design | advisory | parser | - | Functions that already have both size and complexity findings. |
+| [`design.hotspot-file`](#designhotspot-file) | maintainability | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | warning | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
+| [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
+| [`docs.package-comment`](#docspackage-comment) | documentation | advisory | parser | - | Packages with no package-level comment in any file. |
+| [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | advisory | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
+| [`maintainability.context-todo-production`](#maintainabilitycontext-todo-production) | maintainability | advisory | parser | - | `context.TODO()` calls in production files. |
+| [`maintainability.defer-in-loop`](#maintainabilitydefer-in-loop) | maintainability | advisory | parser | - | `defer` statements directly inside loops, where cleanup is delayed until the enclosing function returns. |
+| [`maintainability.ignored-error`](#maintainabilityignored-error) | maintainability | advisory | parser | - | Error-looking values assigned directly to the blank identifier. |
+| [`maintainability.log-fatal-library`](#maintainabilitylog-fatal-library) | maintainability | advisory | parser | - | `log.Fatal*` and `os.Exit` calls outside command entrypoints and tests. |
+| [`maintainability.loop-variable-address`](#maintainabilityloop-variable-address) | maintainability | advisory | parser | - | Storing, returning, or appending the address of a range variable copy. |
+| [`maintainability.production-panic`](#maintainabilityproduction-panic) | maintainability | advisory | parser | - | Literal panic calls in reusable production code. |
+| [`modernisation.ioutil-deprecated`](#modernisationioutil-deprecated) | modernisation | advisory | parser | - | Deprecated `io/ioutil` APIs with direct `io` or `os` replacements. |
+| [`naming.acronym-case`](#namingacronym-case) | naming | advisory | parser | - | Identifiers that spell Go initialisms with mixed casing. |
+| [`naming.contextual-generic`](#namingcontextual-generic) | naming | advisory | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
+| [`naming.get-prefix`](#namingget-prefix) | modernisation | advisory | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
+| [`naming.identifier-quality`](#namingidentifier-quality) | naming | advisory | parser | - | Local identifiers matching a placeholder name list. |
+| [`naming.misspelling`](#namingmisspelling) | naming | advisory | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
+| [`naming.negated-boolean`](#namingnegated-boolean) | naming | advisory | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
+| [`naming.package-stutter`](#namingpackage-stutter) | naming | advisory | parser | - | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
+| [`naming.package-underscore`](#namingpackage-underscore) | naming | advisory | parser | - | Package names containing underscores. |
+| [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | advisory | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
+| [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | advisory | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | advisory | parser | - | `http.Client` literals in production files without `Timeout`. |
+| [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | advisory | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
+| [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | advisory | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
+| [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | advisory | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
+| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
+| [`security.shell-command`](#securityshell-command) | security | error | parser | - | `exec.Command` invocations that route through a shell interpreter. |
+| [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
+| [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
+| [`security.weak-crypto`](#securityweak-crypto) | security | advisory | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
+| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | error | parser | - | Anthropic API key literals (`sk-ant-…`). |
+| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | error | parser | - | AWS access key id (AKIA…) literals. |
+| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | error | parser | - | Database/queue URLs with embedded passwords. |
+| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | error | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
+| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | error | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
+| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | error | parser | - | GitLab personal, trigger, runner, and application token literals. |
+| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | error | parser | - | Google API key literals (`AIza…`). |
+| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | error | parser | - | JWT-shaped literals (`eyJ…`). |
+| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | error | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
+| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | error | parser | - | PEM-encoded private keys embedded in source. |
+| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
+| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
+| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). |
+| [`size.file-length`](#sizefile-length) | size | warning | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
+| [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
+| [`size.parameter-count`](#sizeparameter-count) | size | warning | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | warning | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
+| [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
+| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | advisory | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
+| [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | advisory | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
+| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | advisory | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
+| [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | advisory | parser | - | `time.Sleep` calls in tests. |
+| [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | advisory | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
-Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in medium severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `low` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-medium severity overrides in config apply to test files too.
+Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in warning severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-warning severity overrides in config apply to test files too.
 
 ## Severity tiers
 
-Every rule has a default severity; configs can override per rule. The five-tier scale used internally maps to a three-tier visual treatment in the HTML report and the score weight model:
+Every rule has a default severity; configs can override per rule. ADR-009 collapsed the internal scale to three buckets that match the cross-port canonical model used by gruff-rs / gruff-ts / gruff-py / gruff-php:
 
 | Severity | Default penalty weight | HTML colour | Use it for |
 |----------|------------------------|-------------|------------|
-| `critical` | 30 | red | Almost certainly broken; block merges. |
-| `high` | 15 | red | Strong signal; investigate. |
-| `medium` | 8 | amber | Worth fixing in the next clean-up pass. |
-| `low` | 3 | muted | Informational; trend over time. |
-| `info` | 1 | muted | Background signal; not actionable per finding. |
+| `error` | 30 | red | Almost certainly broken; block merges. |
+| `warning` | 8 | amber | Worth fixing in the next clean-up pass. |
+| `advisory` | 1 | muted | Informational; trend over time. |
 
-The `--min-severity` flag (default `medium`) sets the threshold at which findings flip the exit code from `0` to `1`.
+The `--min-severity` flag (default `advisory`) sets the threshold at which findings flip the exit code from `0` to `1`. The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.1.2]`](../CHANGELOG.md#012---2026-05-25) for the mapping.
 
 ## Per-rule reference
 
 ### `complexity.cognitive`
 
 - **Pillar:** complexity
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Threshold:** `maxComplexity` (default `35`)
 - **Confidence:** high
@@ -116,7 +114,7 @@ This is intentionally separate from `complexity.cyclomatic`: cyclomatic counts i
 ### `complexity.cyclomatic`
 
 - **Pillar:** complexity
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Threshold:** `maxComplexity` (default `20`)
 - **Confidence:** high
@@ -131,9 +129,9 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 ### `complexity.nesting-depth`
 
 - **Pillar:** complexity
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxDepth` (default `5`)
+- **Threshold:** `maxDepth` (default `4`)
 - **Confidence:** high
 - **Capability:** parser
 
@@ -144,9 +142,9 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 ### `complexity.npath`
 
 - **Pillar:** complexity
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxComplexity` (default `1024`)
+- **Threshold:** `maxComplexity` (default `9000`)
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `metric`
@@ -160,7 +158,7 @@ Each finding's metadata carries the measured path count and the active threshold
 ### `dead-code.empty-block`
 
 - **Pillar:** dead-code
-- **Default severity:** low
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -172,7 +170,7 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 ### `dead-code.unreachable-code`
 
 - **Pillar:** dead-code
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -185,11 +183,11 @@ Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` i
 ### `dead-code.unused-private-function`
 
 - **Pillar:** dead-code
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `dead-code`
+- **Tags:** `cross-file`, `dead-code`
 
 Flags package-private top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, `init`, `main`, external `_test` packages, and packages that import `reflect` are excluded so reflection-heavy or entrypoint-driven code does not produce parser-only false positives.
 
@@ -197,13 +195,12 @@ Flags package-private top-level functions whose names are not referenced anywher
 
 ### `design.god-function`
 
-- **Pillar:** design (secondary: size, complexity)
-- **Default severity:** low
+- **Pillar:** design
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `composite`
-- **Scoring:** score-neutral
 
 Flags functions that already have at least one size finding and at least one complexity finding on the same file and symbol. The composite finding has no source line so its fingerprint remains stable when the function body shifts but the file and symbol identity stay the same.
 
@@ -212,13 +209,12 @@ Flags functions that already have at least one size finding and at least one com
 ### `design.hotspot-file`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Thresholds:** `minFindings` (default `3`), `minPillars` (default `2`)
+- **Threshold:** `minFindings` (default `3`), `minPillars` (default `2`)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `composite`
-- **Scoring:** score-neutral
 
 Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules, so a god-function finding will not itself create a hotspot-file finding.
 
@@ -227,13 +223,12 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 ### `docs.comment-rubric`
 
 - **Pillar:** documentation
-- **Default severity:** low
+- **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `minPackageCommentLines` (default `1`)
+- **Threshold:** `minPackageCommentLines` (default `2`)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `comments`, `documentation`, `rubric`
-- **Options:** `includePaths []string`, `excludePaths []string`, `minWordsBeyondSymbol int` (default `0`), `requirePackageSummary bool`, `requireFunctionComments bool`, `requireNamedTypeComments bool`, `requireStructComments bool`, `requireInterfaceComments bool`, `requireConstComments bool`, `requireVarComments bool`, `ignoreTests bool`
 
 Flags files that opt into a stricter maintainer-comment rubric. The rule can require a package summary with enough non-empty lines, plus directly attached comments for functions, named type declarations, package-scope constants, and package-scope variables. Local `const` and `var` declarations are not enforced.
 
@@ -250,7 +245,7 @@ rules:
   docs.comment-rubric:
     enabled: true
     threshold: 2
-    severity: low
+    severity: advisory
     options:
       includePaths:
         - internal/analysis/report.go
@@ -267,12 +262,11 @@ rules:
 ### `docs.config-field-comment`
 
 - **Pillar:** documentation
-- **Default severity:** low
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `comments`, `documentation`, `struct-fields`
-- **Options:** `includePaths []string`, `excludePaths []string`
 
 Flags exported fields on struct types declared inside configured `includePaths` that have no useful doc comment. The "useful comment" check is shared with `docs.comment-rubric`: the comment must exist (at least one non-empty line) and must normalise differently from the field name itself. Embedded fields (no `Names` on the `*ast.Field`) and unexported fields are out of scope and never produce findings.
 
@@ -282,7 +276,7 @@ The rule is default-enabled and intended for user-facing configuration schema ty
 rules:
   docs.config-field-comment:
     enabled: true
-    severity: low
+    severity: advisory
     options:
       includePaths:
         - internal/config/config.go
@@ -294,11 +288,10 @@ rules:
 ### `docs.exported-symbol-comment`
 
 - **Pillar:** documentation
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Options:** `ignoreInternalPackages bool` - default `true`
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
 
@@ -309,7 +302,7 @@ Set `ignoreInternalPackages: false` when internal package exports should follow 
 ### `docs.package-comment`
 
 - **Pillar:** documentation
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -321,7 +314,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 ### `docs.suppression-without-rationale`
 
 - **Pillar:** documentation
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -334,7 +327,7 @@ Flags `//nolint` and `#nosec` suppression comments that contain only the directi
 ### `maintainability.context-todo-production`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -347,11 +340,11 @@ Flags `context.TODO()` calls in production files. Test files, `testdata`, and ex
 ### `maintainability.defer-in-loop`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
-- **Tags:** `resources`
+- **Tags:** `lifecycle`
 
 Flags `defer` statements directly inside `for` and `range` loop bodies. Deferred cleanup runs when the enclosing function returns, not at the end of the current iteration, so loop-scoped resources can stay open longer than intended. Defers inside function literals launched or called from the loop are treated as their own function scope and are not reported.
 
@@ -360,7 +353,7 @@ Flags `defer` statements directly inside `for` and `range` loop bodies. Deferred
 ### `maintainability.ignored-error`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -375,11 +368,11 @@ Each finding's metadata carries the ignored expression and the parser-only evide
 ### `maintainability.log-fatal-library`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
-- **Tags:** `errors`
+- **Tags:** `errors`, `lifecycle`
 
 Flags `log.Fatal`, `log.Fatalf`, `log.Fatalln`, and `os.Exit` calls outside command entrypoints, `package main`, tests, and generated files. Reusable packages should return errors to callers rather than terminating the whole process.
 
@@ -388,11 +381,11 @@ Flags `log.Fatal`, `log.Fatalf`, `log.Fatalln`, and `os.Exit` calls outside comm
 ### `maintainability.loop-variable-address`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
-- **Tags:** `correctness`
+- **Tags:** `loops`
 
 Flags storing, returning, or appending `&v` where `v` is a range value variable. The pointer refers to the range variable copy rather than the backing collection element; `&slice[i]` remains the accepted element-address form.
 
@@ -401,7 +394,7 @@ Flags storing, returning, or appending `&v` where `v` is a range value variable.
 ### `maintainability.production-panic`
 
 - **Pillar:** maintainability
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -414,12 +407,11 @@ Flags direct `panic` calls with literal message evidence in reusable production 
 ### `modernisation.ioutil-deprecated`
 
 - **Pillar:** modernisation
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `go-style`
-- **Options:** `minimumGoVersion string` - default `"1.16"` metadata for the replacement floor
 
 Flags `io/ioutil` selectors that have direct modern replacements: `io.ReadAll`, `os.ReadFile`, `os.WriteFile`, `io.NopCloser`, `io.Discard`, `os.MkdirTemp`, and `os.CreateTemp`.
 
@@ -430,12 +422,11 @@ Each finding's metadata carries the deprecated API and replacement API.
 ### `naming.acronym-case`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
-- **Options:** `acronyms []string` - default `[HTTP, URL, JSON, ID, XML, API, JWT, AWS, OAUTH, CSS, HTML, YAML, SARIF, ASCII, SQL, CLI, TCP, UDP, TLS, SSL, DNS, IP, GPU, CPU, OS]`; `allow []string` - exact identifiers to skip
 
 Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Correct all-caps forms such as `HTTPClient`, `URLParser`, `JSONReport`, and `IDGenerator` pass; lowercase initialisms in unexported names such as `urlParser` also pass.
 
@@ -459,12 +450,12 @@ rules:
 ### `naming.contextual-generic`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
+- **Threshold:** `minBodyLines` (default `15`), `minFunctionLines` (default `50`)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `naming`
-- **Thresholds:** `minBodyLines: 15`, `minFunctionLines: 50`
 - **Options:**
   - `genericNames []string` - range value names to check. Default: `[item, value, entry, elem, v]`
   - `accumulatorNames []string` - accumulator names to check. Default: `[out, result]`
@@ -492,12 +483,11 @@ rules:
 ### `naming.get-prefix`
 
 - **Pillar:** modernisation
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
-- **Options:** `excludePaths []string`, `excludeNames []string`
 
 Flags receiver methods named like `GetUser()` or `GetCacheStats()` when they have no parameters and return either one result or `(T, error)`. Package-level helpers, including context accessors such as `GetLogger(ctx)`, are not flagged because the verb often describes lookup semantics rather than field-style access. Methods with lookup parameters, such as `GetUserByID(id string)`, are not flagged because the verb carries useful action context.
 
@@ -515,12 +505,11 @@ rules:
 ### `naming.identifier-quality`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `naming`
-- **Options:** `placeholderNames []string` - default `[foo, bar, baz, tmp, temp, obj, todo, thing, stuff]`
 
 Flags local `:=` assignments, `var` declarations, and `const` declarations in non-test files whose name matches a configurable list of placeholder tokens. Test files are skipped because disposable identifier names are often appropriate there.
 
@@ -538,7 +527,7 @@ rules:
 ### `naming.misspelling`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -567,7 +556,7 @@ rules:
 ### `naming.negated-boolean`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -599,7 +588,7 @@ rules:
 ### `naming.package-stutter`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -625,7 +614,7 @@ rules:
 ### `naming.package-underscore`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -638,12 +627,11 @@ Flags Go package names that use underscores instead of short lowercase words (th
 ### `naming.receiver-consistency`
 
 - **Pillar:** naming
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
-- **Options:** `allowMixed []string` - receiver type names allowed to mix pointer/value receiver forms; `inspectGroup string` - `both` (default), `name`, or `pointer`
 
 Flags methods on the same receiver type that use inconsistent receiver names or pointer/value forms. The rule groups methods across the scanned project by receiver type name, strips leading `*`, and reports methods that use the minority receiver name or form.
 
@@ -661,7 +649,7 @@ rules:
 ### `security.archive-path-traversal`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -676,7 +664,7 @@ Each finding's metadata carries the archive entry expression and the missing che
 ### `security.http-client-no-timeout`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -689,9 +677,9 @@ Flags `http.Client` composite literals in production files that do not set the `
 ### `security.http-server-no-timeout`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
 - **Tags:** `http`, `security`
 
@@ -702,7 +690,7 @@ Flags production `http.Server` composite literals that omit all explicit timeout
 ### `security.insecure-random-secret`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -717,9 +705,9 @@ Each finding's metadata carries the random API and context word.
 ### `security.permissive-file-mode`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
 - **Tags:** `filesystem`, `security`
 
@@ -730,7 +718,7 @@ Flags literal file and directory modes in `os.OpenFile`, `os.Chmod`, `os.Mkdir`,
 ### `security.request-body-without-limit`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -744,8 +732,8 @@ Each finding's metadata carries the request parameter name and read call.
 
 ### `security.shell-command`
 
-- **Pillar:** security (secondary: sensitive-data)
-- **Default severity:** medium
+- **Pillar:** security
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -758,7 +746,7 @@ Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpr
 ### `security.sql-string-query`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -773,7 +761,7 @@ Each finding's metadata carries the call name and construction kind.
 ### `security.tls-insecure-config`
 
 - **Pillar:** security
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -788,7 +776,7 @@ Each finding's metadata carries the unsafe `field` and `value`.
 ### `security.weak-crypto`
 
 - **Pillar:** security
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -803,7 +791,7 @@ Each finding's metadata carries the primitive and reason.
 ### `sensitive-data.anthropic-api-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -816,7 +804,7 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 ### `sensitive-data.aws-access-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -829,7 +817,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 ### `sensitive-data.connection-string`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -844,7 +832,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the host 
 ### `sensitive-data.gcp-service-account`
 
 - **Pillar:** sensitive-data
-- **Default severity:** **critical**
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -854,14 +842,14 @@ Flags files containing both a `"type": "service_account"` field and a PEM privat
 
 The finding is located at the line of the `"type"` marker. Both markers are redacted in the preview metadata; the raw private-key body never reaches any output format.
 
-**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `critical` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
+**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `error` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
 
 **Remediation.** Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity.
 
 ### `sensitive-data.github-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -874,7 +862,7 @@ Flags GitHub personal-access (`ghp_`), OAuth (`gho_`), user-to-server (`ghu_`), 
 ### `sensitive-data.gitlab-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -887,7 +875,7 @@ Flags GitLab personal, trigger, runner, and application token literals with prov
 ### `sensitive-data.google-api-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -900,7 +888,7 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 ### `sensitive-data.jwt-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -913,7 +901,7 @@ Flags JWT-shaped literals - three base64url segments separated by dots, the firs
 ### `sensitive-data.npm-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -926,7 +914,7 @@ Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes whe
 ### `sensitive-data.private-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** **critical**
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -939,7 +927,7 @@ Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedd
 ### `sensitive-data.secret-pattern`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -955,7 +943,7 @@ Add documented dummies to `allowlists.secretPreviews` so example values in tests
 ### `sensitive-data.slack-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -968,7 +956,7 @@ Flags Slack bot (`xoxb-`), user (`xoxp-`), app (`xoxa-`), and refresh (`xoxr-`) 
 ### `sensitive-data.stripe-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** high
+- **Default severity:** error
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -981,20 +969,20 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 ### `size.file-length`
 
 - **Pillar:** size
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Threshold:** `maxLines` (default `500`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
+Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 
 ### `size.function-length`
 
 - **Pillar:** size
-- **Default severity:** medium
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Threshold:** `maxLines` (default `80`)
 - **Confidence:** high
@@ -1002,16 +990,16 @@ Flags Go files that exceed the configured line-count threshold. Long files frequ
 
 Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
 
-`_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `low` severity / `medium` confidence unless you explicitly configure a non-medium rule severity.
+`_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
 
 **Remediation.** Extract cohesive helper functions or split independent branches.
 
 ### `size.parameter-count`
 
 - **Pillar:** size
-- **Default severity:** low
+- **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxParameters` (default `8`)
+- **Threshold:** `maxParameters` (default `5`)
 - **Confidence:** high
 - **Capability:** parser
 
@@ -1022,7 +1010,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 ### `test-quality.empty-test`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1035,9 +1023,9 @@ Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body cont
 ### `test-quality.fatal-in-goroutine`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
 - **Tags:** `tests`
 
@@ -1048,7 +1036,7 @@ Flags `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines in `_test.g
 ### `test-quality.helper-missing-t-helper`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1061,7 +1049,7 @@ Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`,
 ### `test-quality.no-failure-path`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1076,7 +1064,7 @@ The rule walks the function body looking for those methods on the test function'
 ### `test-quality.parallel-range-capture`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1093,7 +1081,7 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 ### `test-quality.skipped-test`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1106,11 +1094,11 @@ Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Co
 ### `test-quality.sleep-in-test`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `tests`
+- **Tags:** `flake`, `tests`
 
 Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load.
 
@@ -1119,7 +1107,7 @@ Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and u
 ### `test-quality.tempdir-misuse`
 
 - **Pillar:** test-quality
-- **Default severity:** low
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1138,7 +1126,7 @@ rules:
   # Tighten a default-enabled rule.
   complexity.cyclomatic:
     threshold: 12
-    severity: high
+    severity: error
 
   # Disable a rule for this repo.
   docs.package-comment:
@@ -1148,8 +1136,8 @@ rules:
   size.parameter-count:
     threshold: 6
 
-  # Raise a medium default rule to high severity.
+  # Raise a warning-default rule to a hard-error gate.
   security.shell-command:
     enabled: true
-    severity: high
+    severity: error
 ```

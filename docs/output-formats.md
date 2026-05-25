@@ -10,13 +10,13 @@ Compact terminal-friendly output:
 
 ```text
 gruff-go analysis
-schema: gruff-go.analysis.v0.1
+schema: gruff-go.analysis.v0.2
 files: 65 scanned, 6 skipped
 score coverage: size
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
 complexity distribution: finding-only
 findings:
-  [medium] internal/foo/bar.go:42 complexity.cyclomatic: function cyclomatic complexity is 23, above threshold 20
+  [warning] internal/foo/bar.go:42 complexity.cyclomatic: function cyclomatic complexity is 23, above threshold 20
 exit: 1
 ```
 
@@ -24,7 +24,7 @@ The text format is intentionally terse. For human review of a full run, prefer `
 
 ## `json`
 
-Full structured report. Schema: `gruff-go.analysis.v0.1`.
+Full structured report. Schema: `gruff-go.analysis.v0.2`.
 
 ```bash
 gruff-go analyse --format json . > analysis.json
@@ -34,9 +34,9 @@ Top-level shape:
 
 ```jsonc
 {
-  "schemaVersion": "gruff-go.analysis.v0.1",
-  "tool":          { "name": "gruff-go", "version": "0.1.0" },
-  "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "medium" },
+  "schemaVersion": "gruff-go.analysis.v0.2",
+  "tool":          { "name": "gruff-go", "version": "0.1.2" },
+  "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "advisory" },
   "summary":       { "filesScanned": 65, "filesSkipped": 6, "findingsCount": 3,
                      "countsBySeverity": {...}, "countsByPillar": {...}, "exitCode": 1 },
   "baseline":      { "applied": false, "entries": 0, "suppressedFindings": 0, "staleEntries": 0 },
@@ -62,7 +62,7 @@ Every finding looks like:
   "file":        "internal/foo/bar.go",
   "location":    { "line": 42, "endLine": 78 },
   "symbol":      "DoTheThing",
-  "severity":    "medium",
+  "severity":    "warning",
   "confidence":  "high",
   "pillar":      "complexity",
   "remediation": "Split independent decisions or move branches into named helpers.",
@@ -87,7 +87,7 @@ Same shape as `json` minus the per-finding `findings` array. Useful for CI dashb
 gruff-go analyse --format summary-json .
 ```
 
-Schema is still `gruff-go.analysis.v0.1` - the missing `findings` field is the only difference.
+Schema is still `gruff-go.analysis.v0.2` - the missing `findings` field is the only difference.
 
 ## `sarif`
 
@@ -101,9 +101,9 @@ The output includes:
 
 - `runs[].tool.driver` with the resolved rule registry (one `rules[]` entry per rule active for the run, including pillar / severity / confidence / capability / tags via `properties`).
 - `runs[].results` with one entry per finding, mapping severity to SARIF `level`:
-  - `critical` / `high` → `error`
-  - `medium` → `warning`
-  - `low` / `info` → `note`
+  - `error` → `error`
+  - `warning` → `warning`
+  - `advisory` → `note`
 - `partialFingerprints.gruffFingerprint` carries the gruff-go fingerprint so consumers can match findings across runs.
 
 Upload via GitHub Actions:
@@ -127,9 +127,9 @@ Map of severity to GitHub level:
 
 | gruff-go severity | GitHub level |
 |-------------------|--------------|
-| `critical` / `high` | `error` |
-| `medium` | `warning` |
-| `low` / `info` | `notice` |
+| `error` | `error` |
+| `warning` | `warning` |
+| `advisory` | `notice` |
 
 This format works whether the workflow uses `actions/checkout` directly or an annotated runner - GitHub pulls the annotations from stdout/stderr without any extra step. For richer Code Scanning integration, prefer `sarif`.
 
@@ -162,7 +162,7 @@ The absolute path is built relative to `--project` (when set) or the working dir
 
 Adds an inline filter form above the findings list:
 
-- **Severity** multi-select (canonical order `critical → high → medium → low → info`).
+- **Severity** multi-select (canonical order `error → warning → advisory`).
 - **Pillar** multi-select (alphabetically sorted, deduplicated from the actual findings in the report).
 - **Path** text input (case-insensitive substring match against `data-file`).
 - **Search** text input (case-insensitive substring match against rule ID + message).
@@ -227,13 +227,13 @@ The chosen format does **not** change the exit code. All formats use:
 | `1` | At least one finding at or above `--min-severity`. |
 | `2` | Diagnostics (path missing, parse error, config error, baseline error, diff error) **or** invalid CLI input. |
 
-Set `--min-severity` to control where the line falls (default: `medium`).
+Set `--min-severity` to control where the line falls (default: `advisory`).
 
 ## Schemas
 
 | Schema | Used by | File |
 |--------|---------|------|
-| `gruff-go.analysis.v0.1` | `json`, `summary-json` | `internal/analysis/report.go` |
+| `gruff-go.analysis.v0.2` | `json`, `summary-json` | `internal/analysis/report.go` |
 | `gruff-go.config.v0.1`   | `.gruff-go.yaml` config loader | `internal/config/config.go` |
 | `gruff-go.baseline.v0.1` | `baseline` subcommand | `internal/baseline/baseline.go` |
 | `sarif-2.1.0`            | `sarif` | `internal/report/machine.go` |

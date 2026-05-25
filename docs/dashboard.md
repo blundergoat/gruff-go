@@ -29,7 +29,7 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--no-baseline` | *off* | Refuse to apply any baseline. |
 | `--diff` | *off* | Start in diff-only scan mode (against `HEAD`). |
 | `--include-ignored` | *off* | Include gitignored and default-ignored files; `paths.ignore` still applies. |
-| `--fail-on` | `medium` | Minimum severity that fails the scan. |
+| `--fail-on` | `advisory` | Minimum severity that fails the scan. |
 | `--report-interactive` | *off* | Enable the inline finding filter UI inside the iframe. |
 | `--report-editor-link` | `none` | File:line link mode: `none`, `vscode`, `phpstorm`. |
 | `--allow-public` | *off* | Permit non-loopback `--host`. Required for `0.0.0.0` etc. |
@@ -109,7 +109,7 @@ After every scan, the report HTML carries:
 
 ```html
 <script id="gruff-dashboard-meta" type="application/json">
-  {"type":"gruff-scan-complete","exitCode":0,"durationMs":245,"projectRoot":"/repo","command":"gruff-go analyse --format html --min-severity medium ."}
+  {"type":"gruff-scan-complete","exitCode":0,"durationMs":245,"projectRoot":"/repo","command":"gruff-go analyse --format html --min-severity advisory ."}
 </script>
 <script>(()=>{const el=document.getElementById("gruff-dashboard-meta");if(window.parent&&el){window.parent.postMessage(JSON.parse(el.textContent),window.location.origin);}})();</script>
 ```
