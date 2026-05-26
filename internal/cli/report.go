@@ -21,7 +21,10 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	output := flags.String("output", "", "write the report to this file (default: stdout)")
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
-	minSeverity := string(finding.FailThresholdWarning)
+	// Default comes from DefaultFailThresholdFor("report") which is `none` -
+	// report is an artifact generator, not a CI gate. minimumSeverity.report in
+	// .gruff-go.yaml overrides; CLI flag wins over both (ADR-010).
+	minSeverity := string(finding.DefaultFailThresholdFor("report"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
@@ -44,14 +47,25 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return 2
 	}
-	failOn, err := finding.ParseFailThreshold(minSeverity)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
+	minSeverityExplicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "min-severity" || f.Name == "fail-on" {
+			minSeverityExplicit = true
+		}
+	})
+	if minSeverityExplicit {
+		if _, err := finding.ParseFailThreshold(minSeverity); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
 	}
-	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
+	registry, ignorePaths, cfg, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
+		return 2
+	}
+	failOn, ok := resolveFailOn(minSeverity, minSeverityExplicit, cfg, "report", stderr)
+	if !ok {
 		return 2
 	}
 	displayFilter, err := parseDisplayFilter(*includeRules, *excludeRules, *includePillars, *excludePillars, registry.Definitions())

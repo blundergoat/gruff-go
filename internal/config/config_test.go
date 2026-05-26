@@ -414,6 +414,9 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "unknown option on get prefix", yaml: "rules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
 		{name: "unknown option on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
 		{name: "unknown threshold on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
+		{name: "unknown minimumSeverity command", yaml: "minimumSeverity:\n  not-a-command: warning\n", want: `minimumSeverity has unknown command "not-a-command"`},
+		{name: "legacy minimumSeverity value", yaml: "minimumSeverity:\n  analyse: medium\n", want: `minimumSeverity.analyse: unknown threshold "medium"`},
+		{name: "rejected off-switch alias", yaml: "minimumSeverity:\n  report: never\n", want: `minimumSeverity.report: unknown threshold "never"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -422,5 +425,50 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 				t.Fatalf("err = %v, want containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// TestParseAcceptsMinimumSeverityBlock confirms the four canonical command keys
+// + the four canonical FailThreshold values round-trip through Parse without
+// validation errors. Locks the ADR-010 contract surface.
+func TestParseAcceptsMinimumSeverityBlock(t *testing.T) {
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  analyse: advisory
+  summary: warning
+  report: none
+  dashboard: error
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	want := map[string]string{
+		"analyse":   "advisory",
+		"summary":   "warning",
+		"report":    "none",
+		"dashboard": "error",
+	}
+	for cmd, expected := range want {
+		if got := cfg.MinimumSeverity[cmd]; got != expected {
+			t.Errorf("MinimumSeverity[%q] = %q, want %q", cmd, got, expected)
+		}
+	}
+}
+
+// TestParseAcceptsNoneInMinimumSeverity confirms `none` is a valid value -
+// regression guard for the off-switch sentinel that distinguishes
+// FailThreshold from Severity.
+func TestParseAcceptsNoneInMinimumSeverity(t *testing.T) {
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  analyse: none
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if got := cfg.MinimumSeverity["analyse"]; got != "none" {
+		t.Errorf("MinimumSeverity[analyse] = %q, want \"none\"", got)
 	}
 }

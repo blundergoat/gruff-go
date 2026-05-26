@@ -129,6 +129,52 @@ func validateOptions(id string, ruleConfig RuleConfig, definition rule.Definitio
 	return nil
 }
 
+// minimumSeverityCommands is the set of CLI command names valid as
+// minimumSeverity keys. Mirrors the keyed-default map in
+// finding.DefaultFailThresholdFor; any new gating command must be added in
+// both places (per the lockstep contract documented in ADR-010).
+var minimumSeverityCommands = map[string]struct{}{
+	"analyse":   {},
+	"summary":   {},
+	"report":    {},
+	"dashboard": {},
+}
+
+// validateMinimumSeverity rejects unknown command keys and unknown FailThreshold
+// values. Deterministic iteration: map keys are sorted before reporting so the
+// first-error returned by runChecks is stable across runs.
+func validateMinimumSeverity(entries map[string]string) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(entries))
+	for key := range entries {
+		keys = append(keys, key)
+	}
+	sortedKeys := append([]string(nil), keys...)
+	sortStringSlice(sortedKeys)
+	for _, cmd := range sortedKeys {
+		if _, ok := minimumSeverityCommands[cmd]; !ok {
+			return fmt.Errorf("minimumSeverity has unknown command %q", cmd)
+		}
+		value := entries[cmd]
+		if _, err := finding.ParseFailThreshold(value); err != nil {
+			return fmt.Errorf("minimumSeverity.%s: %s", cmd, err.Error())
+		}
+	}
+	return nil
+}
+
+// sortStringSlice sorts a string slice in place. Inlined here rather than
+// importing sort to keep validate.go's import list minimal.
+func sortStringSlice(values []string) {
+	for i := 1; i < len(values); i++ {
+		for j := i; j > 0 && values[j-1] > values[j]; j-- {
+			values[j-1], values[j] = values[j], values[j-1]
+		}
+	}
+}
+
 // validateSelection rejects unknown pillar IDs and unsupported tier selections.
 func validateSelection(selection SelectionConfig) error {
 	for _, pillar := range append(append([]string{}, selection.Pillars...), selection.ExcludePillars...) {

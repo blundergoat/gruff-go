@@ -27,6 +27,12 @@ var defaultConfigFiles = []string{".gruff-go.yaml"}
 type Config struct {
 	// SchemaVersion identifies the gruff-go config schema this file targets.
 	SchemaVersion string `json:"schemaVersion,omitempty"`
+	// MinimumSeverity sets the per-command exit-code threshold. Keys are
+	// command names (analyse, summary, report, dashboard); values are
+	// FailThreshold strings (advisory, warning, error, none). Additive
+	// optional per ADR-010; the absence of a key falls back to
+	// finding.DefaultFailThresholdFor(cmd).
+	MinimumSeverity map[string]string `json:"minimumSeverity,omitempty"`
 	// Select restricts the active rule set to the listed rule IDs (or aliases).
 	Select []string `json:"select,omitempty"`
 	// ExcludeRules disables the named rule IDs even when they would otherwise run.
@@ -220,6 +226,7 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 		},
 		func() error { return validateRuleConfig(cfg.Rules, byID) },
 		func() error { return validateSelection(cfg.Selection) },
+		func() error { return validateMinimumSeverity(cfg.MinimumSeverity) },
 	}
 	return runChecks(checks)
 }

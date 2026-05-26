@@ -119,9 +119,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
-	registry, ignorePaths, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
+	registry, ignorePaths, cfg, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
+		return 2
+	}
+	failOn, ok := resolveFailOn(values.minSeverityRaw, values.minSeverityExplicit, cfg, "analyse", stderr)
+	if !ok {
 		return 2
 	}
 	if values.generateBaselinePath != "" {
@@ -141,7 +145,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	analysisReport, err := analysis.Analyze(analysis.Options{
 		Paths:          flags.Args(),
 		Format:         values.format,
-		FailOn:         values.failOn,
+		FailOn:         failOn,
 		Registry:       registry,
 		IgnorePaths:    ignorePaths,
 		IncludeIgnored: values.includeIgnored,
@@ -161,9 +165,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 }
 
 // analyseFlagValues is the parsed analyse command state after validation.
+// minSeverityRaw + minSeverityExplicit replace the resolved FailThreshold so
+// runAnalyse can apply the ADR-010 precedence (CLI flag > minimumSeverity.cmd
+// > DefaultFailThresholdFor) after the config has been loaded.
 type analyseFlagValues struct {
 	format               string
-	failOn               finding.FailThreshold
+	minSeverityRaw       string
+	minSeverityExplicit  bool
 	configPath           string
 	noConfig             bool
 	baselinePath         string
@@ -178,16 +186,37 @@ type analyseFlagValues struct {
 	includeIgnored       bool
 }
 
+// resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
+// explicit CLI flag wins, otherwise the matching minimumSeverity.<cmd> config
+// entry, otherwise the binary default from DefaultFailThresholdFor. Returns
+// (threshold, ok); on parse failure prints the error to stderr and returns
+// (zero-value, false) so the caller can `return 2`.
+func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd string, stderr io.Writer) (finding.FailThreshold, bool) {
+	resolved := rawValue
+	if !flagExplicit {
+		if cfgValue := cfg.MinimumSeverity[cmd]; cfgValue != "" {
+			resolved = cfgValue
+		}
+	}
+	parsed, err := finding.ParseFailThreshold(resolved)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return "", false
+	}
+	return parsed, true
+}
+
 // parseAnalyseFlags parses and validates analyse flags, printing validation
 // errors to stderr in the same style as the legacy inline parser.
 func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
-	// ADR-009: default is `advisory` (show everything). The previous default `medium`
-	// mapped to today's `warning` under the new 3-bucket model; intentionally permissive.
-	// FailThreshold (not Severity) so `none` parses as a valid "never fail" value.
-	minSeverity := string(finding.FailThresholdAdvisory)
+	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
+	// returns (currently advisory, intentionally permissive after the 3-bucket
+	// migration). Help text shows this default; precedence in runAnalyse lets
+	// .gruff-go.yaml's minimumSeverity.analyse override it.
+	minSeverity := string(finding.DefaultFailThresholdFor("analyse"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
@@ -213,14 +242,25 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return flags, analyseFlagValues{}, false
 	}
-	failOn, err := finding.ParseFailThreshold(minSeverity)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return flags, analyseFlagValues{}, false
+	minSeverityExplicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "min-severity" || f.Name == "fail-on" {
+			minSeverityExplicit = true
+		}
+	})
+	// Validate explicit flag values early so the user sees the parse error
+	// before any config load. Defaults (and config-supplied values) are
+	// validated later in runAnalyse via resolveFailOn.
+	if minSeverityExplicit {
+		if _, err := finding.ParseFailThreshold(minSeverity); err != nil {
+			fmt.Fprintln(stderr, err)
+			return flags, analyseFlagValues{}, false
+		}
 	}
 	values := analyseFlagValues{
 		format:               *format,
-		failOn:               failOn,
+		minSeverityRaw:       minSeverity,
+		minSeverityExplicit:  minSeverityExplicit,
 		configPath:           *configPath,
 		noConfig:             *noConfig,
 		baselinePath:         *baselinePath,
@@ -309,7 +349,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
 		return 2
 	}
-	registry, _, err := configuredRegistry(*configPath, *noConfig)
+	registry, _, _, err := configuredRegistry(*configPath, *noConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
@@ -337,25 +377,29 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 }
 
 // configuredRegistry builds the rule registry honouring the loaded config file.
-func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, error) {
+// Also returns the loaded Config so callers can consult MinimumSeverity. When
+// no config file is on disk the returned Config is zero-valued; nil-map lookups
+// on cfg.MinimumSeverity[cmd] yield empty string, which is the "no value"
+// signal callers expect.
+func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, cfgpkg.Config, error) {
 	defaults := rule.Defaults()
 	root, err := os.Getwd()
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}
 	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}
 	if loaded.Path == "" {
-		return defaults, nil, nil
+		return defaults, nil, cfgpkg.Config{}, nil
 	}
 	cfg := loaded.Config
 	registry, err := rule.DefaultsConfigured(cfg.RuleOptions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}
-	return registry, cfg.IgnorePaths, nil
+	return registry, cfg.IgnorePaths, cfg, nil
 }
 
 // supportedAnalysisFormat reports whether format names a known analyse output.

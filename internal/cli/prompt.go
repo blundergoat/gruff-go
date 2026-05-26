@@ -44,15 +44,16 @@ func extractNoInteraction(args []string) ([]string, bool) {
 
 // configuredRegistryInteractive resolves the rule registry and, when no config
 // file is on disk and the shell can answer a prompt, offers to generate one
-// before falling back to the built-in defaults.
-func configuredRegistryInteractive(configPath string, noConfig, interactive bool, promptWriter io.Writer) (rule.Registry, []string, error) {
+// before falling back to the built-in defaults. Returns the loaded Config so
+// callers can consult MinimumSeverity for per-command threshold precedence.
+func configuredRegistryInteractive(configPath string, noConfig, interactive bool, promptWriter io.Writer) (rule.Registry, []string, cfgpkg.Config, error) {
 	if interactive {
 		root, err := os.Getwd()
 		if err != nil {
-			return rule.Registry{}, nil, err
+			return rule.Registry{}, nil, cfgpkg.Config{}, err
 		}
 		if err := maybeBootstrapConfigInRoot(root, configPath, noConfig, promptWriter); err != nil {
-			return rule.Registry{}, nil, err
+			return rule.Registry{}, nil, cfgpkg.Config{}, err
 		}
 	}
 	return configuredRegistry(configPath, noConfig)

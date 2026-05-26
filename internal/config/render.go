@@ -43,9 +43,39 @@ func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 
 	var buf bytes.Buffer
 	writeRenderHeader(&buf)
+	writeRenderMinimumSeverity(&buf, opts)
 	writeRenderScaffolds(&buf, opts)
 	writeRenderRules(&buf, sorted, opts)
 	return buf.Bytes()
+}
+
+// writeRenderMinimumSeverity emits the per-command exit-code threshold block
+// (ADR-010). Values come from finding.DefaultFailThresholdFor unless the
+// existing config already tuned a key, in which case the user's value is
+// preserved verbatim - regenerate-with-merge, never a destructive clobber.
+func writeRenderMinimumSeverity(buf *bytes.Buffer, opts RenderOptions) {
+	fmt.Fprintln(buf, "# Per-command exit-code thresholds (ADR-010). Each key overrides the binary")
+	fmt.Fprintln(buf, "# default for the matching gruff-go subcommand. Values: advisory | warning |")
+	fmt.Fprintln(buf, "# error | none (where 'none' disables the gate, exit 0 regardless of findings).")
+	fmt.Fprintln(buf, "# Precedence: CLI flag > minimumSeverity.<cmd> > binary default.")
+	fmt.Fprintln(buf, "minimumSeverity:")
+	for _, cmd := range []string{"analyse", "summary", "report", "dashboard"} {
+		fmt.Fprintf(buf, "  %s: %s\n", cmd, preservedMinimumSeverityFor(opts, cmd))
+	}
+	fmt.Fprintln(buf)
+}
+
+// preservedMinimumSeverityFor returns the existing config's minimumSeverity
+// entry for cmd when it carries one, otherwise the binary default. The empty
+// string case (entry present but blank) also falls back to the default since
+// a blank value would fail ParseFailThreshold at load time.
+func preservedMinimumSeverityFor(opts RenderOptions, cmd string) string {
+	if opts.Existing != nil {
+		if value, ok := opts.Existing.MinimumSeverity[cmd]; ok && value != "" {
+			return value
+		}
+	}
+	return string(finding.DefaultFailThresholdFor(cmd))
 }
 
 // writeRenderHeader writes the file-level banner and schemaVersion pin.

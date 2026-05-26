@@ -22,7 +22,9 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	minSeverity := string(finding.FailThresholdWarning)
+	// Default comes from DefaultFailThresholdFor("summary"); precedence below
+	// lets minimumSeverity.summary in .gruff-go.yaml override it (ADR-010).
+	minSeverity := string(finding.DefaultFailThresholdFor("summary"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	if err := flags.Parse(args); err != nil {
@@ -36,15 +38,26 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintln(stderr, "--top must be zero or a positive integer")
 		return 2
 	}
-	failOn, err := finding.ParseFailThreshold(minSeverity)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
+	minSeverityExplicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "min-severity" || f.Name == "fail-on" {
+			minSeverityExplicit = true
+		}
+	})
+	if minSeverityExplicit {
+		if _, err := finding.ParseFailThreshold(minSeverity); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
 	}
 	started := time.Now()
-	registry, ignorePaths, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
+	registry, ignorePaths, cfg, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
+		return 2
+	}
+	failOn, ok := resolveFailOn(minSeverity, minSeverityExplicit, cfg, "summary", stderr)
+	if !ok {
 		return 2
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
