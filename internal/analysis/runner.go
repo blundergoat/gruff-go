@@ -26,8 +26,10 @@ type Options struct {
 	Paths []string
 	// Format selects the report renderer ("text", "json", "html", "sarif", "github"); empty defaults to "text".
 	Format string
-	// FailOn is the severity threshold that drives the process exit code.
-	FailOn finding.Severity
+	// FailOn is the threshold at or above which a finding triggers exit code 1.
+	// FailThreshold (not Severity) so callers can express "never fail" via
+	// finding.FailThresholdNone.
+	FailOn finding.FailThreshold
 	// Registry supplies the rules invoked against parsed units.
 	Registry rule.Registry
 	// IgnorePaths lists path patterns suppressed from discovery, merged on top of gitignore handling.
@@ -123,10 +125,12 @@ func analysisRoot(root string) (string, error) {
 	return rootAbs, nil
 }
 
-// normalizeOptions fills defaults for empty Options fields.
+// normalizeOptions fills defaults for empty Options fields. Empty FailOn
+// resolves to the canonical "analyse" default so programmatic callers get
+// the same gate as the analyse CLI consumer.
 func normalizeOptions(opts Options) Options {
 	if opts.FailOn == "" {
-		opts.FailOn = finding.SeverityWarning
+		opts.FailOn = finding.DefaultFailThresholdFor("analyse")
 	}
 	if opts.Format == "" {
 		opts.Format = "text"

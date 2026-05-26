@@ -108,7 +108,7 @@ func scanContext(parent context.Context, timeout time.Duration) (context.Context
 type scanRunOptions struct {
 	projectRoot       string
 	paths             []string
-	failOn            finding.Severity
+	failOn            finding.FailThreshold
 	configPath        string
 	noConfig          bool
 	baselinePath      string
@@ -144,13 +144,13 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 		baselinePath = ""
 	}
 
-	failOn, _ := finding.ParseSeverity(strings.TrimSpace(state.FailOn))
+	failOn, _ := finding.ParseFailThreshold(strings.TrimSpace(state.FailOn))
 	if !failOn.Valid() {
-		parsed, err := finding.ParseSeverity(opts.FailOn)
+		parsed, err := finding.ParseFailThreshold(opts.FailOn)
 		if err == nil {
 			failOn = parsed
 		} else {
-			failOn = finding.SeverityAdvisory
+			failOn = finding.DefaultFailThresholdFor("dashboard")
 		}
 	}
 

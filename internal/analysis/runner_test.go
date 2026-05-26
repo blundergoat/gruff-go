@@ -17,7 +17,7 @@ func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	t.Chdir(t.TempDir())
 	report, err := Analyze(Options{
 		Paths:    []string{"missing.go"},
-		FailOn:   finding.SeverityWarning,
+		FailOn:   finding.FailThresholdWarning,
 		Registry: rule.Defaults(),
 	})
 	if err != nil {
@@ -37,11 +37,11 @@ func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
-	first, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityWarning})
+	first, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.FailThresholdWarning})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.SeverityWarning})
+	second, err := Analyze(Options{Registry: rule.Defaults(), FailOn: finding.FailThresholdWarning})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 
 	report, err := Analyze(Options{
 		Registry: registry,
-		FailOn:   finding.SeverityWarning,
+		FailOn:   finding.FailThresholdWarning,
 	})
 	if err != nil {
 		t.Fatal(err)

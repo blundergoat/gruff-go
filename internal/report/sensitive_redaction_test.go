@@ -29,7 +29,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		Root:    "/repo",
 		Inputs:  []string{"."},
 		Format:  "json",
-		FailOn:  finding.SeverityWarning,
+		FailOn:  finding.FailThresholdWarning,
 		Scanned: []string{"secrets.env"},
 		Findings: []finding.Finding{
 			{
@@ -129,7 +129,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		Root:     root,
 		Paths:    []string{"secrets.env"},
 		Format:   "json",
-		FailOn:   finding.SeverityWarning,
+		FailOn:   finding.FailThresholdWarning,
 		Registry: rule.Defaults(),
 	})
 	if err != nil {

@@ -90,7 +90,7 @@ func TestWriteMarkdownCleanScan(t *testing.T) {
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "markdown",
-		FailOn:      finding.SeverityWarning,
+		FailOn:      finding.FailThresholdWarning,
 		Scanned:     []string{"main.go"},
 		Definitions: defaultDefinitions(),
 	})

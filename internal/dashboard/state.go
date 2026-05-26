@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
@@ -17,7 +18,7 @@ func defaultState(opts Options) report.DashboardState {
 	}
 	failOn := opts.FailOn
 	if failOn == "" {
-		failOn = "medium"
+		failOn = string(finding.DefaultFailThresholdFor("dashboard"))
 	}
 	state := report.DashboardState{
 		Project:      firstNonEmpty(opts.ProjectRoot, currentWorkingDirectory()),

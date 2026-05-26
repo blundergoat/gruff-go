@@ -50,7 +50,8 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 }
 
 // TestAnalyseFailOnRejectsLegacySeverity confirms the 5-bucket alias parser is
-// gone (ADR-009): --fail-on critical is now an unknown severity, exit 2.
+// gone (ADR-009 + ADR-010): --fail-on critical is rejected by
+// ParseFailThreshold, exit 2.
 func TestAnalyseFailOnRejectsLegacySeverity(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -60,8 +61,8 @@ func TestAnalyseFailOnRejectsLegacySeverity(t *testing.T) {
 	if code := Main([]string{"analyse", "--fail-on", "critical", "."}, &out, &errBuf); code != 2 {
 		t.Fatalf("analyse --fail-on critical exit = %d, want 2; stderr = %s", code, errBuf.String())
 	}
-	if !strings.Contains(errBuf.String(), `unknown severity "critical"`) {
-		t.Fatalf(`stderr should contain unknown severity "critical"; got: %s`, errBuf.String())
+	if !strings.Contains(errBuf.String(), `unknown threshold "critical"`) {
+		t.Fatalf(`stderr should contain unknown threshold "critical"; got: %s`, errBuf.String())
 	}
 }
 

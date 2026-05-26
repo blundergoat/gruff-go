@@ -163,7 +163,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 // analyseFlagValues is the parsed analyse command state after validation.
 type analyseFlagValues struct {
 	format               string
-	failOn               finding.Severity
+	failOn               finding.FailThreshold
 	configPath           string
 	noConfig             bool
 	baselinePath         string
@@ -186,7 +186,8 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
 	// ADR-009: default is `advisory` (show everything). The previous default `medium`
 	// mapped to today's `warning` under the new 3-bucket model; intentionally permissive.
-	minSeverity := string(finding.SeverityAdvisory)
+	// FailThreshold (not Severity) so `none` parses as a valid "never fail" value.
+	minSeverity := string(finding.FailThresholdAdvisory)
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
@@ -212,7 +213,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return flags, analyseFlagValues{}, false
 	}
-	failOn, err := finding.ParseSeverity(minSeverity)
+	failOn, err := finding.ParseFailThreshold(minSeverity)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return flags, analyseFlagValues{}, false

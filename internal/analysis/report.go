@@ -177,8 +177,9 @@ type ReportInput struct {
 	Inputs []string
 	// Format is the rendered output format requested on the CLI.
 	Format string
-	// FailOn is the resolved severity threshold that maps to exit code 1.
-	FailOn finding.Severity
+	// FailOn is the resolved threshold that maps to exit code 1. FailThreshold
+	// rather than Severity so None ("never fail") is representable.
+	FailOn finding.FailThreshold
 	// IncludeIgnored is true when the run intentionally crossed .gitignore boundaries.
 	IncludeIgnored bool
 	// Scanned is the project-relative file list that survived discovery filtering.
@@ -290,12 +291,13 @@ func nonNilDefinitions(values []rule.Definition) []rule.Definition {
 }
 
 // ResolveExitCode returns the CLI exit code implied by diagnostics and findings.
-func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failOn finding.Severity) int {
+// FailThreshold (not Severity) so the None sentinel disables the gate entirely.
+func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failOn finding.FailThreshold) int {
 	if len(diagnostics) > 0 {
 		return 2
 	}
 	for _, item := range findings {
-		if item.Severity.AtLeast(failOn) {
+		if failOn.IsTriggeredBy(item.Severity) {
 			return 1
 		}
 	}

@@ -75,12 +75,13 @@ func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 }
 
 // TestHandlerScanMetadataCommandIncludesParityFlags verifies CLI parity flags appear in metadata.
+// Uses the 3-bucket "warning" value (post-ADR-009 + ADR-010 successor to the old "medium").
 func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gitignore"), "ignored/\n")
 	writeFile(t, filepath.Join(project, "ignored", "complex.go"), dashboardComplexFixture())
 
-	handler := NewHandler(Options{ProjectRoot: project, FailOn: "medium"})
+	handler := NewHandler(Options{ProjectRoot: project, FailOn: "warning"})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
@@ -88,7 +89,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 		"project":           {project},
 		"paths":             {"ignored/complex.go"},
 		"scanScope":         {"full"},
-		"failOn":            {"medium"},
+		"failOn":            {"warning"},
 		"includeIgnored":    {"1"},
 		"reportInteractive": {"1"},
 	}
@@ -107,7 +108,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	if metadata.ExitCode != 1 {
 		t.Fatalf("metadata exitCode = %d, want 1", metadata.ExitCode)
 	}
-	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity medium ignored/complex.go"
+	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity warning ignored/complex.go"
 	if metadata.Command != wantCommand {
 		t.Fatalf("metadata command = %q, want %q", metadata.Command, wantCommand)
 	}
