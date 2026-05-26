@@ -38,17 +38,9 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintln(stderr, "--top must be zero or a positive integer")
 		return 2
 	}
-	minSeverityExplicit := false
-	flags.Visit(func(f *flag.Flag) {
-		if f.Name == "min-severity" || f.Name == "fail-on" {
-			minSeverityExplicit = true
-		}
-	})
-	if minSeverityExplicit {
-		if _, err := finding.ParseFailThreshold(minSeverity); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 2
-		}
+	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
+	if !ok {
+		return 2
 	}
 	started := time.Now()
 	registry, ignorePaths, cfg, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)

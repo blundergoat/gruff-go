@@ -206,6 +206,28 @@ func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd st
 	return parsed, true
 }
 
+// checkMinSeverityFlag detects whether --min-severity / --fail-on was passed
+// explicitly on the FlagSet, and early-validates the raw value when explicit so
+// the user sees flag-syntax errors before any config load. Returns (explicit,
+// ok); on parse failure prints to stderr and returns (_, false). Shared by
+// runAnalyse / runSummary / runReport so the detection + early-validate block
+// lives in one place.
+func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer) (bool, bool) {
+	explicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "min-severity" || f.Name == "fail-on" {
+			explicit = true
+		}
+	})
+	if explicit {
+		if _, err := finding.ParseFailThreshold(rawValue); err != nil {
+			fmt.Fprintln(stderr, err)
+			return explicit, false
+		}
+	}
+	return explicit, true
+}
+
 // parseAnalyseFlags parses and validates analyse flags, printing validation
 // errors to stderr in the same style as the legacy inline parser.
 func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
@@ -242,20 +264,9 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return flags, analyseFlagValues{}, false
 	}
-	minSeverityExplicit := false
-	flags.Visit(func(f *flag.Flag) {
-		if f.Name == "min-severity" || f.Name == "fail-on" {
-			minSeverityExplicit = true
-		}
-	})
-	// Validate explicit flag values early so the user sees the parse error
-	// before any config load. Defaults (and config-supplied values) are
-	// validated later in runAnalyse via resolveFailOn.
-	if minSeverityExplicit {
-		if _, err := finding.ParseFailThreshold(minSeverity); err != nil {
-			fmt.Fprintln(stderr, err)
-			return flags, analyseFlagValues{}, false
-		}
+	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
+	if !ok {
+		return flags, analyseFlagValues{}, false
 	}
 	values := analyseFlagValues{
 		format:               *format,

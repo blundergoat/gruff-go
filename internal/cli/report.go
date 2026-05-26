@@ -47,17 +47,9 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return 2
 	}
-	minSeverityExplicit := false
-	flags.Visit(func(f *flag.Flag) {
-		if f.Name == "min-severity" || f.Name == "fail-on" {
-			minSeverityExplicit = true
-		}
-	})
-	if minSeverityExplicit {
-		if _, err := finding.ParseFailThreshold(minSeverity); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 2
-		}
+	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
+	if !ok {
+		return 2
 	}
 	registry, ignorePaths, cfg, err := configuredRegistryInteractive(*configPath, *noConfig, interactive, stderr)
 	if err != nil {
