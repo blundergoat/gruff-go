@@ -9,6 +9,7 @@
 - Dashboard CLI now follows full ADR-010 precedence: explicit `--fail-on` flag > `config.minimumSeverity.dashboard` > binary default. The CLI uses `flag.FlagSet.Visit` to detect whether `--fail-on` was passed; when implicit, `opts.FailOn` is left empty so the dashboard server's `defaultState` consults the config before falling back to `finding.DefaultFailThresholdFor("dashboard")`. Without this, the CLI flag's default-value propagation would silently short-circuit every config-driven dashboard threshold.
 
 ### Fixed
+- Config and baseline schemaVersion-mismatch errors now name the expected version and the exact remediation command (`gruff-go init --force` for `.gruff-go.yaml`, `gruff-go baseline --out <path>` for baseline files), instead of just reporting the unsupported value.
 - Stale-default bugs from PR #3: `internal/cli/summary.go::runSummary` and `internal/cli/report.go::runReport` no longer hard-code `SeverityWarning`; `internal/analysis/runner.go::normalizeOptions` no longer falls back to `SeverityWarning` for programmatic callers; `internal/dashboard/state.go::defaultState` no longer hard-codes the post-ADR-009-unparseable string `"medium"`; `internal/cli/dashboard.go::runDashboard` no longer parses `--fail-on` via the 3-value `ParseSeverity` (which silently rejected `none`) and no longer defaults to `SeverityWarning`. All five sites now route through `finding.DefaultFailThresholdFor` and accept the four-value vocabulary.
 
 ## [0.1.2] - 2026-05-25

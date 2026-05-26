@@ -209,7 +209,7 @@ func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, er
 // Validate checks schema, rule, threshold, option, path, and severity contracts.
 func (cfg Config) Validate(definitions []rule.Definition) error {
 	if cfg.SchemaVersion != "" && cfg.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("unsupported schemaVersion %q", cfg.SchemaVersion)
+		return fmt.Errorf("unsupported schemaVersion %q; expected %q. Run `gruff-go init --force` to regenerate the config (your tuning is preserved)", cfg.SchemaVersion, SchemaVersion)
 	}
 	byID := map[string]rule.Definition{}
 	for _, definition := range definitions {
