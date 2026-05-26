@@ -208,10 +208,24 @@ Pair `--diff-base HEAD` with `--min-severity error` so the hook stays fast and o
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. The three buckets (`advisory`, `warning`, `error`) replaced the previous five-bucket scale in v0.1.2 - see [ADR-009](../.goat-flow/decisions/ADR-009-three-severity-model.md).
-- `--fail-on` is the dashboard's equivalent flag; the analyser uses `--min-severity` and they share the same severity vocabulary.
+- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the gate entirely (report findings, always exit 0). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/decisions/ADR-009-three-severity-model.md). `none` was added in v0.1.2 per [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md).
+- `--fail-on` is an alias for `--min-severity`.
 
-If CI needs to **scan and report** without **failing**, run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and then upload the report artefact separately. The exit code is honest about whether findings are above threshold - you decide whether to act on it.
+For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:
+
+```yaml
+minimumSeverity:
+  analyse: warning   # CI gate: fail on warning+
+  summary: warning
+  report: none       # artifact generation: never fail
+  dashboard: none
+```
+
+The CLI flag still wins when set; the config block supplies the per-command default; the binary default applies when neither is present. Full precedence is recorded in ADR-010.
+
+If CI needs to **scan and report** without **failing**, two equally valid options:
+- Run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and upload the report artefact separately.
+- Pass `--min-severity none` (or set `minimumSeverity.analyse: none` in the project config). The exit code is forced to 0 regardless of findings.
 
 ## Common pitfalls
 

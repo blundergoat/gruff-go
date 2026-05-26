@@ -21,6 +21,12 @@ gruff-go analyse --no-config .
 
 ```yaml
 # .gruff-go.yaml
+minimumSeverity:    # per-command exit-code threshold; see ADR-010
+  analyse: advisory # CI gating command - default `advisory` (fail on anything)
+  summary: advisory # CI gating command - default `advisory`
+  report: none      # artifact generator - default `none` (never fail)
+  dashboard: none   # artifact generator - default `none`
+
 paths:
   ignore: []          # extra path prefixes/globs to skip; merged with built-in ignores
 
@@ -47,6 +53,37 @@ rules:
 ```
 
 ## Section reference
+
+### `minimumSeverity`
+
+Per-command exit-code threshold. Each key is a `gruff-go` subcommand that gates exit codes (`analyse`, `summary`, `report`, `dashboard`); each value is one of `advisory | warning | error | none`. `none` means "report findings, never exit 1" - useful for artifact-generation commands (`report`, `dashboard`) where the consumer wants the HTML/JSON output regardless of whether anything tripped a gate.
+
+```yaml
+minimumSeverity:
+  analyse: warning      # default `advisory`: fail on anything
+  summary: warning      # default `advisory`
+  report: none          # default `none`: never fail
+  dashboard: advisory   # default `none`: gate this dashboard like CI
+```
+
+**Precedence rule** (locked in [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md)):
+
+```
+CLI flag (--min-severity / --fail-on)  >  minimumSeverity.<cmd>  >  binary default
+```
+
+The binary defaults (when neither the CLI flag nor the config block supply a value) are:
+
+| Command   | Default    | Reason |
+| --------- | ---------- | ------ |
+| `analyse` | `advisory` | CI gating; fail on anything |
+| `summary` | `advisory` | CI gating |
+| `report`  | `none`     | artifact generator; never fail |
+| `dashboard` | `none`   | artifact generator |
+
+The block is additive: omitting any key falls back to the binary default. Omitting the entire block also works.
+
+`none` is the canonical off-switch value. Legacy 5-bucket names (`medium`, `low`, `critical`, `high`, `info`) and alternative off-switch names (`never`, `off`, `disabled`) are rejected at load time per the no-legacy-compat policy.
 
 ### `paths.ignore`
 

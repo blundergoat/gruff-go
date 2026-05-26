@@ -1,6 +1,6 @@
 ---
 category: severity
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-26
 ---
 
 # Severity Footguns
@@ -37,11 +37,13 @@ Evidence:
 - `internal/dashboard/handler.go` (search: `failOn = finding.Severity`) — when `state.FailOn` is invalid and `opts.FailOn` doesn't parse, the dashboard falls back to a hard-coded severity. Pre-ADR-009 that fallback was `SeverityMedium` (the old CLI default). After ADR-009 the CLI default became `SeverityAdvisory` (search `cli.go`: `ADR-009: default is`), but the dashboard fallback was first migrated to `SeverityWarning` (the *renamed* old default), not `SeverityAdvisory`. That made the dashboard quietly stricter than the CLI by one bucket.
 - The codex-connector bot reviewing PR #3 flagged this line as a "preserve legacy fail-on" concern; the actual bug it surfaces is a different one — the fallback target drifted from the CLI default during the rename.
 
-What this means in practice: any time the CLI's default `--min-severity` changes, three places need to move in lockstep:
-1. `internal/cli/cli.go` (the flag default, declared at the analyse-flag set).
-2. `internal/dashboard/handler.go` (the in-server fallback when no valid fail-on is in scope).
-3. The user-facing docs (`docs/configuration.md`, `docs/dashboard.md`, `docs/ci-integration.md`, `docs/output-formats.md`) — see the matching workflow lesson.
+What this means in practice: any time the CLI's default `--min-severity` (or any other per-command threshold default) changes, five places need to move in lockstep:
+1. `internal/finding/threshold.go::DefaultFailThresholdFor` — the canonical default map (added in v0.1.2 per ADR-010 to consolidate the previous scattered defaults). Both the CLI flag defaults and the dashboard fallback consume this map; change the map and the rest follow.
+2. `internal/cli/cli.go`, `internal/cli/summary.go`, `internal/cli/report.go` — the flag-default strings the help text displays. The behavioural default is supplied by `DefaultFailThresholdFor`; the strings here just need to match for the help-text to read truthfully.
+3. `internal/dashboard/state.go::defaultState` — already routes through `DefaultFailThresholdFor`; verify the call after any map edit.
+4. `minimumSeverity:` keys in `.gruff-go.yaml` (added v0.1.2 per ADR-010). The shipped binary defaults expressed in `internal/config/render.go::writeRenderMinimumSeverity` must match `DefaultFailThresholdFor` so a fresh `gruff-go init` reproduces the map.
+5. The user-facing docs (`docs/configuration.md`, `docs/dashboard.md`, `docs/ci-integration.md`, `docs/output-formats.md`) — see the matching workflow lesson.
 
 How to avoid:
-- When the CLI default for `--min-severity` / `--fail-on` changes, grep for every reference to the *old* default constant (e.g. `SeverityWarning`, `SeverityMedium`) used as a fallback, not just as a value, and either replace it or extract a single `finding.DefaultMinSeverity` constant that both the flag default and the dashboard fallback consume.
+- The 2026-05-26 v0.1.2 refactor (ADR-010) collapsed the four scattered fallback constants into a single `finding.DefaultFailThresholdFor(cmd string) FailThreshold` helper. Lockstep enforcement is now structural: the helper is the single source of truth that the CLI defaults, the dashboard default, the runner fallback, and the render-side `minimumSeverity:` block all consume. Future per-command default changes should edit the helper, not the call sites.
 - Suspicion-trigger: a code review comment that says "preserve legacy X" near a default-flip is often pointing at a real bug, even when the suggested fix (mapping old → new at runtime) is the wrong shape. Look at the *constant* being used for the fallback before deciding the comment is purely about backwards compatibility.

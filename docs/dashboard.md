@@ -29,7 +29,7 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--no-baseline` | *off* | Refuse to apply any baseline. |
 | `--diff` | *off* | Start in diff-only scan mode (against `HEAD`). |
 | `--include-ignored` | *off* | Include gitignored and default-ignored files; `paths.ignore` still applies. |
-| `--fail-on` | `advisory` | Minimum severity that fails the scan. |
+| `--fail-on` | `none` | Threshold that fails the scan. `none` (the default for `dashboard`) means the scan reports findings but always exits 0. Accepts `advisory \| warning \| error \| none`. Honors `.gruff-go.yaml`'s `minimumSeverity.dashboard` when the flag is unset (see [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md)). |
 | `--report-interactive` | *off* | Enable the inline finding filter UI inside the iframe. |
 | `--report-editor-link` | `none` | File:line link mode: `none`, `vscode`, `phpstorm`. |
 | `--allow-public` | *off* | Permit non-loopback `--host`. Required for `0.0.0.0` etc. |

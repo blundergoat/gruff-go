@@ -174,6 +174,9 @@ func summarisePreserved(cfg cfgpkg.Config) string {
 	if n := len(cfg.Rules); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d per-rule overrides", n))
 	}
+	if n := len(cfg.MinimumSeverity); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d minimumSeverity entries", n))
+	}
 	if len(parts) == 0 {
 		return ""
 	}

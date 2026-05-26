@@ -31,7 +31,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 	noBaseline := flags.Bool("no-baseline", false, "skip applying any baseline")
 	diff := flags.Bool("diff", false, "start dashboard in diff-only scan mode")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	failOn := flags.String("fail-on", string(finding.SeverityWarning), "minimum severity that fails a scan")
+	failOn := flags.String("fail-on", string(finding.DefaultFailThresholdFor("dashboard")), "minimum severity that fails a scan; use none to disable the gate")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in the report")
 	editorLink := flags.String("report-editor-link", "none", "html file:line link mode: none, vscode, or phpstorm")
 	allowPublic := flags.Bool("allow-public", false, "allow binding to non-loopback hosts")
@@ -55,7 +55,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 		return 2
 	}
 
-	parsedFailOn, err := finding.ParseSeverity(*failOn)
+	parsedFailOn, err := finding.ParseFailThreshold(*failOn)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2

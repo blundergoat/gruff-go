@@ -315,6 +315,51 @@ func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 	}
 }
 
+// TestDefaultStatePicksUpMinimumSeverityFromConfig asserts ADR-010 precedence
+// when no server CLI flag is set: defaultState reads minimumSeverity.dashboard
+// from the project config so the rendered form default reflects what the
+// project committed, not the binary default.
+func TestDefaultStatePicksUpMinimumSeverityFromConfig(t *testing.T) {
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  dashboard: error
+`)
+	state := defaultState(Options{ProjectRoot: project})
+	if state.FailOn != "error" {
+		t.Fatalf("defaultState.FailOn = %q, want %q (from config minimumSeverity.dashboard)", state.FailOn, "error")
+	}
+}
+
+// TestDefaultStateFallsBackToBinaryDefaultWithoutConfig asserts the binary
+// default kicks in when there is no project config: dashboard never fails
+// (none) per the user philosophy that viewing commands are artifact generators.
+func TestDefaultStateFallsBackToBinaryDefaultWithoutConfig(t *testing.T) {
+	project := t.TempDir()
+	// No .gruff-go.yaml in project.
+	state := defaultState(Options{ProjectRoot: project})
+	if state.FailOn != "none" {
+		t.Fatalf("defaultState.FailOn = %q, want %q (binary default for dashboard)", state.FailOn, "none")
+	}
+}
+
+// TestDefaultStateServerFlagBeatsConfig asserts that opts.FailOn (the
+// --min-severity flag passed when starting the dashboard) wins over any
+// minimumSeverity.dashboard config entry, matching ADR-010's precedence rule.
+func TestDefaultStateServerFlagBeatsConfig(t *testing.T) {
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  dashboard: error
+`)
+	state := defaultState(Options{ProjectRoot: project, FailOn: "warning"})
+	if state.FailOn != "warning" {
+		t.Fatalf("defaultState.FailOn = %q, want %q (opts.FailOn wins over config)", state.FailOn, "warning")
+	}
+}
+
 // TestDisplayCommandIncludesKeyFlags ensures common CLI flags appear in the rendered command.
 func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	command := displayCommand(report.DashboardState{

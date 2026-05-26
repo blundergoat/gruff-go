@@ -161,6 +161,57 @@ rules:
 	}
 }
 
+// TestInitForcePreservesMinimumSeverityBlock is the regression test for
+// ADR-010's preservation contract: a project that has tuned minimumSeverity
+// (e.g. set `analyse: error` for stricter CI gating) must keep that block
+// across `init --force`. The check passes only if Render's
+// preservedMinimumSeverityFor consulted opts.Existing.MinimumSeverity instead
+// of always emitting DefaultFailThresholdFor.
+func TestInitForcePreservesMinimumSeverityBlock(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	tuned := `schemaVersion: "gruff-go.config.v0.1"
+minimumSeverity:
+  analyse: error
+  summary: error
+  report: warning
+  dashboard: advisory
+`
+	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(tuned), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Main([]string{"init", "--force"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init --force exit = %d, stderr = %s", code, stderr.String())
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".gruff-go.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(body)
+	for _, want := range []string{
+		"analyse: error",
+		"summary: error",
+		"report: warning",
+		"dashboard: advisory",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("init --force lost preserved minimumSeverity entry %q\nrendered:\n%s", want, rendered)
+		}
+	}
+	if !strings.Contains(stderr.String(), "minimumSeverity entries") {
+		t.Fatalf("stderr should mention preserved minimumSeverity count: %s", stderr.String())
+	}
+	cfg, err := cfgpkg.Parse(body, ruleDefinitionsForTest())
+	if err != nil {
+		t.Fatalf("merged config did not parse back: %v\nbody:\n%s", err, body)
+	}
+	if cfg.MinimumSeverity["analyse"] != "error" || cfg.MinimumSeverity["dashboard"] != "advisory" {
+		t.Fatalf("round-trip lost MinimumSeverity entries: %#v", cfg.MinimumSeverity)
+	}
+}
+
 // TestInitForceResetDiscardsExistingTuning verifies the explicit escape hatch:
 // `init --force --reset` performs the old destructive overwrite for callers
 // who really do want a fresh defaults file.

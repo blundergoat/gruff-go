@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+### Added
+- `minimumSeverity:` per-command threshold block in `.gruff-go.yaml` exposes per-command exit-code policy without requiring `--min-severity` on every invocation. Keys: `analyse`, `summary`, `report`, `dashboard`. Values: `advisory | warning | error | none`. `none` is a new "report findings, never exit 1" sentinel for artifact-generation commands (`report`, `dashboard`). Precedence: CLI flag wins over the config block; the config block wins over the binary default. The binary defaults match the user-philosophy "gate on anything for CI, never gate for viewers": `analyse: advisory`, `summary: advisory`, `report: none`, `dashboard: none`. Additive and optional - existing configs continue to load unchanged. **No schema bump.** See [ADR-010](.goat-flow/decisions/ADR-010-per-command-minimum-severity.md).
+- `finding.FailThreshold` type and `finding.DefaultFailThresholdFor(cmd)` helper. Both the analysis runner fallback and the dashboard state default consume the helper, so future per-command default changes touch one function instead of four call sites - closes the lockstep footgun in `.goat-flow/footguns/severity.md` by construction.
+
+### Fixed
+- Three stale-default bugs from PR #3: `internal/cli/summary.go::runSummary` and `internal/cli/report.go::runReport` no longer hard-code `SeverityWarning`; `internal/analysis/runner.go::normalizeOptions` no longer falls back to `SeverityWarning` for programmatic callers; `internal/dashboard/state.go::defaultState` no longer hard-codes the post-ADR-009-unparseable string `"medium"`. All four sites now route through `finding.DefaultFailThresholdFor`.
 
 ## [0.1.2] - 2026-05-25
 
