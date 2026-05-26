@@ -1,9 +1,27 @@
 ---
 category: workflow
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-26
 ---
 
 # Workflow Lessons
+
+## Lesson: Milestone `Status: planned` can lag the code by entire milestones — verify against the codebase before executing
+
+**Created:** 2026-05-26
+
+**Incident:** A 0.1.2 execution turn started by reading `tasks/0.1.2/M01-failthreshold-type-and-none-sentinel.md`, which said `Status: planned` and had every task checkbox unticked. The natural conclusion was that M01 was unstarted and the full "land FailThreshold type + 12-site sweep" was ahead. Reality after one grep: `internal/finding/threshold.go` already existed with `FailThreshold`, `ParseFailThreshold`, `Valid`, `IsTriggeredBy`, and `DefaultFailThresholdFor`. `internal/cli/cli.go::resolveFailOn` already implemented ADR-010 precedence. `internal/config/config.go::Config.MinimumSeverity` was already wired. `internal/config/validate.go::validateMinimumSeverity` already rejected unknown command keys. Tests existed at `internal/finding/threshold_test.go`, `internal/cli/precedence_test.go`, and `internal/config/config_test.go`. ADR-010 was already written. M03's docs sweep was already done across `docs/configuration.md`, `docs/ci-integration.md`, and `docs/dashboard.md`. The only genuine M01 straggler was `internal/cli/dashboard.go::runDashboard` still calling `finding.ParseSeverity` (which silently rejected `none` from the CLI even though the dashboard's HTTP handler accepted it) — a real bug, but worth ~5 lines, not the planned multi-hour sweep.
+
+The root cause: a parallel session had executed the production code work and committed it (`75bad51`, `e829fb1`, `0168e16`, `7a154bd`, `9d3f3fd`) without flipping the milestone status fields. Status updates are bookkeeping; commits don't require them. Status drift is inevitable across parallel sessions, deferred-cleanup sessions, and any time the engineering work outruns the milestone-file updates.
+
+**Do differently:** Before executing any milestone task that touches existing code paths, run a targeted grep against the milestone's "Read First" paths to see what already exists. Concretely:
+
+- "Add type X" task: `rg -l "type X\b\|func.*X" internal/`. Type may already exist with the exact shape.
+- "Wire field Y through" task: `rg "Y\." internal/ cmd/`. Field may already be wired across the surface.
+- "Write ADR-NNN" task: `ls .goat-flow/decisions/ADR-NNN-*` before drafting. Cheaper to discover the existing draft than to overwrite it.
+- "Update docs/X.md" task: `grep -c "<key-vocabulary>" docs/X.md` before editing. The docs may already mention it.
+- "Sweep N reader sites" task: run the same grep the task spec implies (e.g. `rg "\.FailOn" internal/`) to count actually-stale sites *now*. Don't trust the count in the milestone description; it was true when the milestone was written.
+
+`Status: planned` means "the milestone file hasn't been ticked through", not "no work has been done". The two diverge whenever multiple sessions execute in parallel, when commits land without status-file updates, or when work was done in a prior session and only the bookkeeping was deferred. The fast verification grep takes seconds; the cost of redundant work plus missing the actual stragglers is much higher. Treat the milestone file as a *spec*, not a *state report*.
 
 ## Lesson: A vocabulary migration is not complete until `docs/` is swept
 

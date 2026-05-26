@@ -138,7 +138,11 @@ func dashboardHTML(state DashboardState) string {
 	builder.WriteString(dashboardOption("diff", state.ScanScope, "diff only"))
 	builder.WriteString(`</select></label>`)
 	builder.WriteString(`<label>Fail on<select name="failOn">`)
-	for _, value := range []string{"advisory", "warning", "error"} {
+	// `none` listed alongside the three Severity-equivalent values so the
+	// dashboard's binary default (DefaultFailThresholdFor("dashboard") = none)
+	// is selectable in the rendered form. Order is descending strictness
+	// (advisory fails on most) then the gate-disabled sentinel last.
+	for _, value := range []string{"advisory", "warning", "error", "none"} {
 		builder.WriteString(dashboardOption(value, state.FailOn, value))
 	}
 	builder.WriteString(`</select></label>`)
