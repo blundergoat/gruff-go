@@ -8,7 +8,7 @@
 - `finding.FailThreshold` type and `finding.DefaultFailThresholdFor(cmd)` helper. Both the analysis runner fallback and the dashboard state default consume the helper, so future per-command default changes touch one function instead of four call sites - closes the lockstep footgun in `.goat-flow/footguns/severity.md` by construction.
 
 ### Fixed
-- Three stale-default bugs from PR #3: `internal/cli/summary.go::runSummary` and `internal/cli/report.go::runReport` no longer hard-code `SeverityWarning`; `internal/analysis/runner.go::normalizeOptions` no longer falls back to `SeverityWarning` for programmatic callers; `internal/dashboard/state.go::defaultState` no longer hard-codes the post-ADR-009-unparseable string `"medium"`. All four sites now route through `finding.DefaultFailThresholdFor`.
+- Stale-default bugs from PR #3: `internal/cli/summary.go::runSummary` and `internal/cli/report.go::runReport` no longer hard-code `SeverityWarning`; `internal/analysis/runner.go::normalizeOptions` no longer falls back to `SeverityWarning` for programmatic callers; `internal/dashboard/state.go::defaultState` no longer hard-codes the post-ADR-009-unparseable string `"medium"`; `internal/cli/dashboard.go::runDashboard` no longer parses `--fail-on` via the 3-value `ParseSeverity` (which silently rejected `none`) and no longer defaults to `SeverityWarning`. All five sites now route through `finding.DefaultFailThresholdFor` and accept the four-value vocabulary.
 
 ## [0.1.2] - 2026-05-25
 
