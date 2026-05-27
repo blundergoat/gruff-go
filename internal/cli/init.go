@@ -149,12 +149,23 @@ func writeDefaultConfig(path string, force, reset bool) (writeDefaultConfigResul
 // tuning can be layered into the regenerated output. Returns the parsed config
 // or an error when the file is unreadable, syntactically invalid, or schema-
 // incompatible with the current build.
+//
+// When strict load fails, falls back to a permissive parse that drops any
+// per-rule severity override carrying a legacy 5-bucket name. Without this
+// fallback, init --force on a pre-0.2 config would print a warning and write
+// fresh defaults, losing the user's paths.ignore, allowlists, thresholds, and
+// options. The dropped severities re-resolve to registry defaults in the
+// rendered output via tryParseSeverity; everything else is preserved.
 func loadExistingForPreserve(path string, definitions []rule.Definition) (*cfgpkg.Config, error) {
 	cfg, err := cfgpkg.Load(path, definitions)
-	if err != nil {
+	if err == nil {
+		return &cfg, nil
+	}
+	permissive, permissiveErr := cfgpkg.LoadPermissive(path, definitions)
+	if permissiveErr != nil {
 		return nil, err
 	}
-	return &cfg, nil
+	return &permissive, nil
 }
 
 // summarisePreserved builds a one-line stderr notice describing what tuning

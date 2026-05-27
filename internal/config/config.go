@@ -172,6 +172,23 @@ func Load(path string, definitions []rule.Definition) (Config, error) {
 	return ParseFile(path, data, definitions)
 }
 
+// LoadPermissive reads and parses a config file for migration or preservation
+// purposes. Per-rule severity overrides that fail strict ADR-009 validation
+// (legacy 5-bucket names like notice/medium/critical) are dropped from the
+// returned Config so paths.ignore, allowlists, thresholds, and options can
+// still flow through init --force's preserve path. Affected rules fall back
+// to registry defaults in the rendered output via tryParseSeverity.
+//
+// Do NOT use this for runtime scans - it would silently weaken severity gates.
+func LoadPermissive(path string, definitions []rule.Definition) (Config, error) {
+	// #nosec G304 -- CLI intentionally reads an explicit user-provided config path.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	return parseYAMLPermissive(data, definitions)
+}
+
 // Parse parses config bytes using the supported strict YAML subset.
 func Parse(data []byte, definitions []rule.Definition) (Config, error) {
 	return parseYAML(data, definitions)
@@ -189,6 +206,44 @@ func ParseFile(path string, data []byte, definitions []rule.Definition) (Config,
 
 // decodeConfigPayload unmarshals canonical JSON payloads from the YAML parser.
 func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, error) {
+	cfg, err := decodeConfigUnvalidated(data)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := cfg.Validate(definitions); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// decodeConfigPayloadPermissive unmarshals canonical JSON payloads like
+// decodeConfigPayload, then drops any per-rule severity override that does
+// not parse against the current 3-bucket vocabulary before validation. Used
+// by LoadPermissive for the init --force preserve path.
+func decodeConfigPayloadPermissive(data []byte, definitions []rule.Definition) (Config, error) {
+	cfg, err := decodeConfigUnvalidated(data)
+	if err != nil {
+		return Config{}, err
+	}
+	for id, rc := range cfg.Rules {
+		if rc.Severity == "" {
+			continue
+		}
+		if _, perr := parseConfigSeverity(rc.Severity); perr != nil {
+			rc.Severity = ""
+			cfg.Rules[id] = rc
+		}
+	}
+	if err := cfg.Validate(definitions); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// decodeConfigUnvalidated decodes the canonical JSON payload into a normalised
+// Config without running structural validation. Shared by the strict and
+// permissive load paths so the two cannot drift on decode behaviour.
+func decodeConfigUnvalidated(data []byte) (Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -199,11 +254,7 @@ func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, er
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return Config{}, fmt.Errorf("config contains trailing values")
 	}
-	cfg = cfg.Normalized()
-	if err := cfg.Validate(definitions); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
+	return cfg.Normalized(), nil
 }
 
 // Validate checks schema, rule, threshold, option, path, and severity contracts.

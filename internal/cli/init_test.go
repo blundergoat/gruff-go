@@ -161,6 +161,73 @@ rules:
 	}
 }
 
+// TestInitForcePreservesPreADR009Config locks in the v0.2.0 migration contract:
+// `init --force` on a pre-0.2 config carrying legacy 5-bucket severity names
+// (notice/medium/critical/...) must still preserve paths.ignore, allowlists,
+// thresholds, and options. The legacy severity overrides themselves fall back
+// to registry defaults (no silent legacy mapping per the no-legacy-compat
+// policy), but everything else survives.
+//
+// Without LoadPermissive the strict load fails on the first invalid severity,
+// the preservation path silently writes fresh defaults, and the user loses
+// every customisation they made before the migration - the exact ship-day
+// surprise this test guards against.
+func TestInitForcePreservesPreADR009Config(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	tuned := `schemaVersion: "gruff-go.config.v0.1"
+paths:
+  ignore:
+    - '.claude/**'
+    - 'internal/rule/sensitive_test.go'
+allowlists:
+  acceptedAbbreviations:
+    - ID
+rules:
+  complexity.nesting-depth:
+    enabled: true
+    severity: medium
+    threshold: 4
+  docs.comment-rubric:
+    enabled: true
+    severity: notice
+    threshold: 2
+    options:
+      minWordsBeyondSymbol: 3
+`
+	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(tuned), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Main([]string{"init", "--force"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("init --force exit = %d, stderr = %s", code, stderr.String())
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".gruff-go.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(body)
+	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "minWordsBeyondSymbol: 3", "threshold: 4"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("init --force lost preserved value %q\nrendered:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, "severity: medium") || strings.Contains(rendered, "severity: notice") {
+		t.Fatalf("legacy severity values must not round-trip; rendered:\n%s", rendered)
+	}
+	if strings.Contains(stderr.String(), "prior tuning was lost") {
+		t.Fatalf("permissive fallback should suppress the parse-error warning: %s", stderr.String())
+	}
+	cfg, err := cfgpkg.Parse(body, ruleDefinitionsForTest())
+	if err != nil {
+		t.Fatalf("merged config did not parse back: %v\nbody:\n%s", err, body)
+	}
+	if len(cfg.IgnorePaths) != 2 {
+		t.Fatalf("merged config IgnorePaths = %#v, want 2 entries", cfg.IgnorePaths)
+	}
+}
+
 // TestInitForcePreservesMinimumSeverityBlock is the regression test for
 // ADR-010's preservation contract: a project that has tuned minimumSeverity
 // (e.g. set `analyse: error` for stricter CI gating) must keep that block

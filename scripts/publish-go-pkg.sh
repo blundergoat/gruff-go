@@ -89,8 +89,14 @@ trap cleanup EXIT
 normalize_version() {
     local raw=$1 version
     version="${raw#v}"
-    if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-        fail "version '$raw' does not look like SemVer (expected 0.2.0, not arbitrary text)"
+    # MAJOR.MINOR.PATCH must each be 0 or a non-zero-leading integer; optional
+    # pre-release is a hyphen + dot-separated [0-9A-Za-z-]+ identifiers (no
+    # empty ids). Build metadata (`+...`) is rejected outright: Go modules
+    # canonicalize it away and `+incompatible` has a different meaning, so a
+    # tag like 1.2.3+meta would fail verify_go_proxy after the tag is on the
+    # remote.
+    if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+        fail "version '$raw' is not a Go-compatible SemVer (want 0.2.0 or 1.0.0-rc.1; no leading zeros, no build metadata)"
     fi
     printf '%s' "$version"
 }
