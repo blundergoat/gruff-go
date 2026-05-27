@@ -66,7 +66,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | error | parser | - | PEM-encoded private keys embedded in source. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
-| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk|pk|rk)_live_…`). |
+| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
 | [`size.file-length`](#sizefile-length) | size | warning | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | warning | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
@@ -131,7 +131,7 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 - **Pillar:** complexity
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxDepth` (default `4`)
+- **Threshold:** `maxDepth` (default `5`)
 - **Confidence:** high
 - **Capability:** parser
 
@@ -144,7 +144,7 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 - **Pillar:** complexity
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxComplexity` (default `9000`)
+- **Threshold:** `maxComplexity` (default `1024`)
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `metric`

@@ -174,15 +174,6 @@ require_clean_worktree() {
     fi
 }
 
-warn_dirty_worktree() {
-    local status
-    status=$(git -C "$REPO_ROOT" status --short)
-    if [[ -n "$status" ]]; then
-        log "[warn] working tree has uncommitted changes; publishing uses committed tag contents"
-        printf '%s\n' "$status" >&2
-    fi
-}
-
 require_main_branch() {
     local branch
     branch=$(git -C "$REPO_ROOT" branch --show-current)
@@ -216,16 +207,16 @@ run_release_checks() {
     run_cmd "$REPO_ROOT/scripts/preflight-checks.sh" --release
 }
 
-maybe_run_release_checks_for_tag() {
-    local tag=$1 local_commit head
-    local_commit=$(local_tag_commit "$tag")
-    head=$(git_commit HEAD)
-
-    if [[ "$local_commit" != "$head" ]]; then
-        log "[skip] release checks; $tag points to $local_commit, not current HEAD $head"
+require_module_path_supports_major() {
+    local module=$1 version=$2 major
+    major="${version%%.*}"
+    if (( major < 2 )); then
         return 0
     fi
-    run_release_checks
+    local suffix="/v$major"
+    if [[ "$module" != *"$suffix" ]]; then
+        fail "publishing v$version requires module path to end with $suffix, but go.mod has '$module'; major versions >= 2 cannot share a module path with v0/v1 under Go's semantic import versioning"
+    fi
 }
 
 ensure_local_tag() {
@@ -424,6 +415,8 @@ fi
 MODULE_PATH=$(module_path)
 TAG="v$VERSION"
 
+require_module_path_supports_major "$MODULE_PATH" "$VERSION"
+
 log "publishing $MODULE_PATH@$TAG via $REMOTE"
 
 if ((FETCH_TAGS == 1)); then
@@ -433,6 +426,13 @@ fi
 LOCAL_TAG_COMMIT=$(local_tag_commit "$TAG")
 REMOTE_TAG_COMMIT=$(remote_tag_commit "$TAG")
 
+# Release gate applies to both the create-tag and pre-existing-tag paths so
+# the --allow-non-main opt-out is the only way to publish from a non-main or
+# out-of-sync branch, and a dirty worktree never reaches `make check`.
+require_clean_worktree
+require_main_branch
+require_upstream_current
+
 if [[ -n "$LOCAL_TAG_COMMIT" ]]; then
     TAG_VERSION=$(source_version_at_ref "$TAG")
     if [[ "$TAG_VERSION" != "$VERSION" ]]; then
@@ -441,8 +441,11 @@ if [[ -n "$LOCAL_TAG_COMMIT" ]]; then
     if [[ -n "$REMOTE_TAG_COMMIT" && "$REMOTE_TAG_COMMIT" != "$LOCAL_TAG_COMMIT" ]]; then
         fail "remote tag $TAG points to $REMOTE_TAG_COMMIT, not local $LOCAL_TAG_COMMIT"
     fi
-    warn_dirty_worktree
-    maybe_run_release_checks_for_tag "$TAG"
+    HEAD_COMMIT=$(git_commit HEAD)
+    if [[ "$LOCAL_TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
+        fail "$TAG points to $LOCAL_TAG_COMMIT, not current HEAD $HEAD_COMMIT; check out the tag (git checkout $TAG) before publishing so release checks validate its contents"
+    fi
+    run_release_checks
 else
     if [[ -n "$REMOTE_TAG_COMMIT" ]]; then
         fail "$REMOTE has $TAG but it is not available locally; rerun without --no-fetch"
@@ -450,9 +453,6 @@ else
     if [[ "$SOURCE_VERSION" != "$VERSION" ]]; then
         fail "requested $VERSION but internal/cli/cli.go has toolVersion $SOURCE_VERSION"
     fi
-    require_clean_worktree
-    require_main_branch
-    require_upstream_current
     run_release_checks
     ensure_local_tag "$TAG"
 fi
