@@ -1,6 +1,6 @@
 ---
 category: workflow
-last_reviewed: 2026-05-26
+last_reviewed: 2026-05-27
 ---
 
 # Workflow Lessons
@@ -22,6 +22,23 @@ The root cause: a parallel session had executed the production code work and com
 - "Sweep N reader sites" task: run the same grep the task spec implies (e.g. `rg "\.FailOn" internal/`) to count actually-stale sites *now*. Don't trust the count in the milestone description; it was true when the milestone was written.
 
 `Status: planned` means "the milestone file hasn't been ticked through", not "no work has been done". The two diverge whenever multiple sessions execute in parallel, when commits land without status-file updates, or when work was done in a prior session and only the bookkeeping was deferred. The fast verification grep takes seconds; the cost of redundant work plus missing the actual stragglers is much higher. Treat the milestone file as a *spec*, not a *state report*.
+
+## Lesson: When a milestone says `Status: complete` but every inner checkbox is `[ ]`, the contradiction is the headline, not a footnote
+
+**Created:** 2026-05-27
+
+**Incident:** A 0.1.2 close-out turn started with the request "execute these: .goat-flow/tasks/0.1.2". Every file in that directory (`ISSUE.md`, `M01`–`M04`) carried `Status: complete` / `Completed: 2026-05-26` at the top, and `ISSUE.md`'s `How` checklist was fully ticked. The agent ran a high-level verification — `make check` clean, dogfood grade A, schema unchanged, ADR-010 present, `FailThreshold` type exported, docs swept — and reported "All four milestones of 0.1.2 are already implemented and verified — no work to execute. … What's left is only bookkeeping drift."
+
+The user pushed back: "this is impossible?? 'All four milestones of 0.1.2 are already implemented and verified' because none of the checkboxes have been ticked." The contradiction was right there in the files: outer header said done, every inner task said `[ ]`. The agent's first reply acknowledged the inner state but treated it as a closing parenthetical ("only bookkeeping drift") rather than as the contradiction the user actually saw on screen. Only after the pushback did the agent map every unchecked task to a file:line that proved the work was done (`internal/finding/threshold.go:17` for `FailThreshold`, `runner.go:132-133` for the fallback, `state.go:30` for the dashboard default, etc.) and offer to flip the boxes. The boxes were then flipped in one bulk Edit per milestone.
+
+The root cause: the agent trusted the file-level header and let the visible inner contradiction slide. This is the mirror image of the [`Status: planned` lesson above](#lesson-milestone-status-planned-can-lag-the-code-by-entire-milestones--verify-against-the-codebase-before-executing) — there, `Status: planned` lagged real completion; here, `Status: complete` lagged the inner bookkeeping. Same drift, opposite direction. Both happen because the status header is one edit and the per-task checkbox sweep is another, and committers do the work but skip the checkbox sweep.
+
+**Do differently:** When a milestone file's outer header (`Status: complete`, `Completed: <date>`) does not match its inner checkbox state (every `- [ ]`, no implementation-notes entry, or an `ISSUE.md` `How` list whose tick state contradicts the inner milestone files), make the contradiction the headline of the first reply. Don't acknowledge it in a closing aside. Two paths, both acted on in the first turn:
+
+- **Outer header is right, inner is stale (this incident):** prove the outer is right with file:line citations on the first reply, AND offer to flip the inner checkboxes in the same turn. A "your file is internally inconsistent, here's the resolution" reply lands cleaner than "everything's done (oh by the way the inner state disagrees)".
+- **Inner is right, outer is wrong:** flip the conclusion — the file's header is wrong, the work to do is what the inner state actually says. Re-scope the turn accordingly.
+
+Cheap detection on first read: when summarising a milestone file's status, count `- [ ]` vs `- [x]` in the body. A `Status: complete` file with substantially more unchecked than checked inner boxes is a drift signature — respond to that signature directly, not to the header alone. The same check applies in reverse for `Status: planned` files with mostly-`[x]` interiors.
 
 ## Lesson: A vocabulary migration is not complete until `docs/` is swept
 
