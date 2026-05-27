@@ -1,4 +1,4 @@
-# gruff-go - Go code-quality scanner (v0.1.2)
+# gruff-go - Go code-quality scanner (v0.2.0)
 
 `gruff-go` is a parser-only Go static analysis CLI. The Go application lives under `cmd/gruff-go` (entrypoint) and `internal/` (analysis pipeline, rule registry, scoring, report rendering, dashboard). GOAT Flow lives alongside for agent guardrails and project memory under `.goat-flow/`, `.claude/`, and `.agents/`.
 

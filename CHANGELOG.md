@@ -3,7 +3,7 @@
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-05-27
+## [0.2.0] - 2026-05-27
 
 ### Breaking
 
@@ -95,7 +95,7 @@ Schemas `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, and `gruff-go.baseline
 
 Known limitations: parser-only (no type/SSA analysis yet); HTML dashboard accessibility review ongoing.
 
-[Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/blundergoat/gruff-go/compare/v0.1.1...v0.1.2
+[Unreleased]: https://github.com/blundergoat/gruff-go/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/blundergoat/gruff-go/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/blundergoat/gruff-go/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/blundergoat/gruff-go/releases/tag/v0.1.0

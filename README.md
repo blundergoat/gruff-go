@@ -12,7 +12,7 @@
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.1.2` package line |
+| Release line | Published `0.2.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |

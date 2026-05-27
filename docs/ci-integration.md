@@ -208,7 +208,7 @@ Pair `--diff-base HEAD` with `--min-severity error` so the hook stays fast and o
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the gate entirely (report findings, always exit 0). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/decisions/ADR-009-three-severity-model.md). `none` was added in v0.1.2 per [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md).
+- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the gate entirely (report findings, always exit 0). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md).
 - `--fail-on` is an alias for `--min-severity`.
 
 For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:

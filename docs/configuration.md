@@ -148,7 +148,7 @@ Per-rule overrides. Every field is optional:
 - `enabled` - toggle a rule on or off. All built-in rules are enabled by default; set `false` to disable a rule that does not fit the project.
 - `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
 - `thresholds` - for rules with multiple thresholds, name them explicitly.
-- `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.1.2 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
+- `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.2.0 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
 - `options` - opaque per-rule map for rules with bespoke options.
 
 Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-warning configured `severity` applies to test files too and disables that default downranking for the overridden rule.
@@ -222,7 +222,7 @@ The loader rejects:
 - Unknown pillar names in `selection.pillars` or `selection.excludePillars`.
 - Non-integer or negative threshold values.
 - A rule config that combines `threshold` and `thresholds`.
-- Severity values outside `advisory / warning / error`. The pre-v0.1.2 names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected with `unknown severity "<name>"`.
+- Severity values outside `advisory / warning / error`. The pre-v0.2.0 names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected with `unknown severity "<name>"`.
 - Blank entries in `allowlists.acceptedAbbreviations`. Case is no longer enforced - the validator only rejects empty / whitespace-only entries.
 
 Any of these failures emits a `config:` diagnostic and exits the scan with code `2`. Treat config errors as build breaks, not silent warnings.
