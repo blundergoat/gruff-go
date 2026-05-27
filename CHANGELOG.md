@@ -1,7 +1,7 @@
 # Changelog
 
 
-## v0.2.0 - 2026-05-27
+## v0.2.0 - 2026-05-28
 
 Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration recipes in [`release.md`](.goat-flow/scratchpad/release.md).
 
