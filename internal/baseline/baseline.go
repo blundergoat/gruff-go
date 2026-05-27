@@ -87,7 +87,7 @@ func Parse(data []byte) (File, error) {
 		return File{}, err
 	}
 	if file.SchemaVersion != SchemaVersion {
-		return File{}, fmt.Errorf("unsupported schemaVersion %q", file.SchemaVersion)
+		return File{}, fmt.Errorf("unsupported schemaVersion %q; expected %q. Regenerate with `gruff-go baseline --out <path>` from a clean scan", file.SchemaVersion, SchemaVersion)
 	}
 	for index, entry := range file.Findings {
 		if entry.RuleID == "" || entry.File == "" || entry.Fingerprint == "" {

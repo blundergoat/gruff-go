@@ -40,6 +40,7 @@ type ScoreCoverage struct {
 }
 
 // PillarDetail breaks down findings and grade for a single quality pillar.
+// The Advisory/Warning/Error fields replace the pre-ADR-009 5-bucket counters.
 type PillarDetail struct {
 	// Pillar is the pillar name (e.g. "complexity", "documentation").
 	Pillar string `json:"pillar"`
@@ -49,16 +50,16 @@ type PillarDetail struct {
 	Grade string `json:"grade"`
 	// Findings is the total number of findings counted against this pillar.
 	Findings int `json:"findings"`
-	// Critical is the count of critical-severity findings in this pillar.
-	Critical int `json:"critical"`
-	// High is the count of high-severity findings in this pillar.
-	High int `json:"high"`
-	// Medium is the count of medium-severity findings in this pillar.
-	Medium int `json:"medium"`
-	// Low is the count of low-severity findings in this pillar.
-	Low int `json:"low"`
-	// Info is the count of info-severity findings in this pillar.
-	Info int `json:"info"`
+	// Advisory is the count of advisory-severity findings in this pillar.
+	Advisory int `json:"advisory"`
+	// Warning is the count of warning-severity findings in this pillar.
+	Warning int `json:"warning"`
+	// Error is the count of error-severity findings in this pillar.
+	Error int `json:"error"`
+	// Penalty is the raw unclamped score penalty accumulated for this pillar.
+	// Score is derived as max(0, 100-Penalty); the raw value preserves the
+	// worst-pillar ranking signal for pillars whose score floors at zero.
+	Penalty float64 `json:"penalty"`
 }
 
 // FileScore reports the penalty, finding count, and grade for a single file.
@@ -149,6 +150,7 @@ func Calculate(findings []finding.Finding) Score {
 	for pillar, detail := range pillarCounts {
 		detail.Score = pillars[pillar]
 		detail.Grade = grade(detail.Score)
+		detail.Penalty = float64(pillarPenalty[pillar])
 	}
 	return Score{
 		Composite:                   composite,
@@ -192,13 +194,13 @@ func pluralise(count int, singular, plural string) string {
 }
 
 // findingPenalty computes the penalty score for a single finding based on severity and confidence.
+// Weights collapse the old 5-bucket scale (1/3/8/15/30 for info/low/medium/high/critical) into the
+// 3-bucket model (1/8/30 for advisory/warning/error) — see ADR-009.
 func findingPenalty(item finding.Finding) int {
 	base := map[finding.Severity]int{
-		finding.SeverityInfo:     1,
-		finding.SeverityLow:      3,
-		finding.SeverityMedium:   8,
-		finding.SeverityHigh:     15,
-		finding.SeverityCritical: 30,
+		finding.SeverityAdvisory: 1,
+		finding.SeverityWarning:  8,
+		finding.SeverityError:    30,
 	}[item.Severity]
 	switch item.Confidence {
 	case finding.ConfidenceLow:
@@ -263,16 +265,12 @@ func topOffenders(filePenalty, fileFindings, fileMaxCyclomatic map[string]int) [
 // incrementSeverity bumps the severity counter on a PillarDetail.
 func incrementSeverity(detail *PillarDetail, severity finding.Severity) {
 	switch severity {
-	case finding.SeverityCritical:
-		detail.Critical++
-	case finding.SeverityHigh:
-		detail.High++
-	case finding.SeverityMedium:
-		detail.Medium++
-	case finding.SeverityLow:
-		detail.Low++
-	case finding.SeverityInfo:
-		detail.Info++
+	case finding.SeverityError:
+		detail.Error++
+	case finding.SeverityWarning:
+		detail.Warning++
+	case finding.SeverityAdvisory:
+		detail.Advisory++
 	}
 }
 

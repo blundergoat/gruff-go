@@ -141,7 +141,7 @@ func baseFinding(ruleID string, pillar finding.Pillar, file string, symbol strin
 		RuleID:     ruleID,
 		File:       file,
 		Symbol:     symbol,
-		Severity:   finding.SeverityMedium,
+		Severity:   finding.SeverityWarning,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     pillar,
 	}

@@ -71,7 +71,7 @@ func (r AcronymCaseRule) Definition() Definition {
 		Title:          "Acronym case",
 		Description:    "Flags identifiers that spell configured Go initialisms with mixed casing.",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

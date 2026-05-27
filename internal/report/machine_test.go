@@ -20,7 +20,7 @@ func TestMachineReportFormats(t *testing.T) {
 		Message:     "too long",
 		File:        "main.go",
 		Location:    &finding.Location{Line: 12},
-		Severity:    finding.SeverityMedium,
+		Severity:    finding.SeverityWarning,
 		Confidence:  finding.ConfidenceHigh,
 		Pillar:      finding.PillarSize,
 		Fingerprint: "abc123",
@@ -29,7 +29,7 @@ func TestMachineReportFormats(t *testing.T) {
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "sarif",
-		FailOn:      finding.SeverityMedium,
+		FailOn:      finding.FailThresholdWarning,
 		Scanned:     []string{"main.go"},
 		Findings:    []finding.Finding{item},
 		Definitions: defaultDefinitions(),
@@ -48,7 +48,7 @@ func TestMachineReportFormats(t *testing.T) {
 	}
 	if !strings.Contains(sarif.String(), `"gruffFingerprint": "abc123"`) ||
 		!strings.Contains(sarif.String(), `"ruleIndex":`) ||
-		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff-go.analysis.v0.1"`) {
+		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff-go.analysis.v0.2"`) {
 		t.Fatalf("sarif output missing contract fields = %s", sarif.String())
 	}
 
@@ -77,7 +77,7 @@ func TestWriteSARIFContract(t *testing.T) {
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "sarif",
-		FailOn:      finding.SeverityCritical,
+		FailOn:      finding.FailThresholdError,
 		Scanned:     []string{"pkg/main.go"},
 		Findings:    []finding.Finding{item},
 		Definitions: definitions,
@@ -119,7 +119,7 @@ func sarifContractFinding() finding.Finding {
 		File:             `./pkg\main.go`,
 		Location:         &finding.Location{Line: 12, Column: 3, EndLine: 14},
 		Symbol:           "main",
-		Severity:         finding.SeverityHigh,
+		Severity:         finding.SeverityError,
 		Confidence:       finding.ConfidenceHigh,
 		Pillar:           finding.PillarSize,
 		SecondaryPillars: []finding.Pillar{finding.PillarMaintain},
@@ -164,7 +164,7 @@ func requireSingleSARIFRun(t *testing.T, payload sarifLog) sarifRun {
 // requireSARIFDriver asserts the driver identity matches the gruff-go tool and pinned semantic version.
 func requireSARIFDriver(t *testing.T, driver sarifDriver) {
 	t.Helper()
-	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.1.1" {
+	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.2.0" {
 		t.Fatalf("unexpected driver identity: %#v", driver)
 	}
 }
@@ -319,7 +319,7 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 		Message:     "custom finding",
 		File:        `./custom\missing.go`,
 		Location:    &finding.Location{Line: 1},
-		Severity:    finding.SeverityLow,
+		Severity:    finding.SeverityAdvisory,
 		Confidence:  finding.ConfidenceMedium,
 		Pillar:      finding.PillarMaintain,
 		Fingerprint: "fp-missing",
@@ -328,7 +328,7 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 		Root:        "/repo",
 		Inputs:      []string{"."},
 		Format:      "sarif",
-		FailOn:      finding.SeverityCritical,
+		FailOn:      finding.FailThresholdError,
 		Scanned:     []string{"custom/missing.go"},
 		Findings:    []finding.Finding{item},
 		Definitions: defaultDefinitions(),
@@ -376,11 +376,9 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 // TestSARIFLevelMapping checks each gruff severity maps to the documented SARIF level.
 func TestSARIFLevelMapping(t *testing.T) {
 	cases := map[finding.Severity]string{
-		finding.SeverityCritical: "error",
-		finding.SeverityHigh:     "error",
-		finding.SeverityMedium:   "warning",
-		finding.SeverityLow:      "note",
-		finding.SeverityInfo:     "note",
+		finding.SeverityError:    "error",
+		finding.SeverityWarning:  "warning",
+		finding.SeverityAdvisory: "note",
 	}
 	for severity, want := range cases {
 		if got := sarifLevel(severity); got != want {

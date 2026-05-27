@@ -45,7 +45,7 @@ func (r ReceiverConsistencyRule) Definition() Definition {
 		Title:          "Receiver consistency",
 		Description:    "Flags methods on the same type that use inconsistent receiver names or pointer/value forms.",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

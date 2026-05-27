@@ -19,26 +19,52 @@ type yamlLine struct {
 
 // parseYAML converts the YAML body into a validated Config value.
 func parseYAML(data []byte, definitions []rule.Definition) (Config, error) {
+	encoded, err := encodeYAMLAsJSON(data)
+	if err != nil {
+		return Config{}, err
+	}
+	if encoded == nil {
+		return Config{}, nil
+	}
+	return decodeConfigPayload(encoded, definitions)
+}
+
+// parseYAMLPermissive converts the YAML body into a Config like parseYAML but
+// drops unparseable per-rule severity overrides before validation, so a
+// pre-0.2 config with legacy 5-bucket severity names can still flow through
+// the init --force preserve path.
+func parseYAMLPermissive(data []byte, definitions []rule.Definition) (Config, error) {
+	encoded, err := encodeYAMLAsJSON(data)
+	if err != nil {
+		return Config{}, err
+	}
+	if encoded == nil {
+		return Config{}, nil
+	}
+	return decodeConfigPayloadPermissive(encoded, definitions)
+}
+
+// encodeYAMLAsJSON parses the YAML body into the canonical JSON payload the
+// decoders consume. Returns nil bytes when the input is empty so callers can
+// distinguish empty-config-is-OK from a structural error. Shared between the
+// strict and permissive parsers.
+func encodeYAMLAsJSON(data []byte) ([]byte, error) {
 	lines := yamlLines(string(data))
 	if len(lines) == 0 {
-		return Config{}, nil
+		return nil, nil
 	}
 	value, index, err := parseYAMLBlock(lines, 0, lines[0].indent)
 	if err != nil {
-		return Config{}, err
+		return nil, err
 	}
 	if index != len(lines) {
-		return Config{}, fmt.Errorf("invalid YAML indentation near %q", lines[index].text)
+		return nil, fmt.Errorf("invalid YAML indentation near %q", lines[index].text)
 	}
 	payload, ok := value.(map[string]any)
 	if !ok {
-		return Config{}, fmt.Errorf("config root must be an object")
+		return nil, fmt.Errorf("config root must be an object")
 	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return Config{}, err
-	}
-	return decodeConfigPayload(encoded, definitions)
+	return json.Marshal(payload)
 }
 
 // yamlLines splits the input into trimmed, non-blank lines with indentation.

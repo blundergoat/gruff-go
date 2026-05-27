@@ -43,9 +43,39 @@ func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 
 	var buf bytes.Buffer
 	writeRenderHeader(&buf)
+	writeRenderMinimumSeverity(&buf, opts)
 	writeRenderScaffolds(&buf, opts)
 	writeRenderRules(&buf, sorted, opts)
 	return buf.Bytes()
+}
+
+// writeRenderMinimumSeverity emits the per-command exit-code threshold block
+// (ADR-010). Values come from finding.DefaultFailThresholdFor unless the
+// existing config already tuned a key, in which case the user's value is
+// preserved verbatim - regenerate-with-merge, never a destructive clobber.
+func writeRenderMinimumSeverity(buf *bytes.Buffer, opts RenderOptions) {
+	fmt.Fprintln(buf, "# Per-command exit-code thresholds (ADR-010). Each key overrides the binary")
+	fmt.Fprintln(buf, "# default for the matching gruff-go subcommand. Values: advisory | warning |")
+	fmt.Fprintln(buf, "# error | none (where 'none' disables the gate, exit 0 regardless of findings).")
+	fmt.Fprintln(buf, "# Precedence: CLI flag > minimumSeverity.<cmd> > binary default.")
+	fmt.Fprintln(buf, "minimumSeverity:")
+	for _, cmd := range []string{"analyse", "summary", "report", "dashboard"} {
+		fmt.Fprintf(buf, "  %s: %s\n", cmd, preservedMinimumSeverityFor(opts, cmd))
+	}
+	fmt.Fprintln(buf)
+}
+
+// preservedMinimumSeverityFor returns the existing config's minimumSeverity
+// entry for cmd when it carries one, otherwise the binary default. The empty
+// string case (entry present but blank) also falls back to the default since
+// a blank value would fail ParseFailThreshold at load time.
+func preservedMinimumSeverityFor(opts RenderOptions, cmd string) string {
+	if opts.Existing != nil {
+		if value, ok := opts.Existing.MinimumSeverity[cmd]; ok && value != "" {
+			return value
+		}
+	}
+	return string(finding.DefaultFailThresholdFor(cmd))
 }
 
 // writeRenderHeader writes the file-level banner and schemaVersion pin.
@@ -98,11 +128,23 @@ func preservedIgnorePaths(opts RenderOptions) []string {
 	return opts.Existing.IgnorePaths
 }
 
+// defaultAcceptedAbbreviations seeds new configs with the cross-port
+// universal-vocabulary list shared verbatim with gruff-rs / gruff-ts /
+// gruff-py / gruff-php. naming.acronym-case lowercases entries for matching
+// (see internal/rule/naming_acronym.go `lowerStringSet`), so the case of
+// the seed only matters for how the rendered .gruff-go.yaml reads.
+// Project-specific acronyms should be appended in the user's config.
+var defaultAcceptedAbbreviations = []string{
+	"age", "app", "db", "fs", "id", "io", "key", "log", "max", "min", "now", "raw", "rx", "tx", "ui", "url",
+}
+
 // preservedAcceptedAbbreviations returns the existing config's
-// allowlists.acceptedAbbreviations or nil.
+// allowlists.acceptedAbbreviations when one was preserved, falling back to
+// defaultAcceptedAbbreviations for fresh projects. Returning the seed list
+// keeps the rendered file aligned with the rs/ts/py/php init defaults.
 func preservedAcceptedAbbreviations(opts RenderOptions) []string {
 	if opts.Existing == nil {
-		return nil
+		return defaultAcceptedAbbreviations
 	}
 	return opts.Existing.AcceptedAbbreviations
 }
@@ -298,41 +340,25 @@ func writeRenderThresholds(buf *bytes.Buffer, thresholds map[string]float64) {
 	}
 }
 
-// renderSeverityAlias inverts parseConfigSeverity so the rendered file uses the
-// gruff-family aliases (notice/warning/error) that adopters see in docs and
-// existing project configs, falling back to the canonical Severity string for
-// info and critical which have no alias.
+// renderSeverityAlias emits the canonical 3-bucket severity name for the
+// rendered config file. After ADR-009 the rendered name equals the internal
+// Severity value verbatim; this helper is kept as a single indirection point
+// so a future ADR that reintroduces output aliasing only has to change one
+// place. Paired with parseConfigSeverity (which still goes through
+// finding.ParseSeverity) so round-tripping a rendered file stays a no-op.
 func renderSeverityAlias(severity finding.Severity) string {
-	switch severity {
-	case finding.SeverityLow:
-		return "notice"
-	case finding.SeverityMedium:
-		return "warning"
-	case finding.SeverityHigh:
-		return "error"
-	default:
-		return string(severity)
-	}
+	return string(severity)
 }
 
-// tryParseSeverity converts a config-level severity string (gruff alias or
-// canonical level) back into a finding.Severity, returning ok=false when the
-// input does not name a known level. Used when honouring a preserved override.
+// tryParseSeverity converts a config-level severity string back into a
+// finding.Severity, returning ok=false when the input does not name a known
+// level. Used when honouring a preserved override during `init --force`.
 func tryParseSeverity(value string) (finding.Severity, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "notice", "low":
-		return finding.SeverityLow, true
-	case "warning", "medium":
-		return finding.SeverityMedium, true
-	case "error", "high":
-		return finding.SeverityHigh, true
-	case "critical":
-		return finding.SeverityCritical, true
-	case "info":
-		return finding.SeverityInfo, true
-	default:
+	severity, err := finding.ParseSeverity(strings.ToLower(strings.TrimSpace(value)))
+	if err != nil {
 		return "", false
 	}
+	return severity, true
 }
 
 // renderThresholdValue prints whole numbers without the float suffix so the

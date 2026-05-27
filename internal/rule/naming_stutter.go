@@ -27,7 +27,7 @@ func (r PackageStutterRule) Definition() Definition {
 		Title:          "Package stutter",
 		Description:    "Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry).",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

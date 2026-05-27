@@ -27,6 +27,12 @@ var defaultConfigFiles = []string{".gruff-go.yaml"}
 type Config struct {
 	// SchemaVersion identifies the gruff-go config schema this file targets.
 	SchemaVersion string `json:"schemaVersion,omitempty"`
+	// MinimumSeverity sets the per-command exit-code threshold. Keys are
+	// command names (analyse, summary, report, dashboard); values are
+	// FailThreshold strings (advisory, warning, error, none). Additive
+	// optional per ADR-010; the absence of a key falls back to
+	// finding.DefaultFailThresholdFor(cmd).
+	MinimumSeverity map[string]string `json:"minimumSeverity,omitempty"`
 	// Select restricts the active rule set to the listed rule IDs (or aliases).
 	Select []string `json:"select,omitempty"`
 	// ExcludeRules disables the named rule IDs even when they would otherwise run.
@@ -166,6 +172,23 @@ func Load(path string, definitions []rule.Definition) (Config, error) {
 	return ParseFile(path, data, definitions)
 }
 
+// LoadPermissive reads and parses a config file for migration or preservation
+// purposes. Per-rule severity overrides that fail strict ADR-009 validation
+// (legacy 5-bucket names like notice/medium/critical) are dropped from the
+// returned Config so paths.ignore, allowlists, thresholds, and options can
+// still flow through init --force's preserve path. Affected rules fall back
+// to registry defaults in the rendered output via tryParseSeverity.
+//
+// Do NOT use this for runtime scans - it would silently weaken severity gates.
+func LoadPermissive(path string, definitions []rule.Definition) (Config, error) {
+	// #nosec G304 -- CLI intentionally reads an explicit user-provided config path.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	return parseYAMLPermissive(data, definitions)
+}
+
 // Parse parses config bytes using the supported strict YAML subset.
 func Parse(data []byte, definitions []rule.Definition) (Config, error) {
 	return parseYAML(data, definitions)
@@ -183,6 +206,44 @@ func ParseFile(path string, data []byte, definitions []rule.Definition) (Config,
 
 // decodeConfigPayload unmarshals canonical JSON payloads from the YAML parser.
 func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, error) {
+	cfg, err := decodeConfigUnvalidated(data)
+	if err != nil {
+		return Config{}, err
+	}
+	if err := cfg.Validate(definitions); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// decodeConfigPayloadPermissive unmarshals canonical JSON payloads like
+// decodeConfigPayload, then drops any per-rule severity override that does
+// not parse against the current 3-bucket vocabulary before validation. Used
+// by LoadPermissive for the init --force preserve path.
+func decodeConfigPayloadPermissive(data []byte, definitions []rule.Definition) (Config, error) {
+	cfg, err := decodeConfigUnvalidated(data)
+	if err != nil {
+		return Config{}, err
+	}
+	for id, rc := range cfg.Rules {
+		if rc.Severity == "" {
+			continue
+		}
+		if _, perr := parseConfigSeverity(rc.Severity); perr != nil {
+			rc.Severity = ""
+			cfg.Rules[id] = rc
+		}
+	}
+	if err := cfg.Validate(definitions); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// decodeConfigUnvalidated decodes the canonical JSON payload into a normalised
+// Config without running structural validation. Shared by the strict and
+// permissive load paths so the two cannot drift on decode behaviour.
+func decodeConfigUnvalidated(data []byte) (Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -193,17 +254,13 @@ func decodeConfigPayload(data []byte, definitions []rule.Definition) (Config, er
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return Config{}, fmt.Errorf("config contains trailing values")
 	}
-	cfg = cfg.Normalized()
-	if err := cfg.Validate(definitions); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
+	return cfg.Normalized(), nil
 }
 
 // Validate checks schema, rule, threshold, option, path, and severity contracts.
 func (cfg Config) Validate(definitions []rule.Definition) error {
 	if cfg.SchemaVersion != "" && cfg.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("unsupported schemaVersion %q", cfg.SchemaVersion)
+		return fmt.Errorf("unsupported schemaVersion %q; expected %q. Run `gruff-go init --force` to regenerate the config (your tuning is preserved)", cfg.SchemaVersion, SchemaVersion)
 	}
 	byID := map[string]rule.Definition{}
 	for _, definition := range definitions {
@@ -220,6 +277,7 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 		},
 		func() error { return validateRuleConfig(cfg.Rules, byID) },
 		func() error { return validateSelection(cfg.Selection) },
+		func() error { return validateMinimumSeverity(cfg.MinimumSeverity) },
 	}
 	return runChecks(checks)
 }
@@ -382,16 +440,10 @@ func definitionsByID(definitions []rule.Definition) map[string]rule.Definition {
 	return out
 }
 
-// parseConfigSeverity maps gruff-family severity aliases to scanner severities.
+// parseConfigSeverity validates a per-rule severity override. Per ADR-009 the
+// hard-break migration accepts only the 3-bucket names; legacy 5-bucket names
+// (critical/high/medium/low/info) and the old aliases (notice/warn) must be
+// migrated in the user's config before the file will load.
 func parseConfigSeverity(input string) (finding.Severity, error) {
-	switch input {
-	case "notice":
-		return finding.SeverityLow, nil
-	case "warning", "warn":
-		return finding.SeverityMedium, nil
-	case "error":
-		return finding.SeverityHigh, nil
-	default:
-		return finding.ParseSeverity(input)
-	}
+	return finding.ParseSeverity(input)
 }

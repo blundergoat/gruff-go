@@ -161,52 +161,56 @@ func (r htmlRenderer) verdict() string {
 	}
 	builder.WriteString(`<div class="verdict-stats">`)
 	builder.WriteString(stat(fmt.Sprintf("%d", counts.total), "findings", ""))
-	builder.WriteString(stat(fmt.Sprintf("%d", counts.critical), "critical", "fail"))
-	builder.WriteString(stat(fmt.Sprintf("%d", counts.high), "high", "fail"))
-	builder.WriteString(stat(fmt.Sprintf("%d", counts.medium), "medium", "warn"))
+	builder.WriteString(stat(fmt.Sprintf("%d", counts.error), "error", "fail"))
+	builder.WriteString(stat(fmt.Sprintf("%d", counts.warning), "warning", "warn"))
+	builder.WriteString(stat(fmt.Sprintf("%d", counts.advisory), "advisory", "note"))
 	builder.WriteString(`</div>`)
 	builder.WriteString(`</div>`)
 	builder.WriteString(`</section>`)
 	return builder.String()
 }
 
-// pillars renders the per-pillar grade grid.
+// pillars renders the canonical Pillars table. Rows mirror the text/JSON
+// summary shape produced by BuildPillarSummaryRows: every applicable pillar is
+// shown with grade, score (2dp), findings, and per-severity counts, sorted by
+// findings DESC then pillar ASC.
 func (r htmlRenderer) pillars() string {
+	rows := BuildPillarSummaryRows(r.report)
 	var builder strings.Builder
 	builder.WriteString(`<section class="pillars">`)
-	builder.WriteString(`<h2 class="section-head">pillar grades <span class="aside">weighted composite</span></h2>`)
-	builder.WriteString(`<div class="pillar-grid">`)
-	details := r.report.Score.PillarDetails
-	if len(details) == 0 {
-		builder.WriteString(`<div class="pillar pillar-empty">`)
-		builder.WriteString(`<div class="name">no pillar findings</div>`)
-		builder.WriteString(`<div class="grade a">A</div>`)
-		builder.WriteString(`<div class="breakdown"><div class="row"><span class="key">score</span><span class="val">100.00</span></div></div>`)
-		builder.WriteString(`</div>`)
+	builder.WriteString(`<h2 class="section-head">pillars <span class="aside">weighted composite</span></h2>`)
+	builder.WriteString(`<table class="pillar-list"><thead><tr>`)
+	builder.WriteString(`<th scope="col">pillar</th>`)
+	builder.WriteString(`<th scope="col" class="num">grade</th>`)
+	builder.WriteString(`<th scope="col" class="num">score</th>`)
+	builder.WriteString(`<th scope="col" class="num">findings</th>`)
+	builder.WriteString(`<th scope="col" class="num">advisory</th>`)
+	builder.WriteString(`<th scope="col" class="num">warning</th>`)
+	builder.WriteString(`<th scope="col" class="num">error</th>`)
+	builder.WriteString(`</tr></thead><tbody>`)
+	if len(rows) == 0 {
+		builder.WriteString(`<tr><td colspan="7">No pillars.</td></tr>`)
 	}
-	for _, detail := range details {
-		builder.WriteString(r.pillarCard(detail))
+	for _, row := range rows {
+		builder.WriteString(r.pillarRow(row))
 	}
-	builder.WriteString(`</div></section>`)
+	builder.WriteString(`</tbody></table></section>`)
 	return builder.String()
 }
 
-// pillarCard renders a single pillar's grade and severity breakdown.
-func (r htmlRenderer) pillarCard(detail scoring.PillarDetail) string {
-	tier := tierClass(detail.Grade)
+// pillarRow renders a single row of the canonical pillars table.
+func (r htmlRenderer) pillarRow(row PillarSummaryRow) string {
+	tier := tierClass(row.Grade)
 	var builder strings.Builder
-	builder.WriteString(`<div class="pillar">`)
-	fmt.Fprintf(&builder, `<div class="name">%s</div>`, esc(detail.Pillar))
-	fmt.Fprintf(&builder, `<div class="grade %s">%s</div>`, esc(tier), esc(detail.Grade))
-	builder.WriteString(`<div class="breakdown">`)
-	builder.WriteString(breakdownRow("score", fmt.Sprintf("%d", detail.Score)))
-	builder.WriteString(breakdownRow("findings", fmt.Sprintf("%d", detail.Findings)))
-	builder.WriteString(breakdownRow("critical", fmt.Sprintf("%d", detail.Critical)))
-	builder.WriteString(breakdownRow("high", fmt.Sprintf("%d", detail.High)))
-	builder.WriteString(breakdownRow("medium", fmt.Sprintf("%d", detail.Medium)))
-	builder.WriteString(breakdownRow("low", fmt.Sprintf("%d", detail.Low)))
-	builder.WriteString(breakdownRow("info", fmt.Sprintf("%d", detail.Info)))
-	builder.WriteString(`</div></div>`)
+	builder.WriteString(`<tr>`)
+	fmt.Fprintf(&builder, `<td class="pillar-name">%s</td>`, esc(row.Pillar))
+	fmt.Fprintf(&builder, `<td class="num"><span class="grade-pill %s">%s</span></td>`, esc(tier), esc(row.Grade))
+	fmt.Fprintf(&builder, `<td class="num">%s</td>`, esc(fmt.Sprintf("%.2f", row.Score)))
+	fmt.Fprintf(&builder, `<td class="num">%d</td>`, row.Findings)
+	builder.WriteString(severityCountCell(row.Advisory, "note"))
+	builder.WriteString(severityCountCell(row.Warning, "warn"))
+	builder.WriteString(severityCountCell(row.Error, "fail"))
+	builder.WriteString(`</tr>`)
 	return builder.String()
 }
 

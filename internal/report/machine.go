@@ -325,9 +325,9 @@ func sarifRunPropertiesFromReport(report analysis.Report) sarifRunProperties {
 // sarifLevel maps a gruff severity onto the matching SARIF level string.
 func sarifLevel(severity finding.Severity) string {
 	switch severity {
-	case finding.SeverityCritical, finding.SeverityHigh:
+	case finding.SeverityError:
 		return "error"
-	case finding.SeverityMedium:
+	case finding.SeverityWarning:
 		return "warning"
 	default:
 		return "note"
@@ -337,9 +337,9 @@ func sarifLevel(severity finding.Severity) string {
 // githubLevel maps a gruff severity onto the corresponding GitHub annotation level.
 func githubLevel(severity finding.Severity) string {
 	switch severity {
-	case finding.SeverityCritical, finding.SeverityHigh:
+	case finding.SeverityError:
 		return "error"
-	case finding.SeverityMedium:
+	case finding.SeverityWarning:
 		return "warning"
 	default:
 		return "notice"

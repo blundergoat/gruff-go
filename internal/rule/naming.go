@@ -39,7 +39,7 @@ func (r IdentifierQualityRule) Definition() Definition {
 		Title:          "Identifier quality",
 		Description:    "Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review.",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"naming"},

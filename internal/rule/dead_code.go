@@ -20,7 +20,7 @@ func (UnreachableCodeRule) Definition() Definition {
 		Title:          "Unreachable code",
 		Description:    "Flags statements that appear after return, panic, break, continue, or goto in the same block.",
 		Pillar:         finding.PillarDeadCode,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"control-flow"},

@@ -26,7 +26,7 @@ func TestVersionFlag(t *testing.T) {
 // TestQuietSuppressesStdout verifies the --quiet flag silences non-error output.
 func TestQuietSuppressesStdout(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer
@@ -129,7 +129,7 @@ func TestCompletionCommand(t *testing.T) {
 // TestSummaryCommandText verifies the summary text output contains expected fragments.
 func TestSummaryCommandText(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer
@@ -158,7 +158,7 @@ func TestSummaryCommandText(t *testing.T) {
 func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n")
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	writeFile(t, root, "ignored.go", "package main\n")
 	t.Chdir(root)
 
@@ -196,7 +196,7 @@ func TestSummaryCommandSuggestsGeneratedBaseline(t *testing.T) {
 // scans the current working directory.
 func TestSummaryCommandDefaultPath(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer
@@ -214,7 +214,7 @@ func TestSummaryCommandDefaultPath(t *testing.T) {
 // TestSummaryRejectsBadFormat verifies summary returns exit code 2 on unknown formats.
 func TestSummaryRejectsBadFormat(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer
@@ -226,7 +226,7 @@ func TestSummaryRejectsBadFormat(t *testing.T) {
 // TestReportCommandHTMLToFile verifies report --output writes HTML to disk.
 func TestReportCommandHTMLToFile(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	outPath := filepath.Join(t.TempDir(), "report.html")
@@ -249,7 +249,7 @@ func TestReportCommandHTMLToFile(t *testing.T) {
 // TestReportRejectsBadFormat verifies report returns exit code 2 on unknown formats.
 func TestReportRejectsBadFormat(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
 	t.Chdir(root)
 
 	var out, errBuf bytes.Buffer

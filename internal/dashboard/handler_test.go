@@ -75,12 +75,13 @@ func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 }
 
 // TestHandlerScanMetadataCommandIncludesParityFlags verifies CLI parity flags appear in metadata.
+// Uses the 3-bucket "warning" value (post-ADR-009 + ADR-010 successor to the old "medium").
 func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gitignore"), "ignored/\n")
 	writeFile(t, filepath.Join(project, "ignored", "complex.go"), dashboardComplexFixture())
 
-	handler := NewHandler(Options{ProjectRoot: project, FailOn: "medium"})
+	handler := NewHandler(Options{ProjectRoot: project, FailOn: "warning"})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
@@ -88,7 +89,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 		"project":           {project},
 		"paths":             {"ignored/complex.go"},
 		"scanScope":         {"full"},
-		"failOn":            {"medium"},
+		"failOn":            {"warning"},
 		"includeIgnored":    {"1"},
 		"reportInteractive": {"1"},
 	}
@@ -107,7 +108,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	if metadata.ExitCode != 1 {
 		t.Fatalf("metadata exitCode = %d, want 1", metadata.ExitCode)
 	}
-	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity medium ignored/complex.go"
+	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity warning ignored/complex.go"
 	if metadata.Command != wantCommand {
 		t.Fatalf("metadata command = %q, want %q", metadata.Command, wantCommand)
 	}
@@ -248,7 +249,7 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 		Paths:        []string{"internal"},
 		ConfigPath:   ".gruff-go.yaml",
 		BaselinePath: "baseline.json",
-		FailOn:       "high",
+		FailOn:       "error",
 	}
 	values := map[string][]string{}
 	state := stateFromQuery(opts, values)
@@ -258,24 +259,24 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 	if state.Paths != "internal" {
 		t.Errorf("paths = %q, want internal", state.Paths)
 	}
-	if state.FailOn != "high" {
-		t.Errorf("failOn = %q, want high", state.FailOn)
+	if state.FailOn != "error" {
+		t.Errorf("failOn = %q, want error", state.FailOn)
 	}
 }
 
 // TestStateFromQueryOverridesDefaults verifies explicit query values override defaults.
 func TestStateFromQueryOverridesDefaults(t *testing.T) {
-	opts := Options{ProjectRoot: "/repo", FailOn: "high"}
+	opts := Options{ProjectRoot: "/repo", FailOn: "advisory"}
 	values := map[string][]string{
 		"project":           {"/elsewhere"},
-		"failOn":            {"critical"},
+		"failOn":            {"error"},
 		"reportInteractive": {"1"},
 	}
 	state := stateFromQuery(opts, values)
 	if state.Project != "/elsewhere" {
 		t.Errorf("project override failed: %q", state.Project)
 	}
-	if state.FailOn != "critical" {
+	if state.FailOn != "error" {
 		t.Errorf("failOn override failed: %q", state.FailOn)
 	}
 	if state.ReportInteractive != "1" {
@@ -287,7 +288,7 @@ func TestStateFromQueryOverridesDefaults(t *testing.T) {
 func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	state := report.DashboardState{
 		Project:        "/repo",
-		FailOn:         "medium",
+		FailOn:         "warning",
 		IncludeIgnored: "1",
 	}
 	scan := buildScanOptions(Options{}, state)
@@ -298,7 +299,7 @@ func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 
 // TestBuildScanOptionsIncludeIgnoredFromOptionsDefault confirms that when the dashboard state leaves IncludeIgnored unset, the dashboard Options.IncludeIgnored default is the fallback honoured by buildScanOptions.
 func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
-	state := report.DashboardState{Project: "/repo", FailOn: "medium"}
+	state := report.DashboardState{Project: "/repo", FailOn: "warning"}
 	scan := buildScanOptions(Options{IncludeIgnored: true}, state)
 	if !scan.includeIgnored {
 		t.Fatalf("includeIgnored should be true when Options.IncludeIgnored is true and state is unset")
@@ -311,6 +312,51 @@ func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 	state := stateFromQuery(Options{}, values)
 	if state.IncludeIgnored != "1" {
 		t.Fatalf("includeIgnored=1 query should round-trip, got %q", state.IncludeIgnored)
+	}
+}
+
+// TestDefaultStatePicksUpMinimumSeverityFromConfig asserts ADR-010 precedence
+// when no server CLI flag is set: defaultState reads minimumSeverity.dashboard
+// from the project config so the rendered form default reflects what the
+// project committed, not the binary default.
+func TestDefaultStatePicksUpMinimumSeverityFromConfig(t *testing.T) {
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  dashboard: error
+`)
+	state := defaultState(Options{ProjectRoot: project})
+	if state.FailOn != "error" {
+		t.Fatalf("defaultState.FailOn = %q, want %q (from config minimumSeverity.dashboard)", state.FailOn, "error")
+	}
+}
+
+// TestDefaultStateFallsBackToBinaryDefaultWithoutConfig asserts the binary
+// default kicks in when there is no project config: dashboard never fails
+// (none) per the user philosophy that viewing commands are artifact generators.
+func TestDefaultStateFallsBackToBinaryDefaultWithoutConfig(t *testing.T) {
+	project := t.TempDir()
+	// No .gruff-go.yaml in project.
+	state := defaultState(Options{ProjectRoot: project})
+	if state.FailOn != "none" {
+		t.Fatalf("defaultState.FailOn = %q, want %q (binary default for dashboard)", state.FailOn, "none")
+	}
+}
+
+// TestDefaultStateServerFlagBeatsConfig asserts that opts.FailOn (the
+// --min-severity flag passed when starting the dashboard) wins over any
+// minimumSeverity.dashboard config entry, matching ADR-010's precedence rule.
+func TestDefaultStateServerFlagBeatsConfig(t *testing.T) {
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  dashboard: error
+`)
+	state := defaultState(Options{ProjectRoot: project, FailOn: "warning"})
+	if state.FailOn != "warning" {
+		t.Fatalf("defaultState.FailOn = %q, want %q (opts.FailOn wins over config)", state.FailOn, "warning")
 	}
 }
 

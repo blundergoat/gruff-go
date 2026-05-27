@@ -12,12 +12,12 @@ import (
 func TestCalculateScoresFindings(t *testing.T) {
 	score := Calculate([]finding.Finding{{
 		File:       "a.go",
-		Severity:   finding.SeverityMedium,
+		Severity:   finding.SeverityWarning,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarSize,
 	}, {
 		File:       "b.go",
-		Severity:   finding.SeverityHigh,
+		Severity:   finding.SeverityError,
 		Confidence: finding.ConfidenceMedium,
 		Pillar:     finding.PillarComplexity,
 	}})
@@ -73,11 +73,11 @@ func TestCalculateCleanScore(t *testing.T) {
 // TestCalculatePillarDetailsSortedAndCounted verifies pillar detail counts and ordering.
 func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 	score := Calculate([]finding.Finding{
-		{File: "a.go", Severity: finding.SeverityCritical, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity},
-		{File: "a.go", Severity: finding.SeverityHigh, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity},
-		{File: "b.go", Severity: finding.SeverityMedium, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
-		{File: "b.go", Severity: finding.SeverityLow, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
-		{File: "c.go", Severity: finding.SeverityInfo, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
+		{File: "a.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity},
+		{File: "a.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity},
+		{File: "b.go", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
+		{File: "b.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
+		{File: "c.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
 	})
 
 	if len(score.PillarDetails) != 2 {
@@ -87,15 +87,51 @@ func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 		t.Fatalf("pillar details not alphabetically sorted: %#v", score.PillarDetails)
 	}
 	complexity := score.PillarDetails[0]
-	if complexity.Findings != 3 || complexity.Medium != 1 || complexity.Low != 1 || complexity.Info != 1 {
+	// Two findings collapsed from low+info under the 5-bucket model now both count as advisory.
+	if complexity.Findings != 3 || complexity.Warning != 1 || complexity.Advisory != 2 {
 		t.Fatalf("complexity counts = %#v", complexity)
 	}
+	// Complexity penalty = warning(8) + 2*advisory(1) = 10 raw, score clamps to 90.
+	if complexity.Penalty != 10 {
+		t.Errorf("complexity penalty = %v, want 10 (raw unclamped: 8 warning + 2*1 advisory)", complexity.Penalty)
+	}
 	security := score.PillarDetails[1]
-	if security.Findings != 2 || security.Critical != 1 || security.High != 1 {
+	// Two findings collapsed from critical+high now both count as error.
+	if security.Findings != 2 || security.Error != 2 {
 		t.Fatalf("security counts = %#v", security)
+	}
+	// Security penalty = 2*error(30) = 60 raw, score clamps to 40 (grade F).
+	if security.Penalty != 60 {
+		t.Errorf("security penalty = %v, want 60 (raw unclamped: 2*30 error)", security.Penalty)
 	}
 	if security.Grade == "" {
 		t.Fatal("pillar grade should be derived from per-pillar score")
+	}
+}
+
+// TestCalculatePillarPenaltyIsRawUnclamped verifies PillarDetail.Penalty
+// records the pre-clamp value, preserving the worst-pillar ranking signal when
+// scores floor at zero (e.g. 200 advisory findings -> penalty=200, score=0).
+func TestCalculatePillarPenaltyIsRawUnclamped(t *testing.T) {
+	findings := make([]finding.Finding, 0, 200)
+	for range 200 {
+		findings = append(findings, finding.Finding{
+			File:       "noisy.go",
+			Severity:   finding.SeverityAdvisory,
+			Confidence: finding.ConfidenceHigh,
+			Pillar:     finding.PillarDocumentation,
+		})
+	}
+	score := Calculate(findings)
+	if len(score.PillarDetails) != 1 {
+		t.Fatalf("pillar details length = %d, want 1", len(score.PillarDetails))
+	}
+	detail := score.PillarDetails[0]
+	if detail.Score != 0 {
+		t.Errorf("documentation score = %d, want 0 (clamped at floor)", detail.Score)
+	}
+	if detail.Penalty != 200 {
+		t.Errorf("documentation penalty = %v, want 200 (raw unclamped: 200 advisory * 1)", detail.Penalty)
 	}
 }
 
@@ -105,7 +141,7 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 		{
 			File:       "hot.go",
 			RuleID:     "complexity.cyclomatic",
-			Severity:   finding.SeverityHigh,
+			Severity:   finding.SeverityError,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarComplexity,
 			Metadata:   map[string]any{"complexity": 32},
@@ -113,7 +149,7 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 		{
 			File:       "hot.go",
 			RuleID:     "complexity.cyclomatic",
-			Severity:   finding.SeverityMedium,
+			Severity:   finding.SeverityWarning,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarComplexity,
 			Metadata:   map[string]any{"complexity": 18},
@@ -121,7 +157,7 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 		{
 			File:       "cold.go",
 			RuleID:     "size.function-length",
-			Severity:   finding.SeverityLow,
+			Severity:   finding.SeverityAdvisory,
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarSize,
 		},
@@ -149,10 +185,10 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 // TestCalculateComplexityDistribution checks complexity histogram bucketing.
 func TestCalculateComplexityDistribution(t *testing.T) {
 	score := Calculate([]finding.Finding{
-		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityMedium, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 12}},
-		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityMedium, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 17}},
-		{File: "b.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityHigh, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 42}},
-		{File: "c.go", RuleID: "size.function-length", Severity: finding.SeverityLow, Pillar: finding.PillarSize},
+		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityWarning, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 12}},
+		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityWarning, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 17}},
+		{File: "b.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityError, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 42}},
+		{File: "c.go", RuleID: "size.function-length", Severity: finding.SeverityAdvisory, Pillar: finding.PillarSize},
 	})
 
 	if got := score.ComplexityDistribution["11-15"]; got != 1 {
@@ -172,13 +208,13 @@ func TestCalculateComplexityDistribution(t *testing.T) {
 // TestCalculateCompositeDesignFindingsAreScoreNeutral ensures design.* findings do not penalize the score.
 func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	base := []finding.Finding{
-		{File: "hot.go", RuleID: "size.function-length", Severity: finding.SeverityMedium, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
-		{File: "hot.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityMedium, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
+		{File: "hot.go", RuleID: "size.function-length", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "hot.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
 	}
 	withComposite := append(append([]finding.Finding{}, base...), finding.Finding{
 		File:       "hot.go",
 		RuleID:     "design.god-function",
-		Severity:   finding.SeverityLow,
+		Severity:   finding.SeverityAdvisory,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarDesign,
 	})

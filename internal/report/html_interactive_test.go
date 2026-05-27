@@ -88,8 +88,8 @@ func TestWriteHTMLInteractiveSeverityOptionOrder(t *testing.T) {
 		t.Fatalf("WriteHTML: %v", err)
 	}
 	body := out.String()
-	// Severity options must be in canonical priority order (critical → info).
-	expected := []string{"critical", "high", "medium", "low", "info"}
+	// Severity options must be in canonical priority order (error → advisory).
+	expected := []string{"error", "warning", "advisory"}
 	previousIndex := -1
 	for _, value := range expected {
 		marker := `<option value="` + value + `">`

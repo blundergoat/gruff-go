@@ -37,7 +37,7 @@ func (UnusedPrivateFunctionRule) Definition() Definition {
 		Title:          "Unused private function",
 		Description:    "Flags package-private (lowercase-leading) top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, init, main, and packages that import reflect are excluded so the rule stays precision-first.",
 		Pillar:         finding.PillarDeadCode,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

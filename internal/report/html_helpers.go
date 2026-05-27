@@ -16,11 +16,9 @@ import (
 // severityTotals aggregates finding counts by severity for headline summaries.
 type severityTotals struct {
 	total    int
-	critical int
-	high     int
-	medium   int
-	low      int
-	info     int
+	error    int
+	warning  int
+	advisory int
 }
 
 // severityCounts tallies findings across the report by severity.
@@ -28,16 +26,12 @@ func severityCounts(report analysis.Report) severityTotals {
 	counts := severityTotals{total: len(report.Findings)}
 	for _, item := range report.Findings {
 		switch item.Severity {
-		case finding.SeverityCritical:
-			counts.critical++
-		case finding.SeverityHigh:
-			counts.high++
-		case finding.SeverityMedium:
-			counts.medium++
-		case finding.SeverityLow:
-			counts.low++
-		case finding.SeverityInfo:
-			counts.info++
+		case finding.SeverityError:
+			counts.error++
+		case finding.SeverityWarning:
+			counts.warning++
+		case finding.SeverityAdvisory:
+			counts.advisory++
 		}
 	}
 	return counts
@@ -45,20 +39,20 @@ func severityCounts(report analysis.Report) severityTotals {
 
 // verdictSubtitle returns the human-readable subtitle shown beneath the grade stamp.
 func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
-	thresholdFindings := counts.critical + counts.high + counts.medium
+	thresholdFindings := counts.error + counts.warning
 	if thresholdFindings == 0 {
-		return "No medium or higher severity findings flagged."
+		return "No warning or higher severity findings flagged."
 	}
 	pillarSet := map[string]struct{}{}
 	for _, item := range r.report.Findings {
 		switch item.Severity {
-		case finding.SeverityCritical, finding.SeverityHigh, finding.SeverityMedium:
+		case finding.SeverityError, finding.SeverityWarning:
 			pillarSet[string(item.Pillar)] = struct{}{}
 		}
 	}
 	pillarCount := len(pillarSet)
 	return fmt.Sprintf(
-		"%d %s at medium or higher severity across %d %s.",
+		"%d %s at warning or higher severity across %d %s.",
 		thresholdFindings,
 		pluralise(thresholdFindings, "finding", "findings"),
 		pillarCount,
@@ -106,13 +100,23 @@ func histogramTier(bin string) string {
 // severityTierClass maps a severity to the CSS class used to colour severity badges.
 func severityTierClass(severity finding.Severity) string {
 	switch severity {
-	case finding.SeverityCritical, finding.SeverityHigh:
+	case finding.SeverityError:
 		return "fail"
-	case finding.SeverityMedium:
+	case finding.SeverityWarning:
 		return "warn"
 	default:
 		return "note"
 	}
+}
+
+// severityCountCell renders a numeric per-severity table cell. Zero-valued
+// cells stay neutral so a clean pillar reads as visually quiet; non-zero cells
+// pick up the supplied severity tier class for colour emphasis.
+func severityCountCell(count int, tier string) string {
+	if count <= 0 {
+		return fmt.Sprintf(`<td class="num">%d</td>`, count)
+	}
+	return fmt.Sprintf(`<td class="num %s">%d</td>`, esc(tier), count)
 }
 
 // tierClass derives the CSS tier class from a single-letter grade.
@@ -139,15 +143,6 @@ func stat(number, label, class string) string {
 		esc(class),
 		esc(number),
 		esc(label),
-	)
-}
-
-// breakdownRow renders a key/value row inside a pillar breakdown block.
-func breakdownRow(key, value string) string {
-	return fmt.Sprintf(
-		`<div class="row"><span class="key">%s</span><span class="val">%s</span></div>`,
-		esc(key),
-		esc(value),
 	)
 }
 

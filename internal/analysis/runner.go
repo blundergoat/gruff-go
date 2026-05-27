@@ -26,8 +26,10 @@ type Options struct {
 	Paths []string
 	// Format selects the report renderer ("text", "json", "html", "sarif", "github"); empty defaults to "text".
 	Format string
-	// FailOn is the severity threshold that drives the process exit code.
-	FailOn finding.Severity
+	// FailOn is the threshold at or above which a finding triggers exit code 1.
+	// FailThreshold (not Severity) so callers can express "never fail" via
+	// finding.FailThresholdNone.
+	FailOn finding.FailThreshold
 	// Registry supplies the rules invoked against parsed units.
 	Registry rule.Registry
 	// IgnorePaths lists path patterns suppressed from discovery, merged on top of gitignore handling.
@@ -123,10 +125,12 @@ func analysisRoot(root string) (string, error) {
 	return rootAbs, nil
 }
 
-// normalizeOptions fills defaults for empty Options fields.
+// normalizeOptions fills defaults for empty Options fields. Empty FailOn
+// resolves to the canonical "analyse" default so programmatic callers get
+// the same gate as the analyse CLI consumer.
 func normalizeOptions(opts Options) Options {
 	if opts.FailOn == "" {
-		opts.FailOn = finding.SeverityMedium
+		opts.FailOn = finding.DefaultFailThresholdFor("analyse")
 	}
 	if opts.Format == "" {
 		opts.Format = "text"
@@ -142,7 +146,7 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 			Stage:    "discovery",
 			Message:  "path does not exist",
 			File:     missing,
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 	}
 	return diagnostics
@@ -157,7 +161,7 @@ func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 			Message:  item.Message,
 			File:     item.File,
 			Location: parserLocation(item),
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 	}
 	return diagnostics
@@ -182,7 +186,7 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 			Stage:    "baseline",
 			Message:  err.Error(),
 			File:     displayPath,
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 		return findings, baselineSummary, diagnostics
 	}
@@ -212,7 +216,7 @@ func applyDiff(root string, paths []string, findings []finding.Finding, diagnost
 		diagnostics = append(diagnostics, Diagnostic{
 			Stage:    "diff",
 			Message:  err.Error(),
-			Severity: finding.SeverityHigh,
+			Severity: finding.SeverityError,
 		})
 		return findings, diffSummary, diagnostics
 	}

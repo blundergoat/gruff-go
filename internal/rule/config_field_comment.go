@@ -31,7 +31,7 @@ func (r ConfigFieldCommentRule) Definition() Definition {
 		Title:          "Config field comment",
 		Description:    "Flags exported fields on struct types in configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope.",
 		Pillar:         finding.PillarDocumentation,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

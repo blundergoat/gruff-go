@@ -6,7 +6,7 @@ import "github.com/blundergoat/gruff-go/internal/finding"
 
 // shouldCalibrateTestSizeFinding reports whether a size finding on a test file should be down-weighted.
 func shouldCalibrateTestSizeFinding(item finding.Finding, definition Definition) bool {
-	if definition.Severity != finding.SeverityMedium {
+	if definition.Severity != finding.SeverityWarning {
 		return false
 	}
 	if definition.ID != "size.file-length" && definition.ID != "size.function-length" {

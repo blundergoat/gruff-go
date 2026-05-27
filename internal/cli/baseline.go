@@ -31,7 +31,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "baseline requires --out")
 		return 2
 	}
-	registry, ignorePaths, err := configuredRegistry(*configPath, *noConfig)
+	registry, ignorePaths, _, err := configuredRegistry(*configPath, *noConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
@@ -62,7 +62,7 @@ func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) i
 	analysisReport, err := analysis.Analyze(analysis.Options{
 		Paths:          opts.paths,
 		Format:         "json",
-		FailOn:         finding.SeverityCritical,
+		FailOn:         finding.FailThresholdError,
 		Registry:       opts.registry,
 		IgnorePaths:    opts.ignorePaths,
 		IncludeIgnored: opts.includeIgnored,

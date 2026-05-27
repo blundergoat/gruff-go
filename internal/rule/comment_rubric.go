@@ -80,7 +80,7 @@ func (r CommentRubricRule) Definition() Definition {
 		Title:          "Comment rubric",
 		Description:    "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply.",
 		Pillar:         finding.PillarDocumentation,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Thresholds: map[string]float64{

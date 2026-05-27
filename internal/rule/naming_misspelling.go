@@ -71,7 +71,7 @@ func (r MisspellingRule) Definition() Definition {
 		Title:          "Misspelled identifier or comment",
 		Description:    "Flags identifiers, doc comments, and struct tags containing common programming misspellings.",
 		Pillar:         finding.PillarNaming,
-		Severity:       finding.SeverityLow,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
 		DefaultEnabled: true,

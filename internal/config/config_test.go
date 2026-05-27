@@ -85,8 +85,8 @@ rules:
 	if options.Thresholds["complexity.cyclomatic"]["maxComplexity"] != 100 {
 		t.Fatalf("thresholds = %#v, want singular threshold mapped", options.Thresholds)
 	}
-	if options.Severities["complexity.cyclomatic"] != "high" {
-		t.Fatalf("severities = %#v, want error alias mapped to high", options.Severities)
+	if options.Severities["complexity.cyclomatic"] != "error" {
+		t.Fatalf("severities = %#v, want error stored verbatim", options.Severities)
 	}
 	if len(cfg.IgnorePaths) != 1 || cfg.IgnorePaths[0] != "fixtures/**" {
 		t.Fatalf("ignore paths = %#v, want fixtures ignore", cfg.IgnorePaths)
@@ -280,11 +280,11 @@ func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 	if options.Thresholds["complexity.nesting-depth"]["maxDepth"] != 6 {
 		t.Fatalf("thresholds = %#v, want complexity.nesting-depth maxDepth=6", options.Thresholds)
 	}
-	if options.Severities["size.parameter-count"] != "medium" {
-		t.Fatalf("severities = %#v, want warning alias mapped to medium for size.parameter-count", options.Severities)
+	if options.Severities["size.parameter-count"] != "warning" {
+		t.Fatalf("severities = %#v, want warning stored verbatim for size.parameter-count", options.Severities)
 	}
-	if options.Severities["docs.exported-symbol-comment"] != "high" {
-		t.Fatalf("severities = %#v, want error alias mapped to high for docs.exported-symbol-comment", options.Severities)
+	if options.Severities["docs.exported-symbol-comment"] != "error" {
+		t.Fatalf("severities = %#v, want error stored verbatim for docs.exported-symbol-comment", options.Severities)
 	}
 	if options.Options["docs.exported-symbol-comment"]["ignoreInternalPackages"] != true {
 		t.Fatalf("options = %#v, want ignoreInternalPackages=true", options.Options)
@@ -403,7 +403,7 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "invalid threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
 		{name: "combined threshold forms", yaml: "rules:\n  size.file-length:\n    threshold: 100\n    thresholds:\n      maxLines: 120\n", want: "cannot combine threshold and thresholds"},
 		{name: "invalid ignore", yaml: "ignorePaths:\n  - ../outside\n", want: "must stay inside"},
-		{name: "invalid abbreviation", yaml: "acceptedAbbreviations:\n  - id\n", want: "must be uppercase"},
+		{name: "blank abbreviation", yaml: "acceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
 		{name: "unknown threshold on parameter-count", yaml: "rules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
 		{name: "invalid threshold on nesting-depth", yaml: "rules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
 		{name: "unknown threshold on hotspot", yaml: "rules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
@@ -414,6 +414,9 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "unknown option on get prefix", yaml: "rules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
 		{name: "unknown option on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
 		{name: "unknown threshold on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
+		{name: "unknown minimumSeverity command", yaml: "minimumSeverity:\n  not-a-command: warning\n", want: `minimumSeverity has unknown command "not-a-command"`},
+		{name: "legacy minimumSeverity value", yaml: "minimumSeverity:\n  analyse: medium\n", want: `minimumSeverity.analyse: unknown threshold "medium"`},
+		{name: "rejected off-switch alias", yaml: "minimumSeverity:\n  report: never\n", want: `minimumSeverity.report: unknown threshold "never"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -422,5 +425,50 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 				t.Fatalf("err = %v, want containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// TestParseAcceptsMinimumSeverityBlock confirms the four canonical command keys
+// + the four canonical FailThreshold values round-trip through Parse without
+// validation errors. Locks the ADR-010 contract surface.
+func TestParseAcceptsMinimumSeverityBlock(t *testing.T) {
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  analyse: advisory
+  summary: warning
+  report: none
+  dashboard: error
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	want := map[string]string{
+		"analyse":   "advisory",
+		"summary":   "warning",
+		"report":    "none",
+		"dashboard": "error",
+	}
+	for cmd, expected := range want {
+		if got := cfg.MinimumSeverity[cmd]; got != expected {
+			t.Errorf("MinimumSeverity[%q] = %q, want %q", cmd, got, expected)
+		}
+	}
+}
+
+// TestParseAcceptsNoneInMinimumSeverity confirms `none` is a valid value -
+// regression guard for the off-switch sentinel that distinguishes
+// FailThreshold from Severity.
+func TestParseAcceptsNoneInMinimumSeverity(t *testing.T) {
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+minimumSeverity:
+  analyse: none
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if got := cfg.MinimumSeverity["analyse"]; got != "none" {
+		t.Errorf("MinimumSeverity[analyse] = %q, want \"none\"", got)
 	}
 }

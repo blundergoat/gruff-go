@@ -17,7 +17,7 @@ import (
 )
 
 // toolVersion is the released gruff-go semantic version printed by --version.
-const toolVersion = "0.1.1"
+const toolVersion = "0.2.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
@@ -119,9 +119,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
-	registry, ignorePaths, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
+	registry, ignorePaths, cfg, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
+		return 2
+	}
+	failOn, ok := resolveFailOn(values.minSeverityRaw, values.minSeverityExplicit, cfg, "analyse", stderr)
+	if !ok {
 		return 2
 	}
 	if values.generateBaselinePath != "" {
@@ -141,7 +145,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	analysisReport, err := analysis.Analyze(analysis.Options{
 		Paths:          flags.Args(),
 		Format:         values.format,
-		FailOn:         values.failOn,
+		FailOn:         failOn,
 		Registry:       registry,
 		IgnorePaths:    ignorePaths,
 		IncludeIgnored: values.includeIgnored,
@@ -161,9 +165,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 }
 
 // analyseFlagValues is the parsed analyse command state after validation.
+// minSeverityRaw + minSeverityExplicit replace the resolved FailThreshold so
+// runAnalyse can apply the ADR-010 precedence (CLI flag > minimumSeverity.cmd
+// > DefaultFailThresholdFor) after the config has been loaded.
 type analyseFlagValues struct {
 	format               string
-	failOn               finding.Severity
+	minSeverityRaw       string
+	minSeverityExplicit  bool
 	configPath           string
 	noConfig             bool
 	baselinePath         string
@@ -178,13 +186,59 @@ type analyseFlagValues struct {
 	includeIgnored       bool
 }
 
+// resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
+// explicit CLI flag wins, otherwise the matching minimumSeverity.<cmd> config
+// entry, otherwise the binary default from DefaultFailThresholdFor. Returns
+// (threshold, ok); on parse failure prints the error to stderr and returns
+// (zero-value, false) so the caller can `return 2`.
+func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd string, stderr io.Writer) (finding.FailThreshold, bool) {
+	resolved := rawValue
+	if !flagExplicit {
+		if cfgValue := cfg.MinimumSeverity[cmd]; cfgValue != "" {
+			resolved = cfgValue
+		}
+	}
+	parsed, err := finding.ParseFailThreshold(resolved)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return "", false
+	}
+	return parsed, true
+}
+
+// checkMinSeverityFlag detects whether --min-severity / --fail-on was passed
+// explicitly on the FlagSet, and early-validates the raw value when explicit so
+// the user sees flag-syntax errors before any config load. Returns (explicit,
+// ok); on parse failure prints to stderr and returns (_, false). Shared by
+// runAnalyse / runSummary / runReport so the detection + early-validate block
+// lives in one place.
+func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer) (bool, bool) {
+	explicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "min-severity" || f.Name == "fail-on" {
+			explicit = true
+		}
+	})
+	if explicit {
+		if _, err := finding.ParseFailThreshold(rawValue); err != nil {
+			fmt.Fprintln(stderr, err)
+			return explicit, false
+		}
+	}
+	return explicit, true
+}
+
 // parseAnalyseFlags parses and validates analyse flags, printing validation
 // errors to stderr in the same style as the legacy inline parser.
 func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, or html")
-	minSeverity := string(finding.SeverityMedium)
+	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
+	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
+	// returns (currently advisory, intentionally permissive after the 3-bucket
+	// migration). Help text shows this default; precedence in runAnalyse lets
+	// .gruff-go.yaml's minimumSeverity.analyse override it.
+	minSeverity := string(finding.DefaultFailThresholdFor("analyse"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
@@ -210,14 +264,14 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return flags, analyseFlagValues{}, false
 	}
-	failOn, err := finding.ParseSeverity(minSeverity)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
+	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
+	if !ok {
 		return flags, analyseFlagValues{}, false
 	}
 	values := analyseFlagValues{
 		format:               *format,
-		failOn:               failOn,
+		minSeverityRaw:       minSeverity,
+		minSeverityExplicit:  minSeverityExplicit,
 		configPath:           *configPath,
 		noConfig:             *noConfig,
 		baselinePath:         *baselinePath,
@@ -285,6 +339,8 @@ func writeAnalysisReport(writer io.Writer, format string, analysisReport analysi
 		return report.WriteGitHub(writer, analysisReport)
 	case "html":
 		return report.WriteHTML(writer, analysisReport, htmlOpts)
+	case "markdown", "md":
+		return report.WriteMarkdown(writer, analysisReport)
 	default:
 		return report.WriteText(writer, analysisReport)
 	}
@@ -304,7 +360,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
 		return 2
 	}
-	registry, _, err := configuredRegistry(*configPath, *noConfig)
+	registry, _, _, err := configuredRegistry(*configPath, *noConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
@@ -332,31 +388,35 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 }
 
 // configuredRegistry builds the rule registry honouring the loaded config file.
-func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, error) {
+// Also returns the loaded Config so callers can consult MinimumSeverity. When
+// no config file is on disk the returned Config is zero-valued; nil-map lookups
+// on cfg.MinimumSeverity[cmd] yield empty string, which is the "no value"
+// signal callers expect.
+func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, cfgpkg.Config, error) {
 	defaults := rule.Defaults()
 	root, err := os.Getwd()
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}
 	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}
 	if loaded.Path == "" {
-		return defaults, nil, nil
+		return defaults, nil, cfgpkg.Config{}, nil
 	}
 	cfg := loaded.Config
 	registry, err := rule.DefaultsConfigured(cfg.RuleOptions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}
-	return registry, cfg.IgnorePaths, nil
+	return registry, cfg.IgnorePaths, cfg, nil
 }
 
 // supportedAnalysisFormat reports whether format names a known analyse output.
 func supportedAnalysisFormat(format string) bool {
 	switch format {
-	case "text", "json", "summary-json", "sarif", "github", "html":
+	case "text", "json", "summary-json", "sarif", "github", "html", "markdown", "md":
 		return true
 	default:
 		return false

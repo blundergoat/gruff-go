@@ -12,8 +12,59 @@ import (
 	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
+	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
+
+// SummarySchemaVersion identifies the shared cross-port summary digest contract.
+// All five gruff-* ports emit the same `gruff.summary.v2` shape (7-column pillar
+// block sourced from BuildPillarSummaryRows); the bare prefix reflects that it
+// is the canonical schema rather than a per-port one. Distinct from the analysis
+// report schema so the summary digest can evolve independently.
+const SummarySchemaVersion = "gruff.summary.v2"
+
+// summaryPillarOrder enumerates every pillar surfaced in the summary digest. It
+// mirrors the spec's canonical pillar list and intentionally excludes the
+// design pillar, whose findings are score-neutral (see ADR-009 and
+// scoring.scoreNeutralFinding).
+var summaryPillarOrder = []finding.Pillar{
+	finding.PillarSize,
+	finding.PillarComplexity,
+	finding.PillarDocumentation,
+	finding.PillarSensitiveData,
+	finding.PillarSecurity,
+	finding.PillarTestQuality,
+	finding.PillarNaming,
+	finding.PillarMaintain,
+	finding.PillarDeadCode,
+	finding.PillarModernisation,
+}
+
+// PillarSummaryRow is a single per-pillar entry in the summary digest. It is
+// serialised into the gruff.summary.v2 JSON payload and rendered into the
+// canonical text Pillars block.
+type PillarSummaryRow struct {
+	// Pillar is the canonical pillar name (e.g. "documentation").
+	Pillar string `json:"pillar"`
+	// Grade is the letter grade derived from Score.
+	Grade string `json:"grade"`
+	// Score is the 0-100 numeric pillar score.
+	Score float64 `json:"score"`
+	// Applicable reports whether the pillar contributes to the composite score.
+	Applicable bool `json:"applicable"`
+	// Findings is the total finding count for this pillar.
+	Findings int `json:"findings"`
+	// Advisory is the count of advisory-severity findings.
+	Advisory int `json:"advisory"`
+	// Warning is the count of warning-severity findings.
+	Warning int `json:"warning"`
+	// Error is the count of error-severity findings.
+	Error int `json:"error"`
+	// Penalty is the raw unclamped score penalty accumulated for this pillar.
+	// It preserves the worst-pillar ranking signal when Score floors at zero
+	// (e.g. a pillar with 200 advisory findings has penalty=200, score=0).
+	Penalty float64 `json:"penalty"`
+}
 
 // SummaryOptions controls the compact summary rendering.
 type SummaryOptions struct {
@@ -58,7 +109,7 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if err := writeSeverityCounts(writer, report.Summary.CountsBySeverity); err != nil {
 		return err
 	}
-	if err := writePillarBreakdown(writer, score.PillarDetails); err != nil {
+	if err := writePillarsBlock(writer, BuildPillarSummaryRows(report)); err != nil {
 		return err
 	}
 	if err := writeTopRules(writer, computeTopRules(report, top)); err != nil {
@@ -72,6 +123,21 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
 	return err
+}
+
+// WriteSummaryV01JSON writes the gruff.summary.v2 digest payload used by the
+// `summary --format=json` command. The payload is intentionally smaller than
+// the analysis schema: callers that need the full per-finding report should
+// use `analyse --format=json` or `analyse --format=summary-json`.
+func WriteSummaryV01JSON(writer io.Writer, report analysis.Report) error {
+	payload := struct {
+		SchemaVersion string             `json:"schemaVersion"`
+		Pillars       []PillarSummaryRow `json:"pillars"`
+	}{
+		SchemaVersion: SummarySchemaVersion,
+		Pillars:       BuildPillarSummaryRows(report),
+	}
+	return WriteJSON(writer, payload)
 }
 
 // writeFreshStartHint gives first-run users a concrete baseline workflow when
@@ -115,7 +181,7 @@ func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
 	if _, err := fmt.Fprintln(writer, "severity:"); err != nil {
 		return err
 	}
-	for _, severity := range []string{"critical", "high", "medium", "low", "info"} {
+	for _, severity := range []string{"error", "warning", "advisory"} {
 		if _, err := fmt.Fprintf(writer, "  %-8s %d\n", severity, counts[severity]); err != nil {
 			return err
 		}
@@ -123,27 +189,111 @@ func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
 	return nil
 }
 
-// writePillarBreakdown emits each pillar's grade, score, and finding count sorted by activity.
-func writePillarBreakdown(writer io.Writer, details []scoring.PillarDetail) error {
-	if len(details) == 0 {
-		return nil
+// BuildPillarSummaryRows returns the canonical per-pillar rows used by the
+// summary digest in both text and JSON output. Every applicable pillar is
+// included (clean pillars surface as grade A with zero findings) so the rendered
+// block always covers the same row set across runs. Rows are sorted by findings
+// descending, with ties broken by pillar name ascending.
+func BuildPillarSummaryRows(report analysis.Report) []PillarSummaryRow {
+	details := map[string]scoring.PillarDetail{}
+	for _, detail := range report.Score.PillarDetails {
+		details[detail.Pillar] = detail
 	}
-	if _, err := fmt.Fprintln(writer, "pillars:"); err != nil {
+	rows := make([]PillarSummaryRow, 0, len(summaryPillarOrder))
+	for _, pillar := range summaryPillarOrder {
+		name := string(pillar)
+		row := PillarSummaryRow{
+			Pillar:     name,
+			Grade:      "A",
+			Score:      100.0,
+			Applicable: true,
+		}
+		if detail, ok := details[name]; ok {
+			row.Grade = summaryGrade(detail.Score)
+			row.Score = float64(detail.Score)
+			row.Findings = detail.Findings
+			row.Advisory = detail.Advisory
+			row.Warning = detail.Warning
+			row.Error = detail.Error
+			row.Penalty = detail.Penalty
+		}
+		rows = append(rows, row)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Findings != rows[j].Findings {
+			return rows[i].Findings > rows[j].Findings
+		}
+		return rows[i].Pillar < rows[j].Pillar
+	})
+	return rows
+}
+
+// writePillarsBlock emits the canonical Pillars block defined by the cross-port
+// summary harmonisation spec. Column widths follow the rust port's reference
+// implementation: each per-severity cell pads its numeric value to the maximum
+// digit width seen across findings/advisory/warning, with three literal spaces
+// between cells.
+func writePillarsBlock(writer io.Writer, rows []PillarSummaryRow) error {
+	if _, err := fmt.Fprintln(writer, "Pillars"); err != nil {
 		return err
 	}
-	sorted := append([]scoring.PillarDetail(nil), details...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Findings != sorted[j].Findings {
-			return sorted[i].Findings > sorted[j].Findings
+	if len(rows) == 0 {
+		_, err := fmt.Fprintln(writer, "  (none)")
+		return err
+	}
+	nameWidth := 0
+	countWidth := 1
+	for _, row := range rows {
+		if width := len(row.Pillar); width > nameWidth {
+			nameWidth = width
 		}
-		return sorted[i].Pillar < sorted[j].Pillar
-	})
-	for _, pillar := range sorted {
-		if _, err := fmt.Fprintf(writer, "  %-16s %s  score=%d  findings=%d\n", pillar.Pillar, gradeOrNA(pillar.Grade), pillar.Score, pillar.Findings); err != nil {
+		for _, value := range []int{row.Findings, row.Advisory, row.Warning} {
+			if width := summaryDigitWidth(value); width > countWidth {
+				countWidth = width
+			}
+		}
+	}
+	rowFormat := fmt.Sprintf(
+		"  %%-%ds %%s %%6.2f findings=%%-%dd   advisory=%%-%dd   warning=%%-%dd   error=%%d\n",
+		nameWidth, countWidth, countWidth, countWidth,
+	)
+	for _, row := range rows {
+		if _, err := fmt.Fprintf(writer, rowFormat, row.Pillar, row.Grade, row.Score, row.Findings, row.Advisory, row.Warning, row.Error); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// summaryDigitWidth returns the number of decimal digits needed to render value,
+// matching the rust port's digit_width helper (zero takes one column).
+func summaryDigitWidth(value int) int {
+	if value <= 0 {
+		return 1
+	}
+	width := 0
+	for value > 0 {
+		value /= 10
+		width++
+	}
+	return width
+}
+
+// summaryGrade mirrors the scoring package's unexported grade ladder so the
+// summary renderer can grade pillars that did not produce a PillarDetail entry.
+func summaryGrade(score int) string {
+	switch {
+	case score >= 90:
+		return "A"
+	case score >= 80:
+		return "B"
+	case score >= 70:
+		return "C"
+	case score >= 60:
+		return "D"
+	default:
+		return "F"
+	}
 }
 
 // writeTopRules emits the most-triggered rules in descending count order.

@@ -12,15 +12,15 @@
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.1.0` package line |
+| Release line | Published `0.2.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
 | Rule catalogue | 64 rules across 11 pillars; 64 enabled by default |
 | Primary config | `.gruff-go.yaml` |
-| Analysis schema | `gruff-go.analysis.v0.1` |
+| Analysis schema | `gruff-go.analysis.v0.2` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
-| Severity gate | `--min-severity` with `info`, `low`, `medium`, `high`, `critical` |
+| Severity gate | `--min-severity` with `advisory`, `warning`, `error` |
 | Dashboard | `127.0.0.1:8765` by default |
 
 ## Requirements
@@ -65,10 +65,10 @@ go tool gruff-go summary .
 go tool gruff-go analyse .
 
 # Raise the failure floor while exploring an existing codebase.
-go tool gruff-go analyse --min-severity critical .
+go tool gruff-go analyse --min-severity error .
 
 # Emit SARIF for code scanning.
-go tool gruff-go analyse --format sarif --min-severity critical . > gruff.sarif
+go tool gruff-go analyse --format sarif --min-severity error . > gruff.sarif
 
 # Generate a fresh-start baseline.
 go tool gruff-go analyse --generate-baseline gruff-baseline.json .
@@ -101,7 +101,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | Format | Use it for |
 | --- | --- |
 | `text` | Human terminal output. |
-| `json` | Full `gruff-go.analysis.v0.1` report. |
+| `json` | Full `gruff-go.analysis.v0.2` report. |
 | `summary-json` | Compact CI digest without the full finding list. |
 | `sarif` | SARIF 2.1.0 for code scanning. |
 | `github` | GitHub Actions workflow annotations. |
@@ -117,20 +117,20 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `1` | At least one finding met `--min-severity`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--min-severity` defaults to `medium`. Go uses `--min-severity` where the other gruff implementations use `--fail-on`.
+`--min-severity` defaults to `advisory` (every finding fails). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
 
 ## CI Usage
 
 Generic CI command:
 
 ```bash
-go tool gruff-go analyse --format github --min-severity medium .
+go tool gruff-go analyse --format github --min-severity warning .
 ```
 
 SARIF upload jobs can use:
 
 ```bash
-go tool gruff-go analyse --format sarif --min-severity critical . > gruff-go.sarif
+go tool gruff-go analyse --format sarif --min-severity error . > gruff-go.sarif
 ```
 
 For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](docs/ci-integration.md) for GitHub Actions and GitLab examples.
@@ -155,7 +155,7 @@ selection:
 rules:
   complexity.cyclomatic:
     threshold: 15
-    severity: high
+    severity: error
   naming.package-underscore:
     enabled: true
 ```

@@ -31,7 +31,11 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 	noBaseline := flags.Bool("no-baseline", false, "skip applying any baseline")
 	diff := flags.Bool("diff", false, "start dashboard in diff-only scan mode")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	failOn := flags.String("fail-on", string(finding.SeverityMedium), "minimum severity that fails a scan")
+	// Display default tracks the binary default so --help reads truthfully,
+	// but precedence detection (below) uses flags.Visit to decide whether to
+	// propagate the parsed value or leave opts.FailOn empty so defaultState
+	// can consult config.MinimumSeverity["dashboard"] per ADR-010.
+	failOn := flags.String("fail-on", string(finding.DefaultFailThresholdFor("dashboard")), "minimum severity that fails a scan; use none to disable the gate")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in the report")
 	editorLink := flags.String("report-editor-link", "none", "html file:line link mode: none, vscode, or phpstorm")
 	allowPublic := flags.Bool("allow-public", false, "allow binding to non-loopback hosts")
@@ -55,11 +59,22 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 		return 2
 	}
 
-	parsedFailOn, err := finding.ParseSeverity(*failOn)
+	// ADR-010 precedence: only propagate the parsed --fail-on value to
+	// opts.FailOn when the user actually set the flag. When unset, leave
+	// opts.FailOn empty so defaultState consults config first and then
+	// falls back to the binary default. Always parse to surface a flag-
+	// syntax error before the server starts.
+	parsedFailOn, err := finding.ParseFailThreshold(*failOn)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	failOnExplicit := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "fail-on" {
+			failOnExplicit = true
+		}
+	})
 
 	if interactive {
 		if err := maybeBootstrapDashboardConfig(*project, *configPath, *noConfig, stderr); err != nil {
@@ -80,7 +95,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 		SkipBaseline:      *noBaseline,
 		IncludeIgnored:    *includeIgnored,
 		DiffMode:          *diff,
-		FailOn:            string(parsedFailOn),
+		FailOn:            optsFailOnFromCLI(failOnExplicit, parsedFailOn),
 		ReportInteractive: *reportInteractive,
 		EditorLink:        *editorLink,
 		AllowPublic:       *allowPublic,
@@ -108,6 +123,17 @@ func maybeBootstrapDashboardConfig(projectRoot, configPath string, noConfig bool
 		root = cwd
 	}
 	return maybeBootstrapConfigInRoot(root, configPath, noConfig, promptWriter)
+}
+
+// optsFailOnFromCLI returns the parsed --fail-on value only when the user
+// explicitly set the flag. Returning empty for the implicit-default case lets
+// the dashboard server's defaultState consult config.MinimumSeverity["dashboard"]
+// before falling back to the binary default, per ADR-010 precedence.
+func optsFailOnFromCLI(explicit bool, parsed finding.FailThreshold) string {
+	if explicit {
+		return string(parsed)
+	}
+	return ""
 }
 
 // parseDashboardTimeout interprets the --scan-timeout flag value as a duration.
