@@ -1,5 +1,17 @@
 # Architecture
 
+## Mission
+
+gruff-go exists to make AI-generated code something a human can trust. Its primary deployment is a **coding-agent hook**: when an agent writes code, gruff is the gate that forces output a reviewer who did not write it can read, review, and sign off on. It optimises for three things:
+
+- **Legible enough to verify** — the reviewer can confirm the code does what was asked.
+- **Secure where the eye fails** — it catches the security classes human review reliably misses.
+- **Tested for real, not padded** — it forces high-signal tests and rejects low-signal test ceremony.
+
+The intent it encodes: *you are a coding agent, and a human who didn't write this code has to read, review, and trust it.* Coding agents routinely produce code that superficially works while misunderstanding the requirement, so gruff forces the agent to state intent, usage, contract, and failure behaviour in prose — which is why doc comments are required even on a private one-liner. The doc gives a reviewer something to check the implementation against; a mismatch between the doc comment and the code is a signal the change needs a deeper look.
+
+This mission is the tie-breaker for default, threshold, and rule decisions: judge each by whether it raises the odds a human can verify the agent's code *without* forcing low-signal ceremony. Size and complexity metrics are legibility backstops — pressure on their thresholds runs toward tighter, never looser. Honest limit: parser-only gruff can create the artifact a reviewer checks (a doc comment, an assertion) but cannot verify it is truthful; that judgement stays with the reviewer. This decision is recorded in [ADR-011](decisions/ADR-011-mission-ai-generated-code-verifiability.md).
+
 ## System Overview
 
 `gruff-go` is a Go CLI code-quality scanner plus GOAT Flow project memory and agent guardrails. `go.mod` declares module `github.com/blundergoat/gruff-go`; `.gruff-go.yaml` pins the repository's dogfood scanner config; `cmd/gruff-go` contains the executable entrypoint; `internal/` contains the parser-only analysis pipeline, the 64-rule registry, scoring, report rendering, and the local dashboard.

@@ -42,7 +42,7 @@
       "complex.go"
     ],
     "filteredFindings": 0,
-    "caveat": "diff mode is changed-line scoped and is not full-project proof for project-level rules"
+    "caveat": "diff mode is changed-region scoped and is not full-project proof for project-level rules"
   },
   "displayFilter": {
     "applied": false,

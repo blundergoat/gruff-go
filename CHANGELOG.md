@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add diff-aware changed-region analysis flags (`--changed-ranges`, `--since`, `--diff`, `--changed-scope`) with top-level JSON `suppressedCount`; `--diff-base` remains supported as the legacy base-ref spelling.
+- **Documentation** - README and [`.goat-flow/architecture.md`](.goat-flow/architecture.md) now state gruff's mission explicitly: a coding-agent guardrail that makes AI-generated code human-verifiable (legible, secure where review misses, honestly tested), not merely a generic code-quality scanner. `CLAUDE.md` and `AGENTS.md` carry the one-line mission as the tie-breaker for default/threshold/rule decisions, recorded as [ADR-011](.goat-flow/decisions/ADR-011-mission-ai-generated-code-verifiability.md). Also corrected `docs/README.md`, which still listed the removed five-level severity names as a Go extension.
 
 ## v0.2.0 - 2026-05-28
 

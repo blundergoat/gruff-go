@@ -86,8 +86,8 @@ func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrSt
 
 // commandUsages maps each subcommand to its concrete usage flag list.
 var commandUsages = map[string]string{
-	"analyse":    "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"analyze":    "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyse":    "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyze":    "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
 	"baseline":   "--out path [--config path|--no-config] [--include-ignored] [path ...]",
 	"completion": "[bash|zsh|fish]",
 	"init":       "[--force [--reset]]",

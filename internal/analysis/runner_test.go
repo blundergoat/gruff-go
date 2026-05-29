@@ -124,6 +124,71 @@ func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testi
 	}
 }
 
+func TestAnalyzeChangedRangesUseEnclosingFunction(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", `package main
+
+func stable() {
+	println("old")
+}
+
+func changed() {
+	println("new")
+}
+`)
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{functionDeclarationRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Analyze(Options{
+		Paths:         []string{"main.go"},
+		Registry:      registry,
+		FailOn:        finding.FailThresholdNone,
+		ChangedRanges: "8-8",
+		ChangedScope:  "symbol",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 1 || report.Findings[0].Symbol != "changed" {
+		t.Fatalf("findings = %#v, want only changed function", report.Findings)
+	}
+	if report.SuppressedCount == nil || *report.SuppressedCount != 1 {
+		t.Fatalf("suppressedCount = %#v, want 1", report.SuppressedCount)
+	}
+}
+
+func TestAnalyzeChangedScopeHunkExcludesSignatureFindings(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", `package main
+
+func changed() {
+	println("new")
+}
+`)
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{functionDeclarationRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Analyze(Options{
+		Paths:         []string{"main.go"},
+		Registry:      registry,
+		FailOn:        finding.FailThresholdNone,
+		ChangedRanges: "4-4",
+		ChangedScope:  "hunk",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 0 {
+		t.Fatalf("findings = %#v, want hunk-only signature finding filtered", report.Findings)
+	}
+}
+
 // findingRule is a test rule that always emits one finding per unit.
 type findingRule struct{}
 
@@ -146,6 +211,34 @@ func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Findi
 		File:     unit.File.Path,
 		Location: &finding.Location{Line: 1},
 	}}
+}
+
+type functionDeclarationRule struct{}
+
+func (functionDeclarationRule) Definition() rule.Definition {
+	return rule.Definition{
+		ID:             "test.function-declaration",
+		Title:          "Function declaration",
+		Pillar:         finding.PillarMaintain,
+		Severity:       finding.SeverityWarning,
+		Confidence:     finding.ConfidenceHigh,
+		DefaultEnabled: true,
+	}
+}
+
+func (functionDeclarationRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Finding {
+	findings := []finding.Finding{}
+	for _, fn := range unit.Functions {
+		findings = append(findings, finding.Finding{
+			RuleID:   "test.function-declaration",
+			Message:  "test finding",
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: fn.Line},
+			Symbol:   fn.Name,
+			Severity: finding.SeverityWarning,
+		}.WithFingerprint())
+	}
+	return findings
 }
 
 // writeFile writes contents to root/rel, creating parent directories as needed.
