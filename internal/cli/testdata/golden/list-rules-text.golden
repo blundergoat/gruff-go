@@ -50,7 +50,7 @@ sensitive-data.private-key	sensitive-data	error	parser	Embedded private key
 sensitive-data.secret-pattern	sensitive-data	error	parser	Secret-like literal
 sensitive-data.slack-token	sensitive-data	error	parser	Slack token literal
 sensitive-data.stripe-key	sensitive-data	error	parser	Stripe live key literal
-size.file-length	size	warning	parser	File length
+size.file-length	size	advisory	parser	File length
 size.function-length	size	warning	parser	Function length
 size.parameter-count	size	advisory	parser	Parameter count
 test-quality.empty-test	test-quality	advisory	parser	Empty test

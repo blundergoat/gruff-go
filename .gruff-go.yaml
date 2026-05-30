@@ -45,7 +45,7 @@ rules:
   complexity.cognitive:
     enabled: true
     severity: warning
-    threshold: 35
+    threshold: 25
 
   # Flags Go functions whose branch count exceeds the default cyclomatic threshold.
   complexity.cyclomatic:
@@ -150,12 +150,12 @@ rules:
 
   # Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go.
   modernisation.ioutil-deprecated:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags identifiers that spell configured Go initialisms with mixed casing.
   naming.acronym-case:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags generic range variables and accumulator names only when surrounding context is large enough that the name loses meaning.
@@ -168,7 +168,7 @@ rules:
 
   # Flags receiver accessor methods that use a Get prefix instead of a direct noun phrase.
   naming.get-prefix:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review.
@@ -199,17 +199,17 @@ rules:
 
   # Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry).
   naming.package-stutter:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags Go package names that use underscores instead of short lowercase words.
   naming.package-underscore:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags methods on the same type that use inconsistent receiver names or pointer/value forms.
   naming.receiver-consistency:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags archive extraction paths built from entry names without an obvious containment check.
@@ -330,7 +330,7 @@ rules:
   # Flags Go files that exceed the default line-count threshold.
   size.file-length:
     enabled: true
-    severity: warning
+    severity: advisory
     threshold: 500
 
   # Flags Go functions that exceed the default line-count threshold.

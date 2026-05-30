@@ -162,14 +162,24 @@ func (r CommentRubricRule) appliesToPath(path string) bool {
 // allowed to contribute summaries; ignoreTests still applies and the rule
 // never fires on a package whose only files are tests.
 func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit) []finding.Finding {
-	type packageState struct {
-		name       string
-		file       string
-		bestLines  int
-		hasInScope bool
-		hasNonTest bool
-	}
-	packages := map[string]*packageState{}
+	packages := r.collectPackageSummaryStates(units)
+	return r.packageSummaryFindings(packages)
+}
+
+// packageSummaryState records the best package-summary evidence found for one
+// package directory + package name.
+type packageSummaryState struct {
+	name       string
+	file       string
+	bestLines  int
+	hasInScope bool
+	hasNonTest bool
+}
+
+// collectPackageSummaryStates scans in-scope units for package comments and
+// stores the best summary evidence per package.
+func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit) map[string]*packageSummaryState {
+	packages := map[string]*packageSummaryState{}
 	for _, unit := range units {
 		if unit.AST == nil || unit.FileSet == nil {
 			continue
@@ -183,22 +193,32 @@ func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit)
 		key := path.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
 		state := packages[key]
 		if state == nil {
-			state = &packageState{name: unit.AST.Name.Name}
+			state = &packageSummaryState{name: unit.AST.Name.Name}
 			packages[key] = state
 		}
-		state.hasInScope = true
-		if !isGoTestFile(unit.File.Path) {
-			state.hasNonTest = true
-		}
-		stats := commentStats(unit.AST.Doc)
-		if stats.lines > state.bestLines {
-			state.bestLines = stats.lines
-		}
-		if state.file == "" || unit.File.Path < state.file {
-			state.file = unit.File.Path
-		}
+		updatePackageSummaryState(state, unit)
 	}
+	return packages
+}
 
+// updatePackageSummaryState folds one unit's package-comment evidence into state.
+func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit) {
+	state.hasInScope = true
+	if !isGoTestFile(unit.File.Path) {
+		state.hasNonTest = true
+	}
+	stats := commentStats(unit.AST.Doc)
+	if stats.lines > state.bestLines {
+		state.bestLines = stats.lines
+	}
+	if state.file == "" || unit.File.Path < state.file {
+		state.file = unit.File.Path
+	}
+}
+
+// packageSummaryFindings emits one finding for each package whose best in-scope
+// package summary falls below the configured line threshold.
+func (r CommentRubricRule) packageSummaryFindings(packages map[string]*packageSummaryState) []finding.Finding {
 	minLines := r.minPackageCommentLines()
 	findings := []finding.Finding{}
 	for _, state := range packages {

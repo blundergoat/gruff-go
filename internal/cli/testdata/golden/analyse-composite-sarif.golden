@@ -30,7 +30,7 @@
                   "metric"
                 ],
                 "thresholds": {
-                  "maxComplexity": 35
+                  "maxComplexity": 25
                 }
               },
               "defaultConfiguration": {
@@ -551,7 +551,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style"
                 ],
@@ -580,7 +580,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -681,7 +681,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -794,7 +794,10 @@
                     "Now",
                     "NoCopy",
                     "Notation",
-                    "Notebook"
+                    "Notebook",
+                    "NoConfig",
+                    "NoBaseline",
+                    "NoInteraction"
                   ],
                   "prefixes": [
                     "No",
@@ -828,7 +831,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -861,7 +864,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style"
                 ]
@@ -887,7 +890,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -1522,7 +1525,7 @@
               },
               "properties": {
                 "pillar": "size",
-                "defaultSeverity": "warning",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1531,7 +1534,7 @@
                 }
               },
               "defaultConfiguration": {
-                "level": "warning"
+                "level": "note"
               }
             },
             {

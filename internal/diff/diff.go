@@ -38,6 +38,12 @@ type FilterResult struct {
 // hunkPattern matches the unified-diff hunk header used to recover added line ranges.
 var hunkPattern = regexp.MustCompile(`@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@`)
 
+// patchParseState carries state while streaming a unified diff.
+type patchParseState struct {
+	currentFile string
+	newFile     bool
+}
+
 // FromGit runs `git diff` against base and returns the changed lines under paths.
 func FromGit(root string, base string, paths []string) (ChangedLines, error) {
 	if base == "" {
@@ -151,59 +157,62 @@ func Parse(base string, patch []byte) ChangedLines {
 		LinesByFile: map[string]map[int]struct{}{},
 		WholeFiles:  map[string]struct{}{},
 	}
-	var currentFile string
-	newFile := false
+	state := patchParseState{}
 	for _, raw := range bytes.Split(patch, []byte("\n")) {
-		line := string(raw)
-		if strings.HasPrefix(line, "diff --git ") {
-			currentFile = ""
-			newFile = false
-			continue
-		}
-		if strings.HasPrefix(line, "new file mode ") || line == "--- /dev/null" {
-			newFile = true
-			continue
-		}
-		if strings.HasPrefix(line, "+++ ") {
-			currentFile = parseNewFile(line)
-			if currentFile != "" {
-				if newFile {
-					result.WholeFiles[currentFile] = struct{}{}
-				} else if _, ok := result.LinesByFile[currentFile]; !ok {
-					result.LinesByFile[currentFile] = map[int]struct{}{}
-				}
-			}
-			continue
-		}
-		if currentFile == "" || !strings.HasPrefix(line, "@@ ") {
-			continue
-		}
-		if _, whole := result.WholeFiles[currentFile]; whole {
-			continue
-		}
-		matches := hunkPattern.FindStringSubmatch(line)
-		if len(matches) == 0 {
-			continue
-		}
-		start, _ := strconv.Atoi(matches[1])
-		count := 1
-		if matches[2] != "" {
-			count, _ = strconv.Atoi(matches[2])
-		}
-		for offset := 0; offset < count; offset++ {
-			result.LinesByFile[currentFile][start+offset] = struct{}{}
-		}
+		parsePatchLine(&result, &state, string(raw))
 	}
-	for file := range result.LinesByFile {
-		result.ChangedFiles = append(result.ChangedFiles, file)
-	}
-	for file := range result.WholeFiles {
-		if _, ok := result.LinesByFile[file]; !ok {
-			result.ChangedFiles = append(result.ChangedFiles, file)
-		}
-	}
-	slices.Sort(result.ChangedFiles)
+	result.refreshChangedFiles()
 	return result
+}
+
+// parsePatchLine updates result and state from one unified-diff line.
+func parsePatchLine(result *ChangedLines, state *patchParseState, line string) {
+	switch {
+	case strings.HasPrefix(line, "diff --git "):
+		state.currentFile = ""
+		state.newFile = false
+	case strings.HasPrefix(line, "new file mode ") || line == "--- /dev/null":
+		state.newFile = true
+	case strings.HasPrefix(line, "+++ "):
+		state.currentFile = parseNewFile(line)
+		markParsedFile(result, state.currentFile, state.newFile)
+	case state.currentFile != "" && strings.HasPrefix(line, "@@ "):
+		addHunkLines(result, state.currentFile, line)
+	}
+}
+
+// markParsedFile records whether a parsed destination file should be tracked by
+// line hunks or treated as wholly changed.
+func markParsedFile(result *ChangedLines, file string, newFile bool) {
+	if file == "" {
+		return
+	}
+	if newFile {
+		result.WholeFiles[file] = struct{}{}
+		return
+	}
+	if _, ok := result.LinesByFile[file]; !ok {
+		result.LinesByFile[file] = map[int]struct{}{}
+	}
+}
+
+// addHunkLines records the added-side line range from a unified-diff hunk.
+func addHunkLines(result *ChangedLines, file string, line string) {
+	if _, whole := result.WholeFiles[file]; whole {
+		return
+	}
+	matches := hunkPattern.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return
+	}
+	start, _ := strconv.Atoi(matches[1])
+	count := 1
+	if matches[2] != "" {
+		count, _ = strconv.Atoi(matches[2])
+	}
+	for offset := 0; offset < count; offset++ {
+		result.LinesByFile[file][start+offset] = struct{}{}
+	}
 }
 
 // Filter keeps findings whose file and line ranges overlap the changed set.

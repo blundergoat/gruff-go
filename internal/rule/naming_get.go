@@ -31,7 +31,7 @@ func (r GetPrefixRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"go-style", "naming"},
 		Options:        map[string]any{"excludePaths": []string{}, "excludeNames": []string{}},
 		Remediation:    "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit.",

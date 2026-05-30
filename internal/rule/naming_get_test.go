@@ -84,10 +84,10 @@ func GetMany(ctx context.Context) (*Logger, *Logger, error) { return nil, nil, n
 	}
 }
 
-// TestGetPrefixIsDefaultEnabled confirms the rule is enabled by default with parser capability.
-func TestGetPrefixIsDefaultEnabled(t *testing.T) {
-	if !(GetPrefixRule{}).Definition().DefaultEnabled {
-		t.Error("naming.get-prefix must be default-enabled")
+// TestGetPrefixIsOptIn confirms the convention-only rule is opt-in with parser capability.
+func TestGetPrefixIsOptIn(t *testing.T) {
+	if (GetPrefixRule{}).Definition().DefaultEnabled {
+		t.Error("naming.get-prefix must be opt-in")
 	}
 	if (GetPrefixRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.get-prefix must be parser-capability")

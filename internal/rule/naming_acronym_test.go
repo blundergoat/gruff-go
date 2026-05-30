@@ -113,10 +113,10 @@ type HttpClient struct{}
 	}
 }
 
-// TestAcronymCaseIsDefaultEnabled asserts the rule is on by default and tagged as parser-capability.
-func TestAcronymCaseIsDefaultEnabled(t *testing.T) {
-	if !(AcronymCaseRule{}).Definition().DefaultEnabled {
-		t.Error("naming.acronym-case must be default-enabled")
+// TestAcronymCaseIsOptIn asserts the convention-only rule is opt-in and tagged as parser-capability.
+func TestAcronymCaseIsOptIn(t *testing.T) {
+	if (AcronymCaseRule{}).Definition().DefaultEnabled {
+		t.Error("naming.acronym-case must be opt-in")
 	}
 	if (AcronymCaseRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.acronym-case must be parser-capability")

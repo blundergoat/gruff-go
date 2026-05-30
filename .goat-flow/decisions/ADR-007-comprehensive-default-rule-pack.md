@@ -1,7 +1,8 @@
 # ADR-007: Comprehensive Default-Enabled Rule Pack
 
-**Status:** Implemented
+**Status:** Implemented; narrowed by ADR-016
 **Date:** 2026-05-18
+**Updated:** 2026-05-31 - The all-default-enabled stance is narrowed by [ADR-016](ADR-016-default-pack-retune-to-verifiability-mission.md).
 **Author(s):** Codex
 **Ticket/Context:** `.goat-flow/tasks/0.1`
 **Supersedes:** [ADR-002](ADR-002-low-noise-default-rule-pack.md).
@@ -24,13 +25,15 @@ Two thresholds also drifted from common Go-tool defaults:
 
 ## Decision
 
-Flip every shipped rule to `defaultEnabled: true`. Adopters get the full default rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override. At decision time the catalogue shipped 30 rules (`list-rules --format json` is the source of truth); the number grows as new rule families land.
+At decision time, flip every shipped rule to `defaultEnabled: true`. Adopters get the full default rule catalogue on first run; disabling a rule is a one-line `rules.<id>.enabled: false` override. At decision time the catalogue shipped 30 rules (`list-rules --format json` is the source of truth); the number grows as new rule families land. ADR-016 later narrows the current policy to allow opt-in convention rules.
 
 2026-05-23 update: the policy still held after the security and sensitive-data expansions. The live registry had 41 rules, with 40 default-enabled and `docs.config-field-comment` remaining the single deliberate opt-in carve-out.
 
 2026-05-24 update: `docs.config-field-comment` now follows the `docs.comment-rubric` path-scoped pattern. It is default-enabled in registry metadata but is a no-op until `includePaths` is configured, preserving first-run low noise without carrying a default-disabled exception.
 
-2026-05-24 update: the registry now has 64 rules across 11 pillars, all default-enabled. The catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
+2026-05-24 update: the registry had 64 rules across 11 pillars, all default-enabled. The catch-up rules stayed parser-only, used low severity except provider token detectors, and kept dogfood grade A without broad config suppressions.
+
+2026-05-31 update: ADR-016 retunes the current default pack to 63 rules, with 57 default-enabled rules and 6 opt-in convention-only naming/modernisation rules.
 
 Two threshold adjustments toward industry-mainstream values:
 

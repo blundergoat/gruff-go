@@ -1,6 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **63 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` ships **63 rules** across **11 pillars**. **57 rules are enabled by default** and 6 convention-only rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+
+Opt-in rules: `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -14,7 +16,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
-| [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
+| [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 25` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
@@ -66,9 +68,9 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
 | [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
-| [`size.file-length`](#sizefile-length) | size | warning | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
+| [`size.file-length`](#sizefile-length) | size | advisory | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
-| [`size.parameter-count`](#sizeparameter-count) | size | warning | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
+| [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | warning | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
@@ -78,7 +80,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | advisory | parser | - | `time.Sleep` calls in tests. |
 | [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | advisory | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
-Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in warning severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-warning severity overrides in config apply to test files too.
+Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Warning-severity size findings in `_test.go` files still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Advisory defaults such as `size.file-length` are already softened, and non-warning severity overrides in config apply to test files too.
 
 ## Severity tiers
 
@@ -99,7 +101,7 @@ The `--min-severity` flag (default `advisory`) sets the threshold at which findi
 - **Pillar:** complexity
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxComplexity` (default `35`)
+- **Threshold:** `maxComplexity` (default `25`)
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `metric`
@@ -208,7 +210,7 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 - **Pillar:** documentation
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `minPackageCommentLines` (default `2`)
+- **Threshold:** `minPackageCommentLines` (default `1`)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `comments`, `documentation`, `rubric`
@@ -391,7 +393,7 @@ Flags direct `panic` calls with literal message evidence in reusable production 
 
 - **Pillar:** modernisation
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `go-style`
@@ -406,7 +408,7 @@ Each finding's metadata carries the deprecated API and replacement API.
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -467,7 +469,7 @@ rules:
 
 - **Pillar:** modernisation
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -546,10 +548,10 @@ rules:
 - **Tags:** `go-style`, `naming`
 - **Options:**
   - `prefixes []string` - default `[No, Not, Disable, Disallow, Without, Suppress]`
-  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook]` (English words that begin with a prefix but are not negations)
+  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook, NoConfig, NoBaseline, NoInteraction]` (English words and CLI/config flag vocabulary that begin with a prefix but are not negations)
   - `scope string` - default `"exported"`; alternatives `"all"` and `"locals"`
 
-Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if state.Baseline != "" && state.NoBaseline != "1"`) and obscure the actual intent.
+Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if !state.NoCache`) and obscure the actual intent. Public CLI/config vocabulary that mirrors flags such as `--no-config`, `--no-baseline`, and `--no-interaction` is accepted by default.
 
 Type-aware: only flags identifiers whose syntactic type is `bool`, so `NoOp func()` and `Notify chan struct{}` are correctly ignored. The default `scope: exported` checks struct fields and exported declarations; switch to `"locals"` to additionally flag local `var` declarations inside function bodies, or `"all"` for both.
 
@@ -566,13 +568,13 @@ rules:
       scope: "locals"
 ```
 
-**Remediation.** Rename to the positive form: `NoConfig` → `SkipConfig` if the boolean still means "skip", or `EnableConfig` with inverted truth values if you want callers to read positive logic. CLI flag names like `--no-config` can stay as the public surface; only rename the internal Go field.
+**Remediation.** Rename to the positive form: `NoCache` → `SkipCache` if the boolean still means "skip", or `EnableCache` with inverted truth values if you want callers to read positive logic. CLI/config flag names like `--no-config` can stay as the public surface.
 
 ### `naming.package-stutter`
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -598,7 +600,7 @@ rules:
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `go-style`
@@ -611,7 +613,7 @@ Flags Go package names that use underscores instead of short lowercase words (th
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -952,13 +954,13 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 ### `size.file-length`
 
 - **Pillar:** size
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Threshold:** `maxLines` (default `500`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
+Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. Raw file length is advisory by default; `design.hotspot-file` and `design.god-function` provide stronger signal when size combines with other findings.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 
@@ -980,9 +982,9 @@ Flags Go functions that exceed the configured code-line threshold. Blank lines, 
 ### `size.parameter-count`
 
 - **Pillar:** size
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Threshold:** `maxParameters` (default `5`)
+- **Threshold:** `maxParameters` (default `8`)
 - **Confidence:** high
 - **Capability:** parser
 

@@ -10,7 +10,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// TestSizeRulesCalibrateTestFiles ensures size findings on _test.go files get softened severity.
+// TestSizeRulesCalibrateTestFiles ensures warning-size findings on _test.go
+// files get softened while already-advisory defaults keep their confidence.
 func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long_test.go", Type: source.FileTypeGo},
@@ -31,8 +32,22 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	for _, item := range findings {
 		byRule[item.RuleID] = item
 	}
-	for _, ruleID := range []string{"size.file-length", "size.function-length"} {
-		assertCalibratedTestSizeFinding(t, ruleID, byRule[ruleID])
+	assertAdvisoryTestSizeFinding(t, "size.file-length", byRule["size.file-length"])
+	assertCalibratedTestSizeFinding(t, "size.function-length", byRule["size.function-length"])
+}
+
+// assertAdvisoryTestSizeFinding asserts a size rule already advisory by
+// default keeps high-confidence metadata on test files.
+func assertAdvisoryTestSizeFinding(t *testing.T, ruleID string, item finding.Finding) {
+	t.Helper()
+	if item.RuleID == "" {
+		t.Fatalf("missing %s finding", ruleID)
+	}
+	if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceHigh {
+		t.Fatalf("%s severity/confidence = %s/%s, want advisory/high", ruleID, item.Severity, item.Confidence)
+	}
+	if item.Metadata["testFile"] != true {
+		t.Fatalf("%s missing testFile metadata: %#v", ruleID, item.Metadata)
 	}
 }
 

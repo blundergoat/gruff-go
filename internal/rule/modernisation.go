@@ -32,7 +32,7 @@ func (IoutilDeprecatedRule) Definition() Definition {
 		Pillar:         finding.PillarModernisation,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Options:        map[string]any{"minimumGoVersion": "1.16"},
 		Tags:           []string{"go-style"},
 		Remediation:    "Replace io/ioutil calls with the matching io or os package API.",

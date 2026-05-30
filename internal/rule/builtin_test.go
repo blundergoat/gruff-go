@@ -31,9 +31,10 @@ func TestDefaultsListRules(t *testing.T) {
 			t.Fatalf("rules = %#v, want %#v", got, want)
 		}
 	}
+	defaultDisabled := defaultDisabledRuleIDs()
 	for _, id := range want {
-		if !enabled[id] {
-			t.Fatalf("rule %s should be default enabled", id)
+		if enabled[id] == defaultDisabled[id] {
+			t.Fatalf("rule %s defaultEnabled = %v, want %v", id, enabled[id], !defaultDisabled[id])
 		}
 	}
 }
@@ -104,6 +105,19 @@ func defaultRuleIDs() []string {
 		"test-quality.skipped-test",
 		"test-quality.sleep-in-test",
 		"test-quality.tempdir-misuse",
+	}
+}
+
+// defaultDisabledRuleIDs returns rules that ship opt-in because they enforce
+// house-style or modernisation conventions rather than review-critical signal.
+func defaultDisabledRuleIDs() map[string]bool {
+	return map[string]bool{
+		"modernisation.ioutil-deprecated": true,
+		"naming.acronym-case":             true,
+		"naming.get-prefix":               true,
+		"naming.package-stutter":          true,
+		"naming.package-underscore":       true,
+		"naming.receiver-consistency":     true,
 	}
 }
 

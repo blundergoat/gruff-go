@@ -114,7 +114,7 @@ A score-neutral `design.*` finding derived from already-emitted base findings. C
 
 ### Default-Enabled Rule
 
-Built-in default state before config is applied. Every shipped rule is enabled in registry metadata; path-scoped rules such as `docs.comment-rubric` and `docs.config-field-comment` may still be no-ops until `includePaths` is configured, which is why `list-rules --no-config` matters.
+Built-in default state before config is applied. Most shipped rules are enabled in registry metadata; opt-in rules start disabled until `rules.<id>.enabled: true`, and path-scoped rules such as `docs.comment-rubric` and `docs.config-field-comment` may still be no-ops until `includePaths` is configured. Use `list-rules --no-config` to inspect the built-in state.
 
 ### Gitignored Discovery Skip
 

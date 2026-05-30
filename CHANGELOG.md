@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- **Default pack retuned to the verifiability mission** - six convention-only rules are now opt-in instead of default-enabled: `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`. `complexity.cognitive` tightens from `maxComplexity: 35` to `25`; the three dogfood outliers were refactored rather than hidden behind a project override. `size.file-length` is now `advisory` by default, letting `design.hotspot-file` / `design.god-function` carry stronger priority when file size combines with other signals. `naming.negated-boolean` now accepts CLI/config flag vocabulary such as `NoConfig`, `NoBaseline`, and `NoInteraction`. The catalogue remains 63 rules; 57 are default-enabled and 6 are opt-in. Recorded as [ADR-016](.goat-flow/decisions/ADR-016-default-pack-retune-to-verifiability-mission.md).
+
 ## v1.0.0 - 2026-05-30
 
 First stable release. 1.0.0 codifies gruff's mission - a coding-agent guardrail that makes AI-generated code a human can verify, trust, and sign off on (legible enough to review, secure where the eye fails, honestly tested rather than padded with low-signal ceremony) - and aligns the default rule pack and the docs to it. From 1.0.0 the CLI flag surface, the three-severity model, and the `gruff-go.*` schemas are the stable public contract; the one breaking change below is the last pre-1.0-style rule-pack correction, shipped in this release.

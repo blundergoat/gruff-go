@@ -9,19 +9,21 @@ func TestNegatedBooleanFlagsExportedBoolFields(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
 type Options struct {
-	NoConfig   bool
-	NoBaseline bool
-	SkipCache  bool
-	Verbose    bool
-	NoOp       func()
-	Notify     chan struct{}
-	NoCache    string
+	NoConfig      bool
+	NoBaseline    bool
+	DisableCache  bool
+	WithoutChecks bool
+	SkipCache     bool
+	Verbose       bool
+	NoOp          func()
+	Notify        chan struct{}
+	NoCache       string
 }
 `)
 	findings := NegatedBooleanRule{}.AnalyzeUnit(unit, Context{})
 	got := findingSymbols(findings)
-	if len(got) != 2 || !got["NoConfig"] || !got["NoBaseline"] {
-		t.Fatalf("findings = %#v, want NoConfig and NoBaseline", findings)
+	if len(got) != 2 || !got["DisableCache"] || !got["WithoutChecks"] {
+		t.Fatalf("findings = %#v, want DisableCache and WithoutChecks", findings)
 	}
 }
 
@@ -45,14 +47,14 @@ func Enabled() bool { return true }
 func TestNegatedBooleanFlagsBoolParameters(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
-func Configure(NoConfig bool, verbose bool, NoOp func()) {}
+func Configure(NoConfig bool, NoCache bool, verbose bool, NoOp func()) {}
 `)
 	findings := NegatedBooleanRule{
 		Scope: "all",
 	}.AnalyzeUnit(unit, Context{})
 	got := findingSymbols(findings)
-	if len(got) != 1 || !got["NoConfig"] {
-		t.Fatalf("findings = %#v, want NoConfig", findings)
+	if len(got) != 1 || !got["NoCache"] {
+		t.Fatalf("findings = %#v, want NoCache", findings)
 	}
 }
 
@@ -61,8 +63,8 @@ func TestNegatedBooleanRespectsAllowList(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
 type Sample struct {
-	NoOp     bool
-	NoConfig bool
+	NoOp    bool
+	NoCache bool
 }
 `)
 	findings := NegatedBooleanRule{}.AnalyzeUnit(unit, Context{})
@@ -70,8 +72,24 @@ type Sample struct {
 	if got["NoOp"] {
 		t.Fatalf("NoOp should be on default allow list, got %#v", findings)
 	}
-	if !got["NoConfig"] {
-		t.Fatalf("NoConfig should still be flagged, got %#v", findings)
+	if !got["NoCache"] {
+		t.Fatalf("NoCache should still be flagged, got %#v", findings)
+	}
+}
+
+// TestNegatedBooleanAllowsCLIAndConfigVocabulary confirms public flag-style
+// names such as --no-config and --no-baseline do not trip the default rule.
+func TestNegatedBooleanAllowsCLIAndConfigVocabulary(t *testing.T) {
+	unit := parseOne(t, "pkg/file.go", `package pkg
+
+type Options struct {
+	NoConfig      bool
+	NoBaseline    bool
+	NoInteraction bool
+}
+`)
+	if got := (NegatedBooleanRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("CLI/config no-* vocabulary should be allowed, got %#v", got)
 	}
 }
 

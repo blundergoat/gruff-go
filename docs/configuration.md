@@ -145,13 +145,13 @@ The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--
 
 Per-rule overrides. Every field is optional:
 
-- `enabled` - toggle a rule on or off. All built-in rules are enabled by default; set `false` to disable a rule that does not fit the project.
+- `enabled` - toggle a rule on or off. Most built-in rules are enabled by default; opt-in rules start disabled and can be enabled with `true`.
 - `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
 - `thresholds` - for rules with multiple thresholds, name them explicitly.
 - `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.2.0 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
 - `options` - opaque per-rule map for rules with bespoke options.
 
-Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-warning configured `severity` applies to test files too and disables that default downranking for the overridden rule.
+Default size rules have one built-in calibration: when a size rule uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. Advisory defaults such as `size.file-length` are already softened, and a non-warning configured `severity` applies to test files too and disables warning downranking for the overridden rule.
 
 Examples:
 
