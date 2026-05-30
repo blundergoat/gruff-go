@@ -49,6 +49,8 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
+// TestAnalyseChangedRangesFailOnNoneExitsZero checks that a changed-ranges scan
+// with --fail-on none exits 0 and still reports suppressedCount in the JSON.
 func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -67,6 +69,8 @@ func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	}
 }
 
+// TestAnalyseHelpDocumentsChangedRegionFlags checks that `help analyse` documents
+// every changed-region flag so the feature stays discoverable.
 func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := Main([]string{"help", "analyse"}, &out, &errOut); code != 0 {

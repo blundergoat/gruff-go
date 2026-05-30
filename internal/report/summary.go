@@ -118,10 +118,25 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if err := writeTopOffenders(writer, score.TopOffender, top); err != nil {
 		return err
 	}
+	if err := writeSummaryBaseline(writer, report.Baseline); err != nil {
+		return err
+	}
 	if err := writeFreshStartHint(writer, report); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
+	return err
+}
+
+// writeSummaryBaseline prints the three-state baseline counts when a baseline was
+// applied. Counts only (no detail lists) - the summary digest stays compact, and
+// runs without a baseline emit nothing so existing summaries are unchanged.
+func writeSummaryBaseline(writer io.Writer, summary analysis.BaselineSummary) error {
+	if !summary.Applied {
+		return nil
+	}
+	_, err := fmt.Fprintf(writer, "baseline: %d new, %d unchanged, %d resolved\n",
+		summary.NewFindings, summary.UnchangedFindings, summary.ResolvedFindings)
 	return err
 }
 

@@ -52,6 +52,8 @@ func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	}
 }
 
+// TestParseMarksNewFilesWholeFileChanged checks that a new-file diff marks the
+// entire file changed, so a finding on any line of it is retained.
 func TestParseMarksNewFilesWholeFileChanged(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/new.go b/new.go
 new file mode 100644
@@ -68,6 +70,8 @@ new file mode 100644
 	}
 }
 
+// TestExplicitRangesApplyToFiles checks that explicit ranges are applied per file:
+// a line inside a range counts as changed and one outside does not.
 func TestExplicitRangesApplyToFiles(t *testing.T) {
 	changed, err := ExplicitRanges("explicit", "3-3,8-10", []string{"a.go"})
 	if err != nil {
@@ -101,6 +105,8 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	}
 }
 
+// TestFromModeWorkingTreeIncludesUntrackedWholeFiles checks that working-tree mode
+// counts an untracked file as wholly changed, not just edits to tracked files.
 func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-q")

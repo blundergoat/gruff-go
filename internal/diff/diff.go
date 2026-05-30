@@ -286,6 +286,10 @@ func parseNewFile(line string) string {
 	return path
 }
 
+// gitDiff runs git with the prepared diff args in root (scoped to paths, or the
+// whole tree when none are given) and parses stdout into ChangedLines; a git
+// failure is surfaced with its stderr so the caller can report why the diff could
+// not be computed.
 func gitDiff(root string, base string, args []string, paths []string) (ChangedLines, error) {
 	if len(paths) == 0 {
 		args = append(args, ".")
@@ -305,6 +309,9 @@ func gitDiff(root string, base string, args []string, paths []string) (ChangedLi
 	return Parse(base, output), nil
 }
 
+// untrackedFiles lists untracked, non-ignored files (git ls-files --others
+// --exclude-standard) so working-tree diff mode can treat brand-new files as
+// wholly changed rather than missing them.
 func untrackedFiles(root string, paths []string) ([]string, error) {
 	args := []string{"ls-files", "--others", "--exclude-standard", "--"}
 	if len(paths) == 0 {
@@ -331,6 +338,9 @@ func untrackedFiles(root string, paths []string) ([]string, error) {
 	return files, nil
 }
 
+// parseRangeSet parses a `--changed-ranges` string like "3-3,8-10" into the set of
+// 1-based line numbers it covers, rejecting malformed or empty input so an invalid
+// range fails loudly instead of silently scanning nothing.
 func parseRangeSet(raw string) (map[int]struct{}, error) {
 	out := map[int]struct{}{}
 	for _, part := range strings.Split(raw, ",") {
@@ -363,6 +373,8 @@ func parseRangeSet(raw string) (map[int]struct{}, error) {
 	return out, nil
 }
 
+// copyLineSet returns an independent copy of a line set so a caller can store or
+// mutate it without aliasing the source map.
 func copyLineSet(lines map[int]struct{}) map[int]struct{} {
 	out := map[int]struct{}{}
 	for line := range lines {
@@ -371,6 +383,9 @@ func copyLineSet(lines map[int]struct{}) map[int]struct{} {
 	return out
 }
 
+// refreshChangedFiles rebuilds the ChangedFiles list from the union of the
+// per-line and whole-file maps, deduplicating, so ChangedFiles stays consistent
+// after the underlying line maps are mutated.
 func (changed *ChangedLines) refreshChangedFiles() {
 	seen := map[string]struct{}{}
 	changed.ChangedFiles = changed.ChangedFiles[:0]

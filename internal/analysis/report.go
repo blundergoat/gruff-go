@@ -107,7 +107,11 @@ type Summary struct {
 	TypeLoadingEnabled bool `json:"typeLoadingEnabled"`
 }
 
-// BaselineSummary records how a baseline affected findings.
+// BaselineSummary records how a baseline affected findings, classified into the
+// three states from ADR-012. The count fields are always emitted (additive);
+// the Unchanged/Resolved detail arrays render only when Show is set (the
+// --baseline-show flag), so default JSON stays compact and text/HTML stay
+// byte-identical to pre-M24 output.
 type BaselineSummary struct {
 	// Applied is true when a baseline file was successfully loaded and used.
 	Applied bool `json:"applied"`
@@ -115,10 +119,33 @@ type BaselineSummary struct {
 	Path string `json:"path,omitempty"`
 	// Entries is the total number of suppression entries declared in the baseline file.
 	Entries int `json:"entries"`
-	// SuppressedFindings is the count of findings the baseline hid this run.
+	// SuppressedFindings is the count of findings the baseline hid this run (== UnchangedFindings).
 	SuppressedFindings int `json:"suppressedFindings"`
-	// StaleEntries is the count of baseline entries that matched no current finding.
+	// StaleEntries is the count of baseline entries that matched no current finding (== ResolvedFindings).
 	StaleEntries int `json:"staleEntries"`
+	// NewFindings counts current findings absent from the baseline (the gated set M26 fails on).
+	NewFindings int `json:"newFindings"`
+	// UnchangedFindings counts current findings the baseline matched and suppressed.
+	UnchangedFindings int `json:"unchangedFindings"`
+	// ResolvedFindings counts baseline entries that no current finding matched (fixed since the baseline).
+	ResolvedFindings int `json:"resolvedFindings"`
+	// Unchanged lists the suppressed findings; populated and rendered only under --baseline-show.
+	Unchanged []finding.Finding `json:"unchanged,omitempty"`
+	// Resolved lists the resolved baseline entries; populated and rendered only under --baseline-show.
+	Resolved []BaselineEntry `json:"resolved,omitempty"`
+	// Show is the --baseline-show directive; it gates rendering of the detail arrays and is never serialised.
+	Show bool `json:"-"`
+}
+
+// BaselineEntry is a report-shaped resolved baseline entry: a finding identity
+// (rule, file, fingerprint) with no live location, fixed since the baseline.
+type BaselineEntry struct {
+	// RuleID is the rule whose finding was resolved.
+	RuleID string `json:"ruleId"`
+	// File is the repo-relative path the resolved finding targeted.
+	File string `json:"file"`
+	// Fingerprint is the stable identity hash of the resolved finding.
+	Fingerprint string `json:"fingerprint"`
 }
 
 // DiffSummary records changed-line filtering applied to findings.
@@ -169,6 +196,11 @@ type SkippedPath struct {
 	Path string `json:"path"`
 	// Reason is the human-readable explanation (gitignore, vendored directory, etc.).
 	Reason string `json:"reason"`
+	// Source classifies the deciding ignore layer: config | gitignore | default | generated.
+	// Additive (omitempty) so existing {path,reason} JSON/SARIF consumers keep working.
+	Source string `json:"source,omitempty"`
+	// Pattern is the exact config paths.ignore glob that matched; set only when Source is config.
+	Pattern string `json:"pattern,omitempty"`
 }
 
 // ReportInput contains inputs needed to assemble a Report.
@@ -218,7 +250,7 @@ func NewReport(input ReportInput) Report {
 		SchemaVersion: SchemaVersion,
 		Tool: Tool{
 			Name:    "gruff-go",
-			Version: "0.2.0",
+			Version: "1.0.0",
 		},
 		Run: RunMetadata{
 			WorkingDirectory: input.Root,

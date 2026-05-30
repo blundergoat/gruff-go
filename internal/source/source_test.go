@@ -401,3 +401,88 @@ func contains(values []string, value string) bool {
 	}
 	return false
 }
+
+// TestCheckIgnoreSharesEngineWithDiscover proves check-ignore and discovery use
+// one ignore engine: for the same tree and options, CheckIgnore's verdict
+// matches whether Discover excluded the path, and a config match reports the
+// exact glob.
+func TestCheckIgnoreSharesEngineWithDiscover(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n")
+	writeFile(t, root, "ignored/bad.go", "package ignored\n")
+
+	options := Options{Root: root, IgnorePatterns: []string{"ignored/**"}}
+
+	// Discover side: the ignored subtree is pruned at the directory level (the
+	// walker hits the `ignored` dir first and SkipDirs it), so the skip entry is
+	// the directory, carrying source+pattern.
+	result, err := Discover(Options{Root: root, Paths: []string{"."}, IgnorePatterns: options.IgnorePatterns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(paths(result.Files), "ignored/bad.go") {
+		t.Fatalf("discover scanned an ignored file: %#v", result.Files)
+	}
+	var discovered SkippedPath
+	for _, item := range result.Skipped {
+		if item.Path == "ignored" {
+			discovered = item
+		}
+	}
+	if discovered.Source != OriginConfig || discovered.Pattern != "ignored/**" {
+		t.Fatalf("discover skip = %#v, want ignored dir source=config pattern=ignored/**", discovered)
+	}
+
+	// check-ignore side: the same engine resolves the file inside that subtree to
+	// the same verdict and pattern.
+	decision := CheckIgnore(root, "ignored/bad.go", false, options)
+	if !decision.Ignored || decision.Source != OriginConfig || decision.Pattern != "ignored/**" {
+		t.Fatalf("CheckIgnore = %#v, want ignored config ignored/**", decision)
+	}
+	if clean := CheckIgnore(root, "main.go", false, options); clean.Ignored {
+		t.Fatalf("CheckIgnore(main.go) = %#v, want not ignored", clean)
+	}
+}
+
+// TestCheckIgnoreIncludeIgnoredStillHonorsConfig proves --include-ignored opts
+// into git/default ignores only: a config paths.ignore match is still reported
+// as ignored, while a gitignore-only match is released.
+func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "gitignored.go\n")
+	writeFile(t, root, "gitignored.go", "package g\n")
+	writeFile(t, root, "ignored/bad.go", "package ignored\n")
+
+	options := Options{Root: root, IgnorePatterns: []string{"ignored/**"}, IncludeIgnored: true}
+
+	config := CheckIgnore(root, "ignored/bad.go", false, options)
+	if !config.Ignored || config.Source != OriginConfig {
+		t.Fatalf("config ignore under --include-ignored = %#v, want still ignored (source=config)", config)
+	}
+	git := CheckIgnore(root, "gitignored.go", false, options)
+	if git.Ignored {
+		t.Fatalf("gitignore match under --include-ignored = %#v, want released", git)
+	}
+}
+
+// TestCheckIgnoreReportsGitignoreAndDefaultSources confirms the non-config
+// sources surface their classification without a pattern (pattern is config-only).
+// The default case uses an always-ignored metadata directory (.github) rather
+// than a fallback dependency dir, because the presence of a .gitignore here would
+// (by design) hand the tree to the project and disable the vendor/node_modules
+// fallback - .github is unconditionally ignored regardless.
+func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "secret.go\n")
+	writeFile(t, root, "secret.go", "package s\n")
+
+	options := Options{Root: root}
+	git := CheckIgnore(root, "secret.go", false, options)
+	if !git.Ignored || git.Source != OriginGitignore || git.Pattern != "" {
+		t.Fatalf("gitignore decision = %#v, want ignored source=gitignore no pattern", git)
+	}
+	dir := CheckIgnore(root, ".github", true, options)
+	if !dir.Ignored || dir.Source != OriginDefault {
+		t.Fatalf("default dir decision = %#v, want ignored source=default", dir)
+	}
+}

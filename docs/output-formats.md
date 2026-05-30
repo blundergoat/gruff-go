@@ -35,11 +35,12 @@ Top-level shape:
 ```jsonc
 {
   "schemaVersion": "gruff-go.analysis.v0.2",
-  "tool":          { "name": "gruff-go", "version": "0.2.0" },
+  "tool":          { "name": "gruff-go", "version": "1.0.0" },
   "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "advisory" },
   "summary":       { "filesScanned": 65, "filesSkipped": 6, "findingsCount": 3,
                      "countsBySeverity": {...}, "countsByPillar": {...}, "exitCode": 1 },
-  "baseline":      { "applied": false, "entries": 0, "suppressedFindings": 0, "staleEntries": 0 },
+  "baseline":      { "applied": false, "entries": 0, "suppressedFindings": 0, "staleEntries": 0,
+                     "newFindings": 0, "unchangedFindings": 0, "resolvedFindings": 0 },
   "diff":          { "enabled": false, "changedFiles": [], "filteredFindings": 0 },
   "displayFilter": { "applied": false, "...": "..." },
   "score":         { "composite": 92, "grade": "A",

@@ -124,6 +124,9 @@ func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testi
 	}
 }
 
+// TestAnalyzeChangedRangesUseEnclosingFunction checks that symbol-scope filtering
+// keeps a finding when its enclosing function was changed, suppresses findings in
+// untouched functions, and reports the suppressed total.
 func TestAnalyzeChangedRangesUseEnclosingFunction(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", `package main
@@ -160,6 +163,9 @@ func changed() {
 	}
 }
 
+// TestAnalyzeChangedScopeHunkExcludesSignatureFindings checks that hunk scope is
+// line-exact: a finding on the function signature is dropped when only an inner
+// line is in the changed range, unlike the function-wide symbol scope.
 func TestAnalyzeChangedScopeHunkExcludesSignatureFindings(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", `package main
@@ -189,6 +195,118 @@ func changed() {
 	}
 }
 
+// TestAnalyzeExplicitIgnoredArgProducesNoFindings proves config paths.ignore is
+// authoritative when the file is passed as an explicit argument (the coding-agent
+// hook shape): the file yields zero findings and is reported in Skipped with
+// source=config and the matching glob, even though findingRule would otherwise
+// fire on it. Without the ignore, the same file produces a finding.
+func TestAnalyzeExplicitIgnoredArgProducesNoFindings(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "ignored/bad.go", "package ignored\n")
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{findingRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Control: with no ignore, the explicit file is scanned and flagged.
+	control, err := Analyze(Options{Paths: []string{"ignored/bad.go"}, Registry: registry, FailOn: finding.FailThresholdNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(control.Findings) == 0 {
+		t.Fatalf("control run produced no findings; fixture cannot prove the ignore suppresses anything")
+	}
+
+	report, err := Analyze(Options{
+		Paths:       []string{"ignored/bad.go"},
+		Registry:    registry,
+		FailOn:      finding.FailThresholdNone,
+		IgnorePaths: []string{"ignored/**"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 0 {
+		t.Fatalf("explicit ignored-file arg produced findings = %#v, want none", report.Findings)
+	}
+	if !hasConfigSkip(report.Paths.Skipped, "ignored/bad.go", "ignored/**") {
+		t.Fatalf("skipped = %#v, want ignored/bad.go with source=config pattern=ignored/**", report.Paths.Skipped)
+	}
+}
+
+// TestAnalyzeDiffModeHonorsConfigIgnore proves config paths.ignore is
+// authoritative in diff mode: a changed-ranges scan over an ignored file still
+// produces zero findings and records the config skip, so a hook scoping to the
+// agent's diff never surfaces an excluded file.
+func TestAnalyzeDiffModeHonorsConfigIgnore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "ignored/bad.go", "package ignored\n")
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{findingRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Analyze(Options{
+		Paths:         []string{"ignored/bad.go"},
+		Registry:      registry,
+		FailOn:        finding.FailThresholdNone,
+		IgnorePaths:   []string{"ignored/**"},
+		ChangedRanges: "1-10",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 0 {
+		t.Fatalf("diff-mode scan of an ignored file produced findings = %#v, want none", report.Findings)
+	}
+	if !hasConfigSkip(report.Paths.Skipped, "ignored/bad.go", "ignored/**") {
+		t.Fatalf("skipped = %#v, want ignored/bad.go with source=config pattern=ignored/**", report.Paths.Skipped)
+	}
+}
+
+// TestAnalyzeIncludeIgnoredKeepsConfigIgnore proves --include-ignored opts into
+// git/default ignores only and never overrides config paths.ignore: the ignored
+// file stays unscanned and config-skipped.
+func TestAnalyzeIncludeIgnoredKeepsConfigIgnore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "ignored/bad.go", "package ignored\n")
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{findingRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Analyze(Options{
+		Paths:          []string{"ignored/bad.go"},
+		Registry:       registry,
+		FailOn:         finding.FailThresholdNone,
+		IgnorePaths:    []string{"ignored/**"},
+		IncludeIgnored: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 0 {
+		t.Fatalf("--include-ignored overrode config paths.ignore: findings = %#v, want none", report.Findings)
+	}
+	if !hasConfigSkip(report.Paths.Skipped, "ignored/bad.go", "ignored/**") {
+		t.Fatalf("skipped = %#v, want config skip preserved under --include-ignored", report.Paths.Skipped)
+	}
+}
+
+// hasConfigSkip reports whether skipped contains path with source=config and the
+// expected matched glob.
+func hasConfigSkip(skipped []SkippedPath, path, pattern string) bool {
+	for _, item := range skipped {
+		if item.Path == path && item.Source == "config" && item.Pattern == pattern {
+			return true
+		}
+	}
+	return false
+}
+
 // findingRule is a test rule that always emits one finding per unit.
 type findingRule struct{}
 
@@ -213,8 +331,11 @@ func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Findi
 	}}
 }
 
+// functionDeclarationRule is a test rule that emits one finding per function
+// declaration, used to exercise symbol-scope changed-region filtering.
 type functionDeclarationRule struct{}
 
+// Definition returns this test rule's metadata used by the registry.
 func (functionDeclarationRule) Definition() rule.Definition {
 	return rule.Definition{
 		ID:             "test.function-declaration",
@@ -226,6 +347,9 @@ func (functionDeclarationRule) Definition() rule.Definition {
 	}
 }
 
+// AnalyzeUnit emits one fingerprinted finding per function in the unit, located at
+// the function's line and carrying its name as Symbol, so changed-scope filtering
+// can resolve the enclosing function.
 func (functionDeclarationRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {

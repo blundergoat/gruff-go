@@ -23,8 +23,39 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextFindings(writer, report.Findings); err != nil {
 		return err
 	}
+	if err := writeTextBaselineStatus(writer, report.Baseline); err != nil {
+		return err
+	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
 	return err
+}
+
+// writeTextBaselineStatus appends the three-state baseline summary, and the
+// unchanged/resolved detail lists, only when --baseline-show set Show. Without
+// the flag this emits nothing, so default output stays byte-identical (ADR-012).
+func writeTextBaselineStatus(writer io.Writer, summary analysis.BaselineSummary) error {
+	if !summary.Show {
+		return nil
+	}
+	if _, err := fmt.Fprintf(writer, "baseline status: %d new, %d unchanged, %d resolved\n",
+		summary.NewFindings, summary.UnchangedFindings, summary.ResolvedFindings); err != nil {
+		return err
+	}
+	for _, item := range summary.Unchanged {
+		location := ""
+		if item.Location != nil && item.Location.Line > 0 {
+			location = fmt.Sprintf(":%d", item.Location.Line)
+		}
+		if _, err := fmt.Fprintf(writer, "  unchanged: %s%s %s\n", item.File, location, item.RuleID); err != nil {
+			return err
+		}
+	}
+	for _, entry := range summary.Resolved {
+		if _, err := fmt.Fprintf(writer, "  resolved: %s %s\n", entry.File, entry.RuleID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // writeTextHeader emits the leading metadata block: schema, file counts, score coverage, and scope.

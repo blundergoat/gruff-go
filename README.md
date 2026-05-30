@@ -24,7 +24,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.2.0` package line |
+| Release line | Published `1.0.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
@@ -48,7 +48,7 @@ The project-pinned install flow uses Go's `tool` support, introduced before this
 Install as a project-pinned dev tool:
 
 ```bash
-go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v1.0.0
 go tool gruff-go init
 go tool gruff-go summary .
 ```

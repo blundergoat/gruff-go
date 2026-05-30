@@ -17,7 +17,7 @@ import (
 )
 
 // toolVersion is the released gruff-go semantic version printed by --version.
-const toolVersion = "0.2.0"
+const toolVersion = "1.0.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
@@ -53,6 +53,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runCompletion(args[1:], stdout, stderr)
 	case "list-rules":
 		return runListRules(args[1:], stdout, stderr)
+	case "check-ignore":
+		return runCheckIgnore(args[1:], stdout, stderr)
 	case "summary":
 		return runSummary(args[1:], stdout, stderr, interactive)
 	case "report":
@@ -155,6 +157,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		DiffPatch:      values.diffPatch,
 		ChangedRanges:  values.changedRanges,
 		ChangedScope:   values.changedScope,
+		BaselineShow:   values.baselineShow,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -186,6 +189,7 @@ type analyseFlagValues struct {
 	diffPatch            []byte
 	changedRanges        string
 	changedScope         string
+	baselineShow         bool
 	includeRules         string
 	excludeRules         string
 	includePillars       string
@@ -195,6 +199,8 @@ type analyseFlagValues struct {
 	includeIgnored       bool
 }
 
+// resolvedDiffMode returns the effective changed-region source, preferring an
+// explicit --since base ref over --diff so the alias wins when both are supplied.
 func (values analyseFlagValues) resolvedDiffMode() string {
 	if values.since != "" {
 		return values.since
@@ -202,6 +208,10 @@ func (values analyseFlagValues) resolvedDiffMode() string {
 	return values.diffMode
 }
 
+// normalizeAnalyseDiffArgs rewrites a bare `--diff` (no value, or followed by
+// another flag) into `--diff=working-tree`, and `--diff -` into `--diff=-`, so it
+// behaves like an optional-value flag - which Go's flag package does not support
+// natively.
 func normalizeAnalyseDiffArgs(args []string) []string {
 	normalized := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -224,6 +234,9 @@ func normalizeAnalyseDiffArgs(args []string) []string {
 	return normalized
 }
 
+// readDiffPatchIfRequested reads a unified diff from stdin when diffMode is "-",
+// returning ok=false only on a read error; for any other mode it is a no-op that
+// succeeds, so callers can invoke it unconditionally.
 func readDiffPatchIfRequested(diffMode string, stderr io.Writer) ([]byte, bool) {
 	if diffMode != "-" {
 		return nil, true
@@ -295,6 +308,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
+	baselineShow := flags.Bool("baseline-show", false, "render the unchanged and resolved baseline sets (counts are always reported)")
 	generateBaselinePath := flags.String("generate-baseline", "", "write current findings to a baseline file and exit cleanly")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
 	diffMode := flags.String("diff", "", "changed-region source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
@@ -311,16 +325,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	if err := flags.Parse(args); err != nil {
 		return flags, analyseFlagValues{}, false
 	}
-	if !supportedAnalysisFormat(*format) {
-		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
-		return flags, analyseFlagValues{}, false
-	}
-	if !supportedEditorLink(*editorLink) {
-		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
-		return flags, analyseFlagValues{}, false
-	}
-	if *changedScope != "symbol" && *changedScope != "hunk" {
-		fmt.Fprintf(stderr, "unsupported --changed-scope %q (want symbol or hunk)\n", *changedScope)
+	if !validateAnalyseEnums(*format, *editorLink, *changedScope, stderr) {
 		return flags, analyseFlagValues{}, false
 	}
 	diffPatch, ok := readDiffPatchIfRequested(*diffMode, stderr)
@@ -345,6 +350,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		diffPatch:            diffPatch,
 		changedRanges:        *changedRanges,
 		changedScope:         *changedScope,
+		baselineShow:         *baselineShow,
 		includeRules:         *includeRules,
 		excludeRules:         *excludeRules,
 		includePillars:       *includePillars,
@@ -461,107 +467,4 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return 0
-}
-
-// configuredRegistry builds the rule registry honouring the loaded config file.
-// Also returns the loaded Config so callers can consult MinimumSeverity. When
-// no config file is on disk the returned Config is zero-valued; nil-map lookups
-// on cfg.MinimumSeverity[cmd] yield empty string, which is the "no value"
-// signal callers expect.
-func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, cfgpkg.Config, error) {
-	defaults := rule.Defaults()
-	root, err := os.Getwd()
-	if err != nil {
-		return rule.Registry{}, nil, cfgpkg.Config{}, err
-	}
-	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
-	if err != nil {
-		return rule.Registry{}, nil, cfgpkg.Config{}, err
-	}
-	if loaded.Path == "" {
-		return defaults, nil, cfgpkg.Config{}, nil
-	}
-	cfg := loaded.Config
-	registry, err := rule.DefaultsConfigured(cfg.RuleOptions())
-	if err != nil {
-		return rule.Registry{}, nil, cfgpkg.Config{}, err
-	}
-	return registry, cfg.IgnorePaths, cfg, nil
-}
-
-// supportedAnalysisFormat reports whether format names a known analyse output.
-func supportedAnalysisFormat(format string) bool {
-	switch format {
-	case "text", "json", "summary-json", "sarif", "github", "html", "markdown", "md":
-		return true
-	default:
-		return false
-	}
-}
-
-// supportedEditorLink reports whether value names a supported editor-link mode.
-func supportedEditorLink(value string) bool {
-	switch value {
-	case "none", "vscode", "phpstorm":
-		return true
-	default:
-		return false
-	}
-}
-
-// parseDisplayFilter validates the rule and pillar filter flags into a DisplayFilter.
-func parseDisplayFilter(includeRules, excludeRules, includePillars, excludePillars string, definitions []rule.Definition) (analysis.DisplayFilter, error) {
-	ruleIDs := map[string]struct{}{}
-	for _, definition := range definitions {
-		ruleIDs[definition.ID] = struct{}{}
-	}
-	filter := analysis.DisplayFilter{
-		IncludeRules: splitCSV(includeRules),
-		ExcludeRules: splitCSV(excludeRules),
-	}
-	for _, id := range append(append([]string{}, filter.IncludeRules...), filter.ExcludeRules...) {
-		if _, ok := ruleIDs[id]; !ok {
-			return analysis.DisplayFilter{}, fmt.Errorf("unknown rule %q", id)
-		}
-	}
-	var err error
-	filter.IncludePillars, err = parsePillars(includePillars)
-	if err != nil {
-		return analysis.DisplayFilter{}, err
-	}
-	filter.ExcludePillars, err = parsePillars(excludePillars)
-	if err != nil {
-		return analysis.DisplayFilter{}, err
-	}
-	return filter, nil
-}
-
-// parsePillars converts a comma-separated pillar list into validated Pillar values.
-func parsePillars(input string) ([]finding.Pillar, error) {
-	values := splitCSV(input)
-	out := make([]finding.Pillar, 0, len(values))
-	for _, value := range values {
-		pillar := finding.Pillar(value)
-		if !pillar.Valid() {
-			return nil, fmt.Errorf("unknown pillar %q", value)
-		}
-		out = append(out, pillar)
-	}
-	return out, nil
-}
-
-// splitCSV splits a comma-separated input string and trims surrounding whitespace.
-func splitCSV(input string) []string {
-	if input == "" {
-		return nil
-	}
-	parts := strings.Split(input, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		value := strings.TrimSpace(part)
-		if value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }

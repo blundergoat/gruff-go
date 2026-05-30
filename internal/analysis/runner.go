@@ -49,6 +49,9 @@ type Options struct {
 	ChangedRanges string
 	// ChangedScope selects "symbol" (default) or "hunk" changed-region filtering.
 	ChangedScope string
+	// BaselineShow renders the unchanged/resolved baseline detail arrays and the
+	// human-readable baseline-status section; counts are reported regardless.
+	BaselineShow bool
 }
 
 // Analyze runs discovery, parsing, and rules against the configured root.
@@ -96,7 +99,7 @@ func Analyze(opts Options) (Report, error) {
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
-	findings, baselineSummary, diagnostics := applyBaseline(root, findings, diagnostics, opts.BaselinePath)
+	findings, baselineSummary, diagnostics := applyBaseline(root, findings, diagnostics, opts.BaselinePath, opts.BaselineShow)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
@@ -185,8 +188,11 @@ func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	return diagnostics
 }
 
-// applyBaseline suppresses findings that match the loaded baseline file.
-func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagnostic, baselinePath string) ([]finding.Finding, BaselineSummary, []Diagnostic) {
+// applyBaseline suppresses findings that match the loaded baseline file and
+// classifies the run into new/unchanged/resolved. show populates the
+// unchanged/resolved detail arrays (the --baseline-show flag); counts emit
+// regardless.
+func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagnostic, baselinePath string, show bool) ([]finding.Finding, BaselineSummary, []Diagnostic) {
 	baselineSummary := BaselineSummary{}
 	if baselinePath == "" {
 		return findings, baselineSummary, diagnostics
@@ -212,7 +218,27 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	baselineSummary.Entries = result.Entries
 	baselineSummary.SuppressedFindings = result.SuppressedFindings
 	baselineSummary.StaleEntries = result.StaleEntries
+	baselineSummary.NewFindings = result.NewCount()
+	baselineSummary.UnchangedFindings = result.UnchangedCount()
+	baselineSummary.ResolvedFindings = result.ResolvedCount()
+	// Detail arrays are populated only under --baseline-show; counts always emit.
+	// Gating population (not just rendering) keeps the default JSON payload free of
+	// the unchanged/resolved arrays regardless of omitempty subtleties.
+	if show {
+		baselineSummary.Show = true
+		baselineSummary.Unchanged = result.Unchanged
+		baselineSummary.Resolved = reportBaselineEntries(result.Resolved)
+	}
 	return result.Findings, baselineSummary, diagnostics
+}
+
+// reportBaselineEntries projects baseline resolved entries onto the report shape.
+func reportBaselineEntries(entries []baseline.Entry) []BaselineEntry {
+	out := make([]BaselineEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, BaselineEntry{RuleID: entry.RuleID, File: entry.File, Fingerprint: entry.Fingerprint})
+	}
+	return out
 }
 
 // resolveChangedScope computes changed files before parsing so directory scans
@@ -264,6 +290,9 @@ func resolveChangedScope(root string, paths []string, files []source.File, diagn
 	}
 }
 
+// appendDiffDiagnostic records a diff-stage failure as an error-severity
+// Diagnostic so the scan continues and reports the problem instead of aborting -
+// the changed-region filter is best-effort, not fatal to the run.
 func appendDiffDiagnostic(diagnostics []Diagnostic, err error) []Diagnostic {
 	return append(diagnostics, Diagnostic{
 		Stage:    "diff",
@@ -272,6 +301,8 @@ func appendDiffDiagnostic(diagnostics []Diagnostic, err error) []Diagnostic {
 	})
 }
 
+// sourcePaths projects discovered source files down to their path strings - the
+// form the diff and changed-file filters compare against.
 func sourcePaths(files []source.File) []string {
 	paths := make([]string, 0, len(files))
 	for _, file := range files {
@@ -280,6 +311,9 @@ func sourcePaths(files []source.File) []string {
 	return paths
 }
 
+// filterDiscoveredChangedFiles narrows the discovered file set to those the diff
+// touched, so whole-file (project-level) rules run only on changed files in diff
+// mode rather than re-scanning the untouched project.
 func filterDiscoveredChangedFiles(files []source.File, changed diff.ChangedLines) []source.File {
 	filtered := make([]source.File, 0, len(files))
 	for _, file := range files {
@@ -308,6 +342,10 @@ func applyChangedFilter(findings []finding.Finding, units []parser.Unit, changed
 	return kept, diffSummary
 }
 
+// filterFindingsByChangedScope applies the changed-region filter at the requested
+// granularity: "hunk" keeps only findings on changed lines, while the default
+// symbol scope keeps a finding when its enclosing function was touched - so a
+// one-line edit still surfaces the whole function's issues for review.
 func filterFindingsByChangedScope(findings []finding.Finding, changed diff.ChangedLines, units []parser.Unit, changedScope string) diff.FilterResult {
 	if changedScope == "hunk" {
 		return diff.Filter(findings, changed)
@@ -328,6 +366,10 @@ func filterFindingsByChangedScope(findings []finding.Finding, changed diff.Chang
 	return diff.FilterResult{Findings: kept, FilteredFindings: filtered}
 }
 
+// changedScopeMatches reports whether one finding survives the symbol-scope diff
+// filter: a located finding is kept when its own line range changed or when the
+// function enclosing it changed; an unlocated (file-level) finding falls back to
+// whether the file changed at all.
 func changedScopeMatches(item finding.Finding, changed diff.ChangedLines, functions []parser.Function) bool {
 	if item.Location == nil || item.Location.Line == 0 {
 		return diff.FileChanged(changed, item.File)
@@ -344,6 +386,10 @@ func changedScopeMatches(item finding.Finding, changed diff.ChangedLines, functi
 	return ok && diff.RangeChanged(changed, item.File, function.Line, function.EndLine)
 }
 
+// enclosingFunction finds the function containing line, preferring one whose name
+// matches the finding's symbol and, among matches, the tightest span; it falls
+// back to any function covering the line so nested or method-receiver symbols
+// still resolve to something.
 func enclosingFunction(line int, symbol string, functions []parser.Function) (parser.Function, bool) {
 	var best parser.Function
 	found := false
@@ -370,90 +416,14 @@ func enclosingFunction(line int, symbol string, functions []parser.Function) (pa
 	return parser.Function{}, false
 }
 
+// suppressedCountPointer returns a pointer to the diff-filtered count, or nil when
+// diff mode is off, so JSON output omits suppressedCount entirely rather than
+// reporting a misleading 0 when no filtering actually happened.
 func suppressedCountPointer(diffSummary DiffSummary) *int {
 	if !diffSummary.Enabled {
 		return nil
 	}
 	return &diffSummary.FilteredFindings
-}
-
-// pruneOrphanedComposites drops composite findings whose recorded underlying
-// fingerprints are not present among the surviving non-composite findings.
-// A composite is identified by a non-empty underlyingFingerprints metadata
-// slice; that is the contract composite rules use when emitting evidence.
-func pruneOrphanedComposites(findings []finding.Finding) ([]finding.Finding, int) {
-	survivingFingerprints := collectNonCompositeFingerprints(findings)
-	kept := make([]finding.Finding, 0, len(findings))
-	pruned := 0
-	for _, candidate := range findings {
-		if compositeEvidenceSurvives(candidate, survivingFingerprints) {
-			kept = append(kept, candidate)
-			continue
-		}
-		pruned++
-	}
-	return kept, pruned
-}
-
-// collectNonCompositeFingerprints returns the set of fingerprints belonging to
-// non-composite findings. Composites are identified by an underlyingFingerprints
-// metadata slice and are excluded from the surviving-evidence set.
-func collectNonCompositeFingerprints(findings []finding.Finding) map[string]struct{} {
-	out := map[string]struct{}{}
-	for _, candidate := range findings {
-		if _, isComposite := compositeUnderlyingFingerprints(candidate); isComposite {
-			continue
-		}
-		if candidate.Fingerprint != "" {
-			out[candidate.Fingerprint] = struct{}{}
-		}
-	}
-	return out
-}
-
-// compositeEvidenceSurvives reports whether the candidate should be kept after
-// composite pruning. Non-composite findings always survive; composites survive
-// only when at least one of their recorded underlying fingerprints is in the
-// surviving set.
-func compositeEvidenceSurvives(candidate finding.Finding, survivingFingerprints map[string]struct{}) bool {
-	underlying, isComposite := compositeUnderlyingFingerprints(candidate)
-	if !isComposite {
-		return true
-	}
-	for _, fp := range underlying {
-		if _, ok := survivingFingerprints[fp]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-// compositeUnderlyingFingerprints extracts the recorded underlying fingerprint
-// set from a composite finding's metadata. Returns (fingerprints, true) when
-// the finding carries an underlyingFingerprints slice. The slice may be empty
-// for composites whose evidence had no fingerprints, in which case the
-// composite still counts as composite but is treated as orphan-eligible.
-func compositeUnderlyingFingerprints(item finding.Finding) ([]string, bool) {
-	if item.Metadata == nil {
-		return nil, false
-	}
-	raw, ok := item.Metadata["underlyingFingerprints"]
-	if !ok {
-		return nil, false
-	}
-	switch values := raw.(type) {
-	case []string:
-		return values, true
-	case []any:
-		out := make([]string, 0, len(values))
-		for _, value := range values {
-			if str, ok := value.(string); ok {
-				out = append(out, str)
-			}
-		}
-		return out, true
-	}
-	return nil, false
 }
 
 // scannedPaths extracts the relative paths from discovered source files.
@@ -465,11 +435,19 @@ func scannedPaths(files []source.File) []string {
 	return scanned
 }
 
-// skippedPaths copies discovery skip entries into report-shaped values.
+// skippedPaths copies discovery skip entries into report-shaped values,
+// carrying the ignore source and matched glob through to the report so a hook
+// or agent can see not just that a path was excluded but which layer and which
+// configured pattern excluded it.
 func skippedPaths(items []source.SkippedPath) []SkippedPath {
 	skipped := make([]SkippedPath, 0, len(items))
 	for _, item := range items {
-		skipped = append(skipped, SkippedPath{Path: item.Path, Reason: item.Reason})
+		skipped = append(skipped, SkippedPath{
+			Path:    item.Path,
+			Reason:  item.Reason,
+			Source:  item.Source,
+			Pattern: item.Pattern,
+		})
 	}
 	return skipped
 }

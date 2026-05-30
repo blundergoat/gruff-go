@@ -32,12 +32,61 @@ type File struct {
 	Type FileType `json:"type"`
 }
 
+// Ignore-origin classifications reported in SkippedPath.Source and by
+// CheckIgnore. They name the layer that excluded a path so a coding-agent hook
+// can tell config-driven scope (which the agent must respect) from incidental
+// VCS/build defaults: a config paths.ignore glob, a repository .gitignore, a
+// built-in default (VCS, tool metadata, dependency fallback), or generated-file
+// detection. Named Origin* rather than Source* so the exported identifiers do
+// not stutter against the package name in `source.SourceConfig` form.
+const (
+	OriginConfig    = "config"
+	OriginGitignore = "gitignore"
+	OriginDefault   = "default"
+	OriginGenerated = "generated"
+)
+
 // SkippedPath records a discovered path that was filtered out, with the reason code.
 type SkippedPath struct {
 	// Path is the slash-normalised path relative to the discovery root.
 	Path string `json:"path"`
 	// Reason is the short identifier explaining why the path was skipped (e.g. "gitignored", "generated").
 	Reason string `json:"reason"`
+	// Source classifies the deciding layer: config | gitignore | default | generated.
+	// Additive field; omitted from JSON when empty so existing {path,reason} consumers are unaffected.
+	Source string `json:"source,omitempty"`
+	// Pattern is the exact config paths.ignore glob that matched; set only when Source is config.
+	Pattern string `json:"pattern,omitempty"`
+}
+
+// IgnoreDecision is the result of the shared ignore engine for a single path.
+// It backs both discovery's skip records and the check-ignore command, so the
+// two can never disagree about whether - or why - a path is ignored.
+type IgnoreDecision struct {
+	// Ignored is true when the path would be excluded from analysis.
+	Ignored bool
+	// Reason is the stable short code retained for backward compatibility.
+	Reason string
+	// Source classifies the deciding layer: config | gitignore | default | generated.
+	Source string
+	// Pattern is the exact config glob that matched, populated only for Source config.
+	Pattern string
+}
+
+// skippedPath projects an ignore decision onto the discovery SkippedPath shape.
+func (d IgnoreDecision) skippedPath(rel string) SkippedPath {
+	return SkippedPath{Path: rel, Reason: d.Reason, Source: d.Source, Pattern: d.Pattern}
+}
+
+// CheckIgnore reports whether the repository-relative path rel would be excluded
+// from analysis under options, using the exact same engine Discover applies -
+// there is no second ignore implementation. isDir selects directory-pattern
+// semantics. It reads no file contents and runs no analysis, so it is O(1) per
+// path; generated-file detection (which must read the file) is therefore never
+// reported here. rootAbs anchors the repository .gitignore matcher.
+func CheckIgnore(rootAbs, rel string, isDir bool, options Options) IgnoreDecision {
+	walker := newDiscoveryWalker(context.Background(), rootAbs, options)
+	return walker.decideIgnore(rel, isDir)
 }
 
 // Result is the discovery output containing files, missing inputs, and skipped paths.
@@ -196,14 +245,8 @@ func (w *discoveryWalker) visitInput(input string) error {
 // visitDir decides whether to prune or descend into a directory.
 func (w *discoveryWalker) visitDir(current string) error {
 	rel := displayPath(w.rootAbs, current)
-	if w.gitignoreActive && pathUnderRoot(w.rootAbs, current) {
-		if ignored, _ := w.matcher.Match(rel, true); ignored {
-			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "gitignored"})
-			return filepath.SkipDir
-		}
-	}
-	if reason, ignored := w.ignoredDir(rel); ignored {
-		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
+	if decision := w.decideIgnore(rel, true); decision.Ignored {
+		w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
 		return filepath.SkipDir
 	}
 	return nil
@@ -211,12 +254,10 @@ func (w *discoveryWalker) visitDir(current string) error {
 
 // visitFile classifies a discovered file and records it as scanned or skipped.
 func (w *discoveryWalker) visitFile(path string) {
-	if w.gitignoreActive && pathUnderRoot(w.rootAbs, path) {
-		rel := displayPath(w.rootAbs, path)
-		if ignored, _ := w.matcher.Match(rel, false); ignored {
-			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "gitignored"})
-			return
-		}
+	rel := displayPath(w.rootAbs, path)
+	if decision := w.decideIgnore(rel, false); decision.Ignored {
+		w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
+		return
 	}
 	w.addFile(path)
 }
@@ -224,7 +265,7 @@ func (w *discoveryWalker) visitFile(path string) {
 // flushParseErrors records gitignore parse errors as skipped entries.
 func (w *discoveryWalker) flushParseErrors() {
 	for _, badPath := range w.matcher.ParseErrors() {
-		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: badPath, Reason: "gitignore-parse-error"})
+		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: badPath, Reason: "gitignore-parse-error", Source: OriginGitignore})
 	}
 }
 
@@ -243,66 +284,76 @@ func (w *discoveryWalker) normalize() {
 	w.result.Skipped = dedupeSkipped(w.result.Skipped)
 }
 
-// ignoredDir returns the skip reason and true when the directory should be pruned.
-func (w *discoveryWalker) ignoredDir(rel string) (string, bool) {
-	if pathfilter.MatchesAny(w.options.IgnorePatterns, rel) {
-		return "config-ignore", true
+// decideIgnore is the single ignore engine shared by discovery and the
+// check-ignore command. Precedence, highest first: repository .gitignore
+// (disabled by --include-ignored), then config paths.ignore (authoritative in
+// every invocation mode and never disabled - this is the contract that keeps an
+// agent hook from flagging files the project excluded), then VCS/metadata
+// always-ignores and the dependency fallback (both disabled by
+// --include-ignored). Generated-file detection lives in addFile, not here,
+// because it must read the file - keeping this engine O(1) and path-only so
+// check-ignore can reuse it verbatim.
+func (w *discoveryWalker) decideIgnore(rel string, isDir bool) IgnoreDecision {
+	if w.gitignoreActive && repoRelative(rel) {
+		if ignored, _ := w.matcher.Match(rel, isDir); ignored {
+			return IgnoreDecision{Ignored: true, Reason: "gitignored", Source: OriginGitignore}
+		}
+	}
+	if matched, pattern := pathfilter.FirstMatch(w.options.IgnorePatterns, rel); matched {
+		return IgnoreDecision{Ignored: true, Reason: "config-ignore", Source: OriginConfig, Pattern: pattern}
 	}
 	if w.options.IncludeIgnored {
-		return "", false
+		return IgnoreDecision{}
 	}
-	if reason, ignored := alwaysIgnoredDir(rel); ignored {
-		return reason, true
-	}
-	if w.fallbackAppliesAt(rel) {
-		return fallbackIgnoredDir(rel)
-	}
-	return "", false
-}
-
-// addFile applies file-level filters and appends accepted files to the Result.
-func (w *discoveryWalker) addFile(path string) {
-	rel := displayPath(w.rootAbs, path)
-	if pathfilter.MatchesAny(w.options.IgnorePatterns, rel) {
-		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "config-ignore"})
-		return
-	}
-	if !w.options.IncludeIgnored {
-		if reason, ignored := alwaysIgnoredFile(rel); ignored {
-			w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
-			return
+	if isDir {
+		if reason, ignored := alwaysIgnoredDir(rel); ignored {
+			return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 		}
 		if w.fallbackAppliesAt(rel) {
-			if reason, ignored := fallbackIgnoredFile(rel); ignored {
-				w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: reason})
-				return
+			if reason, ignored := fallbackIgnoredDir(rel); ignored {
+				return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 			}
 		}
+		return IgnoreDecision{}
 	}
+	if reason, ignored := alwaysIgnoredFile(rel); ignored {
+		return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
+	}
+	if w.fallbackAppliesAt(rel) {
+		if reason, ignored := fallbackIgnoredFile(rel); ignored {
+			return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
+		}
+	}
+	return IgnoreDecision{}
+}
+
+// addFile appends a non-ignored file to the Result. The ignore decision is made
+// by decideIgnore before this is called, so the only exclusion left here is
+// generated-file detection - which reads the file and therefore cannot live in
+// the path-only ignore engine that check-ignore shares.
+func (w *discoveryWalker) addFile(path string) {
+	rel := displayPath(w.rootAbs, path)
 	fileType, ok := classify(path)
 	if !ok {
 		return
 	}
 	if fileType == FileTypeGo && !w.options.IncludeIgnored && isGeneratedGo(path) {
-		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "generated"})
+		w.result.Skipped = append(w.result.Skipped, SkippedPath{Path: rel, Reason: "generated", Source: OriginGenerated})
 		return
 	}
 	w.result.Files = append(w.result.Files, File{Path: rel, AbsPath: path, Type: fileType})
 }
 
-// pathUnderRoot reports whether path lives inside rootAbs. Used to gate the
-// repository .gitignore matcher so explicit inputs outside the discovery root
-// (for example an absolute /tmp path passed alongside an in-repo target) are
-// not silently dropped by unrelated rules from the project's .gitignore.
-func pathUnderRoot(rootAbs, path string) bool {
-	rel, err := filepath.Rel(rootAbs, path)
-	if err != nil {
+// repoRelative reports whether rel is a clean repository-relative path. displayPath
+// yields an absolute slash path for inputs outside the discovery root, so a
+// leading "/" or ".." means "not under root" and the repository .gitignore
+// matcher must not apply - mirroring the pathUnderRoot gate the inline gitignore
+// checks used before the engine was unified.
+func repoRelative(rel string) bool {
+	if rel == "" || rel == "." {
 		return false
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return false
-	}
-	return true
+	return !strings.HasPrefix(rel, "/") && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
 // classify returns the FileType for a path based on its extension or name.

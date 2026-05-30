@@ -2,7 +2,7 @@
   "schemaVersion": "gruff-go.analysis.v0.2",
   "tool": {
     "name": "gruff-go",
-    "version": "0.2.0"
+    "version": "1.0.0"
   },
   "run": {
     "workingDirectory": "<WORKDIR>",
@@ -32,7 +32,10 @@
     "path": "baseline.json",
     "entries": 1,
     "suppressedFindings": 1,
-    "staleEntries": 0
+    "staleEntries": 0,
+    "newFindings": 0,
+    "unchangedFindings": 1,
+    "resolvedFindings": 0
   },
   "diff": {
     "enabled": false,

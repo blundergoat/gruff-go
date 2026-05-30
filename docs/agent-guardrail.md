@@ -43,6 +43,33 @@ changed region with the diff-aware flags - `--diff`, `--since`,
 `gruff-go analyse --help` and [CI Integration](ci-integration.md) for the exact
 recipes. Feed the findings back to the agent and re-run until clean.
 
+### Respecting `paths.ignore` (authoritative in every mode)
+
+A hook passes gruff the exact files the agent changed - explicit paths, not a
+project walk. `paths.ignore` in `.gruff-go.yaml` is authoritative in **every**
+invocation shape: a path matching it produces no findings whether it arrives via
+a directory scan, an explicit file argument, or any diff/changed-region mode, and
+`--include-ignored` (which opts into git/default-ignored paths) never overrides
+it. So the agent is never asked to "fix" a file the project deliberately
+excludes - generated code, vendored trees, fixtures. Excluded files still appear
+in the report's `paths.skipped[]` with `source` and the matching `pattern`, so
+the hook can explain the exclusion rather than silently dropping the file.
+
+To decide whether to invoke gruff on a file at all - before any analysis - use
+`check-ignore`, which shares analyse's config resolution and ignore engine and
+does no scanning:
+
+```bash
+# Skip gruff entirely for files gruff would ignore (JSON is the agent contract).
+if [ "$(gruff-go check-ignore --format json "$file" | jq -r '.[0].ignored')" = "true" ]; then
+  exit 0   # out of scope; nothing for the agent to fix
+fi
+gruff-go analyse --min-severity advisory "$file"
+```
+
+`check-ignore` mirrors `git check-ignore` exit codes (0 = at least one path
+ignored, 1 = none, 2 = error), so it also composes in plain shell without `jq`.
+
 ### Pre-commit hook
 
 ```bash
