@@ -1,7 +1,6 @@
 complexity.cognitive	complexity	warning	parser	Cognitive complexity
 complexity.cyclomatic	complexity	warning	parser	Cyclomatic complexity
 complexity.nesting-depth	complexity	warning	parser	Nesting depth
-complexity.npath	complexity	warning	parser	NPath complexity
 dead-code.empty-block	dead-code	advisory	parser	Empty control-flow block
 dead-code.unreachable-code	dead-code	advisory	parser	Unreachable code
 dead-code.unused-private-function	dead-code	advisory	parser	Unused private function

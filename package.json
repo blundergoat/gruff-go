@@ -1,7 +1,7 @@
 {
   "name": "gruff-go",
   "version": "0.2.0",
-  "description": "Opinionated Go code-quality scanner (npm tooling metadata; the application is the Go binary under cmd/gruff-go).",
+  "description": "Opinionated Go code-quality scanner that governs AI-generated code for human review - legible, secure, honestly tested (npm tooling metadata; the application is the Go binary under cmd/gruff-go).",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

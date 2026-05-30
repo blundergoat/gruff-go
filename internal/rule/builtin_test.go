@@ -44,7 +44,6 @@ func defaultRuleIDs() []string {
 		"complexity.cognitive",
 		"complexity.cyclomatic",
 		"complexity.nesting-depth",
-		"complexity.npath",
 		"dead-code.empty-block",
 		"dead-code.unreachable-code",
 		"dead-code.unused-private-function",

@@ -151,6 +151,10 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		IncludeIgnored: values.includeIgnored,
 		BaselinePath:   values.baselinePath,
 		DiffBase:       values.diffBase,
+		DiffMode:       values.resolvedDiffMode(),
+		DiffPatch:      values.diffPatch,
+		ChangedRanges:  values.changedRanges,
+		ChangedScope:   values.changedScope,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -177,6 +181,11 @@ type analyseFlagValues struct {
 	baselinePath         string
 	generateBaselinePath string
 	diffBase             string
+	diffMode             string
+	since                string
+	diffPatch            []byte
+	changedRanges        string
+	changedScope         string
 	includeRules         string
 	excludeRules         string
 	includePillars       string
@@ -184,6 +193,47 @@ type analyseFlagValues struct {
 	editorLink           string
 	reportInteractive    bool
 	includeIgnored       bool
+}
+
+func (values analyseFlagValues) resolvedDiffMode() string {
+	if values.since != "" {
+		return values.since
+	}
+	return values.diffMode
+}
+
+func normalizeAnalyseDiffArgs(args []string) []string {
+	normalized := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg != "--diff" {
+			normalized = append(normalized, arg)
+			continue
+		}
+		if i+1 < len(args) && args[i+1] == "-" {
+			normalized = append(normalized, "--diff=-")
+			i++
+			continue
+		}
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+			normalized = append(normalized, "--diff=working-tree")
+			continue
+		}
+		normalized = append(normalized, arg)
+	}
+	return normalized
+}
+
+func readDiffPatchIfRequested(diffMode string, stderr io.Writer) ([]byte, bool) {
+	if diffMode != "-" {
+		return nil, true
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "diff stdin: %v\n", err)
+		return nil, false
+	}
+	return data, true
 }
 
 // resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
@@ -233,6 +283,7 @@ func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer
 func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
 	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	args = normalizeAnalyseDiffArgs(args)
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
 	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
 	// returns (currently advisory, intentionally permissive after the 3-bucket
@@ -246,6 +297,10 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
 	generateBaselinePath := flags.String("generate-baseline", "", "write current findings to a baseline file and exit cleanly")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
+	diffMode := flags.String("diff", "", "changed-region source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
+	since := flags.String("since", "", "git base ref for changed-region filtering")
+	changedRanges := flags.String("changed-ranges", "", "explicit changed line ranges such as 3-3,8-10")
+	changedScope := flags.String("changed-scope", "symbol", "changed-region scope: symbol or hunk")
 	includeRules := flags.String("include-rules", "", "comma-separated rule IDs to display")
 	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
@@ -264,6 +319,14 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
 		return flags, analyseFlagValues{}, false
 	}
+	if *changedScope != "symbol" && *changedScope != "hunk" {
+		fmt.Fprintf(stderr, "unsupported --changed-scope %q (want symbol or hunk)\n", *changedScope)
+		return flags, analyseFlagValues{}, false
+	}
+	diffPatch, ok := readDiffPatchIfRequested(*diffMode, stderr)
+	if !ok {
+		return flags, analyseFlagValues{}, false
+	}
 	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
 	if !ok {
 		return flags, analyseFlagValues{}, false
@@ -277,6 +340,11 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		baselinePath:         *baselinePath,
 		generateBaselinePath: *generateBaselinePath,
 		diffBase:             *diffBase,
+		diffMode:             *diffMode,
+		since:                *since,
+		diffPatch:            diffPatch,
+		changedRanges:        *changedRanges,
+		changedScope:         *changedScope,
 		includeRules:         *includeRules,
 		excludeRules:         *excludeRules,
 		includePillars:       *includePillars,
@@ -289,6 +357,9 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 		if err := validateGenerateBaselineFlags(generateBaselineFlagState{
 			baselinePath:   values.baselinePath,
 			diffBase:       values.diffBase,
+			diffMode:       values.diffMode,
+			since:          values.since,
+			changedRanges:  values.changedRanges,
 			includeRules:   values.includeRules,
 			excludeRules:   values.excludeRules,
 			includePillars: values.includePillars,
@@ -305,6 +376,9 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 type generateBaselineFlagState struct {
 	baselinePath   string
 	diffBase       string
+	diffMode       string
+	since          string
+	changedRanges  string
 	includeRules   string
 	excludeRules   string
 	includePillars string
@@ -319,6 +393,8 @@ func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
 		return fmt.Errorf("--generate-baseline cannot be combined with --baseline")
 	case state.diffBase != "":
 		return fmt.Errorf("--generate-baseline cannot be combined with --diff-base")
+	case state.diffMode != "" || state.since != "" || state.changedRanges != "":
+		return fmt.Errorf("--generate-baseline cannot be combined with changed-region flags")
 	case state.includeRules != "" || state.excludeRules != "" || state.includePillars != "" || state.excludePillars != "":
 		return fmt.Errorf("--generate-baseline cannot be combined with display filters")
 	default:

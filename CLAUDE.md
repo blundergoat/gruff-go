@@ -1,6 +1,6 @@
 # gruff-go - Go code-quality scanner (v0.2.0)
 
-`gruff-go` is a parser-only Go static analysis CLI. The Go application lives under `cmd/gruff-go` (entrypoint) and `internal/` (analysis pipeline, rule registry, scoring, report rendering, dashboard). GOAT Flow lives alongside for agent guardrails and project memory under `.goat-flow/`, `.claude/`, and `.agents/`.
+`gruff-go` is a parser-only Go static analysis CLI. Its mission is to govern AI-generated code: used as a coding-agent hook, it forces output a human who didn't write it can verify, trust, and sign off on — legible, secure where review misses, and honestly tested (no low-signal test bloat). Judge every default, threshold, and rule against that goal; full framing in [`.goat-flow/architecture.md`](.goat-flow/architecture.md) → Mission, recorded in [ADR-011](.goat-flow/decisions/ADR-011-mission-ai-generated-code-verifiability.md). The Go application lives under `cmd/gruff-go` (entrypoint) and `internal/` (analysis pipeline, rule registry, scoring, report rendering, dashboard). GOAT Flow lives alongside for agent guardrails and project memory under `.goat-flow/`, `.claude/`, and `.agents/`.
 
 ## Truth Order
 1. The user's explicit request for the current turn.

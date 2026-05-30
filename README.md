@@ -6,7 +6,19 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
 [![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
 
-`gruff-go` is an opinionated code-quality scanner for Go projects. It reads Go packages, scores findings across quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard. It is heuristic static analysis; run it beside `go vet`, `staticcheck`, `govulncheck`, tests, and code review, not instead of them.
+`gruff-go` is an opinionated code-quality scanner for Go, built to govern AI-generated code. Its primary use is as a **coding-agent hook**: it forces an agent to produce code a human who didn't write it can read, review, and trust. It reads Go packages, scores findings across quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
+
+## Mission
+
+gruff exists to make AI-generated code something a human can trust. Its primary use is a **coding-agent hook**: when an agent writes code, gruff is the gate that forces output a reviewer who didn't write it can actually sign off on. It optimises for three things:
+
+- **Legible enough to verify** — a reviewer can confirm the code does what was asked.
+- **Secure where the eye fails** — it catches the security classes human review reliably misses.
+- **Tested for real, not padded** — it forces high-signal tests and rejects low-signal test ceremony.
+
+The framing it encodes: *you are a coding agent, and a human who didn't write this code has to read, review, and trust it.* That is also why doc comments are required even on a private one-liner — not as ceremony, but because coding agents routinely produce code that superficially works while misunderstanding the requirement. Forcing the agent to state intent, usage, contract, and failure behaviour in prose gives the reviewer something to check the implementation against; a mismatch between the doc comment and the code is a signal the change needs a deeper look.
+
+gruff is heuristic static analysis, not a proof: it can create the artifact a reviewer checks (a doc comment, an assertion) but cannot verify that artifact is truthful. Run it beside `go vet`, `staticcheck`, `govulncheck`, tests, and human review — as the forcing function that makes that review tractable, not a replacement for it.
 
 ## Status At A Glance
 
@@ -16,7 +28,7 @@
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 64 rules across 11 pillars; 64 enabled by default |
+| Rule catalogue | 63 rules across 11 pillars; 63 enabled by default |
 | Primary config | `.gruff-go.yaml` |
 | Analysis schema | `gruff-go.analysis.v0.2` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
@@ -164,7 +176,7 @@ See [`docs/configuration.md`](docs/configuration.md) for the full schema and val
 
 ## Rules And Pillars
 
-The current checkout contains 64 rules across 11 pillars. All 64 rules are enabled by default.
+The current checkout contains 63 rules across 11 pillars. All 63 rules are enabled by default.
 
 | Pillar | Rules |
 | --- | ---: |
@@ -193,11 +205,15 @@ go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
 
-Changed-line scans use Git only when requested:
+Changed-region scans use Git only when requested:
 
 ```bash
-go tool gruff-go analyse --diff-base origin/main .
+go tool gruff-go analyse --format json --changed-ranges "3-3,8-10" src/foo.go
+go tool gruff-go analyse --format json --since HEAD src/foo.go
+git diff | go tool gruff-go analyse --format json --diff -
 ```
+
+`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and adds `suppressedCount` when changed-region filtering is active. The older `--diff-base` flag remains supported as a base-ref alias.
 
 Display filters such as `--include-pillars`, `--exclude-rules`, and `--include-rules` reduce report noise without changing which rules execute.
 

@@ -59,17 +59,6 @@ rules:
     severity: warning
     threshold: 4
 
-  # Flags functions whose acyclic execution-path count exceeds the configured cap.
-  # gruff-go raises the default (1024) because the scanner's own dispatchers
-  # (rule registry switches, config validators, comment-rubric aggregators)
-  # have legitimately wide branch fan-out that the modified NPath formula
-  # still scores high. Adopter projects with leaner code should keep the
-  # default; lower it deliberately to surface combinatorial blowup.
-  complexity.npath:
-    enabled: true
-    severity: warning
-    threshold: 9000
-
   # Flags empty control-flow blocks that usually indicate unfinished or unnecessary code.
   dead-code.empty-block:
     enabled: true

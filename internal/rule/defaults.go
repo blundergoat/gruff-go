@@ -43,7 +43,6 @@ func defaultMetricUnitRules(config Config) []UnitRule {
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
 		CognitiveComplexityRule{MaxComplexity: intThreshold(config, "complexity.cognitive", "maxComplexity", cognitiveComplexityThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
-		NPathComplexityRule{MaxComplexity: intThreshold(config, "complexity.npath", "maxComplexity", npathThreshold)},
 		EmptyBlockRule{},
 		UnreachableCodeRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},

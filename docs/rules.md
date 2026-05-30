@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **64 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` ships **63 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -17,7 +17,6 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
-| [`complexity.npath`](#complexitynpath) | complexity | warning | parser | `maxComplexity: 1024` | Functions whose acyclic execution path count exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
 | [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
@@ -138,22 +137,6 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 Flags functions whose maximum control-flow nesting depth exceeds the threshold. Function literals reset the depth counter so callbacks aren't double-counted as part of their enclosing function.
 
 **Remediation.** Extract nested branches into named helpers or return early on guard conditions.
-
-### `complexity.npath`
-
-- **Pillar:** complexity
-- **Default severity:** warning
-- **Default-enabled:** yes
-- **Threshold:** `maxComplexity` (default `1024`)
-- **Confidence:** high
-- **Capability:** parser
-- **Tags:** `metric`
-
-Flags Go functions whose modified NPath count exceeds the configured threshold. The rule treats terminating guards such as `return`, `panic`, `os.Exit`, `log.Fatal*`, and `runtime.Goexit` as exit points so idiomatic Go error chains grow linearly; nested switches and multi-way if/else branches without terminators still expose combinatorial review paths.
-
-Each finding's metadata carries the measured path count and the active threshold.
-
-**Remediation.** Split independent decision trees, return early from guard branches, or extract nested switches and condition clusters into named helpers.
 
 ### `dead-code.empty-block`
 

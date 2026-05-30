@@ -52,6 +52,32 @@ func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	}
 }
 
+func TestParseMarksNewFilesWholeFileChanged(t *testing.T) {
+	changed := Parse("main", []byte(`diff --git a/new.go b/new.go
+new file mode 100644
+--- /dev/null
++++ b/new.go
+@@ -0,0 +1,3 @@
++package main
++func main() {}
+`))
+	item := finding.Finding{RuleID: "r", File: "new.go", Location: &finding.Location{Line: 99}}
+	result := Filter([]finding.Finding{item}, changed)
+	if len(result.Findings) != 1 || result.FilteredFindings != 0 {
+		t.Fatalf("result = %#v, want whole new file retained", result)
+	}
+}
+
+func TestExplicitRangesApplyToFiles(t *testing.T) {
+	changed, err := ExplicitRanges("explicit", "3-3,8-10", []string{"a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !RangeChanged(changed, "a.go", 9, 9) || RangeChanged(changed, "a.go", 4, 4) {
+		t.Fatalf("changed ranges = %#v", changed.LinesByFile["a.go"])
+	}
+}
+
 // TestFromGitReportsWorkingTreeBaseRef shells out to git and confirms changed line detection.
 func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	root := t.TempDir()
@@ -72,6 +98,25 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	}
 	if _, ok := changed.LinesByFile["main.go"][4]; !ok {
 		t.Fatalf("changed lines = %#v, want line 4", changed.LinesByFile["main.go"])
+	}
+}
+
+func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "test@example.test")
+	runGit(t, root, "config", "user.name", "test")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	runGit(t, root, "add", "main.go")
+	runGit(t, root, "commit", "-q", "-m", "initial")
+	writeFile(t, root, "new.go", "package main\n\nfunc added() {}\n")
+
+	changed, err := FromMode(root, "working-tree", []string{"."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := changed.WholeFiles["new.go"]; !ok {
+		t.Fatalf("whole files = %#v, want new.go", changed.WholeFiles)
 	}
 }
 

@@ -49,6 +49,36 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
+func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "complex.go", complexFixture())
+	t.Chdir(root)
+
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "--changed-ranges", "3-3", "complex.go"}, &out, &errOut); code != 0 {
+		t.Fatalf("changed-ranges analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
+	}
+	var parsed analysis.Report
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.SuppressedCount == nil {
+		t.Fatalf("suppressedCount missing from changed-region JSON: %s", out.String())
+	}
+}
+
+func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"help", "analyse"}, &out, &errOut); code != 0 {
+		t.Fatalf("help analyse exit = %d, stderr = %s", code, errOut.String())
+	}
+	for _, flag := range []string{"--changed-ranges", "--since", "--diff mode", "--changed-scope"} {
+		if !strings.Contains(out.String(), flag) {
+			t.Fatalf("help missing %s: %s", flag, out.String())
+		}
+	}
+}
+
 // TestAnalyseFailOnRejectsLegacySeverity confirms the 5-bucket alias parser is
 // gone (ADR-009 + ADR-010): --fail-on critical is rejected by
 // ParseFailThreshold, exit 2.
@@ -228,6 +258,9 @@ func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
 	cases := [][]string{
 		{"analyse", "--generate-baseline", "baseline.json", "--baseline", "existing.json", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--diff-base", "HEAD", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--changed-ranges", "3-3", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--since", "HEAD", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--diff", "working-tree", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-rules", "complexity.cyclomatic", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--exclude-rules", "complexity.cyclomatic", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-pillars", "complexity", "complex.go"},
@@ -344,9 +377,8 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 }
 
 // complexFixture returns a Go source string that triggers a complexity finding.
-// The switch shape (sum semantics under NPath, product under cyclomatic) keeps
-// only complexity.cyclomatic above threshold; npath stays under its 200 cap and
-// the exported name keeps dead-code.unused-private-function from firing.
+// The switch shape keeps complexity.cyclomatic above threshold; the exported
+// name keeps dead-code.unused-private-function from firing.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample

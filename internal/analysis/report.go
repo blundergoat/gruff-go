@@ -47,6 +47,8 @@ type Report struct {
 	Baseline BaselineSummary `json:"baseline"`
 	// Diff records changed-line filtering applied against a git base.
 	Diff DiffSummary `json:"diff"`
+	// SuppressedCount counts findings excluded as outside the changed region.
+	SuppressedCount *int `json:"suppressedCount,omitempty"`
 	// DisplayFilter records presentation-only filters that hid findings.
 	DisplayFilter DisplayFilterSummary `json:"displayFilter"`
 	// Score holds the grade and pillar breakdown produced by the scoring engine.
@@ -198,6 +200,8 @@ type ReportInput struct {
 	Baseline BaselineSummary
 	// Diff is the pre-computed DiffSummary when --diff-base ran.
 	Diff DiffSummary
+	// SuppressedCount is present when changed-region filtering ran.
+	SuppressedCount *int
 }
 
 // NewReport assembles a deterministic report from analysis inputs.
@@ -234,10 +238,11 @@ func NewReport(input ReportInput) Report {
 			ParserMode:         "parser-only",
 			TypeLoadingEnabled: false,
 		},
-		Baseline: input.Baseline,
-		Diff:     input.Diff,
-		Score:    scoring.Calculate(findings),
-		Rules:    definitions,
+		Baseline:        input.Baseline,
+		Diff:            input.Diff,
+		SuppressedCount: input.SuppressedCount,
+		Score:           scoring.Calculate(findings),
+		Rules:           definitions,
 		Paths: Paths{
 			Scanned: scanned,
 			Skipped: skipped,

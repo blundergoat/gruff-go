@@ -60,6 +60,8 @@ The agent that produced PR #3 had already updated CHANGELOG and ADR-009 in the s
 
 The same lesson applies to confidence (`info/low/medium/high`), pillar names, severity-mapping tables in SARIF output, and any future cross-port vocabulary harmonisation: docs go stale silently because they don't have tests.
 
+The sweep target includes `.goat-flow/tasks/` milestone bodies, not just `docs/`. Milestone files drafted during one version cycle and carried into the next go stale on a release. On 2026-05-30 the 1.0.0 adoption milestones (`M24`-`M27`) still used the five-tier severity vocabulary, `gruff-go.analysis.v0.1`, a colliding `ADR-006` reference (it was already taken by single-value-rubric-thresholds), and `tasks/0.2/` read-first paths - none of which had been swept after v0.2.0 shipped. Before executing a carried-over milestone, `rg --no-ignore` its body (the `.goat-flow/tasks/` dir is gitignored, so a plain `rg` silently skips it - a trap in its own right that produced false "clean" sweeps during the 2026-05-30 refresh) for stale schema versions, severity names, ADR numbers, and version-dir paths, and refresh it first; the milestone is a spec, and an old spec encodes the old world.
+
 ## Lesson: After an enum rename, sweep test failure messages for the old name
 
 **Created:** 2026-05-25
