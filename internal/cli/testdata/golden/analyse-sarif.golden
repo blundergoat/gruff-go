@@ -90,35 +90,6 @@
               }
             },
             {
-              "id": "complexity.npath",
-              "name": "NPath complexity",
-              "shortDescription": {
-                "text": "NPath complexity"
-              },
-              "fullDescription": {
-                "text": "Flags functions whose number of acyclic execution paths (NPath) exceeds the configured threshold. The modified NPath formula treats return/panic guards as exit points so idiomatic Go error chains grow linearly; genuine branch-combination blowups (nested switches, multi-way if/else without terminators) still flag."
-              },
-              "help": {
-                "text": "Collapse boolean conditions, extract helper functions, or replace nested switches with table-driven dispatch so the path-combination count drops."
-              },
-              "properties": {
-                "pillar": "complexity",
-                "defaultSeverity": "warning",
-                "confidence": "high",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "metric"
-                ],
-                "thresholds": {
-                  "maxComplexity": 1024
-                }
-              },
-              "defaultConfiguration": {
-                "level": "warning"
-              }
-            },
-            {
               "id": "dead-code.empty-block",
               "name": "Empty control-flow block",
               "shortDescription": {

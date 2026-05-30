@@ -377,9 +377,8 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 }
 
 // complexFixture returns a Go source string that triggers a complexity finding.
-// The switch shape (sum semantics under NPath, product under cyclomatic) keeps
-// only complexity.cyclomatic above threshold; npath stays under its 200 cap and
-// the exported name keeps dead-code.unused-private-function from firing.
+// The switch shape keeps complexity.cyclomatic above threshold; the exported
+// name keeps dead-code.unused-private-function from firing.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
