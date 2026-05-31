@@ -16,9 +16,9 @@
     "filesScanned": 1,
     "filesSkipped": 0,
     "diagnosticsCount": 0,
-    "findingsCount": 5,
+    "findingsCount": 4,
     "countsBySeverity": {
-      "advisory": 4,
+      "advisory": 3,
       "error": 0,
       "warning": 1
     },
@@ -26,7 +26,6 @@
       "complexity": 1,
       "design": 1,
       "documentation": 1,
-      "maintainability": 1,
       "size": 1
     },
     "exitCode": 1,
@@ -56,23 +55,23 @@
     "hiddenFindings": 0
   },
   "score": {
-    "composite": 96,
+    "composite": 97,
     "grade": "A",
     "pillars": {
-      "complexity": 92,
+      "complexity": 96,
       "documentation": 99,
-      "size": 99
+      "size": 96
     },
     "pillarDetails": [
       {
         "pillar": "complexity",
-        "score": 92,
+        "score": 96,
         "grade": "A",
         "findings": 1,
         "advisory": 0,
         "warning": 1,
         "error": 0,
-        "penalty": 8
+        "penalty": 4
       },
       {
         "pillar": "documentation",
@@ -86,13 +85,13 @@
       },
       {
         "pillar": "size",
-        "score": 99,
+        "score": 96,
         "grade": "A",
         "findings": 1,
         "advisory": 1,
         "warning": 0,
         "error": 0,
-        "penalty": 1
+        "penalty": 4
       }
     ],
     "coverage": {
@@ -105,7 +104,7 @@
     "topOffenders": [
       {
         "file": "expansion.go",
-        "penalty": 10,
+        "penalty": 9,
         "findings": 3,
         "grade": "A"
       }

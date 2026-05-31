@@ -306,36 +306,6 @@
               }
             },
             {
-              "id": "design.god-function",
-              "name": "God function",
-              "shortDescription": {
-                "text": "God function"
-              },
-              "fullDescription": {
-                "text": "Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition."
-              },
-              "help": {
-                "text": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared."
-              },
-              "properties": {
-                "pillar": "design",
-                "secondaryPillars": [
-                  "size",
-                  "complexity"
-                ],
-                "defaultSeverity": "advisory",
-                "confidence": "high",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "composite"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "design.hotspot-file",
               "name": "Hotspot file",
               "shortDescription": {
@@ -348,7 +318,7 @@
                 "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
               },
               "properties": {
-                "pillar": "maintainability",
+                "pillar": "design",
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",

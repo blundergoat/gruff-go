@@ -24,7 +24,6 @@ func defaultRuleIDsThroughNaming() []string {
 		"dead-code.unused-private-var",
 		"dependency.go-mod-local-replace",
 		"dependency.go-mod-remote-replace",
-		"design.god-function",
 		"design.hotspot-file",
 		"docs.comment-rubric",
 		"docs.config-field-comment",

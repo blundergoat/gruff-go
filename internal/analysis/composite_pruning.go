@@ -1,4 +1,4 @@
-// Composite-finding pruning. A composite finding (e.g. design.god-function) is
+// Composite-finding pruning. A composite finding (e.g. design.hotspot-file) is
 // kept only while at least one of its recorded underlying-evidence fingerprints
 // still survives the changed-region filter, so --diff scans never surface a
 // composite for code the diff never touched.

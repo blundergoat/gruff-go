@@ -213,7 +213,7 @@ func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	}
 	withComposite := append(append([]finding.Finding{}, base...), finding.Finding{
 		File:       "hot.go",
-		RuleID:     "design.god-function",
+		RuleID:     "design.hotspot-file",
 		Severity:   finding.SeverityAdvisory,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarDesign,
@@ -229,5 +229,138 @@ func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	}
 	if _, ok := compositeScore.Pillars["design"]; ok {
 		t.Fatalf("design pillar should be score-neutral, got pillars %#v", compositeScore.Pillars)
+	}
+}
+
+// correlatedFinding builds a per-symbol finding anchored at a.go:Foo line 10,
+// the shared coordinate the clustering tests use to land findings on one symbol.
+func correlatedFinding(ruleID string, pillar finding.Pillar, severity finding.Severity) finding.Finding {
+	return finding.Finding{
+		RuleID:     ruleID,
+		Pillar:     pillar,
+		Severity:   severity,
+		Confidence: finding.ConfidenceHigh,
+		File:       "a.go",
+		Symbol:     "Foo",
+		Location:   &finding.Location{Line: 10},
+	}
+}
+
+// findPillarDetail returns the PillarDetail for name, failing the test if absent.
+func findPillarDetail(t *testing.T, score Score, name string) PillarDetail {
+	t.Helper()
+	for _, detail := range score.PillarDetails {
+		if detail.Pillar == name {
+			return detail
+		}
+	}
+	t.Fatalf("pillar %q absent from %#v", name, score.PillarDetails)
+	return PillarDetail{}
+}
+
+// TestCalculateClustersTwoCorrelatedFindings verifies P5 for the minimal case:
+// a function that is both long and complex trips size.function-length and
+// complexity.cyclomatic on one symbol. Each member contributes max(8)/2 = 4, so
+// the cluster bills 8 total (one warning) instead of 16, split across the two
+// member pillars. len 2 keeps the penalty exact in float64.
+func TestCalculateClustersTwoCorrelatedFindings(t *testing.T) {
+	score := Calculate([]finding.Finding{
+		correlatedFinding("size.function-length", finding.PillarSize, finding.SeverityWarning),
+		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
+	})
+	size := findPillarDetail(t, score, "size")
+	complexity := findPillarDetail(t, score, "complexity")
+	if size.Penalty != 4.0 || complexity.Penalty != 4.0 {
+		t.Errorf("penalties = size %v, complexity %v; want 4.0 each (8/2 per member)", size.Penalty, complexity.Penalty)
+	}
+	if total := size.Penalty + complexity.Penalty; total != 8.0 {
+		t.Errorf("cluster total = %v, want 8.0 (the single worst member, not 16)", total)
+	}
+	if size.Findings != 1 || complexity.Findings != 1 {
+		t.Errorf("findings = size %d, complexity %d; want 1 each (every finding still counts)", size.Findings, complexity.Findings)
+	}
+	if score.Composite != 96 {
+		t.Errorf("composite = %d, want 96 ((96+96)/2)", score.Composite)
+	}
+}
+
+// TestCalculateClustersFullSymbolStack verifies the realistic case: one function
+// trips all four warning-level size/complexity rules plus an advisory
+// parameter-count finding. Summing raw penalties would score complexity at
+// 100-24=76; clustering (max 8 / 5 members = 1.6 each) lifts it to 95, proving
+// correlated findings bill once. Asserts integer scores to stay free of float
+// rounding noise, and confirms every finding still counts toward its pillar.
+func TestCalculateClustersFullSymbolStack(t *testing.T) {
+	score := Calculate([]finding.Finding{
+		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
+		correlatedFinding("complexity.cognitive", finding.PillarComplexity, finding.SeverityWarning),
+		correlatedFinding("complexity.nesting-depth", finding.PillarComplexity, finding.SeverityWarning),
+		correlatedFinding("size.function-length", finding.PillarSize, finding.SeverityWarning),
+		correlatedFinding("size.parameter-count", finding.PillarSize, finding.SeverityAdvisory),
+	})
+	if score.Pillars["complexity"] != 95 {
+		t.Errorf("complexity score = %d, want 95 (3 x 8/5 = 4.8 penalty, not 24)", score.Pillars["complexity"])
+	}
+	if score.Pillars["size"] != 97 {
+		t.Errorf("size score = %d, want 97 (2 x 8/5 = 3.2 penalty)", score.Pillars["size"])
+	}
+	complexity := findPillarDetail(t, score, "complexity")
+	size := findPillarDetail(t, score, "size")
+	if complexity.Findings != 3 || size.Findings != 2 {
+		t.Errorf("findings = complexity %d, size %d; want 3 and 2 (clustering must not drop findings)", complexity.Findings, size.Findings)
+	}
+	if score.Composite != 96 {
+		t.Errorf("composite = %d, want 96 ((95+97)/2)", score.Composite)
+	}
+}
+
+// TestCalculateDoesNotClusterAcrossSymbols verifies clustering keys on the symbol
+// occurrence: two distinct functions that each trip the same two correlated rules
+// form two clusters, not one. Each cluster bills 8/2 = 4 per member, so complexity
+// totals 8 (4 from each function) - had the four findings merged into one cluster,
+// each member would be 8/4 = 2 and complexity would total 4.
+func TestCalculateDoesNotClusterAcrossSymbols(t *testing.T) {
+	finding10 := func(ruleID string, pillar finding.Pillar) finding.Finding {
+		return finding.Finding{RuleID: ruleID, Pillar: pillar, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go", Symbol: "Foo", Location: &finding.Location{Line: 10}}
+	}
+	finding30 := func(ruleID string, pillar finding.Pillar) finding.Finding {
+		return finding.Finding{RuleID: ruleID, Pillar: pillar, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go", Symbol: "Bar", Location: &finding.Location{Line: 30}}
+	}
+	score := Calculate([]finding.Finding{
+		finding10("complexity.cyclomatic", finding.PillarComplexity),
+		finding10("size.function-length", finding.PillarSize),
+		finding30("complexity.cyclomatic", finding.PillarComplexity),
+		finding30("size.function-length", finding.PillarSize),
+	})
+	complexity := findPillarDetail(t, score, "complexity")
+	if complexity.Penalty != 8.0 {
+		t.Errorf("complexity penalty = %v, want 8.0 (two separate clusters of 4, not one cluster of 4)", complexity.Penalty)
+	}
+}
+
+// TestCalculateLoneCorrelatedFindingKeepsFullPenalty confirms a single correlated
+// finding is not divided: a cluster needs at least two members, so one complexity
+// finding on a symbol still bills its full warning penalty.
+func TestCalculateLoneCorrelatedFindingKeepsFullPenalty(t *testing.T) {
+	score := Calculate([]finding.Finding{
+		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
+	})
+	complexity := findPillarDetail(t, score, "complexity")
+	if complexity.Penalty != 8.0 {
+		t.Errorf("complexity penalty = %v, want 8.0 (a lone finding keeps its full penalty)", complexity.Penalty)
+	}
+}
+
+// TestCalculateClusteringRequiresSymbolAndLine confirms findings without a symbol
+// (and a line) never cluster: two complexity findings with no symbol bill the full
+// sum, because clustering can't prove they share one symbol occurrence.
+func TestCalculateClusteringRequiresSymbolAndLine(t *testing.T) {
+	noSymbol := func() finding.Finding {
+		return finding.Finding{RuleID: "complexity.cyclomatic", Pillar: finding.PillarComplexity, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go"}
+	}
+	score := Calculate([]finding.Finding{noSymbol(), noSymbol()})
+	complexity := findPillarDetail(t, score, "complexity")
+	if complexity.Penalty != 16.0 {
+		t.Errorf("complexity penalty = %v, want 16.0 (no symbol/line means no clustering)", complexity.Penalty)
 	}
 }

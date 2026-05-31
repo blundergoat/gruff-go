@@ -16,9 +16,9 @@
     "filesScanned": 1,
     "filesSkipped": 0,
     "diagnosticsCount": 0,
-    "findingsCount": 5,
+    "findingsCount": 4,
     "countsBySeverity": {
-      "advisory": 3,
+      "advisory": 2,
       "error": 0,
       "warning": 2
     },
@@ -26,7 +26,6 @@
       "complexity": 1,
       "design": 1,
       "documentation": 1,
-      "maintainability": 1,
       "size": 1
     },
     "exitCode": 1,
@@ -56,23 +55,23 @@
     "hiddenFindings": 0
   },
   "score": {
-    "composite": 94,
+    "composite": 97,
     "grade": "A",
     "pillars": {
-      "complexity": 92,
+      "complexity": 96,
       "documentation": 99,
-      "size": 92
+      "size": 96
     },
     "pillarDetails": [
       {
         "pillar": "complexity",
-        "score": 92,
+        "score": 96,
         "grade": "A",
         "findings": 1,
         "advisory": 0,
         "warning": 1,
         "error": 0,
-        "penalty": 8
+        "penalty": 4
       },
       {
         "pillar": "documentation",
@@ -86,13 +85,13 @@
       },
       {
         "pillar": "size",
-        "score": 92,
+        "score": 96,
         "grade": "A",
         "findings": 1,
         "advisory": 0,
         "warning": 1,
         "error": 0,
-        "penalty": 8
+        "penalty": 4
       }
     ],
     "coverage": {
@@ -105,9 +104,9 @@
     "topOffenders": [
       {
         "file": "composite.go",
-        "penalty": 17,
+        "penalty": 9,
         "findings": 3,
-        "grade": "B",
+        "grade": "A",
         "maxCyclomatic": 3
       }
     ],

@@ -110,7 +110,7 @@ An initialism accepted by naming rules through `allowlists.acceptedAbbreviations
 
 ### Composite Design Finding
 
-A score-neutral `design.*` finding derived from already-emitted base findings. Current examples include god-function overlap and multi-pillar file hotspots; composite findings do not feed other composite rules.
+A score-neutral `design.*` finding derived from already-emitted base findings. The current example is the multi-pillar file hotspot (`design.hotspot-file`); composite findings do not feed other composite rules.
 
 ### Default-Enabled Rule
 

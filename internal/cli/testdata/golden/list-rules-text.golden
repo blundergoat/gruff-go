@@ -9,8 +9,7 @@ dead-code.unused-private-type	dead-code	advisory	parser	Unused private type
 dead-code.unused-private-var	dead-code	advisory	parser	Unused private var
 dependency.go-mod-local-replace	security	advisory	parser	Local go.mod replace directive
 dependency.go-mod-remote-replace	security	advisory	parser	Remote go.mod replace directive
-design.god-function	design	advisory	parser	God function
-design.hotspot-file	maintainability	advisory	parser	Hotspot file
+design.hotspot-file	design	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric
 docs.config-field-comment	documentation	advisory	parser	Config field comment
 docs.exported-symbol-comment	documentation	advisory	parser	Exported symbol comment

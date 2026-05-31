@@ -28,7 +28,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 80 rules across 11 pillars; 71 enabled by default |
+| Rule catalogue | 79 rules across 11 pillars; 70 enabled by default |
 | Primary config | `.gruff-go.yaml` |
 | Analysis schema | `gruff-go.analysis.v0.2` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
@@ -176,7 +176,7 @@ See [`docs/configuration.md`](docs/configuration.md) for the full schema and val
 
 ## Rules And Pillars
 
-The current checkout contains 80 rules across 11 pillars. 71 rules are enabled by default; the 9 opt-in rules are convention-only naming/modernisation checks plus parser-only dead-code candidates.
+The current checkout contains 79 rules across 11 pillars. 70 rules are enabled by default; the 9 opt-in rules are convention-only naming/modernisation checks plus parser-only dead-code candidates.
 
 | Pillar | Rules |
 | --- | ---: |

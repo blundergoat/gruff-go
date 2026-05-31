@@ -5,6 +5,7 @@ package scoring
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -84,16 +85,17 @@ const complexityDistributionScopeFindingOnly = "finding-only"
 
 // Calculate aggregates findings into a composite Score with per-pillar detail.
 func Calculate(findings []finding.Finding) Score {
-	pillarPenalty := map[string]int{}
-	filePenalty := map[string]int{}
+	penalties := clusterPenalties(findings)
+	pillarPenalty := map[string]float64{}
+	filePenalty := map[string]float64{}
 	fileFindings := map[string]int{}
 	fileMaxCyclomatic := map[string]int{}
 	pillarCounts := map[string]*PillarDetail{}
-	for _, findingItem := range findings {
+	for index, findingItem := range findings {
 		if scoreNeutralFinding(findingItem) {
 			continue
 		}
-		penalty := findingPenalty(findingItem)
+		penalty := penalties[index]
 		pillar := string(findingItem.Pillar)
 		pillarPenalty[pillar] += penalty
 		filePenalty[findingItem.File] += penalty
@@ -142,7 +144,7 @@ func Calculate(findings []finding.Finding) Score {
 
 	total := 0
 	for pillar, penalty := range pillarPenalty {
-		score := max(0, 100-penalty)
+		score := max(0, 100-roundPenalty(penalty))
 		pillars[pillar] = score
 		total += score
 	}
@@ -150,7 +152,7 @@ func Calculate(findings []finding.Finding) Score {
 	for pillar, detail := range pillarCounts {
 		detail.Score = pillars[pillar]
 		detail.Grade = grade(detail.Score)
-		detail.Penalty = float64(pillarPenalty[pillar])
+		detail.Penalty = pillarPenalty[pillar]
 	}
 	return Score{
 		Composite:                   composite,
@@ -165,7 +167,7 @@ func Calculate(findings []finding.Finding) Score {
 }
 
 // scoreCoverage builds the coverage caveat from the contributing pillars.
-func scoreCoverage(pillarPenalty map[string]int) ScoreCoverage {
+func scoreCoverage(pillarPenalty map[string]float64) ScoreCoverage {
 	pillars := make([]string, 0, len(pillarPenalty))
 	for pillar := range pillarPenalty {
 		pillars = append(pillars, pillar)
@@ -217,6 +219,96 @@ func scoreNeutralFinding(item finding.Finding) bool {
 	return strings.HasPrefix(item.RuleID, "design.")
 }
 
+// correlatedRuleIDs are the per-symbol size and complexity rules whose findings
+// describe one root cause when they land on the same function: an over-large or
+// over-branchy routine trips several at once. P5 clusters them so the grade moves
+// once per function, not once per metric (ADR-018, refining ADR-017 item 8).
+// File-level rules (size.file-length) and the score-neutral design composite are
+// excluded - they are not per-symbol signals.
+var correlatedRuleIDs = map[string]bool{
+	"complexity.cyclomatic":    true,
+	"complexity.cognitive":     true,
+	"complexity.nesting-depth": true,
+	"size.function-length":     true,
+	"size.parameter-count":     true,
+}
+
+// clusterKey identifies the one symbol occurrence a correlated finding belongs
+// to. Two findings cluster only when all three fields match, so distinct
+// functions - even same-named methods on different types, which differ in line -
+// never merge into one root cause.
+type clusterKey struct {
+	file   string
+	symbol string
+	line   int
+}
+
+// clusterPenalties returns each finding's score penalty after P5 clustering,
+// aligned by index to findings. Correlated findings (correlatedRuleIDs) that
+// share one (file, symbol, line) are one root cause: each member contributes
+// max(member base penalty)/len instead of its own, so the cluster bills the grade
+// once - its total collapses to the single worst member - while every finding
+// still renders and counts. Lone correlated findings and all other findings keep
+// their full base penalty. Mirrors gruff-py's _finding_penalties; see ADR-018.
+func clusterPenalties(findings []finding.Finding) []float64 {
+	penalties := make([]float64, len(findings))
+	for index, item := range findings {
+		penalties[index] = float64(findingPenalty(item))
+	}
+	groups := map[clusterKey][]int{}
+	for index, item := range findings {
+		if !correlatedRuleIDs[item.RuleID] {
+			continue
+		}
+		line := findingLine(item)
+		if item.Symbol == "" || line == 0 {
+			continue
+		}
+		key := clusterKey{file: item.File, symbol: item.Symbol, line: line}
+		groups[key] = append(groups[key], index)
+	}
+	for _, members := range groups {
+		if len(members) < 2 {
+			continue
+		}
+		shared := maxFloat(penalties, members) / float64(len(members))
+		for _, index := range members {
+			penalties[index] = shared
+		}
+	}
+	return penalties
+}
+
+// maxFloat returns the largest penalties entry among the given member indices.
+// Members is never empty (callers guard len >= 2) and every base penalty is at
+// least 1, so the zero seed is always replaced by a real penalty.
+func maxFloat(penalties []float64, members []int) float64 {
+	largest := 0.0
+	for _, index := range members {
+		if penalties[index] > largest {
+			largest = penalties[index]
+		}
+	}
+	return largest
+}
+
+// findingLine returns the finding's 1-based line, or 0 when it carries no
+// location. Zero disqualifies a finding from clustering: without a line we
+// cannot prove two findings share one symbol occurrence.
+func findingLine(item finding.Finding) int {
+	if item.Location == nil {
+		return 0
+	}
+	return item.Location.Line
+}
+
+// roundPenalty rounds a raw float penalty to the nearest whole point for the
+// integer 0-100 pillar and file scores. Clustering makes penalties fractional
+// (max/len); the displayed score is integral, so round half away from zero.
+func roundPenalty(penalty float64) int {
+	return int(math.Round(penalty))
+}
+
 // grade maps a numeric score (0-100) to a letter grade.
 func grade(score int) string {
 	switch {
@@ -234,13 +326,14 @@ func grade(score int) string {
 }
 
 // topOffenders returns the highest-penalty files, capped at five entries.
-func topOffenders(filePenalty, fileFindings, fileMaxCyclomatic map[string]int) []FileScore {
+func topOffenders(filePenalty map[string]float64, fileFindings, fileMaxCyclomatic map[string]int) []FileScore {
 	files := make([]FileScore, 0, len(filePenalty))
 	for file, penalty := range filePenalty {
-		score := max(0, 100-penalty)
+		rounded := roundPenalty(penalty)
+		score := max(0, 100-rounded)
 		entry := FileScore{
 			File:     file,
-			Penalty:  penalty,
+			Penalty:  rounded,
 			Findings: fileFindings[file],
 			Grade:    grade(score),
 		}

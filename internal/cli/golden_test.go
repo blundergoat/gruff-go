@@ -187,6 +187,9 @@ func Hot(a bool, b bool) {
 }
 
 // compositeConfig returns a YAML config enabling rules used by compositeFixture.
+// hotspot-file is tuned to fire on the two findings (size + complexity) the
+// fixture trips so the golden keeps exercising a composite after god-function's
+// removal; defaults (minFindings 3) would leave the fixture below threshold.
 func compositeConfig() string {
 	return `
 rules:
@@ -194,8 +197,11 @@ rules:
     threshold: 4
   complexity.cyclomatic:
     threshold: 2
-  design.god-function:
+  design.hotspot-file:
     enabled: true
+    thresholds:
+      minFindings: 2
+      minPillars: 2
 `
 }
 

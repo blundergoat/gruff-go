@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` ships **80 rules** across **11 pillars**. **71 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **79 rules** across **11 pillars**. **70 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
 Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
 
@@ -27,8 +27,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`dead-code.unused-private-var`](#dead-codeunused-private-var) | dead-code | advisory | parser | - | Opt-in candidate for package-private variables that are not referenced in their parsed package. |
 | [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
 | [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
-| [`design.god-function`](#designgod-function) | design | advisory | parser | - | Functions that already have both size and complexity findings. |
-| [`design.hotspot-file`](#designhotspot-file) | maintainability | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | warning | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
@@ -264,19 +263,6 @@ Each finding's metadata carries the replacement target.
 
 **Remediation.** Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible.
 
-### `design.god-function`
-
-- **Pillar:** design
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** high
-- **Capability:** parser
-- **Tags:** `composite`
-
-Flags functions that already have at least one size finding and at least one complexity finding on the same file and symbol. The composite finding has no source line so its fingerprint remains stable when the function body shifts but the file and symbol identity stay the same.
-
-**Remediation.** Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.
-
 ### `design.hotspot-file`
 
 - **Pillar:** maintainability
@@ -287,7 +273,7 @@ Flags functions that already have at least one size finding and at least one com
 - **Capability:** parser
 - **Tags:** `composite`
 
-Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules, so a god-function finding will not itself create a hotspot-file finding.
+Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules: design-pillar findings (including hotspot-file's own output) are excluded from the evidence the rule counts.
 
 **Remediation.** Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.
 
@@ -1217,7 +1203,7 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. Raw file length is advisory by default; `design.hotspot-file` and `design.god-function` provide stronger signal when size combines with other findings.
+Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. Raw file length is advisory by default; `design.hotspot-file` provides stronger signal when size combines with findings from other pillars.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 

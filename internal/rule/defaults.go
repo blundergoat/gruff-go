@@ -213,7 +213,6 @@ func defaultProjectRules(config Config) []ProjectRule {
 // defaultCompositeRules builds the composite rule slice from strict config.
 func defaultCompositeRules(config Config) []CompositeRule {
 	return []CompositeRule{
-		DesignGodFunctionRule{},
 		DesignHotspotFileRule{
 			MinFindings: intThreshold(config, "design.hotspot-file", "minFindings", hotspotFileMinFindings),
 			MinPillars:  intThreshold(config, "design.hotspot-file", "minPillars", hotspotFileMinPillars),

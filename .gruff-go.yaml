@@ -81,11 +81,6 @@ rules:
     enabled: true
     severity: advisory
 
-  # Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition.
-  design.god-function:
-    enabled: true
-    severity: advisory
-
   # Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.
   design.hotspot-file:
     enabled: true

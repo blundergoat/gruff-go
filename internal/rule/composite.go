@@ -1,9 +1,8 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements composite design rules that derive findings from other findings.
+// This file implements the composite design rule that derives a finding from other findings.
 package rule
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -14,75 +13,6 @@ const (
 	hotspotFileMinFindings = 3
 	hotspotFileMinPillars  = 2
 )
-
-// DesignGodFunctionRule flags functions that combine both size and complexity findings.
-type DesignGodFunctionRule struct{}
-
-// Definition declares the design.god-function composite, which fires when one symbol already carries both size and complexity findings.
-func (DesignGodFunctionRule) Definition() Definition {
-	return Definition{
-		ID:               "design.god-function",
-		Title:            "God function",
-		Description:      "Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition.",
-		Pillar:           finding.PillarDesign,
-		SecondaryPillars: []finding.Pillar{finding.PillarSize, finding.PillarComplexity},
-		Severity:         finding.SeverityAdvisory,
-		Confidence:       finding.ConfidenceHigh,
-		DefaultEnabled:   true,
-		Tags:             []string{"composite"},
-		Remediation:      "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
-	}
-}
-
-// AnalyzeFindings emits god-function composites for symbols flagged by both size and complexity rules.
-func (DesignGodFunctionRule) AnalyzeFindings(findings []finding.Finding, _ Context) []finding.Finding {
-	groups := map[string]*symbolCompositeGroup{}
-	for _, evidence := range findings {
-		if evidence.File == "" || evidence.Symbol == "" {
-			continue
-		}
-		if evidence.Pillar != finding.PillarSize && evidence.Pillar != finding.PillarComplexity {
-			continue
-		}
-		key := evidence.File + "\x00" + evidence.Symbol
-		group := groups[key]
-		if group == nil {
-			group = &symbolCompositeGroup{file: evidence.File, symbol: evidence.Symbol}
-			groups[key] = group
-		}
-		switch evidence.Pillar {
-		case finding.PillarSize:
-			group.size = append(group.size, evidence)
-		case finding.PillarComplexity:
-			group.complexity = append(group.complexity, evidence)
-		}
-	}
-
-	keys := make([]string, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-
-	out := []finding.Finding{}
-	for _, key := range keys {
-		group := groups[key]
-		if len(group.size) == 0 || len(group.complexity) == 0 {
-			continue
-		}
-		evidence := append(append([]finding.Finding{}, group.size...), group.complexity...)
-		metadata := compositeEvidenceMetadata(evidence)
-		metadata["sizeFindings"] = len(group.size)
-		metadata["complexityFindings"] = len(group.complexity)
-		out = append(out, finding.Finding{
-			Message:  fmt.Sprintf("function %s combines size and complexity findings", group.symbol),
-			File:     group.file,
-			Symbol:   group.symbol,
-			Metadata: metadata,
-		})
-	}
-	return out
-}
 
 // DesignHotspotFileRule flags files whose findings cross multiple quality pillars.
 type DesignHotspotFileRule struct {
@@ -108,7 +38,13 @@ func (r DesignHotspotFileRule) minPillars() int {
 	return r.MinPillars
 }
 
-// Definition declares the design.hotspot-file composite, gated by default thresholds of 3 findings spanning at least 2 quality pillars.
+// Definition declares the design.hotspot-file composite. It emits the design
+// pillar to match its design.* rule ID, and is the only rule that does so, so
+// list-rules keeps exposing the design pillar required by the cross-port 11-pillar
+// contract; re-pillaring it would silently drop a contract pillar. Like every
+// design.* composite it is score-neutral (see internal/scoring): the underlying
+// findings already carry the penalty. Gated by default thresholds of 3 findings
+// spanning at least 2 quality pillars.
 func (r DesignHotspotFileRule) Definition() Definition {
 	minFindings := r.minFindings()
 	minPillars := r.minPillars()
@@ -116,7 +52,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 		ID:             "design.hotspot-file",
 		Title:          "Hotspot file",
 		Description:    "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.",
-		Pillar:         finding.PillarMaintain,
+		Pillar:         finding.PillarDesign,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
@@ -173,14 +109,6 @@ func (r DesignHotspotFileRule) AnalyzeFindings(findings []finding.Finding, _ Con
 	return out
 }
 
-// symbolCompositeGroup buckets size and complexity findings per file+symbol for god-function detection.
-type symbolCompositeGroup struct {
-	file       string
-	symbol     string
-	size       []finding.Finding
-	complexity []finding.Finding
-}
-
 // fileCompositeGroup buckets all findings per file for hotspot detection.
 type fileCompositeGroup struct {
 	file     string
@@ -204,10 +132,9 @@ func compositeEvidenceMetadata(evidence []finding.Finding) map[string]any {
 
 // uniqueSortedRuleIDs collects the rule IDs of the evidence findings into a
 // deterministic sorted set. Dedup matters because the same rule can fire
-// multiple times on one symbol (e.g. two separate size findings on a
-// function), and the sort keeps JSON output diff-stable across runs so
-// golden tests aren't flaky. Empty rule IDs are dropped to avoid an empty
-// string sneaking into metadata.
+// multiple times on one file (e.g. two separate size findings), and the sort
+// keeps JSON output diff-stable across runs so golden tests aren't flaky. Empty
+// rule IDs are dropped to avoid an empty string sneaking into metadata.
 func uniqueSortedRuleIDs(findings []finding.Finding) []string {
 	seen := map[string]struct{}{}
 	for _, evidence := range findings {

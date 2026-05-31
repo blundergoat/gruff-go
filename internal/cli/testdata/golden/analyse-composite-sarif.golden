@@ -306,36 +306,6 @@
               }
             },
             {
-              "id": "design.god-function",
-              "name": "God function",
-              "shortDescription": {
-                "text": "God function"
-              },
-              "fullDescription": {
-                "text": "Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition."
-              },
-              "help": {
-                "text": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared."
-              },
-              "properties": {
-                "pillar": "design",
-                "secondaryPillars": [
-                  "size",
-                  "complexity"
-                ],
-                "defaultSeverity": "advisory",
-                "confidence": "high",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "composite"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "design.hotspot-file",
               "name": "Hotspot file",
               "shortDescription": {
@@ -348,7 +318,7 @@
                 "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
               },
               "properties": {
-                "pillar": "maintainability",
+                "pillar": "design",
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
@@ -357,7 +327,7 @@
                   "composite"
                 ],
                 "thresholds": {
-                  "minFindings": 3,
+                  "minFindings": 2,
                   "minPillars": 2
                 }
               },
@@ -2281,53 +2251,8 @@
       },
       "results": [
         {
-          "ruleId": "design.god-function",
-          "ruleIndex": 11,
-          "level": "note",
-          "message": {
-            "text": "function Hot combines size and complexity findings"
-          },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "composite.go"
-                }
-              }
-            }
-          ],
-          "partialFingerprints": {
-            "gruffFingerprint": "4a10c037e95fba2e"
-          },
-          "properties": {
-            "confidence": "high",
-            "fingerprint": "4a10c037e95fba2e",
-            "metadata": {
-              "complexityFindings": 1,
-              "primaryLine": 4,
-              "ruleIds": [
-                "complexity.cyclomatic",
-                "size.function-length"
-              ],
-              "sizeFindings": 1,
-              "underlyingFingerprints": [
-                "6c2b61fff900ee69",
-                "d8293925f32a0f34"
-              ]
-            },
-            "pillar": "design",
-            "remediation": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
-            "secondaryPillars": [
-              "size",
-              "complexity"
-            ],
-            "severity": "advisory",
-            "symbol": "Hot"
-          }
-        },
-        {
           "ruleId": "design.hotspot-file",
-          "ruleIndex": 12,
+          "ruleIndex": 11,
           "level": "note",
           "message": {
             "text": "file has findings across multiple quality pillars"
@@ -2349,7 +2274,7 @@
             "fingerprint": "c8f0761928502c92",
             "metadata": {
               "findings": 3,
-              "minFindings": 3,
+              "minFindings": 2,
               "minPillars": 2,
               "pillars": [
                 "complexity",
@@ -2368,7 +2293,7 @@
                 "d8293925f32a0f34"
               ]
             },
-            "pillar": "maintainability",
+            "pillar": "design",
             "remediation": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
             "severity": "advisory"
           }
@@ -2411,7 +2336,7 @@
         },
         {
           "ruleId": "docs.exported-symbol-comment",
-          "ruleIndex": 15,
+          "ruleIndex": 14,
           "level": "note",
           "message": {
             "text": "exported function \"Hot\" has no doc comment"
@@ -2446,7 +2371,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 70,
+          "ruleIndex": 69,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"
@@ -2484,7 +2409,7 @@
       ],
       "properties": {
         "gruffSchemaVersion": "gruff-go.analysis.v0.2",
-        "score": 94,
+        "score": 97,
         "grade": "A"
       }
     }
