@@ -296,6 +296,41 @@ func TestAnalyzeIncludeIgnoredKeepsConfigIgnore(t *testing.T) {
 	}
 }
 
+// TestAnalyzeDiffModeKeepsFullProjectContext proves a changed-region scan parses the
+// whole project, not just the changed files, so a project-level rule
+// (dead-code.unused-private-function) does not falsely flag a private function in a
+// changed file that an unchanged sibling still calls. The patch touches the helper's
+// own line, so a false finding would survive the symbol-scope filter; the scan stays
+// clean only because the unchanged caller is still parsed for cross-file resolution.
+func TestAnalyzeDiffModeKeepsFullProjectContext(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "used.go", "package svc\n\nfunc helper() string {\n\treturn \"ok\"\n}\n")
+	writeFile(t, root, "caller.go", "package svc\n\n// Run keeps helper reachable from an unchanged sibling file.\nfunc Run() string {\n\treturn helper()\n}\n")
+	t.Chdir(root)
+
+	patch := "diff --git a/used.go b/used.go\n--- a/used.go\n+++ b/used.go\n@@ -3 +3 @@\n-func helper() string {\n+func helper() string { // touched\n"
+	report, err := Analyze(Options{
+		Registry:  rule.Defaults(),
+		FailOn:    finding.FailThresholdWarning,
+		DiffMode:  "-",
+		DiffPatch: []byte(patch),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Diff.Enabled {
+		t.Fatal("expected diff mode to be enabled for the stdin patch")
+	}
+	if len(report.Paths.Scanned) != 2 {
+		t.Fatalf("diff scan parsed %d files, want 2 (full project context): %#v", len(report.Paths.Scanned), report.Paths.Scanned)
+	}
+	for _, item := range report.Findings {
+		if item.RuleID == "dead-code.unused-private-function" {
+			t.Fatalf("diff scan falsely flagged a cross-file-used private function: %#v", report.Findings)
+		}
+	}
+}
+
 // hasConfigSkip reports whether skipped contains path with source=config and the
 // expected matched glob.
 func hasConfigSkip(skipped []SkippedPath, path, pattern string) bool {

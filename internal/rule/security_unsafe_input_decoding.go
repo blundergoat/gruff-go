@@ -61,7 +61,7 @@ func (UnsafeDeserializationRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 			if !ok || sourceIndex >= len(call.Args) {
 				return true
 			}
-			source, ok := scope.exprHasRequest(call.Args[sourceIndex])
+			source, ok := scope.exprHasRequest(call.Args[sourceIndex], call.Pos())
 			if !ok {
 				return true
 			}

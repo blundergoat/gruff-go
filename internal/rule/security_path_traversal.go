@@ -12,8 +12,9 @@ import (
 
 // pathSanitizerWords name the same-function containment evidence that makes a
 // request-controlled path safe: filepath.Clean/Rel/IsLocal/Base, a basename
-// reduction, or a project containment helper. Matching is a lowercased substring
-// test on the call name.
+// reduction, or a project containment helper. Each entry is matched at a call-name
+// token boundary (see callNameMatchesAny), so "safe" matches safePath but not
+// unsafePath.
 var pathSanitizerWords = []string{"clean", "rel", "islocal", "base", "safe", "sanit", "within", "contain", "validate", "verif", "allow"}
 
 // PathTraversalFileAccessRule flags request-derived values used as a filesystem
@@ -62,11 +63,11 @@ func (PathTraversalFileAccessRule) AnalyzeUnit(unit parser.Unit, _ Context) []fi
 				return true
 			}
 			pathArg := call.Args[pathIndex]
-			source, ok := scope.exprHasRequest(pathArg)
+			source, ok := scope.exprHasRequest(pathArg, call.Pos())
 			if !ok {
 				return true
 			}
-			if scope.argHasInlineSanitizer(pathArg, pathSanitizerWords) || bodyHasSanitizingCall(body, identNames(pathArg), pathSanitizerWords) {
+			if scope.argHasInlineSanitizer(pathArg, pathSanitizerWords) || bodyHasSanitizingCall(body, identNames(pathArg), pathSanitizerWords, call.Pos()) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())

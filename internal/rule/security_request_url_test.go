@@ -127,6 +127,39 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 			want: 0,
 		},
 		{
+			name: "validated after fetch still flags",
+			code: `// Package handler is a test package.
+package handler
+
+import "net/http"
+
+func validateURL(string) bool { return true }
+
+func fetch(w http.ResponseWriter, r *http.Request) {
+	target := r.FormValue("u")
+	_, _ = http.Get(target)
+	_ = validateURL(target)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "request value assigned after sink is not tainted at sink",
+			code: `// Package handler is a test package.
+package handler
+
+import "net/http"
+
+func fetch(w http.ResponseWriter, r *http.Request) {
+	target := "https://fixed.example.com/status"
+	_, _ = http.Get(target)
+	target = r.FormValue("u")
+	_ = target
+}
+`,
+			want: 0,
+		},
+		{
 			name: "test file skipped",
 			code: `// Package handler is a test package.
 package handler
@@ -247,6 +280,19 @@ func redirect(w http.ResponseWriter, r *http.Request) {
 }
 `,
 			want: 0,
+		},
+		{
+			name: "bare slash prefix with request suffix",
+			code: `// Package handler is a test package.
+package handler
+
+import "net/http"
+
+func redirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/"+r.URL.Query().Get("next"), 302)
+}
+`,
+			want: 1,
 		},
 	}
 	for _, tt := range tests {

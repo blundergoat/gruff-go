@@ -56,6 +56,8 @@ func TestGitHubActionsRemoteShellRule(t *testing.T) {
 		{name: "process substitution", src: "      - run: bash <(curl -s https://example.com/i)\n", want: 1},
 		{name: "go install is safe", src: "      - run: go install golang.org/x/vuln/cmd/govulncheck@latest\n", want: 0},
 		{name: "apt install is safe", src: "      - run: sudo apt-get install -y shellcheck\n", want: 0},
+		{name: "curl pipe bash in comment is ignored", src: "# install docs: curl https://example.com | bash\njobs:\n  x:\n    steps:\n      - uses: actions/checkout@v4\n", want: 0},
+		{name: "curl pipe bash in run block scalar", src: "      - run: |\n          curl https://example.com/i.sh | bash\n", want: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -125,6 +127,8 @@ func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 		{name: "named secret in pull_request_target", src: "on: pull_request_target\nenv:\n  K: ${{ secrets.DEPLOY_KEY }}\n", want: 1},
 		{name: "github token exempt", src: "on: pull_request\nenv:\n  K: ${{ secrets.GITHUB_TOKEN }}\n", want: 0},
 		{name: "named secret on push", src: "on: push\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
+		{name: "pull_request in comment is not a trigger", src: "on: push\n# also relevant for pull_request builds\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
+		{name: "pull_request in job condition is not a trigger", src: "on: push\njobs:\n  x:\n    if: github.event_name == 'pull_request'\n    steps:\n      - run: deploy\n        env:\n          K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

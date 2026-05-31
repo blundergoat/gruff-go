@@ -133,6 +133,63 @@ func read(w http.ResponseWriter, r *http.Request) {
 `,
 			want: 0,
 		},
+		{
+			name: "unsafe-named helper is not a sanitizer",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"os"
+)
+
+func unsafePath(s string) string { return s }
+
+func read(w http.ResponseWriter, r *http.Request) {
+	_, _ = os.Open(unsafePath(r.FormValue("file")))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "safe-named helper still suppresses",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"os"
+)
+
+func safePath(s string) string { return s }
+
+func read(w http.ResponseWriter, r *http.Request) {
+	_, _ = os.Open(safePath(r.FormValue("file")))
+}
+`,
+			want: 0,
+		},
+		{
+			name: "containment helper after sink does not cleanse",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func isWithinBase(string) bool { return true }
+
+func read(w http.ResponseWriter, r *http.Request) {
+	name := filepath.Join("/srv", r.FormValue("file"))
+	_, _ = os.Open(name)
+	_ = isWithinBase(name)
+}
+`,
+			want: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

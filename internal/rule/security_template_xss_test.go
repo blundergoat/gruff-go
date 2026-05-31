@@ -130,6 +130,24 @@ func render(w http.ResponseWriter, r *http.Request) {
 `,
 			want: 0,
 		},
+		{
+			name: "text template with static data is not flagged",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"text/template"
+)
+
+func render(w http.ResponseWriter, r *http.Request) {
+	_ = r
+	t := template.Must(template.New("p").Parse("<b>{{.}}</b>"))
+	_ = t.Execute(w, "welcome")
+}
+`,
+			want: 0,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

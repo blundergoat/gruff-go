@@ -6,7 +6,6 @@ package rule
 import (
 	"go/ast"
 	"go/token"
-	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -66,11 +65,11 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 				return true
 			}
 			urlArg := call.Args[urlIndex]
-			source, ok := scope.exprHasRequest(urlArg)
+			source, ok := scope.exprHasRequest(urlArg, call.Pos())
 			if !ok {
 				return true
 			}
-			if scope.argHasInlineSanitizer(urlArg, urlSanitizerWords) || bodyHasSanitizingCall(body, identNames(urlArg), urlSanitizerWords) {
+			if scope.argHasInlineSanitizer(urlArg, urlSanitizerWords) || bodyHasSanitizingCall(body, identNames(urlArg), urlSanitizerWords, call.Pos()) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -129,14 +128,14 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			if !ok {
 				return true
 			}
-			source, ok := scope.exprHasRequest(target)
+			source, ok := scope.exprHasRequest(target, call.Pos())
 			if !ok {
 				return true
 			}
-			if literal, ok := leftmostStringLiteral(target); ok && isSafeRelativePath(literal) {
+			if literal, ok := leftmostStringLiteral(target); ok && isSafeRelativePrefix(literal) {
 				return true
 			}
-			if scope.argHasInlineSanitizer(target, redirectSanitizerWords) || bodyHasSanitizingCall(body, identNames(target), redirectSanitizerWords) {
+			if scope.argHasInlineSanitizer(target, redirectSanitizerWords) || bodyHasSanitizingCall(body, identNames(target), redirectSanitizerWords, call.Pos()) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -240,14 +239,16 @@ func leftmostStringLiteral(expr ast.Expr) (string, bool) {
 	return "", false
 }
 
-// isSafeRelativePath reports whether a redirect target literal begins with a
-// host-relative path. A leading single slash keeps the redirect on the same
-// origin; protocol-relative "//" or "/\" prefixes can switch hosts and are unsafe.
-func isSafeRelativePath(value string) bool {
-	if !strings.HasPrefix(value, "/") {
+// isSafeRelativePrefix reports whether a fixed literal prefix keeps a redirect
+// host-relative no matter what request-controlled suffix is concatenated after it.
+// A bare "/" is not enough: a request value beginning with "/" or "\" extends it
+// into a protocol-relative "//host" or "/\host", so the prefix must commit to a
+// path segment ("/x…") before the request-controlled data.
+func isSafeRelativePrefix(value string) bool {
+	if len(value) < 2 || value[0] != '/' {
 		return false
 	}
-	return !strings.HasPrefix(value, "//") && !strings.HasPrefix(value, "/\\")
+	return value[1] != '/' && value[1] != '\\'
 }
 
 // isHTTPClientReceiver reports whether expr is a known http.Client value: a local

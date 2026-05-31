@@ -4,6 +4,7 @@ package diff
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -45,7 +46,8 @@ type patchParseState struct {
 }
 
 // FromGit runs `git diff` against base and returns the changed lines under paths.
-func FromGit(root string, base string, paths []string) (ChangedLines, error) {
+// ctx cancels the git subprocess so a hung git does not outlive an aborted scan.
+func FromGit(ctx context.Context, root string, base string, paths []string) (ChangedLines, error) {
 	if base == "" {
 		return ChangedLines{}, fmt.Errorf("diff base must not be empty")
 	}
@@ -56,7 +58,7 @@ func FromGit(root string, base string, paths []string) (ChangedLines, error) {
 		args = append(args, paths...)
 	}
 	// #nosec G204 -- arguments are passed directly to git without shell expansion.
-	command := exec.Command("git", args...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = root
 	output, err := command.Output()
 	if err != nil {
@@ -68,33 +70,34 @@ func FromGit(root string, base string, paths []string) (ChangedLines, error) {
 	return Parse(base, output), nil
 }
 
-// FromMode resolves gruff's CLI diff modes into changed-line data.
-func FromMode(root string, mode string, paths []string) (ChangedLines, error) {
+// FromMode resolves gruff's CLI diff modes into changed-line data. ctx cancels the
+// git subprocesses it spawns.
+func FromMode(ctx context.Context, root string, mode string, paths []string) (ChangedLines, error) {
 	switch mode {
 	case "", "working-tree":
-		staged, err := gitDiff(root, "working-tree", []string{"diff", "--cached", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		staged, err := gitDiff(ctx, root, "working-tree", []string{"diff", "--cached", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
-		unstaged, err := gitDiff(root, "working-tree", []string{"diff", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		unstaged, err := gitDiff(ctx, root, "working-tree", []string{"diff", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
-		untracked, err := untrackedFiles(root, paths)
+		untracked, err := untrackedFiles(ctx, root, paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
 		return Merge("working-tree", staged, unstaged, WholeFiles("working-tree", untracked)), nil
 	case "staged":
-		return gitDiff(root, mode, []string{"diff", "--cached", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		return gitDiff(ctx, root, mode, []string{"diff", "--cached", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
 	case "unstaged":
-		return gitDiff(root, mode, []string{"diff", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		return gitDiff(ctx, root, mode, []string{"diff", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
 	default:
-		base, err := FromGit(root, mode, paths)
+		base, err := FromGit(ctx, root, mode, paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
-		untracked, err := untrackedFiles(root, paths)
+		untracked, err := untrackedFiles(ctx, root, paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
@@ -299,14 +302,14 @@ func parseNewFile(line string) string {
 // whole tree when none are given) and parses stdout into ChangedLines; a git
 // failure is surfaced with its stderr so the caller can report why the diff could
 // not be computed.
-func gitDiff(root string, base string, args []string, paths []string) (ChangedLines, error) {
+func gitDiff(ctx context.Context, root string, base string, args []string, paths []string) (ChangedLines, error) {
 	if len(paths) == 0 {
 		args = append(args, ".")
 	} else {
 		args = append(args, paths...)
 	}
 	// #nosec G204 -- arguments are passed directly to git without shell expansion.
-	command := exec.Command("git", args...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = root
 	output, err := command.Output()
 	if err != nil {
@@ -321,7 +324,7 @@ func gitDiff(root string, base string, args []string, paths []string) (ChangedLi
 // untrackedFiles lists untracked, non-ignored files (git ls-files --others
 // --exclude-standard) so working-tree diff mode can treat brand-new files as
 // wholly changed rather than missing them.
-func untrackedFiles(root string, paths []string) ([]string, error) {
+func untrackedFiles(ctx context.Context, root string, paths []string) ([]string, error) {
 	args := []string{"ls-files", "--others", "--exclude-standard", "--"}
 	if len(paths) == 0 {
 		args = append(args, ".")
@@ -329,7 +332,7 @@ func untrackedFiles(root string, paths []string) ([]string, error) {
 		args = append(args, paths...)
 	}
 	// #nosec G204 -- arguments are passed directly to git without shell expansion.
-	command := exec.Command("git", args...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = root
 	output, err := command.Output()
 	if err != nil {

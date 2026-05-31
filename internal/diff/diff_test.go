@@ -3,6 +3,7 @@
 package diff
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,7 +94,7 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	runGit(t, root, "commit", "-q", "-m", "initial")
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {\n\tprintln(\"changed\")\n}\n")
 
-	changed, err := FromGit(root, "HEAD", []string{"."})
+	changed, err := FromGit(context.Background(), root, "HEAD", []string{"."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
 	runGit(t, root, "commit", "-q", "-m", "initial")
 	writeFile(t, root, "new.go", "package main\n\nfunc added() {}\n")
 
-	changed, err := FromMode(root, "working-tree", []string{"."})
+	changed, err := FromMode(context.Background(), root, "working-tree", []string{"."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +129,7 @@ func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
 
 // TestFromGitReportsNonGitDiagnostics ensures non-repo invocations return an error.
 func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
-	_, err := FromGit(t.TempDir(), "HEAD", []string{"."})
+	_, err := FromGit(context.Background(), t.TempDir(), "HEAD", []string{"."})
 	if err == nil {
 		t.Fatal("expected non-git error")
 	}

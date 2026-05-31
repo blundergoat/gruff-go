@@ -115,30 +115,67 @@ type templateXSSPackages struct {
 }
 
 // templateXSSHit classifies one call against the three unescaped-HTML shapes and
-// returns the reason and report position when it fires. text/template is unsafe
-// for HTML only when html/template is not also imported in the file.
+// returns the reason and report position when it fires. Each shape requires the
+// rendered value to be request-controlled, so trusted renders are not flagged.
 func templateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, htmlContentType bool) (string, token.Pos, bool) {
-	textTemplateUnescaped := len(pkgs.textTemplate) > 0 && len(pkgs.htmlTemplate) == 0
-	if textTemplateUnescaped && isTemplateExecuteToWriter(call, writers) {
+	switch {
+	case textTemplateXSSHit(call, scope, writers, pkgs):
 		return "text-template-response", call.Pos(), true
+	case htmlConversionXSSHit(call, scope, pkgs):
+		return "raw-html-conversion", call.Pos(), true
+	case rawWriteXSSHit(call, scope, writers, pkgs, htmlContentType):
+		return "unescaped-response-write", call.Pos(), true
+	default:
+		return "", call.Pos(), false
 	}
-	if scope != nil {
-		if arg, ok := unsafeTemplateConversion(call, pkgs.htmlTemplate); ok {
-			if _, ok := scope.exprHasRequest(arg); ok && !scope.argHasInlineSanitizer(arg, templateXSSEscapeWords) {
-				return "raw-html-conversion", call.Pos(), true
-			}
+}
+
+// textTemplateXSSHit reports whether call renders request-controlled data into a
+// response writer through text/template (with no html/template import), the
+// unescaped path. It requires the template data to be request-controlled so a
+// text/template render of trusted data is not flagged.
+func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages) bool {
+	if scope == nil || len(pkgs.textTemplate) == 0 || len(pkgs.htmlTemplate) > 0 {
+		return false
+	}
+	dataArg, ok := templateExecuteDataArg(call, writers)
+	if !ok {
+		return false
+	}
+	_, ok = scope.exprHasRequest(dataArg, call.Pos())
+	return ok && !scope.argHasInlineSanitizer(dataArg, templateXSSEscapeWords)
+}
+
+// htmlConversionXSSHit reports whether call wraps a request-controlled value in an
+// html/template HTML/JS/URL/CSS conversion that bypasses auto-escaping.
+func htmlConversionXSSHit(call *ast.CallExpr, scope *requestTaintScope, pkgs templateXSSPackages) bool {
+	if scope == nil {
+		return false
+	}
+	arg, ok := unsafeTemplateConversion(call, pkgs.htmlTemplate)
+	if !ok {
+		return false
+	}
+	_, ok = scope.exprHasRequest(arg, call.Pos())
+	return ok && !scope.argHasInlineSanitizer(arg, templateXSSEscapeWords)
+}
+
+// rawWriteXSSHit reports whether call writes a request-controlled value directly to
+// a response writer on an HTML content type without escaping.
+func rawWriteXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, htmlContentType bool) bool {
+	if scope == nil || !htmlContentType {
+		return false
+	}
+	dataArgs, ok := rawResponseWriteArgs(call, writers, pkgs)
+	if !ok {
+		return false
+	}
+	for _, dataArg := range dataArgs {
+		if _, ok := scope.exprHasRequest(dataArg, call.Pos()); ok && !scope.argHasInlineSanitizer(dataArg, templateXSSEscapeWords) {
+			return true
 		}
 	}
-	if scope != nil && htmlContentType {
-		if dataArgs, ok := rawResponseWriteArgs(call, writers, pkgs); ok {
-			for _, dataArg := range dataArgs {
-				if _, ok := scope.exprHasRequest(dataArg); ok && !scope.argHasInlineSanitizer(dataArg, templateXSSEscapeWords) {
-					return "unescaped-response-write", call.Pos(), true
-				}
-			}
-		}
-	}
-	return "", call.Pos(), false
+	return false
 }
 
 // responseWriterParamNames returns the parameter names declared as
@@ -201,21 +238,32 @@ func functionSetsHTMLContentType(body *ast.BlockStmt) bool {
 	return found
 }
 
-// isTemplateExecuteToWriter reports whether call renders a template into one of
-// the response writers via Execute or ExecuteTemplate.
-func isTemplateExecuteToWriter(call *ast.CallExpr, writers map[string]bool) bool {
+// templateExecuteDataArg reports the template data argument rendered into one of
+// the response writers via Execute(w, data) or ExecuteTemplate(w, name, data). The
+// text/template check requires that data to be request-controlled rather than
+// flagging every text/template render of trusted data.
+func templateExecuteDataArg(call *ast.CallExpr, writers map[string]bool) (ast.Expr, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return false
+		return nil, false
 	}
-	if selector.Sel.Name != "Execute" && selector.Sel.Name != "ExecuteTemplate" {
-		return false
+	dataIndex := 0
+	switch selector.Sel.Name {
+	case "Execute":
+		dataIndex = 1
+	case "ExecuteTemplate":
+		dataIndex = 2
+	default:
+		return nil, false
 	}
-	if len(call.Args) == 0 {
-		return false
+	if len(call.Args) <= dataIndex {
+		return nil, false
 	}
 	ident, ok := call.Args[0].(*ast.Ident)
-	return ok && writers[ident.Name]
+	if !ok || !writers[ident.Name] {
+		return nil, false
+	}
+	return call.Args[dataIndex], true
 }
 
 // unsafeTemplateConversion reports the converted argument when call is an

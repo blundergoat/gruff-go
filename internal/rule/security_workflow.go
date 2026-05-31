@@ -20,6 +20,8 @@ var (
 	workflowBroadPermsPattern  = regexp.MustCompile(`(?i)^\s*permissions:\s*(write-all|write)\s*(?:#.*)?$`)
 	workflowSecretPattern      = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z0-9_]+)`)
 	workflowRunPattern         = regexp.MustCompile(`(?m)^\s*-?\s*run:`)
+	workflowRunKeyPattern      = regexp.MustCompile(`^\s*-?\s*run:`)
+	workflowOnKeyPattern       = regexp.MustCompile(`^\s*['"]?on['"]?\s*:`)
 	workflowPRTargetPattern    = regexp.MustCompile(`pull_request_target`)
 	workflowPRPattern          = regexp.MustCompile(`pull_request\b`)
 	actionShaRefPattern        = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
@@ -108,7 +110,11 @@ func (GitHubActionsRemoteShellRule) AnalyzeUnit(unit parser.Unit, _ Context) []f
 		return nil
 	}
 	findings := []finding.Finding{}
+	runLines := executableRunLines(unit.Source)
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		if !runLines[lineNumber] {
+			continue
+		}
 		if workflowRemoteShellPattern.MatchString(line) || workflowProcessSubPattern.MatchString(line) {
 			findings = append(findings, finding.Finding{
 				Message:  "workflow step pipes a remote download into a shell",
@@ -183,7 +189,7 @@ func (GitHubActionsPullRequestTargetRule) Definition() Definition {
 
 // AnalyzeUnit emits a finding when pull_request_target pairs with execution.
 func (GitHubActionsPullRequestTargetRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if !isWorkflowFile(unit.File.Path) || !workflowPRTargetPattern.MatchString(unit.Source) || !workflowHasExecution(unit.Source) {
+	if !isWorkflowFile(unit.File.Path) || !isPullRequestTargetTriggered(unit.Source) || !workflowHasExecution(unit.Source) {
 		return nil
 	}
 	return []finding.Finding{{
@@ -274,10 +280,97 @@ func workflowHasExecution(source string) bool {
 	return strings.Contains(source, "actions/checkout") || workflowRunPattern.MatchString(source)
 }
 
-// isPullRequestTriggered reports whether the workflow is triggered by a
-// pull-request event (pull_request or pull_request_target).
+// isPullRequestTriggered reports whether the workflow's on: triggers include a
+// pull-request event (pull_request or pull_request_target). It inspects only the
+// on: block so a pull_request mention in a comment, job name, or step condition
+// elsewhere does not register as a trigger.
 func isPullRequestTriggered(source string) bool {
-	return workflowPRTargetPattern.MatchString(source) || workflowPRPattern.MatchString(source)
+	section := workflowTriggerSection(source)
+	return workflowPRTargetPattern.MatchString(section) || workflowPRPattern.MatchString(section)
+}
+
+// isPullRequestTargetTriggered reports whether the workflow's on: triggers include
+// pull_request_target specifically.
+func isPullRequestTargetTriggered(source string) bool {
+	return workflowPRTargetPattern.MatchString(workflowTriggerSection(source))
+}
+
+// leadingSpaces counts the leading space characters of a YAML line, a cheap
+// indentation measure for the dependency-free block-scope heuristics below.
+func leadingSpaces(line string) int {
+	n := 0
+	for n < len(line) && line[n] == ' ' {
+		n++
+	}
+	return n
+}
+
+// stripYAMLComment removes a trailing "# …" comment from a line. A '#' counts as a
+// comment only at line start or after whitespace, so a '#' inside a quoted scalar
+// is left intact and commented text cannot register as a trigger.
+func stripYAMLComment(line string) string {
+	for i := 0; i < len(line); i++ {
+		if line[i] == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+			return line[:i]
+		}
+	}
+	return line
+}
+
+// executableRunLines returns the 0-indexed lines that belong to a run: step body —
+// the inline content on the run: line plus the more-indented block-scalar
+// continuation lines. Scanning for remote-shell pipelines only within these lines
+// keeps comments and non-run keys, which CI never executes, from matching.
+func executableRunLines(source string) map[int]bool {
+	lines := strings.Split(source, "\n")
+	inRun := map[int]bool{}
+	runColumn := -1
+	for i, line := range lines {
+		if runColumn >= 0 {
+			if strings.TrimSpace(line) == "" {
+				inRun[i] = true
+				continue
+			}
+			if leadingSpaces(line) > runColumn {
+				inRun[i] = true
+				continue
+			}
+			runColumn = -1 // a dedent ends the block; re-check this line as a key
+		}
+		if workflowRunKeyPattern.MatchString(line) {
+			inRun[i] = true
+			runColumn = strings.Index(line, "run:")
+		}
+	}
+	return inRun
+}
+
+// workflowTriggerSection returns the text of the workflow on: block — the inline
+// value plus its nested, more-indented event lines, with trailing comments
+// stripped — so trigger detection sees only declared events.
+func workflowTriggerSection(source string) string {
+	lines := strings.Split(source, "\n")
+	var section strings.Builder
+	onColumn := -1
+	for _, line := range lines {
+		if onColumn >= 0 {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if leadingSpaces(line) > onColumn {
+				section.WriteString(stripYAMLComment(line))
+				section.WriteByte('\n')
+				continue
+			}
+			onColumn = -1 // a dedent ends the section; re-check this line as a key
+		}
+		if workflowOnKeyPattern.MatchString(line) {
+			section.WriteString(stripYAMLComment(line))
+			section.WriteByte('\n')
+			onColumn = leadingSpaces(line)
+		}
+	}
+	return section.String()
 }
 
 // firstPatternLine returns the 1-indexed line of the first match for pattern, or

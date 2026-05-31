@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+	"unicode"
 )
 
 // requestTaintedMembers names the *http.Request fields and methods that expose
@@ -35,6 +36,11 @@ type requestTaintScope struct {
 	pathPkgs     map[string]bool
 	ioPkgs       map[string]bool
 	ioutilPkgs   map[string]bool
+	// firstTaintPos records, per tainted local, the position of the earliest
+	// assignment that introduced request-controlled data. Sinks consult it so a
+	// value is only treated as tainted at a sink that follows its taint, not at
+	// an earlier use that precedes a later request assignment.
+	firstTaintPos map[string]token.Pos
 }
 
 // forEachRequestFunc invokes visit for every function body in the file that
@@ -69,14 +75,15 @@ func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.Bloc
 		return nil, false
 	}
 	scope := &requestTaintScope{
-		requests:     requests,
-		tainted:      map[string]bool{},
-		fmtPkgs:      packageImportNames(file, "fmt", "fmt"),
-		stringsPkgs:  packageImportNames(file, "strings", "strings"),
-		filepathPkgs: packageImportNames(file, "path/filepath", "filepath"),
-		pathPkgs:     packageImportNames(file, "path", "path"),
-		ioPkgs:       packageImportNames(file, "io", "io"),
-		ioutilPkgs:   packageImportNames(file, "io/ioutil", "ioutil"),
+		requests:      requests,
+		tainted:       map[string]bool{},
+		fmtPkgs:       packageImportNames(file, "fmt", "fmt"),
+		stringsPkgs:   packageImportNames(file, "strings", "strings"),
+		filepathPkgs:  packageImportNames(file, "path/filepath", "filepath"),
+		pathPkgs:      packageImportNames(file, "path", "path"),
+		ioPkgs:        packageImportNames(file, "io", "io"),
+		ioutilPkgs:    packageImportNames(file, "io/ioutil", "ioutil"),
+		firstTaintPos: map[string]token.Pos{},
 	}
 	scope.collectTaintedVars(body)
 	return scope, true
@@ -121,7 +128,7 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						continue
 					}
 					if s.directRequestExpr(stmt.Rhs[i]) {
-						s.tainted[ident.Name] = true
+						s.markTainted(ident)
 					}
 				}
 			case *ast.ValueSpec:
@@ -130,13 +137,37 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						continue
 					}
 					if s.directRequestExpr(stmt.Values[i]) {
-						s.tainted[name.Name] = true
+						s.markTainted(name)
 					}
 				}
 			}
 			return true
 		})
 	}
+}
+
+// markTainted records ident as carrying request-controlled data and remembers the
+// earliest position at which that taint was introduced, so taintedBefore can keep
+// the taint from leaking backwards to sinks that run before the assignment.
+func (s *requestTaintScope) markTainted(ident *ast.Ident) {
+	s.tainted[ident.Name] = true
+	if prev, ok := s.firstTaintPos[ident.Name]; !ok || ident.Pos() < prev {
+		s.firstTaintPos[ident.Name] = ident.Pos()
+	}
+}
+
+// taintedBefore reports whether name carries request data introduced at or before
+// sinkPos. An invalid sinkPos disables the ordering check (treating any taint as
+// in scope) so callers without a position still get the previous behaviour.
+func (s *requestTaintScope) taintedBefore(name string, sinkPos token.Pos) bool {
+	if !s.tainted[name] {
+		return false
+	}
+	if !sinkPos.IsValid() {
+		return true
+	}
+	pos, ok := s.firstTaintPos[name]
+	return ok && pos < sinkPos
 }
 
 // directRequestExpr reports whether expr is request-controlled through the
@@ -179,7 +210,7 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 // short source label for finding metadata. Unlike directRequestExpr it descends
 // into arbitrary calls, so callers pair it with sanitizer checks to suppress
 // values that a recognised sanitiser already cleaned.
-func (s *requestTaintScope) exprHasRequest(expr ast.Expr) (string, bool) {
+func (s *requestTaintScope) exprHasRequest(expr ast.Expr, sinkPos token.Pos) (string, bool) {
 	label := ""
 	ast.Inspect(expr, func(node ast.Node) bool {
 		if label != "" {
@@ -193,7 +224,7 @@ func (s *requestTaintScope) exprHasRequest(expr ast.Expr) (string, bool) {
 			label = found
 			return false
 		}
-		if ident, ok := current.(*ast.Ident); ok && s.tainted[ident.Name] {
+		if ident, ok := current.(*ast.Ident); ok && s.taintedBefore(ident.Name, sinkPos) {
 			label = ident.Name
 			return false
 		}
@@ -319,7 +350,7 @@ func identNames(expr ast.Expr) map[string]bool {
 // bodyHasSanitizingCall reports whether the function body contains a call whose
 // name matches one of words and that references one of the value identifiers,
 // treating a recognised validator/cleaner as same-function sanitizer evidence.
-func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, words []string) bool {
+func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, words []string, beforePos token.Pos) bool {
 	if len(valueNames) == 0 {
 		return false
 	}
@@ -330,6 +361,12 @@ func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, word
 		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok || !callNameMatchesAny(call, words) {
+			return true
+		}
+		// A validator/cleaner only cleanses the value if it runs before the sink;
+		// a call positioned at or after beforePos is evidence for a later use, not
+		// for the sink under inspection.
+		if beforePos.IsValid() && call.Pos() >= beforePos {
 			return true
 		}
 		if nodeUsesAnyIdent(call, valueNames) {
@@ -354,7 +391,7 @@ func (s *requestTaintScope) argHasInlineSanitizer(arg ast.Expr, words []string) 
 		if !ok || !callNameMatchesAny(call, words) {
 			return true
 		}
-		if _, ok := s.exprHasRequest(call); ok {
+		if _, ok := s.exprHasRequest(call, token.NoPos); ok {
 			found = true
 			return false
 		}
@@ -363,17 +400,46 @@ func (s *requestTaintScope) argHasInlineSanitizer(arg ast.Expr, words []string) 
 	return found
 }
 
-// callNameMatchesAny reports whether the call's function name, lowercased,
-// contains any of the sanitizer words.
+// callNameMatchesAny reports whether any camelCase/snake_case token of the call's
+// function name begins with one of the sanitizer word stems. Matching the stems at
+// token boundaries (rather than as a raw substring) keeps stems like "sanit" →
+// "sanitize" and "islocal" → "IsLocal" while refusing to read "safe" out of
+// "unsafe" or "base" out of "database".
 func callNameMatchesAny(call *ast.CallExpr, words []string) bool {
-	name := strings.ToLower(callName(call))
+	name := callName(call)
 	if name == "" {
 		return false
 	}
-	for _, word := range words {
-		if strings.Contains(name, word) {
-			return true
+	lower := strings.ToLower(name)
+	for _, start := range identifierTokenStarts(name) {
+		for _, word := range words {
+			if strings.HasPrefix(lower[start:], word) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// identifierTokenStarts returns the byte offsets at which a new token begins in an
+// identifier: the start of the name, the character after a separator (_, -, .),
+// and each lower/digit → upper camelCase transition. Sanitizer stems are tested
+// only at these offsets so they anchor to word boundaries.
+func identifierTokenStarts(name string) []int {
+	var starts []int
+	prevSep := true
+	var prev rune
+	for i, r := range name {
+		if r == '_' || r == '-' || r == '.' {
+			prevSep = true
+			prev = r
+			continue
+		}
+		if prevSep || (unicode.IsUpper(r) && (unicode.IsLower(prev) || unicode.IsDigit(prev))) {
+			starts = append(starts, i)
+		}
+		prevSep = false
+		prev = r
+	}
+	return starts
 }

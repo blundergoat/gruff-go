@@ -83,10 +83,12 @@ func Analyze(opts Options) (Report, error) {
 		return Report{}, err
 	}
 	diagnostics := []Diagnostic{}
-	changed, diffSummary, diagnostics := resolveChangedScope(root, opts.Paths, discovery.Files, diagnostics, opts)
-	if diffSummary.Enabled && opts.ChangedRanges == "" {
-		discovery.Files = filterDiscoveredChangedFiles(discovery.Files, changed)
-	}
+	// Parse and analyse the full discovered project even in diff mode: project-level
+	// rules (such as cross-file dead-code) and baseline classification need complete
+	// context to avoid false positives, so the changed-region scope is applied to
+	// emitted findings (applyChangedFilter below) rather than by pruning files before
+	// they are parsed.
+	changed, diffSummary, diagnostics := resolveChangedScope(ctx, root, discovery.Files, diagnostics, opts)
 
 	units, parseDiagnostics := parser.Parse(discovery.Files)
 	if err := ctx.Err(); err != nil {
@@ -241,9 +243,15 @@ func reportBaselineEntries(entries []baseline.Entry) []BaselineEntry {
 	return out
 }
 
-// resolveChangedScope computes changed files before parsing so directory scans
-// can avoid analysing files that are outside the requested diff.
-func resolveChangedScope(root string, paths []string, files []source.File, diagnostics []Diagnostic, opts Options) (diff.ChangedLines, DiffSummary, []Diagnostic) {
+// resolveChangedScope computes the changed-line set for the requested diff mode.
+// It does not prune the file set; callers apply the resulting scope to findings.
+// ctx is threaded into the git subprocesses so an aborted scan cancels them.
+//
+// An explicit --diff/--since mode (DiffMode) is resolved before a bare DiffPatch so
+// that --since wins over a --diff=- stdin patch (matching analyseFlagValues
+// .resolvedDiffMode); a DiffPatch with no mode still applies for programmatic
+// callers that supply a patch directly.
+func resolveChangedScope(ctx context.Context, root string, files []source.File, diagnostics []Diagnostic, opts Options) (diff.ChangedLines, DiffSummary, []Diagnostic) {
 	diffSummary := DiffSummary{}
 	switch {
 	case opts.ChangedRanges != "":
@@ -261,14 +269,8 @@ func resolveChangedScope(root string, paths []string, files []source.File, diagn
 		diffSummary.Base = "stdin"
 		diffSummary.ChangedFiles = changed.ChangedFiles
 		return changed, diffSummary, diagnostics
-	case len(opts.DiffPatch) > 0:
-		changed := diff.Parse("stdin", opts.DiffPatch)
-		diffSummary.Enabled = true
-		diffSummary.Base = "stdin"
-		diffSummary.ChangedFiles = changed.ChangedFiles
-		return changed, diffSummary, diagnostics
 	case opts.DiffMode != "":
-		changed, err := diff.FromMode(root, opts.DiffMode, paths)
+		changed, err := diff.FromMode(ctx, root, opts.DiffMode, opts.Paths)
 		if err != nil {
 			return diff.ChangedLines{}, diffSummary, appendDiffDiagnostic(diagnostics, err)
 		}
@@ -276,8 +278,14 @@ func resolveChangedScope(root string, paths []string, files []source.File, diagn
 		diffSummary.Base = opts.DiffMode
 		diffSummary.ChangedFiles = changed.ChangedFiles
 		return changed, diffSummary, diagnostics
+	case len(opts.DiffPatch) > 0:
+		changed := diff.Parse("stdin", opts.DiffPatch)
+		diffSummary.Enabled = true
+		diffSummary.Base = "stdin"
+		diffSummary.ChangedFiles = changed.ChangedFiles
+		return changed, diffSummary, diagnostics
 	case opts.DiffBase != "":
-		changed, err := diff.FromGit(root, opts.DiffBase, paths)
+		changed, err := diff.FromGit(ctx, root, opts.DiffBase, opts.Paths)
 		if err != nil {
 			return diff.ChangedLines{}, diffSummary, appendDiffDiagnostic(diagnostics, err)
 		}
@@ -309,19 +317,6 @@ func sourcePaths(files []source.File) []string {
 		paths = append(paths, file.Path)
 	}
 	return paths
-}
-
-// filterDiscoveredChangedFiles narrows the discovered file set to those the diff
-// touched, so whole-file (project-level) rules run only on changed files in diff
-// mode rather than re-scanning the untouched project.
-func filterDiscoveredChangedFiles(files []source.File, changed diff.ChangedLines) []source.File {
-	filtered := make([]source.File, 0, len(files))
-	for _, file := range files {
-		if diff.FileChanged(changed, file.Path) {
-			filtered = append(filtered, file)
-		}
-	}
-	return filtered
 }
 
 // applyChangedFilter filters findings against the resolved changed regions.

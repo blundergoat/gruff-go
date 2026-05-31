@@ -353,7 +353,26 @@ func repoRelative(rel string) bool {
 	if rel == "" || rel == "." {
 		return false
 	}
-	return !strings.HasPrefix(rel, "/") && rel != ".." && !strings.HasPrefix(rel, "../")
+	if strings.HasPrefix(rel, "/") || rel == ".." || strings.HasPrefix(rel, "../") {
+		return false
+	}
+	return !hasWindowsDrivePrefix(rel)
+}
+
+// hasWindowsDrivePrefix reports whether path begins with a Windows drive qualifier
+// such as "C:/" or "C:\". displayPath slash-normalises an out-of-root input to
+// "C:/…", which carries no leading "/" or "../", so without this guard repoRelative
+// would treat an explicitly requested out-of-root file as repo-relative and the
+// repository .gitignore matcher could silently skip it.
+func hasWindowsDrivePrefix(path string) bool {
+	if len(path) < 3 {
+		return false
+	}
+	letter := path[0]
+	if !(('A' <= letter && letter <= 'Z') || ('a' <= letter && letter <= 'z')) {
+		return false
+	}
+	return path[1] == ':' && (path[2] == '/' || path[2] == '\\')
 }
 
 // classify returns the FileType for a path based on its extension or name.

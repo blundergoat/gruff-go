@@ -229,9 +229,25 @@ func normalizeAnalyseDiffArgs(args []string) []string {
 			normalized = append(normalized, "--diff=working-tree")
 			continue
 		}
+		// A following filesystem path (git refs cannot begin with '.' or '/') means
+		// the user wants a working-tree diff scoped to that path, not a base ref, so
+		// default the mode and leave the path as a positional argument instead of
+		// silently consuming it as the diff base.
+		if looksLikeDiffPath(args[i+1]) {
+			normalized = append(normalized, "--diff=working-tree")
+			continue
+		}
 		normalized = append(normalized, arg)
 	}
 	return normalized
+}
+
+// looksLikeDiffPath reports whether arg is a filesystem path rather than a git base
+// ref. Git ref names cannot begin with '.' or '/', so a leading ".", "./", "../",
+// "/", or "~" marks a path the user means to scope the working-tree diff to.
+func looksLikeDiffPath(arg string) bool {
+	return arg == "." || strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../") ||
+		strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, "~")
 }
 
 // readDiffPatchIfRequested reads a unified diff from stdin when diffMode is "-",
@@ -247,6 +263,18 @@ func readDiffPatchIfRequested(diffMode string, stderr io.Writer) ([]byte, bool) 
 		return nil, false
 	}
 	return data, true
+}
+
+// resolveAndReadDiffPatch reads a stdin patch only when the effective diff mode is
+// the "-" sentinel. --since overrides --diff (see resolvedDiffMode), so resolving
+// the effective mode first means `--since X --diff=-` does not block on stdin that
+// the resolved mode would discard.
+func resolveAndReadDiffPatch(diffMode, since string, stderr io.Writer) ([]byte, bool) {
+	effective := diffMode
+	if since != "" {
+		effective = since
+	}
+	return readDiffPatchIfRequested(effective, stderr)
 }
 
 // resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
@@ -328,7 +356,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	if !validateAnalyseEnums(*format, *editorLink, *changedScope, stderr) {
 		return flags, analyseFlagValues{}, false
 	}
-	diffPatch, ok := readDiffPatchIfRequested(*diffMode, stderr)
+	diffPatch, ok := resolveAndReadDiffPatch(*diffMode, *since, stderr)
 	if !ok {
 		return flags, analyseFlagValues{}, false
 	}
