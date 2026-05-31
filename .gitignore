@@ -26,6 +26,9 @@ Thumbs.db
 ### Go ###
 /bin/*
 !/bin/gruff-go
+# Root build artifact from `go build ./cmd/gruff-go` (anchored so it does not
+# match the cmd/gruff-go source directory).
+/gruff-go
 *.out
 coverage.out
 coverage.html
