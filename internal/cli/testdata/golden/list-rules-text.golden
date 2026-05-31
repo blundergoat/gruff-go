@@ -60,8 +60,11 @@ sensitive-data.gcp-service-account	sensitive-data	error	parser	GCP service-accou
 sensitive-data.github-token	sensitive-data	error	parser	GitHub token literal
 sensitive-data.gitlab-token	sensitive-data	error	parser	GitLab token literal
 sensitive-data.google-api-key	sensitive-data	error	parser	Google API key literal
+sensitive-data.high-entropy-string	sensitive-data	warning	parser	High-entropy string
 sensitive-data.jwt-token	sensitive-data	error	parser	JWT token literal
 sensitive-data.npm-token	sensitive-data	error	parser	npm token literal
+sensitive-data.phi-pattern	sensitive-data	warning	parser	PHI pattern
+sensitive-data.pii-pattern	sensitive-data	warning	parser	PII pattern
 sensitive-data.private-key	sensitive-data	error	parser	Embedded private key
 sensitive-data.secret-pattern	sensitive-data	error	parser	Secret-like literal
 sensitive-data.slack-token	sensitive-data	error	parser	Slack token literal

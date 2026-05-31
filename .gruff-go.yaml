@@ -21,6 +21,10 @@ paths:
     - '.goat-flow/**'
     - internal/report/sensitive_redaction_test.go
     - internal/rule/sensitive_test.go
+    # Holds fixture secrets, PII, and PHI for the entropy/PII/PHI detectors;
+    # ignored for the same reason as sensitive_test.go so secret-pattern and the
+    # opt-in detectors never flag their own deliberate test vectors.
+    - internal/rule/sensitive_expansion_test.go
 
 # Project-wide allowlists for noisy signals.
 # acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path
@@ -364,6 +368,14 @@ rules:
     enabled: true
     severity: error
 
+  # Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in heuristic; tune minLength and entropy. Emits only a redacted preview.
+  sensitive-data.high-entropy-string:
+    enabled: false
+    severity: warning
+    thresholds:
+      minLength: 20
+      entropy: 4.5
+
   # Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.
   sensitive-data.jwt-token:
     enabled: true
@@ -373,6 +385,16 @@ rules:
   sensitive-data.npm-token:
     enabled: true
     severity: error
+
+  # Flags protected health information identifiers (US SSNs, Medicare beneficiary IDs, label-anchored medical record numbers). Opt-in heuristic; emits only a redacted preview.
+  sensitive-data.phi-pattern:
+    enabled: false
+    severity: warning
+
+  # Flags personally identifiable information (emails, phone numbers, Luhn-valid payment cards). Opt-in heuristic; emits only a redacted preview. Government/health identifiers are covered by sensitive-data.phi-pattern.
+  sensitive-data.pii-pattern:
+    enabled: false
+    severity: warning
 
   # Flags PEM-encoded private keys embedded directly in source or text files.
   sensitive-data.private-key:

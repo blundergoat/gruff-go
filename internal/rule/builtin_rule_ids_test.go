@@ -82,8 +82,11 @@ func defaultRuleIDsSecurityOnward() []string {
 		"sensitive-data.github-token",
 		"sensitive-data.gitlab-token",
 		"sensitive-data.google-api-key",
+		"sensitive-data.high-entropy-string",
 		"sensitive-data.jwt-token",
 		"sensitive-data.npm-token",
+		"sensitive-data.phi-pattern",
+		"sensitive-data.pii-pattern",
 		"sensitive-data.private-key",
 		"sensitive-data.secret-pattern",
 		"sensitive-data.slack-token",
@@ -106,14 +109,17 @@ func defaultRuleIDsSecurityOnward() []string {
 // house-style conventions or candidate checks that still need calibration.
 func defaultDisabledRuleIDs() map[string]bool {
 	return map[string]bool{
-		"dead-code.unused-private-const":  true,
-		"dead-code.unused-private-type":   true,
-		"dead-code.unused-private-var":    true,
-		"modernisation.ioutil-deprecated": true,
-		"naming.acronym-case":             true,
-		"naming.get-prefix":               true,
-		"naming.package-stutter":          true,
-		"naming.package-underscore":       true,
-		"naming.receiver-consistency":     true,
+		"dead-code.unused-private-const":     true,
+		"dead-code.unused-private-type":      true,
+		"dead-code.unused-private-var":       true,
+		"modernisation.ioutil-deprecated":    true,
+		"naming.acronym-case":                true,
+		"naming.get-prefix":                  true,
+		"naming.package-stutter":             true,
+		"naming.package-underscore":          true,
+		"naming.receiver-consistency":        true,
+		"sensitive-data.high-entropy-string": true,
+		"sensitive-data.phi-pattern":         true,
+		"sensitive-data.pii-pattern":         true,
 	}
 }

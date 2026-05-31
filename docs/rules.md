@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **79 rules** across **11 pillars**. **70 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **82 rules** across **11 pillars**. **70 rules are enabled by default** and 12 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
+Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, and `sensitive-data.phi-pattern`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -78,8 +78,11 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | error | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
 | [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | error | parser | - | GitLab personal, trigger, runner, and application token literals. |
 | [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | error | parser | - | Google API key literals (`AIza…`). |
+| [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 20`, `entropy: 4.5` | Opt-in. Long high-entropy tokens no provider rule covers. |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | error | parser | - | JWT-shaped literals (`eyJ…`). |
 | [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | error | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
+| [`sensitive-data.phi-pattern`](#sensitive-dataphi-pattern) | sensitive-data | warning | parser | - | Opt-in. US SSN, Medicare MBI, and labelled MRN identifiers. |
+| [`sensitive-data.pii-pattern`](#sensitive-datapii-pattern) | sensitive-data | warning | parser | - | Opt-in. Email, phone, and Luhn-valid payment-card numbers. |
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | error | parser | - | PEM-encoded private keys embedded in source. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
@@ -1113,6 +1116,20 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 
 **Remediation.** Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager.
 
+### `sensitive-data.high-entropy-string`
+
+- **Pillar:** sensitive-data
+- **Default severity:** warning
+- **Default-enabled:** no (opt-in)
+- **Threshold:** `minLength` (default `20`), `entropy` (default `4.5` bits/char)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern - the catch-all for rotated, custom, or vendor-less credentials the exact-prefix rules miss. A token is scored by Shannon entropy (bits per character); the `4.5` default sits above random hex (max `4.0`) and ordinary prose (~1-3) while still catching random base64 secrets (~5-6). To bound false positives the rule skips all-hex ids, UUIDs, SRI/digest prefixes, and path/URL fragments, and defers to the provider-specific rules so one embedded AWS key or JWT is reported once by its precise rule, not twice. Ships opt-in because entropy is a heuristic that cannot prove a token is live; enable it where leaked-credential coverage matters more than occasional review of a legitimate constant.
+
+**Remediation.** Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the `entropy`/`minLength` thresholds or add an inline `#nosec` / `//nolint:gosec` suppression.
+
 ### `sensitive-data.jwt-token`
 
 - **Pillar:** sensitive-data
@@ -1138,6 +1155,36 @@ Flags JWT-shaped literals - three base64url segments separated by dots, the firs
 Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes when the token body matches expected length and character constraints. Preview metadata is redacted through the shared sensitive-data output path.
 
 **Remediation.** Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration.
+
+### `sensitive-data.phi-pattern`
+
+- **Pillar:** sensitive-data
+- **Default severity:** warning
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `secrets`, `phi`
+
+Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries only a redacted preview and a `category` tag.
+
+**Overlap with `sensitive-data.pii-pattern`.** Government and health identifiers belong to this rule, not the PII rule, so an SSN is reported once here rather than by both. Enable both rules together for full personal-data coverage without double-counting.
+
+**Remediation.** Remove the identifier from source; use synthetic fixture data and store real PHI only in HIPAA-compliant systems. Mask or tokenise PHI before it reaches logs or reports.
+
+### `sensitive-data.pii-pattern`
+
+- **Pillar:** sensitive-data
+- **Default severity:** warning
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `secrets`, `pii`
+
+Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries only a redacted preview and a `category` tag.
+
+**Overlap with `sensitive-data.phi-pattern`.** This rule covers contact and payment PII; government/health identifiers (SSN, Medicare, MRN) are owned by `sensitive-data.phi-pattern` so they are never counted twice.
+
+**Remediation.** Remove the identifier from source; use synthetic fixture data or load real values from runtime configuration. Mask or tokenise PII before it reaches logs or reports.
 
 ### `sensitive-data.private-key`
 

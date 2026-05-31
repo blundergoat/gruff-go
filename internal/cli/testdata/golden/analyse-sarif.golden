@@ -1807,6 +1807,36 @@
               }
             },
             {
+              "id": "sensitive-data.high-entropy-string",
+              "name": "High-entropy string",
+              "shortDescription": {
+                "text": "High-entropy string"
+              },
+              "fullDescription": {
+                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview."
+              },
+              "help": {
+                "text": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "warning",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "secrets"
+                ],
+                "thresholds": {
+                  "entropy": 4.5,
+                  "minLength": 20
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "sensitive-data.jwt-token",
               "name": "JWT token literal",
               "shortDescription": {
@@ -1856,6 +1886,60 @@
               },
               "defaultConfiguration": {
                 "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.phi-pattern",
+              "name": "PHI pattern",
+              "shortDescription": {
+                "text": "PHI pattern"
+              },
+              "fullDescription": {
+                "text": "Flags protected health information identifiers (US Social Security numbers, Medicare beneficiary identifiers, and label-anchored medical record numbers) embedded in source or text files. Opt-in; emits only a redacted preview."
+              },
+              "help": {
+                "text": "Remove the identifier from source; use synthetic fixture data and load or store real PHI only in HIPAA-compliant systems. Mask or tokenise PHI before it reaches logs or reports."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "warning",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "phi",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "sensitive-data.pii-pattern",
+              "name": "PII pattern",
+              "shortDescription": {
+                "text": "PII pattern"
+              },
+              "fullDescription": {
+                "text": "Flags personally identifiable information (email addresses, phone numbers, and Luhn-valid payment card numbers) embedded in source or text files. Opt-in; emits only a redacted preview. Government/health identifiers are covered by sensitive-data.phi-pattern."
+              },
+              "help": {
+                "text": "Remove the identifier from source; use synthetic fixture data or load real values from runtime configuration. Mask or tokenise PII before it reaches logs or reports."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "warning",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "pii",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
               }
             },
             {
