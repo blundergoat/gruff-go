@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` ships **66 rules** across **11 pillars**. **57 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **73 rules** across **11 pillars**. **64 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
 Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
 
@@ -52,12 +52,19 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | advisory | parser | - | `http.Client` literals in production files without `Timeout`. |
 | [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | advisory | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | advisory | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
+| [`security.open-redirect-candidate`](#securityopen-redirect-candidate) | security | advisory | parser | - | Request-derived values used as a redirect target without validation. |
+| [`security.path-traversal-file-access`](#securitypath-traversal-file-access) | security | advisory | parser | - | Request-derived paths reaching filesystem sinks without containment evidence. |
 | [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | advisory | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
 | [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
+| [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
+| [`security.sensitive-data-logging`](#securitysensitive-data-logging) | security | advisory | parser | - | Logging calls whose arguments carry secret-named values, secret env reads, or request auth headers/cookies. |
 | [`security.shell-command`](#securityshell-command) | security | error | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
+| [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
+| [`security.unsafe-deserialization`](#securityunsafe-deserialization) | security | advisory | parser | - | Decoding request-controlled input via `encoding/gob` or `gopkg.in/yaml`. |
 | [`security.weak-crypto`](#securityweak-crypto) | security | advisory | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
+| [`security.xxe-candidate`](#securityxxe-candidate) | security | advisory | parser | - | `xml.Decoder` configured with a custom entity map (possible XXE); stdlib XML is safe by default. |
 | [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | error | parser | - | Anthropic API key literals (`sk-ant-…`). |
 | [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | error | parser | - | AWS access key id (AKIA…) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | error | parser | - | Database/queue URLs with embedded passwords. |
@@ -729,6 +736,36 @@ Each finding's metadata carries the random API and context word.
 
 **Remediation.** Use `crypto/rand` for security-sensitive random values and keep `math/rand` for sampling, tests, and simulations.
 
+### `security.open-redirect-candidate`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `redirect`, `security`
+
+Flags request-derived values passed to `http.Redirect` or a `Location` response header without a nearby allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. A target that begins with a host-relative `/` literal (but not protocol-relative `//`) is treated as safe, as is a value cleared by a validator/allowlist call. Candidate wording.
+
+Each finding's metadata carries the redirect sink and request source label, never a raw value.
+
+**Remediation.** Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations.
+
+### `security.path-traversal-file-access`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `filesystem`, `path-traversal`, `security`
+
+Flags request-derived values passed to filesystem sinks (`os.Open`, `os.ReadFile`, `os.OpenFile`, `os.Create`, `os.WriteFile`, `os.Remove`, `ioutil.ReadFile`, …) or `http.ServeFile` without nearby `filepath.Clean`, `filepath.Rel`, `filepath.IsLocal`, basename reduction, or a containment helper. Taint propagates through `filepath.Join`/`path.Join` and string concatenation but not through arbitrary helpers, so a sanitising wrapper breaks the chain. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries the filesystem sink and request source label.
+
+**Remediation.** Constrain request-derived paths with `filepath.Clean` plus a containment check (`filepath.Rel`/`IsLocal`) or reduce them to a basename before opening files.
+
 ### `security.permissive-file-mode`
 
 - **Pillar:** security
@@ -756,6 +793,37 @@ Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Reques
 Each finding's metadata carries the request parameter name and read call.
 
 **Remediation.** Wrap request bodies with `http.MaxBytesReader` or `io.LimitReader` before reading them fully.
+
+### `security.request-controlled-url`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`, `ssrf`
+
+Flags request-derived values passed as the URL of an outbound `net/http` request (`http.Get`/`Head`/`Post`/`PostForm`, `http.NewRequest`/`NewRequestWithContext`, or the same methods on an `http.Client` value) without a nearby allowlist or parse/validate check (possible SSRF). The request value may be inline or a same-function local tainted from a request accessor, including through `io.ReadAll(r.Body)`, string concatenation, and `fmt.Sprintf`. A validator/allowlist call or `url.Parse` referencing the value suppresses the finding. Candidate wording.
+
+Each finding's metadata carries the HTTP sink and request source label.
+
+**Remediation.** Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching.
+
+### `security.sensitive-data-logging`
+
+- **Pillar:** security
+- **Secondary pillar:** sensitive-data
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `logging`, `security`, `sensitive-data`
+
+Flags logging and print calls (`log.*`, `fmt.Print*`/`Fprint*`, `log/slog`, and methods on a logger-named receiver) whose arguments carry credentials: identifiers whose name contains `password`/`secret`/`credential`/`bearer`/`passphrase`, secret-named `os.Getenv`/`os.LookupEnv` reads, or request `Authorization`/`Cookie` reads. Static text-only messages, non-secret values, plain form values, and values wrapped in a redaction/hash helper are ignored. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries only the logging sink and a classification reason; the raw value is never included.
+
+**Remediation.** Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential.
 
 ### `security.shell-command`
 
@@ -785,6 +853,21 @@ Each finding's metadata carries the call name and construction kind.
 
 **Remediation.** Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text.
 
+### `security.template-injection-xss`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`, `xss`
+
+Flags request-derived values reaching an HTML response without escaping: `text/template` (not `html/template`) executed into an `http.ResponseWriter`, `html/template` `HTML`/`JS`/`URL`/`CSS`/`HTMLAttr` conversions of request-derived values, and raw `w.Write`/`fmt.Fprintf(w, …)`/`io.WriteString(w, …)` of request-derived data when the handler sets an HTML `Content-Type`. `html/template` auto-escaping and `html.EscapeString` (or other escape/sanitise wrappers) are treated as safe. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries the reason (`text-template-response`, `raw-html-conversion`, or `unescaped-response-write`).
+
+**Remediation.** Render HTML with `html/template` so output is auto-escaped, or escape request-derived values with `html.EscapeString` before writing them to the response.
+
 ### `security.tls-insecure-config`
 
 - **Pillar:** security
@@ -800,6 +883,21 @@ Each finding's metadata carries the unsafe `field` and `value`.
 
 **Remediation.** Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.
 
+### `security.unsafe-deserialization`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `deserialization`, `security`
+
+Flags decoding of request-controlled input through formats that over-trust their payload: `encoding/gob` (`gob.NewDecoder(r.Body)`), and `gopkg.in/yaml.v2`/`v3` (`yaml.NewDecoder(r.Body)` or `yaml.Unmarshal` of request bytes). Request bytes read via `io.ReadAll(r.Body)` are tracked. Decoding a concrete typed value from a trusted local source, and `encoding/json` of request bodies, are not flagged. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries the decoded format and request source label.
+
+**Remediation.** Decode untrusted input into a concrete typed struct with a vetted format (such as `encoding/json` with a size limit) rather than gob or unrestricted YAML.
+
 ### `security.weak-crypto`
 
 - **Pillar:** security
@@ -814,6 +912,21 @@ Flags weak cryptographic primitives when the parser-only evidence is concrete: `
 Each finding's metadata carries the primitive and reason.
 
 **Remediation.** Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits.
+
+### `security.xxe-candidate`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `security`, `xml`, `xxe`
+
+Flags `xml.Decoder` configurations that populate a custom `Entity` map — either `decoder.Entity = …` on a value created by `xml.NewDecoder`, or an `&xml.Decoder{Entity: …}` literal — which re-enables entity resolution (possible XXE). The Go standard library `encoding/xml` does not expand external entities by default, so a plain decoder is never flagged. Candidate wording.
+
+Each finding's metadata records the `entity-map` evidence.
+
+**Remediation.** Leave `xml.Decoder.Entity` unset so `encoding/xml`'s safe default applies, or validate and constrain any custom entity map fed from untrusted input.
 
 ### `sensitive-data.anthropic-api-key`
 

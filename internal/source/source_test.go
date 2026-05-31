@@ -19,6 +19,7 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	writeFile(t, root, ".claude/settings.json", "{}\n")
 	writeFile(t, root, ".codex/config.toml", "model = \"codex\"\n")
 	writeFile(t, root, ".github/workflows/ci.yml", "name: ci\n")
+	writeFile(t, root, ".github/ISSUE_TEMPLATE/bug.yml", "name: bug\n")
 	writeFile(t, root, ".goat-flow/config.yaml", "version: 1\n")
 
 	result, err := Discover(Options{Root: root, Paths: []string{"."}})
@@ -27,7 +28,9 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	}
 
 	gotFiles := paths(result.Files)
-	wantFiles := []string{"config.yaml", "main.go"}
+	// .github is metadata except for the workflows subtree, which is analysable so
+	// the CI/workflow security rules can inspect GitHub Actions YAML.
+	wantFiles := []string{".github/workflows/ci.yml", "config.yaml", "main.go"}
 	if !equal(gotFiles, wantFiles) {
 		t.Fatalf("files = %#v, want %#v", gotFiles, wantFiles)
 	}
@@ -39,7 +42,7 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 		".agents:non-application-metadata",
 		".claude:non-application-metadata",
 		".codex:non-application-metadata",
-		".github:non-application-metadata",
+		".github/ISSUE_TEMPLATE:non-application-metadata",
 		".goat-flow:non-application-metadata",
 	} {
 		if !contains(gotSkipped, want) {
@@ -467,10 +470,11 @@ func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
 
 // TestCheckIgnoreReportsGitignoreAndDefaultSources confirms the non-config
 // sources surface their classification without a pattern (pattern is config-only).
-// The default case uses an always-ignored metadata directory (.github) rather
+// The default case uses an always-ignored metadata directory (.codex) rather
 // than a fallback dependency dir, because the presence of a .gitignore here would
 // (by design) hand the tree to the project and disable the vendor/node_modules
-// fallback - .github is unconditionally ignored regardless.
+// fallback - .codex is unconditionally ignored regardless. (.github is no longer a
+// blanket default ignore because its workflows subtree is now analysable.)
 func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
@@ -481,7 +485,7 @@ func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	if !git.Ignored || git.Source != OriginGitignore || git.Pattern != "" {
 		t.Fatalf("gitignore decision = %#v, want ignored source=gitignore no pattern", git)
 	}
-	dir := CheckIgnore(root, ".github", true, options)
+	dir := CheckIgnore(root, ".codex", true, options)
 	if !dir.Ignored || dir.Source != OriginDefault {
 		t.Fatalf("default dir decision = %#v, want ignored source=default", dir)
 	}

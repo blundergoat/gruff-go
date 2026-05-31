@@ -34,12 +34,19 @@ security.archive-path-traversal	security	advisory	parser	Archive path traversal
 security.http-client-no-timeout	security	advisory	parser	HTTP client without timeout
 security.http-server-no-timeout	security	advisory	parser	HTTP server without timeout
 security.insecure-random-secret	security	advisory	parser	Insecure random secret
+security.open-redirect-candidate	security	advisory	parser	Open redirect candidate
+security.path-traversal-file-access	security	advisory	parser	Path traversal in file access
 security.permissive-file-mode	security	advisory	parser	Permissive file mode
 security.request-body-without-limit	security	advisory	parser	Request body read without limit
+security.request-controlled-url	security	advisory	parser	Request-controlled request URL
+security.sensitive-data-logging	security	advisory	parser	Sensitive data in logging
 security.shell-command	security	warning	parser	Shell command execution
 security.sql-string-query	security	advisory	parser	SQL string query construction
+security.template-injection-xss	security	advisory	parser	Template injection / reflected XSS
 security.tls-insecure-config	security	warning	parser	TLS insecure config
+security.unsafe-deserialization	security	advisory	parser	Unsafe deserialization
 security.weak-crypto	security	advisory	parser	Weak crypto primitive
+security.xxe-candidate	security	advisory	parser	XML external entity candidate
 sensitive-data.anthropic-api-key	sensitive-data	error	parser	Anthropic API key literal
 sensitive-data.aws-access-key	sensitive-data	error	parser	AWS access key id
 sensitive-data.connection-string	sensitive-data	error	parser	Connection string with embedded password

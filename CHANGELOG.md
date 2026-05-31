@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **Request-driven application-security rules** - seven new default-enabled, parser-only security rules trace request-controlled values into application sinks with bounded same-function evidence and candidate wording: `security.request-controlled-url` (SSRF), `security.path-traversal-file-access`, `security.open-redirect-candidate`, `security.sensitive-data-logging`, `security.unsafe-deserialization`, `security.xxe-candidate`, and `security.template-injection-xss`. All ship `advisory`/`medium`. Findings carry only structural metadata (sink, source label, reason) - never a raw request body, credential, or value. The catalogue grows 66 -> 73 rules; 57 -> 64 default-enabled (opt-in stays 9). No schema, baseline, CLI-flag, or existing-fingerprint change.
+- **Discovery scope: go.mod/go.sum and .github/workflows** - `go.mod` and `go.sum` now classify as analysable text, and the `.github/workflows` subtree is discoverable (the rest of `.github` stays metadata-ignored). This backs the upcoming Go-module dependency and GitHub Actions workflow rules; the dogfood scan is unaffected because `.gruff-go.yaml` config-ignores `.github/**` and `go.mod` carries no dependencies. Dogfood remains grade A.
 - **Dead-code private-symbol expansion** - `dead-code.unused-private-function` now uses a shared package reference index, `dead-code.unreachable-code` recognises terminal branch forms, and three opt-in parser-only candidate rules are available for unused private constants, types, and variables: `dead-code.unused-private-const`, `dead-code.unused-private-type`, and `dead-code.unused-private-var`. The new candidate rules ship default-disabled until calibration proves low noise.
 
 ## v0.3.0 - 2026-05-31

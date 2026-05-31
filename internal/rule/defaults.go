@@ -76,6 +76,13 @@ func defaultSecurityUnitRules() []UnitRule {
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
 		WeakCryptoRule{},
+		RequestControlledURLRule{},
+		PathTraversalFileAccessRule{},
+		OpenRedirectRule{},
+		SensitiveDataLoggingRule{},
+		UnsafeDeserializationRule{},
+		XXECandidateRule{},
+		TemplateInjectionXSSRule{},
 	}
 }
 

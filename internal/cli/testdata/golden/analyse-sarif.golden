@@ -1097,6 +1097,62 @@
               }
             },
             {
+              "id": "security.open-redirect-candidate",
+              "name": "Open redirect candidate",
+              "shortDescription": {
+                "text": "Open redirect candidate"
+              },
+              "fullDescription": {
+                "text": "Flags request-derived values passed to http.Redirect or a Location header without a nearby allowlist or validation check (possible open redirect). Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "redirect",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.path-traversal-file-access",
+              "name": "Path traversal in file access",
+              "shortDescription": {
+                "text": "Path traversal in file access"
+              },
+              "fullDescription": {
+                "text": "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Clean, Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Constrain request-derived paths with filepath.Clean plus a containment check (filepath.Rel/IsLocal) or reduce them to a basename before opening files."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "filesystem",
+                  "path-traversal",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.permissive-file-mode",
               "name": "Permissive file mode",
               "shortDescription": {
@@ -1144,6 +1200,65 @@
                 "tags": [
                   "http",
                   "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.request-controlled-url",
+              "name": "Request-controlled request URL",
+              "shortDescription": {
+                "text": "Request-controlled request URL"
+              },
+              "fullDescription": {
+                "text": "Flags request-derived values passed as the URL of an outbound net/http request without a nearby allowlist or parse/validate check (possible SSRF). Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security",
+                  "ssrf"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.sensitive-data-logging",
+              "name": "Sensitive data in logging",
+              "shortDescription": {
+                "text": "Sensitive data in logging"
+              },
+              "fullDescription": {
+                "text": "Flags logging and print calls whose arguments are credential-bearing: secret-named identifiers, secret-named environment reads, or request auth headers and cookies. Static text-only messages and redaction-wrapped values are ignored. Candidate wording, bounded same-function evidence."
+              },
+              "help": {
+                "text": "Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential."
+              },
+              "properties": {
+                "pillar": "security",
+                "secondaryPillars": [
+                  "sensitive-data"
+                ],
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "logging",
+                  "security",
+                  "sensitive-data"
                 ]
               },
               "defaultConfiguration": {
@@ -1207,6 +1322,34 @@
               }
             },
             {
+              "id": "security.template-injection-xss",
+              "name": "Template injection / reflected XSS",
+              "shortDescription": {
+                "text": "Template injection / reflected XSS"
+              },
+              "fullDescription": {
+                "text": "Flags text/template rendered into an HTTP response, html/template HTML/JS/URL/CSS conversions of request-derived values, and raw writes of request-derived data on an HTML content type. html/template auto-escaping and html.EscapeString are treated as safe. Candidate wording, bounded same-function evidence."
+              },
+              "help": {
+                "text": "Render HTML with html/template so output is auto-escaped, or escape request-derived values with html.EscapeString before writing them to the response."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security",
+                  "xss"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.tls-insecure-config",
               "name": "TLS insecure config",
               "shortDescription": {
@@ -1234,6 +1377,33 @@
               }
             },
             {
+              "id": "security.unsafe-deserialization",
+              "name": "Unsafe deserialization",
+              "shortDescription": {
+                "text": "Unsafe deserialization"
+              },
+              "fullDescription": {
+                "text": "Flags decoding of request-controlled input via encoding/gob or gopkg.in/yaml, which over-trust their payload. Decoding a concrete typed struct from a trusted local source is not flagged. Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Decode untrusted input into a concrete typed struct with a vetted format (such as encoding/json with a size limit) rather than gob or unrestricted YAML."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "deserialization",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.weak-crypto",
               "name": "Weak crypto primitive",
               "shortDescription": {
@@ -1254,6 +1424,34 @@
                 "tags": [
                   "crypto",
                   "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.xxe-candidate",
+              "name": "XML external entity candidate",
+              "shortDescription": {
+                "text": "XML external entity candidate"
+              },
+              "fullDescription": {
+                "text": "Flags xml.Decoder configurations that populate a custom entity map, which re-enables entity resolution (possible XXE). The Go standard library encoding/xml does not expand external entities by default, so a plain decoder is not flagged. Candidate wording."
+              },
+              "help": {
+                "text": "Leave xml.Decoder.Entity unset so encoding/xml's safe default applies, or validate and constrain any custom entity map fed from untrusted input."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security",
+                  "xml",
+                  "xxe"
                 ]
               },
               "defaultConfiguration": {

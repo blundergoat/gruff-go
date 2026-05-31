@@ -232,6 +232,16 @@ rules:
     enabled: true
     severity: advisory
 
+  # Flags request-derived values passed to http.Redirect or a Location header without validation (possible open redirect).
+  security.open-redirect-candidate:
+    enabled: true
+    severity: advisory
+
+  # Flags request-derived values passed to filesystem or file-serving sinks without containment evidence (possible path traversal).
+  security.path-traversal-file-access:
+    enabled: true
+    severity: advisory
+
   # Flags os file and directory calls that use world-writable or overly permissive literal modes.
   security.permissive-file-mode:
     enabled: true
@@ -239,6 +249,16 @@ rules:
 
   # Flags io.ReadAll-style reads of http.Request.Body in production handlers without nearby MaxBytesReader or LimitReader evidence.
   security.request-body-without-limit:
+    enabled: true
+    severity: advisory
+
+  # Flags request-derived values used as an outbound net/http request URL without allowlist or validation (possible SSRF).
+  security.request-controlled-url:
+    enabled: true
+    severity: advisory
+
+  # Flags logging calls whose arguments carry secret-named identifiers, secret env reads, or request auth headers/cookies.
+  security.sensitive-data-logging:
     enabled: true
     severity: advisory
 
@@ -252,13 +272,28 @@ rules:
     enabled: true
     severity: advisory
 
+  # Flags request-derived values rendered into an HTML response without escaping (text/template, unsafe template.HTML conversions, raw writes).
+  security.template-injection-xss:
+    enabled: true
+    severity: advisory
+
   # Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.
   security.tls-insecure-config:
     enabled: true
     severity: warning
 
+  # Flags decoding of request-controlled input via encoding/gob or gopkg.in/yaml (possible unsafe deserialization).
+  security.unsafe-deserialization:
+    enabled: true
+    severity: advisory
+
   # Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits.
   security.weak-crypto:
+    enabled: true
+    severity: advisory
+
+  # Flags xml.Decoder configured with a custom entity map (possible XXE); stdlib encoding/xml is safe by default.
+  security.xxe-candidate:
     enabled: true
     severity: advisory
 

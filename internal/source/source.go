@@ -357,6 +357,9 @@ func repoRelative(rel string) bool {
 }
 
 // classify returns the FileType for a path based on its extension or name.
+// go.mod and go.sum carry no recognised extension but are classified as text so
+// the Go-module dependency-posture rules can scan them; they are matched by base
+// name rather than by an extension switch.
 func classify(path string) (FileType, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == ".go" {
@@ -366,58 +369,15 @@ func classify(path string) (FileType, bool) {
 	case ".json", ".yaml", ".yml", ".toml", ".ini", ".xml", ".env", ".txt":
 		return FileTypeText, true
 	default:
-		if strings.HasPrefix(filepath.Base(path), ".env") {
+		base := filepath.Base(path)
+		if base == "go.mod" || base == "go.sum" {
+			return FileTypeText, true
+		}
+		if strings.HasPrefix(base, ".env") {
 			return FileTypeText, true
 		}
 		return "", false
 	}
-}
-
-// alwaysIgnoredDir reports VCS and tool-metadata directories that are unconditionally skipped.
-func alwaysIgnoredDir(rel string) (string, bool) {
-	parts := strings.Split(rel, "/")
-	for _, part := range parts {
-		switch part {
-		case ".git", ".hg", ".svn":
-			return "vcs", true
-		case ".agents", ".claude", ".codex", ".github", ".goat-flow":
-			return "non-application-metadata", true
-		}
-	}
-	return "", false
-}
-
-// alwaysIgnoredFile reports files that live inside unconditionally skipped metadata directories.
-func alwaysIgnoredFile(rel string) (string, bool) {
-	parts := strings.Split(rel, "/")
-	for _, part := range parts[:len(parts)-1] {
-		switch part {
-		case ".agents", ".claude", ".codex", ".github", ".goat-flow":
-			return "non-application-metadata", true
-		}
-	}
-	return "", false
-}
-
-// fallbackIgnoredDir reports directories skipped when no project .gitignore exists.
-func fallbackIgnoredDir(rel string) (string, bool) {
-	parts := strings.Split(rel, "/")
-	for _, part := range parts {
-		switch part {
-		case "vendor", "node_modules":
-			return "dependency", true
-		case "dist", "build", "coverage":
-			return "build-output", true
-		case ".idea", ".vscode":
-			return "local-tooling", true
-		}
-	}
-	return "", false
-}
-
-// fallbackIgnoredFile is a placeholder for future filename-based fallback skips.
-func fallbackIgnoredFile(_ string) (string, bool) {
-	return "", false
 }
 
 // isGeneratedGo reports whether a Go file carries the generated-file marker comment.
