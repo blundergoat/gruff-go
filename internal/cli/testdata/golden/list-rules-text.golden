@@ -3,7 +3,10 @@ complexity.cyclomatic	complexity	warning	parser	Cyclomatic complexity
 complexity.nesting-depth	complexity	warning	parser	Nesting depth
 dead-code.empty-block	dead-code	advisory	parser	Empty control-flow block
 dead-code.unreachable-code	dead-code	advisory	parser	Unreachable code
+dead-code.unused-private-const	dead-code	advisory	parser	Unused private const
 dead-code.unused-private-function	dead-code	advisory	parser	Unused private function
+dead-code.unused-private-type	dead-code	advisory	parser	Unused private type
+dead-code.unused-private-var	dead-code	advisory	parser	Unused private var
 design.god-function	design	advisory	parser	God function
 design.hotspot-file	maintainability	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric

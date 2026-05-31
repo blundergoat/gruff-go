@@ -139,6 +139,34 @@
               }
             },
             {
+              "id": "dead-code.unused-private-const",
+              "name": "Unused private const",
+              "shortDescription": {
+                "text": "Unused private const"
+              },
+              "fullDescription": {
+                "text": "Flags package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Iota groups, multi-name const specs, test files, generated files, vendor paths, and reflection-heavy packages are excluded."
+              },
+              "help": {
+                "text": "Delete the constant if it is abandoned, or leave the candidate rule opt-in where grouped constants or build tags make parser-only certainty too weak."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "cross-file",
+                  "dead-code"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "dead-code.unused-private-function",
               "name": "Unused private function",
               "shortDescription": {
@@ -157,6 +185,62 @@
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
+                  "cross-file",
+                  "dead-code"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unused-private-type",
+              "name": "Unused private type",
+              "shortDescription": {
+                "text": "Unused private type"
+              },
+              "fullDescription": {
+                "text": "Flags package-private top-level types whose names are not referenced anywhere else in the same parsed package. Generated, test, vendor, and reflection-heavy packages are excluded so the parser-only candidate stays precision-first."
+              },
+              "help": {
+                "text": "Delete the type if it is abandoned, or enable the rule only after confirming generated, reflective, and build-tagged references are not part of the package contract."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "cross-file",
+                  "dead-code"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unused-private-var",
+              "name": "Unused private var",
+              "shortDescription": {
+                "text": "Unused private var"
+              },
+              "fullDescription": {
+                "text": "Flags package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, registration tables, blank identifiers, vendor paths, and reflection-heavy packages are excluded."
+              },
+              "help": {
+                "text": "Delete the variable if it is abandoned, or keep the rule opt-in until parser-only evidence can prove indirect registration use is not involved."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
                   "cross-file",
                   "dead-code"
                 ]
@@ -1804,7 +1888,7 @@
       "results": [
         {
           "ruleId": "design.god-function",
-          "ruleIndex": 6,
+          "ruleIndex": 9,
           "level": "note",
           "message": {
             "text": "function Hot combines size and complexity findings"
@@ -1849,7 +1933,7 @@
         },
         {
           "ruleId": "design.hotspot-file",
-          "ruleIndex": 7,
+          "ruleIndex": 10,
           "level": "note",
           "message": {
             "text": "file has findings across multiple quality pillars"
@@ -1933,7 +2017,7 @@
         },
         {
           "ruleId": "docs.exported-symbol-comment",
-          "ruleIndex": 10,
+          "ruleIndex": 13,
           "level": "note",
           "message": {
             "text": "exported function \"Hot\" has no doc comment"
@@ -1968,7 +2052,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 53,
+          "ruleIndex": 56,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"

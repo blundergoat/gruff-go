@@ -47,7 +47,10 @@ func defaultRuleIDs() []string {
 		"complexity.nesting-depth",
 		"dead-code.empty-block",
 		"dead-code.unreachable-code",
+		"dead-code.unused-private-const",
 		"dead-code.unused-private-function",
+		"dead-code.unused-private-type",
+		"dead-code.unused-private-var",
 		"design.god-function",
 		"design.hotspot-file",
 		"docs.comment-rubric",
@@ -109,9 +112,12 @@ func defaultRuleIDs() []string {
 }
 
 // defaultDisabledRuleIDs returns rules that ship opt-in because they enforce
-// house-style or modernisation conventions rather than review-critical signal.
+// house-style conventions or candidate checks that still need calibration.
 func defaultDisabledRuleIDs() map[string]bool {
 	return map[string]bool{
+		"dead-code.unused-private-const":  true,
+		"dead-code.unused-private-type":   true,
+		"dead-code.unused-private-var":    true,
 		"modernisation.ioutil-deprecated": true,
 		"naming.acronym-case":             true,
 		"naming.get-prefix":               true,

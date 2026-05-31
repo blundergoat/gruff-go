@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **Dead-code private-symbol expansion** - `dead-code.unused-private-function` now uses a shared package reference index, `dead-code.unreachable-code` recognises terminal branch forms, and three opt-in parser-only candidate rules are available for unused private constants, types, and variables: `dead-code.unused-private-const`, `dead-code.unused-private-type`, and `dead-code.unused-private-var`. The new candidate rules ship default-disabled until calibration proves low noise.
+
 ## v0.3.0 - 2026-05-31
 
 Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that makes AI-generated code a human can verify, trust, and sign off on (legible enough to review, secure where the eye fails, honestly tested rather than padded with low-signal ceremony) - and aligns the default rule pack and docs to it. This release intentionally keeps the project on the `0.x` line while the remaining 1.0 adoption and rule-expansion milestones settle.

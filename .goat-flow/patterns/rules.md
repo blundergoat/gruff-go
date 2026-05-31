@@ -1,6 +1,6 @@
 ---
 category: rules
-last_reviewed: 2026-05-24
+last_reviewed: 2026-05-31
 ---
 
 # Rule-Authoring Patterns
@@ -24,3 +24,13 @@ last_reviewed: 2026-05-24
 **Context:** Deciding whether `complexity.npath`'s default (1024) was right needed the *actual distribution* of the metric across real code, not a guess. The same question recurs for every metric rule (e.g. M31 tightening `complexity.cognitive`).
 
 **Approach:** Build the binary, write a temp config that sets the metric rule's `threshold: 1` so every function reports its value, run `analyse --config <tmp> --format json .`, and aggregate the per-finding `metadata.complexity` / `.lines` / `.depth` into a distribution (p50/p90/p95/p99/max), split production vs `_test.go`. Then cross-check the outliers: for a path/branch metric, measure each above-threshold function's control-flow nesting depth - flat (depth <= 3) high scorers are formula artifacts (sequential branches multiplying), genuinely nested ones are real complexity. This is what proved npath's three worst functions were flat false positives while cyclomatic/cognitive correctly ranked them under threshold. Worked commands + evidence: `.goat-flow/tasks/1.0.0/M00-remove-npath-false-positives.md` (search: `Nesting cross-check`).
+
+## Pattern: Ship broad parser-only dead-code checks as opt-in candidates first
+
+**Created:** 2026-05-31
+
+**Evidence:** OBSERVED
+
+**Context:** M28 expanded `dead-code.unused-private-function` into a shared package reference index and added unused private type, var, and const checks. Functions had prior dogfood calibration and stayed default-enabled. Types, vars, and consts needed broader syntax-safety exclusions for generated files, tests, reflection-heavy packages, iota groups, registration tables, and identifier collisions, but still had no cross-repo false-positive distribution.
+
+**Approach:** Add the new rules to the built-in registry with `DefaultEnabled: false`, label them `candidate`, document their precision boundaries, and cover the intended positive and suppression cases with focused parser-only tests before dogfood. This keeps the catalogue discoverable without letting uncalibrated broad checks dominate default scans.

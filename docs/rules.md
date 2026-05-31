@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **63 rules** across **11 pillars**. **57 rules are enabled by default** and 6 convention-only rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **66 rules** across **11 pillars**. **57 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
+Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -21,7 +21,10 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
+| [`dead-code.unused-private-const`](#dead-codeunused-private-const) | dead-code | advisory | parser | - | Opt-in candidate for package-private constants that are not referenced in their parsed package. |
 | [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
+| [`dead-code.unused-private-type`](#dead-codeunused-private-type) | dead-code | advisory | parser | - | Opt-in candidate for package-private named types that are not referenced in their parsed package. |
+| [`dead-code.unused-private-var`](#dead-codeunused-private-var) | dead-code | advisory | parser | - | Opt-in candidate for package-private variables that are not referenced in their parsed package. |
 | [`design.god-function`](#designgod-function) | design | advisory | parser | - | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | maintainability | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
@@ -161,9 +164,22 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 - **Capability:** parser
 - **Tags:** `control-flow`
 
-Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. Labels reset the same-block check because a `goto` may target the label. The rule stays conservative and does not try to prove full control-flow reachability across branches.
+Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. It also treats an `if`/`else`, `switch`, type switch, or `select` as terminal when every syntactic branch exits. Switch and type-switch checks require a `default` case and skip `fallthrough` shapes so reachable-after-branch code is not mislabelled. Labels reset the same-block check because a `goto` may target the label.
 
 **Remediation.** Remove the unreachable statement or move it before the terminating control-flow statement.
+
+### `dead-code.unused-private-const`
+
+- **Pillar:** dead-code
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `candidate`, `cross-file`, `dead-code`
+
+Opt-in candidate for package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, iota groups, and multi-name const specs are excluded to keep parser-only evidence precision-first.
+
+**Remediation.** Delete the constant if it is abandoned, or leave the candidate disabled where grouped constants or build tags make parser-only certainty too weak.
 
 ### `dead-code.unused-private-function`
 
@@ -177,6 +193,32 @@ Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` i
 Flags package-private top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, `init`, `main`, external `_test` packages, and packages that import `reflect` are excluded so reflection-heavy or entrypoint-driven code does not produce parser-only false positives.
 
 **Remediation.** Remove the unused helper, make the missing call explicit, or rename/export it only when another package is expected to call it.
+
+### `dead-code.unused-private-type`
+
+- **Pillar:** dead-code
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `candidate`, `cross-file`, `dead-code`
+
+Opt-in candidate for package-private top-level types whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, and reflection-heavy packages are excluded, and name collisions elsewhere in the package suppress the finding because the rule does not resolve bindings.
+
+**Remediation.** Delete the type if it is abandoned, or keep the rule opt-in until reflective and build-tagged references are ruled out for the package.
+
+### `dead-code.unused-private-var`
+
+- **Pillar:** dead-code
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `candidate`, `cross-file`, `dead-code`
+
+Opt-in candidate for package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, blank identifiers, and common registration tables are excluded to avoid noisy parser-only false positives.
+
+**Remediation.** Delete the variable if it is abandoned, or keep the rule opt-in where indirect registration or build-tagged references are part of the package contract.
 
 ### `design.god-function`
 

@@ -18,7 +18,6 @@ package rule
 import (
 	"fmt"
 	"go/ast"
-	"path/filepath"
 	"strconv"
 	"unicode"
 
@@ -48,110 +47,32 @@ func (UnusedPrivateFunctionRule) Definition() Definition {
 
 // AnalyzeProject emits findings for unreferenced package-private functions.
 func (UnusedPrivateFunctionRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
-	groups := groupUnitsByPackage(units)
+	index := newPackageReferenceIndex(units)
 	findings := []finding.Finding{}
-	for _, group := range groups {
-		if group.skipForReflection {
+	for _, group := range index.ordered {
+		if group.skipForPrecision {
 			continue
 		}
-		identCounts := countAllIdentifiers(group.units)
-		for _, decl := range group.privateFuncDecls {
+		for _, decl := range group.privateFuncs {
 			// Each FuncDecl's own Name ident contributes one occurrence to
 			// the count. Anything greater means the name appears somewhere
 			// else and we cannot prove the function is unused with parser-
 			// only evidence. Equal-to-one means only the declaration carries
 			// the name, so nothing in the package uses it.
-			if identCounts[decl.fn.Name.Name] > 1 {
+			if !group.unreferenced(decl) {
 				continue
 			}
-			position := decl.unit.FileSet.Position(decl.fn.Pos())
+			position := decl.unit.FileSet.Position(decl.pos)
 			findings = append(findings, finding.Finding{
-				Message:  fmt.Sprintf("private function %q is not referenced in package %q", decl.fn.Name.Name, group.packageName),
+				Message:  fmt.Sprintf("private function %q is not referenced in package %q", decl.name, group.key.packageName),
 				File:     decl.unit.File.Path,
 				Location: &finding.Location{Line: position.Line, Column: position.Column},
-				Symbol:   decl.fn.Name.Name,
-				Metadata: map[string]any{"package": group.packageName},
+				Symbol:   decl.name,
+				Metadata: map[string]any{"package": group.key.packageName},
 			})
 		}
 	}
 	return findings
-}
-
-// packageGroup carries one parsed package's worth of units plus the
-// pre-filtered candidate declarations the rule will judge against.
-type packageGroup struct {
-	packageName       string
-	units             []parser.Unit
-	privateFuncDecls  []privateFuncDecl
-	skipForReflection bool
-}
-
-// privateFuncDecl records a top-level private function declaration with the
-// unit it came from. The unit reference is what lets the rule resolve
-// FileSet positions when emitting findings.
-type privateFuncDecl struct {
-	unit parser.Unit
-	fn   *ast.FuncDecl
-}
-
-// groupUnitsByPackage partitions parser units by (directory, packageName).
-// Splitting on package name as well as directory matters because Go allows
-// an external test package (e.g. `foo_test`) to live alongside the main
-// package (`foo`) in the same directory; the two have different visibility
-// rules and cannot reference each other's private symbols.
-func groupUnitsByPackage(units []parser.Unit) []*packageGroup {
-	byKey := map[string]*packageGroup{}
-	for _, u := range units {
-		if u.AST == nil || u.AST.Name == nil {
-			continue
-		}
-		key := filepath.Dir(u.File.Path) + "\x00" + u.AST.Name.Name
-		group, ok := byKey[key]
-		if !ok {
-			group = &packageGroup{packageName: u.AST.Name.Name}
-			byKey[key] = group
-		}
-		group.units = append(group.units, u)
-		if importsReflectPackage(u.AST) {
-			group.skipForReflection = true
-		}
-		for _, decl := range u.AST.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil || fn.Name == nil {
-				continue
-			}
-			name := fn.Name.Name
-			if !startsLowercase(name) || isReservedFuncName(name) {
-				continue
-			}
-			group.privateFuncDecls = append(group.privateFuncDecls, privateFuncDecl{unit: u, fn: fn})
-		}
-	}
-	groups := make([]*packageGroup, 0, len(byKey))
-	for _, g := range byKey {
-		groups = append(groups, g)
-	}
-	return groups
-}
-
-// countAllIdentifiers tallies every identifier across every unit in the
-// package. Counting the FuncDecl.Name ident plus any in-body references
-// uniformly is what lets the simple `count > 1` heuristic distinguish
-// "declared and used" from "declared and abandoned".
-func countAllIdentifiers(units []parser.Unit) map[string]int {
-	counts := map[string]int{}
-	for _, u := range units {
-		if u.AST == nil {
-			continue
-		}
-		ast.Inspect(u.AST, func(node ast.Node) bool {
-			if id, ok := node.(*ast.Ident); ok {
-				counts[id.Name]++
-			}
-			return true
-		})
-	}
-	return counts
 }
 
 // importsReflectPackage reports whether the file imports a runtime-

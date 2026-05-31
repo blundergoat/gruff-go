@@ -166,7 +166,10 @@ func defaultProjectRules(config Config) []ProjectRule {
 			AllowMixed:   stringSliceOption(config, "naming.receiver-consistency", "allowMixed"),
 			InspectGroup: stringOption(config, "naming.receiver-consistency", "inspectGroup", "both"),
 		},
+		UnusedPrivateConstRule{},
 		UnusedPrivateFunctionRule{},
+		UnusedPrivateTypeRule{},
+		UnusedPrivateVarRule{},
 		CommentRubricRule{
 			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
 			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),
