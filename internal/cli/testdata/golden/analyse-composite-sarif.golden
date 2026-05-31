@@ -250,6 +250,62 @@
               }
             },
             {
+              "id": "dependency.go-mod-local-replace",
+              "name": "Local go.mod replace directive",
+              "shortDescription": {
+                "text": "Local go.mod replace directive"
+              },
+              "fullDescription": {
+                "text": "Flags go.mod replace directives that redirect a dependency to a local filesystem path (./…, ../…, or an absolute path). Local replacements do not reproduce for other clones or CI and usually indicate in-progress local development that should not ship."
+              },
+              "help": {
+                "text": "Remove the local replace before shipping and depend on a published module version, or vendor the dependency explicitly."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "dependency",
+                  "security",
+                  "supply-chain"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dependency.go-mod-remote-replace",
+              "name": "Remote go.mod replace directive",
+              "shortDescription": {
+                "text": "Remote go.mod replace directive"
+              },
+              "fullDescription": {
+                "text": "Flags go.mod replace directives that redirect a dependency to a different remote module path or version. Remote replacements silently swap a dependency's source and should be reviewed as a supply-chain decision."
+              },
+              "help": {
+                "text": "Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "dependency",
+                  "security",
+                  "supply-chain"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "design.god-function",
               "name": "God function",
               "shortDescription": {
@@ -1008,6 +1064,146 @@
                 "defaultEnabled": true,
                 "tags": [
                   "archive",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-broad-permissions",
+              "name": "Broad workflow permissions",
+              "shortDescription": {
+                "text": "Broad workflow permissions"
+              },
+              "fullDescription": {
+                "text": "Flags workflows that grant blanket write access with `permissions: write-all` or a bare `permissions: write`. Scoped grants such as `permissions:` with `contents: write` underneath are not flagged."
+              },
+              "help": {
+                "text": "Grant the least-privilege permission scopes the workflow needs (for example `contents: read`) instead of blanket write access."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-pull-request-target",
+              "name": "Risky pull_request_target workflow",
+              "shortDescription": {
+                "text": "Risky pull_request_target workflow"
+              },
+              "fullDescription": {
+                "text": "Flags workflows triggered by pull_request_target that also check out or run code. pull_request_target runs with repository secrets in the context of a fork's pull request, so executing PR-controlled code can leak secrets. Candidate wording."
+              },
+              "help": {
+                "text": "Use pull_request for untrusted contributions, or keep pull_request_target jobs free of fork-controlled checkout and execution."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-remote-shell",
+              "name": "Remote script piped to shell in workflow",
+              "shortDescription": {
+                "text": "Remote script piped to shell in workflow"
+              },
+              "fullDescription": {
+                "text": "Flags workflow run steps that download a remote script with curl/wget/Invoke-WebRequest and pipe it into a shell (for example `curl … | bash`), which executes unreviewed remote code in CI."
+              },
+              "help": {
+                "text": "Download the script to a file, verify its checksum, and review it before executing rather than piping a remote download directly into a shell."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-secrets-in-pr",
+              "name": "Secrets in pull-request workflow",
+              "shortDescription": {
+                "text": "Secrets in pull-request workflow"
+              },
+              "fullDescription": {
+                "text": "Flags workflows triggered by pull_request or pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. Candidate wording."
+              },
+              "help": {
+                "text": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-unpinned-action",
+              "name": "Unpinned GitHub Actions action",
+              "shortDescription": {
+                "text": "Unpinned GitHub Actions action"
+              },
+              "fullDescription": {
+                "text": "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version tags (@v4) and commit-SHA pins pass, and first-party actions/* and github/* are exempt."
+              },
+              "help": {
+                "text": "Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
                   "security"
                 ]
               },
@@ -2086,7 +2282,7 @@
       "results": [
         {
           "ruleId": "design.god-function",
-          "ruleIndex": 9,
+          "ruleIndex": 11,
           "level": "note",
           "message": {
             "text": "function Hot combines size and complexity findings"
@@ -2131,7 +2327,7 @@
         },
         {
           "ruleId": "design.hotspot-file",
-          "ruleIndex": 10,
+          "ruleIndex": 12,
           "level": "note",
           "message": {
             "text": "file has findings across multiple quality pillars"
@@ -2215,7 +2411,7 @@
         },
         {
           "ruleId": "docs.exported-symbol-comment",
-          "ruleIndex": 13,
+          "ruleIndex": 15,
           "level": "note",
           "message": {
             "text": "exported function \"Hot\" has no doc comment"
@@ -2250,7 +2446,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 63,
+          "ruleIndex": 70,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"

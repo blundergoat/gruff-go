@@ -29,6 +29,7 @@ func defaultUnitRules(config Config) []UnitRule {
 	rules = append(rules, defaultMetricUnitRules(config)...)
 	rules = append(rules, defaultMaintainabilityUnitRules()...)
 	rules = append(rules, defaultSecurityUnitRules()...)
+	rules = append(rules, defaultDependencyUnitRules()...)
 	rules = append(rules, defaultDocumentationUnitRules(config)...)
 	rules = append(rules, defaultSensitiveDataUnitRules(config)...)
 	rules = append(rules, defaultNamingUnitRules(config)...)
@@ -83,6 +84,21 @@ func defaultSecurityUnitRules() []UnitRule {
 		UnsafeDeserializationRule{},
 		XXECandidateRule{},
 		TemplateInjectionXSSRule{},
+		GitHubActionsUnpinnedActionRule{},
+		GitHubActionsRemoteShellRule{},
+		GitHubActionsBroadPermissionsRule{},
+		GitHubActionsPullRequestTargetRule{},
+		GitHubActionsSecretsInPRRule{},
+	}
+}
+
+// defaultDependencyUnitRules returns parser-only Go-module dependency-posture
+// checks. They emit the security pillar but carry dependency.* IDs to mirror the
+// cross-port dependency rule family.
+func defaultDependencyUnitRules() []UnitRule {
+	return []UnitRule{
+		GoModLocalReplaceRule{},
+		GoModRemoteReplaceRule{},
 	}
 }
 

@@ -11,11 +11,13 @@ schemaVersion: "gruff-go.config.v0.1"
 # even when they are not ignored by Git.
 paths:
   ignore:
+    # .github is not listed: gruff-go dogfoods its own .github/workflows YAML
+    # through the CI/workflow security rules. Non-workflow .github content is
+    # still skipped by the built-in non-application-metadata default.
     - '.agents/**'
     - '.antigravitycli/**'
     - '.claude/**'
     - '.codex/**'
-    - '.github/**'
     - '.goat-flow/**'
     - internal/report/sensitive_redaction_test.go
     - internal/rule/sensitive_test.go
@@ -66,6 +68,16 @@ rules:
 
   # Flags statements that appear after return, panic, break, continue, or goto in the same block.
   dead-code.unreachable-code:
+    enabled: true
+    severity: advisory
+
+  # Flags go.mod replace directives that redirect a dependency to a local filesystem path.
+  dependency.go-mod-local-replace:
+    enabled: true
+    severity: advisory
+
+  # Flags go.mod replace directives that redirect a dependency to a different remote module.
+  dependency.go-mod-remote-replace:
     enabled: true
     severity: advisory
 
@@ -214,6 +226,31 @@ rules:
 
   # Flags archive extraction paths built from entry names without an obvious containment check.
   security.archive-path-traversal:
+    enabled: true
+    severity: advisory
+
+  # Flags workflows that grant blanket write access (permissions: write-all or bare write).
+  security.github-actions-broad-permissions:
+    enabled: true
+    severity: advisory
+
+  # Flags pull_request_target workflows that also check out or run code with secret access.
+  security.github-actions-pull-request-target:
+    enabled: true
+    severity: advisory
+
+  # Flags workflow run steps that pipe a remote download into a shell (curl ... | bash).
+  security.github-actions-remote-shell:
+    enabled: true
+    severity: advisory
+
+  # Flags pull-request workflows that reference a named secret other than GITHUB_TOKEN.
+  security.github-actions-secrets-in-pr:
+    enabled: true
+    severity: advisory
+
+  # Flags third-party actions pinned to a mutable branch ref instead of a tag or commit SHA.
+  security.github-actions-unpinned-action:
     enabled: true
     severity: advisory
 

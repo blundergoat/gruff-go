@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` ships **73 rules** across **11 pillars**. **64 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **80 rules** across **11 pillars**. **71 rules are enabled by default** and 9 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
 Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, and `naming.receiver-consistency`.
 
@@ -25,6 +25,8 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
 | [`dead-code.unused-private-type`](#dead-codeunused-private-type) | dead-code | advisory | parser | - | Opt-in candidate for package-private named types that are not referenced in their parsed package. |
 | [`dead-code.unused-private-var`](#dead-codeunused-private-var) | dead-code | advisory | parser | - | Opt-in candidate for package-private variables that are not referenced in their parsed package. |
+| [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
+| [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
 | [`design.god-function`](#designgod-function) | design | advisory | parser | - | Functions that already have both size and complexity findings. |
 | [`design.hotspot-file`](#designhotspot-file) | maintainability | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
@@ -49,6 +51,11 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | advisory | parser | - | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | advisory | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | advisory | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.github-actions-broad-permissions`](#securitygithub-actions-broad-permissions) | security | advisory | parser | - | Workflows granting blanket write access (permissions: write-all or bare write). |
+| [`security.github-actions-pull-request-target`](#securitygithub-actions-pull-request-target) | security | advisory | parser | - | pull_request_target workflows that also check out or run code. |
+| [`security.github-actions-remote-shell`](#securitygithub-actions-remote-shell) | security | advisory | parser | - | Workflow run steps piping a remote download into a shell. |
+| [`security.github-actions-secrets-in-pr`](#securitygithub-actions-secrets-in-pr) | security | advisory | parser | - | Pull-request workflows referencing a named secret other than GITHUB_TOKEN. |
+| [`security.github-actions-unpinned-action`](#securitygithub-actions-unpinned-action) | security | advisory | parser | - | Third-party actions pinned to a mutable branch ref instead of a tag or SHA. |
 | [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | advisory | parser | - | `http.Client` literals in production files without `Timeout`. |
 | [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | advisory | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | advisory | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
@@ -226,6 +233,36 @@ Opt-in candidate for package-private top-level types whose names are not referen
 Opt-in candidate for package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, blank identifiers, and common registration tables are excluded to avoid noisy parser-only false positives.
 
 **Remediation.** Delete the variable if it is abandoned, or keep the rule opt-in where indirect registration or build-tagged references are part of the package contract.
+
+### `dependency.go-mod-local-replace`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `dependency`, `security`, `supply-chain`
+
+Flags `go.mod` replace directives whose replacement target is a local filesystem path (`./…`, `../…`, an absolute path, or a Windows drive path), in both the single-line and block (`replace ( … )`) forms. Local replacements do not reproduce for other clones or CI and usually indicate in-progress local development that should not ship. Scanned as text; no `go list` or proxy queries.
+
+Each finding's metadata carries the replacement target.
+
+**Remediation.** Remove the local replace before shipping and depend on a published module version, or vendor the dependency explicitly.
+
+### `dependency.go-mod-remote-replace`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `dependency`, `security`, `supply-chain`
+
+Flags `go.mod` replace directives whose replacement target is a different remote module path or version. Remote replacements silently swap a dependency's source and warrant a supply-chain review. Scanned as text; no `go list` or proxy queries.
+
+Each finding's metadata carries the replacement target.
+
+**Remediation.** Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible.
 
 ### `design.god-function`
 
@@ -694,6 +731,71 @@ Flags Go files that import `archive/zip` or `archive/tar` and join an archive en
 Each finding's metadata carries the archive entry expression and the missing check kind.
 
 **Remediation.** Clean the joined path and verify it remains inside the extraction root before creating files.
+
+### `security.github-actions-broad-permissions`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags GitHub Actions workflows that grant blanket write access with `permissions: write-all` or a bare `permissions: write`. Scoped grants such as a `permissions:` block with `contents: write` underneath are not flagged. Workflow YAML under `.github/workflows` is scanned as text.
+
+**Remediation.** Grant the least-privilege permission scopes the workflow needs (for example `contents: read`) instead of blanket write access.
+
+### `security.github-actions-pull-request-target`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags workflows triggered by `pull_request_target` that also check out or run code. `pull_request_target` runs with repository secrets in the context of a fork's pull request, so executing PR-controlled code can leak them. Candidate wording.
+
+**Remediation.** Use `pull_request` for untrusted contributions, or keep `pull_request_target` jobs free of fork-controlled checkout and execution.
+
+### `security.github-actions-remote-shell`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags workflow run steps that download a remote script with `curl`/`wget`/`Invoke-WebRequest` and pipe it into a shell (for example `curl … | bash`), executing unreviewed remote code in CI.
+
+**Remediation.** Download the script to a file, verify its checksum, and review it before executing rather than piping a remote download into a shell.
+
+### `security.github-actions-secrets-in-pr`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags workflows triggered by `pull_request` or `pull_request_target` that reference a named secret other than the auto-provided `GITHUB_TOKEN`, exposing it to fork-controlled runs. Candidate wording. Each finding's metadata carries the referenced secret name.
+
+**Remediation.** Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or `workflow_run`.
+
+### `security.github-actions-unpinned-action`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags third-party GitHub Actions referenced by a mutable branch ref (for example `@main` or `@master`), which a maintainer can repoint to new code without review. Version tags (`@v4`) and full commit-SHA pins pass, and first-party `actions/*` and `github/*` are exempt. Each finding's metadata carries the action and ref.
+
+**Remediation.** Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you.
 
 ### `security.http-client-no-timeout`
 

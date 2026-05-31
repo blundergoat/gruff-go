@@ -7,6 +7,8 @@ dead-code.unused-private-const	dead-code	advisory	parser	Unused private const
 dead-code.unused-private-function	dead-code	advisory	parser	Unused private function
 dead-code.unused-private-type	dead-code	advisory	parser	Unused private type
 dead-code.unused-private-var	dead-code	advisory	parser	Unused private var
+dependency.go-mod-local-replace	security	advisory	parser	Local go.mod replace directive
+dependency.go-mod-remote-replace	security	advisory	parser	Remote go.mod replace directive
 design.god-function	design	advisory	parser	God function
 design.hotspot-file	maintainability	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric
@@ -31,6 +33,11 @@ naming.package-stutter	naming	advisory	parser	Package stutter
 naming.package-underscore	naming	advisory	parser	Package name contains underscore
 naming.receiver-consistency	naming	advisory	parser	Receiver consistency
 security.archive-path-traversal	security	advisory	parser	Archive path traversal
+security.github-actions-broad-permissions	security	advisory	parser	Broad workflow permissions
+security.github-actions-pull-request-target	security	advisory	parser	Risky pull_request_target workflow
+security.github-actions-remote-shell	security	advisory	parser	Remote script piped to shell in workflow
+security.github-actions-secrets-in-pr	security	advisory	parser	Secrets in pull-request workflow
+security.github-actions-unpinned-action	security	advisory	parser	Unpinned GitHub Actions action
 security.http-client-no-timeout	security	advisory	parser	HTTP client without timeout
 security.http-server-no-timeout	security	advisory	parser	HTTP server without timeout
 security.insecure-random-secret	security	advisory	parser	Insecure random secret
