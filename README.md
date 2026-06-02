@@ -176,21 +176,21 @@ See [`docs/configuration.md`](docs/configuration.md) for the full schema and val
 
 ## Rules And Pillars
 
-The current checkout contains 79 rules across 11 pillars. 70 rules are enabled by default; the 9 opt-in rules are convention-only naming/modernisation checks plus parser-only dead-code candidates.
+The current checkout contains 82 rules across 11 pillars. 70 rules are enabled by default; the 12 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, and the entropy/PII/PHI sensitive-data detectors.
 
 | Pillar | Rules |
 | --- | ---: |
 | `complexity` | 3 |
-| `dead-code` | 2 |
+| `dead-code` | 6 |
 | `design` | 1 |
 | `documentation` | 5 |
-| `maintainability` | 7 |
+| `maintainability` | 6 |
 | `modernisation` | 2 |
 | `naming` | 8 |
-| `security` | 10 |
-| `sensitive-data` | 13 |
+| `security` | 24 |
+| `sensitive-data` | 16 |
 | `size` | 3 |
-| `test-quality` | 7 |
+| `test-quality` | 8 |
 
 See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 

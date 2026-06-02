@@ -71,6 +71,28 @@ new file mode 100644
 	}
 }
 
+// TestParseAnchorsDeletionOnlyHunk verifies a pure-deletion hunk in a still-present
+// file (zero added lines) records its anchor line, so a deletion-only edit keeps its
+// enclosing region in scope instead of dropping out of the changed set with an empty
+// line map (which would silently suppress findings in the edited function).
+func TestParseAnchorsDeletionOnlyHunk(t *testing.T) {
+	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -4,2 +3,0 @@
+-removed one
+-removed two
+`))
+	if _, ok := changed.LinesByFile["a.go"][3]; !ok {
+		t.Fatalf("changed lines = %#v, want deletion anchored at line 3", changed.LinesByFile["a.go"])
+	}
+	item := finding.Finding{RuleID: "r", File: "a.go", Location: &finding.Location{Line: 3}}
+	result := Filter([]finding.Finding{item}, changed)
+	if len(result.Findings) != 1 || result.FilteredFindings != 0 {
+		t.Fatalf("result = %#v, want finding on the deletion anchor retained", result)
+	}
+}
+
 // TestExplicitRangesApplyToFiles checks that explicit ranges are applied per file:
 // a line inside a range counts as changed and one outside does not.
 func TestExplicitRangesApplyToFiles(t *testing.T) {

@@ -213,6 +213,19 @@ func addHunkLines(result *ChangedLines, file string, line string) {
 	if matches[2] != "" {
 		count, _ = strconv.Atoi(matches[2])
 	}
+	if count == 0 {
+		// A pure-deletion hunk carries a zero-length added side (e.g. `@@ -4,2 +3,0 @@`):
+		// the new-side start names the line just before the removed block. Anchor that
+		// line so the deletion's enclosing symbol/region stays in the changed set;
+		// otherwise an edit that only removed lines would record no changed line, and a
+		// `--diff`/`--since` scan would silently drop findings in the edited function.
+		anchor := start
+		if anchor < 1 {
+			anchor = 1
+		}
+		result.LinesByFile[file][anchor] = struct{}{}
+		return
+	}
 	for offset := 0; offset < count; offset++ {
 		result.LinesByFile[file][start+offset] = struct{}{}
 	}

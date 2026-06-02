@@ -135,6 +135,39 @@ func login(password string) {
 			want: 0,
 		},
 		{
+			name: "secret beside hashed sibling still fires",
+			code: `// Package svc is a test package.
+package svc
+
+import (
+	"crypto/sha256"
+	"fmt"
+	"log"
+)
+
+func login(password string, nonce []byte) {
+	log.Print(fmt.Sprintf("%s %x", password, sha256.Sum256(nonce)))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "secret wrapped by hash is suppressed",
+			code: `// Package svc is a test package.
+package svc
+
+import (
+	"crypto/sha256"
+	"log"
+)
+
+func login(password string) {
+	log.Printf("hash=%x", sha256.Sum256([]byte(password)))
+}
+`,
+			want: 0,
+		},
+		{
 			name: "plain form value",
 			code: `// Package svc is a test package.
 package svc

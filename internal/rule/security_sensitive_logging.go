@@ -114,10 +114,13 @@ type loggingSinkPackages struct {
 
 // firstSensitiveArg returns the first non-literal argument that carries a
 // credential, its classification reason, and the argument expression. Pure string
-// literals (format strings, static keys) and redaction-wrapped values are skipped.
+// literals (format strings, static keys) are skipped. Redaction and hashing calls
+// no longer disqualify the whole argument: each detector prunes a redaction call's
+// own subtree, so a hashed sibling value (e.g. a checksum logged next to a raw
+// password) does not mask a credential elsewhere in the same argument.
 func firstSensitiveArg(args []ast.Expr, scope *requestTaintScope, osPackages map[string]bool) (string, ast.Expr, bool) {
 	for _, arg := range args {
-		if isStringLiteral(arg) || isRedactionWrapped(arg) {
+		if isStringLiteral(arg) {
 			continue
 		}
 		if scope != nil {
@@ -186,6 +189,9 @@ func (s *requestTaintScope) requestSensitiveRead(arg ast.Expr) (string, bool) {
 		if reason != "" {
 			return false
 		}
+		if isRedactionCall(node) {
+			return false // a masked/hashed request read is already neutralised; skip its subtree
+		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -223,6 +229,9 @@ func isSecretEnvRead(arg ast.Expr, osPackages map[string]bool) bool {
 		if found {
 			return false
 		}
+		if isRedactionCall(node) {
+			return false // a masked/hashed env read is already neutralised; skip its subtree
+		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -249,6 +258,9 @@ func hasSecretIdentifier(arg ast.Expr) bool {
 		if found {
 			return false
 		}
+		if isRedactionCall(node) {
+			return false // a masked/hashed value is already neutralised; skip its subtree
+		}
 		name := ""
 		switch value := node.(type) {
 		case *ast.Ident:
@@ -265,21 +277,14 @@ func hasSecretIdentifier(arg ast.Expr) bool {
 	return found
 }
 
-// isRedactionWrapped reports whether arg passes through a recognised redaction or
-// hashing call, which removes the raw secret before logging.
-func isRedactionWrapped(arg ast.Expr) bool {
-	found := false
-	ast.Inspect(arg, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		if call, ok := node.(*ast.CallExpr); ok && callNameMatchesAny(call, loggingRedactionWords) {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
+// isRedactionCall reports whether node is a call whose name matches a redaction or
+// hashing word (mask, hash, sha, hmac, ...). The secret scans prune such a call's
+// subtree, treating only that wrapped sub-expression as neutralised. Scoping to the
+// subtree — rather than disqualifying the whole logging argument — keeps a hashed
+// sibling (e.g. a checksum) from masking a raw credential interpolated alongside it.
+func isRedactionCall(node ast.Node) bool {
+	call, ok := node.(*ast.CallExpr)
+	return ok && callNameMatchesAny(call, loggingRedactionWords)
 }
 
 // isStringLiteral reports whether expr is a string literal, used to skip format
