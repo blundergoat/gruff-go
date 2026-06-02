@@ -1,6 +1,6 @@
 ---
 category: workflow
-last_reviewed: 2026-05-27
+last_reviewed: 2026-06-03
 ---
 
 # Workflow Lessons
@@ -103,3 +103,11 @@ CodeRabbit flagged two of the seven stale strings; codex and CodeRabbit missed t
 **Incident:** While fixing false positives in `internal/rule/builtin.go`, the agent added helper code directly to the already-large builtin rule file. Focused tests passed, but the required dogfood scan reported `size.file-length` and `docs.comment-rubric` findings against the new helpers before the code was split into `internal/rule/function_length_tables.go` with attached comments.
 
 **Do differently:** For rule-calibration changes, check the target file's current line count and configured comment rubric before adding helper blocks. If a file is near the 500-line project threshold, create a focused helper file up front and give every new helper/type an attached comment before running the first dogfood scan.
+
+## Lesson: Temporary in-tree verification harnesses still participate in dogfood
+
+**Created:** 2026-06-03
+
+**Incident:** While independently checking `test-quality.static-analysis-redundant-test`, an untracked temporary test file was left under `internal/rule/` with the explicit header `TEMPORARY independent-verification harness` (file evidence: `internal/rule/verify_adversarial_test.go`, search: `TEMPORARY independent-verification harness`). `go test ./internal/rule/...` and `make check` passed because the harness was valid Go, but the required dogfood scan `go run ./cmd/gruff-go analyse .` failed on `docs.comment-rubric` because `TestVerifyStaticFactAdversarial` had no attached comment (file evidence: `internal/rule/verify_adversarial_test.go`, search: `TestVerifyStaticFactAdversarial`). The failure was not a product-rule regression, but it still made the whole checkout fail the dogfood gate until the temporary file was removed, ignored by location, or promoted into real commented test coverage.
+
+**Do differently:** Temporary verification harnesses should live outside scanner-discovered source paths, under a gitignored scratch location, or be promoted immediately into proper test files that satisfy the dogfood rubric. Before claiming dogfood status after any ad hoc verification, run `git status --short --untracked-files=all` and treat untracked files under `cmd/` or `internal/` as live scan inputs. If the harness must stay in-tree for one more command, say that full dogfood is expected to include it and separate "product files are clean" from "current worktree is clean."

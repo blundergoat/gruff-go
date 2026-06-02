@@ -2305,6 +2305,33 @@
               }
             },
             {
+              "id": "test-quality.static-analysis-redundant-test",
+              "name": "Static-analysis-redundant test candidate",
+              "shortDescription": {
+                "text": "Static-analysis-redundant test candidate"
+              },
+              "fullDescription": {
+                "text": "Flags Go unit-test assertions whose main evidence is a parser-visible static code-shape fact rather than runtime behaviour."
+              },
+              "help": {
+                "text": "Remove the redundant assertion if it is the only behaviour under test, or replace it with an assertion about runtime behaviour or meaningful values."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "test-quality.tempdir-misuse",
               "name": "Test temp dir misuse",
               "shortDescription": {

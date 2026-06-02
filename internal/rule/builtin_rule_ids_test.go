@@ -101,6 +101,7 @@ func defaultRuleIDsSecurityOnward() []string {
 		"test-quality.parallel-range-capture",
 		"test-quality.skipped-test",
 		"test-quality.sleep-in-test",
+		"test-quality.static-analysis-redundant-test",
 		"test-quality.tempdir-misuse",
 	}
 }
@@ -109,17 +110,18 @@ func defaultRuleIDsSecurityOnward() []string {
 // house-style conventions or candidate checks that still need calibration.
 func defaultDisabledRuleIDs() map[string]bool {
 	return map[string]bool{
-		"dead-code.unused-private-const":     true,
-		"dead-code.unused-private-type":      true,
-		"dead-code.unused-private-var":       true,
-		"modernisation.ioutil-deprecated":    true,
-		"naming.acronym-case":                true,
-		"naming.get-prefix":                  true,
-		"naming.package-stutter":             true,
-		"naming.package-underscore":          true,
-		"naming.receiver-consistency":        true,
-		"sensitive-data.high-entropy-string": true,
-		"sensitive-data.phi-pattern":         true,
-		"sensitive-data.pii-pattern":         true,
+		"dead-code.unused-private-const":              true,
+		"dead-code.unused-private-type":               true,
+		"dead-code.unused-private-var":                true,
+		"modernisation.ioutil-deprecated":             true,
+		"naming.acronym-case":                         true,
+		"naming.get-prefix":                           true,
+		"naming.package-stutter":                      true,
+		"naming.package-underscore":                   true,
+		"naming.receiver-consistency":                 true,
+		"sensitive-data.high-entropy-string":          true,
+		"sensitive-data.phi-pattern":                  true,
+		"sensitive-data.pii-pattern":                  true,
+		"test-quality.static-analysis-redundant-test": true,
 	}
 }

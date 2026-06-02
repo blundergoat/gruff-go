@@ -464,6 +464,11 @@ rules:
     enabled: true
     severity: advisory
 
+  # Flags Go test assertions whose main evidence is a parser-visible code-shape fact rather than runtime behaviour.
+  test-quality.static-analysis-redundant-test:
+    enabled: false
+    severity: advisory
+
   # Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.
   test-quality.tempdir-misuse:
     enabled: true

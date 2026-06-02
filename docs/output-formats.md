@@ -9,7 +9,9 @@ The default is `text` if you omit `--format`.
 Compact terminal-friendly output:
 
 ```text
-gruff-go analysis
+gruff-go 0.3.0 analyse
+Composite: A (99.00 / 100)
+Findings: 1 total · 0 error · 1 warning · 0 advisory
 schema: gruff-go.analysis.v0.2
 files: 65 scanned, 6 skipped
 score coverage: size
@@ -201,10 +203,10 @@ Output shape:
 ```markdown
 # gruff-go report
 
-**Grade:** A (100 / 100)
+Composite: **A (100.00 / 100)**
 **Schema:** `gruff-go.analysis.v0.2`
 **Files:** 148 scanned, 13 skipped
-**Findings:** 0 total - 0 error, 0 warning, 0 advisory
+Findings: 0 total · 0 error · 0 warning · 0 advisory
 
 ## Pillars
 

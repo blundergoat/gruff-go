@@ -58,9 +58,13 @@ func writeTextBaselineStatus(writer io.Writer, summary analysis.BaselineSummary)
 	return nil
 }
 
-// writeTextHeader emits the leading metadata block: schema, file counts, score coverage, and scope.
+// writeTextHeader emits the leading metadata block: masthead, the canonical
+// composite/findings score block, schema, file counts, score coverage, and scope.
 func writeTextHeader(writer io.Writer, report analysis.Report) error {
-	if _, err := fmt.Fprintf(writer, "gruff-go analysis\n"); err != nil {
+	if _, err := fmt.Fprintf(writer, "%s %s analyse\n", report.Tool.Name, report.Tool.Version); err != nil {
+		return err
+	}
+	if err := writeCompositeBlock(writer, report); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(writer, "schema: %s\n", report.SchemaVersion); err != nil {

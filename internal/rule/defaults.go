@@ -203,6 +203,7 @@ func defaultProjectRules(config Config) []ProjectRule {
 		UnusedPrivateFunctionRule{},
 		UnusedPrivateTypeRule{},
 		UnusedPrivateVarRule{},
+		StaticAnalysisRedundantTestRule{},
 		CommentRubricRule{
 			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
 			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),

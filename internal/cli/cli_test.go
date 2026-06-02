@@ -24,7 +24,7 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	if code := Main([]string{"analyse", "."}, &textOut, &textErr); code != 0 {
 		t.Fatalf("text exit = %d, stderr = %s", code, textErr.String())
 	}
-	if !strings.Contains(textOut.String(), "gruff-go analysis") {
+	if !strings.Contains(textOut.String(), "gruff-go "+toolVersion+" analyse") {
 		t.Fatalf("text output missing header: %s", textOut.String())
 	}
 

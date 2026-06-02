@@ -1,6 +1,6 @@
 ---
 category: rules
-last_reviewed: 2026-05-31
+last_reviewed: 2026-06-03
 ---
 
 # Rule-Authoring Patterns
@@ -34,3 +34,13 @@ last_reviewed: 2026-05-31
 **Context:** M28 expanded `dead-code.unused-private-function` into a shared package reference index and added unused private type, var, and const checks. Functions had prior dogfood calibration and stayed default-enabled. Types, vars, and consts needed broader syntax-safety exclusions for generated files, tests, reflection-heavy packages, iota groups, registration tables, and identifier collisions, but still had no cross-repo false-positive distribution.
 
 **Approach:** Add the new rules to the built-in registry with `DefaultEnabled: false`, label them `candidate`, document their precision boundaries, and cover the intended positive and suppression cases with focused parser-only tests before dogfood. This keeps the catalogue discoverable without letting uncalibrated broad checks dominate default scans.
+
+## Pattern: Test static-shape rules with paired flag and no-flag probes
+
+**Created:** 2026-06-03
+
+**Evidence:** OBSERVED
+
+**Context:** Adding `test-quality.static-analysis-redundant-test` required proving both sides of a narrow parser-only contract: same-package reflection assertions that restate source declarations should flag, while behaviour tests, external `_test` packages, runtime-value reflection, missing-field checks, and unsupported syntax should stay silent. The focused tests now cover supported reflection shape assertions and behaviour/external-package suppressions (file evidence: `internal/rule/test_quality_static_fact_test.go`, search: `TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions`; `internal/rule/test_quality_static_fact_test.go`, search: `TestStaticAnalysisRedundantTestIgnoresBehaviourAssertions`; `internal/rule/test_quality_static_fact_test.go`, search: `TestStaticAnalysisRedundantTestIgnoresExternalTestPackages`).
+
+**Approach:** For parser-only static-shape rules, build fixtures in same-package production/test pairs and divide cases into explicit "must flag" and "must not flag" groups. Positive probes should cover operand order, aliases, init-bound values, supported assertion helpers, and metadata (`assertion`, `staticFact`, `staticFactFile`, `staticFactLine`, `confidenceReason`). Negative probes should cover real behaviour, wrong expected static values, runtime-derived values, external packages, cross-directory same-package names, and intentionally unsupported forms. Keep the rule opt-in until those probes plus external-codebase calibration show the findings are precise enough for default scans.

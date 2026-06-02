@@ -79,4 +79,5 @@ test-quality.no-failure-path	test-quality	advisory	parser	Test cannot fail
 test-quality.parallel-range-capture	test-quality	advisory	parser	Parallel subtest captures range variable
 test-quality.skipped-test	test-quality	advisory	parser	Skipped test
 test-quality.sleep-in-test	test-quality	advisory	parser	Sleep in test
+test-quality.static-analysis-redundant-test	test-quality	advisory	parser	Static-analysis-redundant test candidate
 test-quality.tempdir-misuse	test-quality	advisory	parser	Test temp dir misuse

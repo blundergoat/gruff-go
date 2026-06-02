@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **82 rules** across **11 pillars**. **70 rules are enabled by default** and 12 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **83 rules** across **11 pillars**. **70 rules are enabled by default** and 13 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, and `sensitive-data.phi-pattern`.
+Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -97,6 +97,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | advisory | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | advisory | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 | [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | advisory | parser | - | `time.Sleep` calls in tests. |
+| [`test-quality.static-analysis-redundant-test`](#test-qualitystatic-analysis-redundant-test) | test-quality | advisory | parser | - | Opt-in candidate for test assertions that restate parser-visible code-shape facts. |
 | [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | advisory | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Warning-severity size findings in `_test.go` files still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Advisory defaults such as `size.file-length` are already softened, and non-warning severity overrides in config apply to test files too.
@@ -1378,6 +1379,21 @@ Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Co
 Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load.
 
 **Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
+
+### `test-quality.static-analysis-redundant-test`
+
+- **Pillar:** test-quality
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `candidate`, `tests`
+
+Flags Go unit-test assertions whose main evidence is a parser-visible static code-shape fact rather than runtime behaviour. The initial candidate set covers same-package reflection assertions such as `reflect.TypeOf(T{}).Kind() != reflect.Struct`, `Name() != "T"`, `NumField() != N`, and direct `FieldByName("Field")` existence checks when the matching type or field declaration is visible in parsed Go source.
+
+The rule is opt-in while calibration proves precision. It does not execute reflection, load packages, or use SSA/type information, and it does not flag assertions about returned values, errors, parsing, IO, security behaviour, or interaction between components.
+
+**Remediation.** Remove the shape assertion if it is the only evidence in the test, or replace it with an assertion about meaningful runtime behaviour.
 
 ### `test-quality.tempdir-misuse`
 
