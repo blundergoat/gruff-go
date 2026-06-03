@@ -67,7 +67,7 @@ func (PathTraversalFileAccessRule) AnalyzeUnit(unit parser.Unit, _ Context) []fi
 			if !ok {
 				return true
 			}
-			if scope.argHasInlineSanitizer(pathArg, pathSanitizerWords) || bodyHasSanitizingCall(body, identNames(pathArg), pathSanitizerWords, call.Pos()) {
+			if scope.argHasInlineSanitizer(pathArg, pathSanitizerWords) || bodyHasSanitizingCall(body, scope.sanitizerValueNames(pathArg), pathSanitizerWords, call.Pos()) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())

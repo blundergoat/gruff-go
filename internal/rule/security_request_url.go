@@ -69,7 +69,7 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !ok {
 				return true
 			}
-			if scope.argHasInlineSanitizer(urlArg, urlSanitizerWords) || bodyHasSanitizingCall(body, identNames(urlArg), urlSanitizerWords, call.Pos()) {
+			if scope.argHasInlineSanitizer(urlArg, urlSanitizerWords) || bodyHasSanitizingCall(body, scope.sanitizerValueNames(urlArg), urlSanitizerWords, call.Pos()) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -135,7 +135,7 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			if literal, ok := leftmostStringLiteral(target); ok && isSafeRelativePrefix(literal) {
 				return true
 			}
-			if scope.argHasInlineSanitizer(target, redirectSanitizerWords) || bodyHasSanitizingCall(body, identNames(target), redirectSanitizerWords, call.Pos()) {
+			if scope.argHasInlineSanitizer(target, redirectSanitizerWords) || bodyHasSanitizingCall(body, scope.sanitizerValueNames(target), redirectSanitizerWords, call.Pos()) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -189,11 +189,28 @@ func redirectTargetArg(call *ast.CallExpr, httpPackages map[string]bool) (ast.Ex
 	if !ok || selector.Sel.Name != "Set" || len(call.Args) != 2 {
 		return nil, "", false
 	}
+	if !isHeaderMethodCallReceiver(selector.X) {
+		return nil, "", false
+	}
 	header, ok := stringLiteral(call.Args[0])
 	if !ok || !isLocationHeader(header) {
 		return nil, "", false
 	}
 	return call.Args[1], "Header.Set(Location)", true
+}
+
+// isHeaderMethodCallReceiver reports whether expr is a `<x>.Header()` method call —
+// the http.ResponseWriter.Header() accessor. It is a method call, unlike the
+// http.Request.Header field, so gating a header Set on it distinguishes a response
+// header write (w.Header().Set(...)) from setting a header on the inbound request
+// or on an unrelated object.
+func isHeaderMethodCallReceiver(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && selector.Sel.Name == "Header"
 }
 
 // isLocationHeader reports whether a header name targets the redirect Location

@@ -62,6 +62,23 @@ func render(w http.ResponseWriter, r *http.Request) {
 			want: 1,
 		},
 		{
+			name: "content type set on request header is not the response type",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func render(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, "<h1>%s</h1>", r.URL.Query().Get("q"))
+}
+`,
+			want: 0,
+		},
+		{
 			name: "html template auto escaped is safe",
 			code: `// Package handler is a test package.
 package handler

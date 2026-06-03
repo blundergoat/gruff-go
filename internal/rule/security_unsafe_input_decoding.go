@@ -123,7 +123,6 @@ func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	if len(xmlPackages) == 0 {
 		return nil
 	}
-	decoderVars := collectXMLDecoderVars(unit.AST, xmlPackages)
 	findings := []finding.Finding{}
 	emit := func(pos token.Pos) {
 		position := unit.FileSet.Position(pos)
@@ -134,29 +133,50 @@ func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			Metadata: map[string]any{"evidence": "entity-map"},
 		})
 	}
+	// A composite literal xml.Decoder{Entity: ...} is self-evidencing (type and the
+	// Entity field are both in the literal), so it is matched file-wide.
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
-		switch stmt := node.(type) {
-		case *ast.AssignStmt:
-			for _, lhs := range stmt.Lhs {
+		if literal, ok := node.(*ast.CompositeLit); ok && isXMLDecoderLiteralWithEntity(literal, xmlPackages) {
+			emit(literal.Pos())
+		}
+		return true
+	})
+	// `dec.Entity = ...` evidence is scoped to the function that binds `dec` to an
+	// xml.NewDecoder result. Tracking decoder vars file-wide would let an unrelated
+	// `dec` (a different type that also has an Entity field) in another function
+	// produce a cross-scope false XXE finding.
+	for _, decl := range unit.AST.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		decoderVars := collectXMLDecoderVars(fn.Body, xmlPackages)
+		if len(decoderVars) == 0 {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			assign, ok := node.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			for _, lhs := range assign.Lhs {
 				if isDecoderEntityTarget(lhs, decoderVars) {
 					emit(lhs.Pos())
 				}
 			}
-		case *ast.CompositeLit:
-			if isXMLDecoderLiteralWithEntity(stmt, xmlPackages) {
-				emit(stmt.Pos())
-			}
-		}
-		return true
-	})
+			return true
+		})
+	}
 	return findings
 }
 
-// collectXMLDecoderVars records locals bound to xml.NewDecoder results so entity
-// assignments on them can be recognised.
-func collectXMLDecoderVars(file *ast.File, xmlPackages map[string]bool) map[string]bool {
+// collectXMLDecoderVars records locals bound to xml.NewDecoder results within the
+// given scope (a function body) so entity assignments on them can be recognised.
+// Scoping to one function keeps a same-named variable in another function from
+// being treated as the same decoder.
+func collectXMLDecoderVars(scope ast.Node, xmlPackages map[string]bool) map[string]bool {
 	vars := map[string]bool{}
-	ast.Inspect(file, func(node ast.Node) bool {
+	ast.Inspect(scope, func(node ast.Node) bool {
 		switch stmt := node.(type) {
 		case *ast.AssignStmt:
 			for i, lhs := range stmt.Lhs {

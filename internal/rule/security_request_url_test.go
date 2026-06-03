@@ -144,6 +144,24 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 			want: 1,
 		},
 		{
+			name: "auth check on request does not suppress inline ssrf",
+			code: `// Package handler is a test package.
+package handler
+
+import "net/http"
+
+func validateSession(*http.Request) bool { return true }
+
+func fetch(w http.ResponseWriter, r *http.Request) {
+	if !validateSession(r) {
+		return
+	}
+	_, _ = http.Get(r.FormValue("url"))
+}
+`,
+			want: 1,
+		},
+		{
 			name: "request value assigned after sink is not tainted at sink",
 			code: `// Package handler is a test package.
 package handler
@@ -235,6 +253,20 @@ func redirect(w http.ResponseWriter, r *http.Request) {
 }
 `,
 			want: 1,
+		},
+		{
+			name: "location set on request header is not a response sink",
+			code: `// Package handler is a test package.
+package handler
+
+import "net/http"
+
+func handle(w http.ResponseWriter, r *http.Request) {
+	_ = w
+	r.Header.Set("Location", r.FormValue("u"))
+}
+`,
+			want: 0,
 		},
 		{
 			name: "fixed relative path",

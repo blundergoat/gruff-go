@@ -188,6 +188,33 @@ func build(entities map[string]string) Decoder {
 `,
 			want: 0,
 		},
+		{
+			name: "same-name var in another function is not the decoder",
+			code: `// Package svc is a test package.
+package svc
+
+import (
+	"io"
+	"encoding/xml"
+)
+
+type custom struct {
+	Entity map[string]string
+}
+
+func decode(r io.Reader) {
+	dec := xml.NewDecoder(r)
+	_ = dec.Decode(nil)
+}
+
+func other(entities map[string]string) {
+	dec := custom{}
+	dec.Entity = entities
+	_ = dec
+}
+`,
+			want: 0,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

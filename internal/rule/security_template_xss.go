@@ -225,6 +225,9 @@ func functionSetsHTMLContentType(body *ast.BlockStmt) bool {
 		if !ok || selector.Sel.Name != "Set" || len(call.Args) != 2 {
 			return true
 		}
+		if !isHeaderMethodCallReceiver(selector.X) {
+			return true
+		}
 		key, ok := stringLiteral(call.Args[0])
 		if !ok || !equalFoldASCII(key, "Content-Type") {
 			return true

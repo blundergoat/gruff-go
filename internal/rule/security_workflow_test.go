@@ -79,6 +79,8 @@ func TestGitHubActionsBroadPermissionsRule(t *testing.T) {
 	}{
 		{name: "write-all", src: "permissions: write-all\n", want: 1},
 		{name: "bare write", src: "permissions: write\n", want: 1},
+		{name: "double-quoted write-all", src: "permissions: \"write-all\"\n", want: 1},
+		{name: "single-quoted write", src: "permissions: 'write'\n", want: 1},
 		{name: "scoped block", src: "permissions:\n  contents: write\n  pull-requests: read\n", want: 0},
 		{name: "read-all", src: "permissions: read-all\n", want: 0},
 	}
@@ -104,6 +106,7 @@ func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 		{name: "target with run", src: "on: pull_request_target\njobs:\n  x:\n    steps:\n      - run: make build\n", want: 1},
 		{name: "plain pull_request", src: "on:\n  pull_request:\njobs:\n  x:\n    steps:\n      - run: make build\n", want: 0},
 		{name: "target without execution", src: "on: pull_request_target\njobs:\n  x:\n    runs-on: ubuntu-latest\n", want: 0},
+		{name: "checkout only in a comment is not execution", src: "on: pull_request_target\njobs:\n  x:\n    runs-on: ubuntu-latest\n    # uses: actions/checkout@v4 (documented elsewhere, not run here)\n", want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,6 +132,7 @@ func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 		{name: "named secret on push", src: "on: push\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 		{name: "pull_request in comment is not a trigger", src: "on: push\n# also relevant for pull_request builds\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 		{name: "pull_request in job condition is not a trigger", src: "on: push\njobs:\n  x:\n    if: github.event_name == 'pull_request'\n    steps:\n      - run: deploy\n        env:\n          K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
+		{name: "nested with.on key is not a trigger", src: "on: push\njobs:\n  x:\n    steps:\n      - uses: some/action@v1\n        with:\n          on: pull_request\n        env:\n          K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

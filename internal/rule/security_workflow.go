@@ -17,15 +17,18 @@ var (
 	workflowUsesPattern        = regexp.MustCompile(`^\s*-?\s*uses:\s*["']?([^"'\s#]+)`)
 	workflowRemoteShellPattern = regexp.MustCompile(`(?i)(?:curl|wget|invoke-webrequest|iwr)\b[^\n|]*\|\s*(?:sudo\s+)?(?:bash|sh|zsh|fish|iex|invoke-expression)\b`)
 	workflowProcessSubPattern  = regexp.MustCompile(`(?i)\b(?:bash|sh|zsh)\b\s+<\(\s*(?:curl|wget)\b`)
-	workflowBroadPermsPattern  = regexp.MustCompile(`(?i)^\s*permissions:\s*(write-all|write)\s*(?:#.*)?$`)
+	workflowBroadPermsPattern  = regexp.MustCompile(`(?i)^\s*permissions:\s*['"]?(write-all|write)['"]?\s*(?:#.*)?$`)
 	workflowSecretPattern      = regexp.MustCompile(`\$\{\{\s*secrets\.([A-Za-z0-9_]+)`)
-	workflowRunPattern         = regexp.MustCompile(`(?m)^\s*-?\s*run:`)
 	workflowRunKeyPattern      = regexp.MustCompile(`^\s*-?\s*run:`)
-	workflowOnKeyPattern       = regexp.MustCompile(`^\s*['"]?on['"]?\s*:`)
-	workflowPRTargetPattern    = regexp.MustCompile(`pull_request_target`)
-	workflowPRPattern          = regexp.MustCompile(`pull_request\b`)
-	actionShaRefPattern        = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
-	actionVersionTagPattern    = regexp.MustCompile(`^v?\d`)
+	// workflowOnKeyPattern matches only a top-level (column-0) on: key. Indenting
+	// it would let a nested mapping key such as a step's `with: { on: ... }` be
+	// misread as a workflow trigger, so the anchor deliberately forbids leading
+	// whitespace.
+	workflowOnKeyPattern    = regexp.MustCompile(`^['"]?on['"]?\s*:`)
+	workflowPRTargetPattern = regexp.MustCompile(`pull_request_target`)
+	workflowPRPattern       = regexp.MustCompile(`pull_request\b`)
+	actionShaRefPattern     = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
+	actionVersionTagPattern = regexp.MustCompile(`^v?\d`)
 )
 
 // isWorkflowFile reports whether a path is a GitHub Actions workflow YAML file
@@ -275,9 +278,18 @@ func isMutableActionRef(ref string) bool {
 }
 
 // workflowHasExecution reports whether the workflow checks out code or has a run
-// step, the execution surface that makes pull_request_target dangerous.
+// step, the execution surface that makes pull_request_target dangerous. Each line
+// has its trailing comment stripped first so a metadata-only target workflow that
+// merely mentions actions/checkout or run: in a comment is not treated as
+// executing code (mirrors the comment handling in workflowTriggerSection).
 func workflowHasExecution(source string) bool {
-	return strings.Contains(source, "actions/checkout") || workflowRunPattern.MatchString(source)
+	for _, line := range strings.Split(source, "\n") {
+		code := stripYAMLComment(line)
+		if strings.Contains(code, "actions/checkout") || workflowRunKeyPattern.MatchString(code) {
+			return true
+		}
+	}
+	return false
 }
 
 // isPullRequestTriggered reports whether the workflow's on: triggers include a

@@ -347,6 +347,20 @@ func identNames(expr ast.Expr) map[string]bool {
 	return names
 }
 
+// sanitizerValueNames returns the identifiers in arg that a same-function
+// sanitizer must reference to count as evidence, excluding the bare *http.Request
+// parameter name. A validator that merely touches the request receiver (an auth or
+// CSRF check such as validate(r)) does not prove the specific URL/path value at the
+// sink was constrained, so dropping the receiver name avoids suppressing a real
+// finding because of unrelated request handling.
+func (s *requestTaintScope) sanitizerValueNames(arg ast.Expr) map[string]bool {
+	names := identNames(arg)
+	for request := range s.requests {
+		delete(names, request)
+	}
+	return names
+}
+
 // bodyHasSanitizingCall reports whether the function body contains a call whose
 // name matches one of words and that references one of the value identifiers,
 // treating a recognised validator/cleaner as same-function sanitizer evidence.
