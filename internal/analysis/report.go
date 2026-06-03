@@ -13,11 +13,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
 
-// SchemaVersion identifies the stable analysis report schema emitted by gruff-go.
-// SchemaVersion bumped from v0.1 to v0.2 by ADR-009 when the 5-bucket severity
-// fields (Critical/High/Medium/Low/Info on PillarDetail; same keys on
-// CountsBySeverity) were replaced with the 3-bucket Advisory/Warning/Error.
-const SchemaVersion = "gruff-go.analysis.v0.2"
+// SchemaVersion identifies the stable cross-port analysis report schema.
+const SchemaVersion = "gruff.analysis.v2"
 
 // Diagnostic describes a non-finding problem encountered while building a report.
 type Diagnostic struct {

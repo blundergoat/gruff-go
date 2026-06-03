@@ -30,7 +30,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Binary | `gruff-go` |
 | Rule catalogue | 83 rules across 11 pillars; 70 enabled by default |
 | Primary config | `.gruff-go.yaml` |
-| Analysis schema | `gruff-go.analysis.v0.2` |
+| Analysis schema | `gruff.analysis.v2` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
 | Severity gate | `--min-severity` with `advisory`, `warning`, `error` |
 | Dashboard | `127.0.0.1:8765` by default |
@@ -113,7 +113,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | Format | Use it for |
 | --- | --- |
 | `text` | Human terminal output. |
-| `json` | Full `gruff-go.analysis.v0.2` report. |
+| `json` | Full `gruff.analysis.v2` report. |
 | `summary-json` | Compact CI digest without the full finding list. |
 | `sarif` | SARIF 2.1.0 for code scanning. |
 | `github` | GitHub Actions workflow annotations. |

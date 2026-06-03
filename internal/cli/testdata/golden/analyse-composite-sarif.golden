@@ -2519,7 +2519,7 @@
         }
       ],
       "properties": {
-        "gruffSchemaVersion": "gruff-go.analysis.v0.2",
+        "gruffSchemaVersion": "gruff.analysis.v2",
         "score": 97,
         "grade": "A"
       }

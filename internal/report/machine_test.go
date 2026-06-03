@@ -48,7 +48,7 @@ func TestMachineReportFormats(t *testing.T) {
 	}
 	if !strings.Contains(sarif.String(), `"gruffFingerprint": "abc123"`) ||
 		!strings.Contains(sarif.String(), `"ruleIndex":`) ||
-		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff-go.analysis.v0.2"`) {
+		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff.analysis.v2"`) {
 		t.Fatalf("sarif output missing contract fields = %s", sarif.String())
 	}
 

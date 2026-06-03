@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "gruff-go.analysis.v0.2",
+  "schemaVersion": "gruff.analysis.v2",
   "tool": {
     "name": "gruff-go",
     "version": "0.3.0"
