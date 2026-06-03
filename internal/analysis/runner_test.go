@@ -233,6 +233,39 @@ func TestAnalyzeExplicitIgnoredArgProducesNoFindings(t *testing.T) {
 	if !hasConfigSkip(report.Paths.Skipped, "ignored/bad.go", "ignored/**") {
 		t.Fatalf("skipped = %#v, want ignored/bad.go with source=config pattern=ignored/**", report.Paths.Skipped)
 	}
+	if !hasString(report.Paths.IgnoredPaths, "ignored/bad.go") {
+		t.Fatalf("ignoredPaths = %#v, want ignored/bad.go", report.Paths.IgnoredPaths)
+	}
+}
+
+// TestAnalyzeDirectoryWalkReportsIgnoredPaths proves the cross-port
+// paths.ignoredPaths list is populated from config paths.ignore during ordinary
+// directory discovery, alongside the detailed paths.skipped object.
+func TestAnalyzeDirectoryWalkReportsIgnoredPaths(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n")
+	writeFile(t, root, "secret.go", "package secret\n")
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{findingRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Analyze(Options{
+		Paths:       []string{"."},
+		Registry:    registry,
+		FailOn:      finding.FailThresholdNone,
+		IgnorePaths: []string{"secret.go"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasConfigSkip(report.Paths.Skipped, "secret.go", "secret.go") {
+		t.Fatalf("skipped = %#v, want secret.go with source=config pattern=secret.go", report.Paths.Skipped)
+	}
+	if !hasString(report.Paths.IgnoredPaths, "secret.go") {
+		t.Fatalf("ignoredPaths = %#v, want secret.go", report.Paths.IgnoredPaths)
+	}
 }
 
 // TestAnalyzeDiffModeHonorsConfigIgnore proves config paths.ignore is
@@ -264,6 +297,9 @@ func TestAnalyzeDiffModeHonorsConfigIgnore(t *testing.T) {
 	if !hasConfigSkip(report.Paths.Skipped, "ignored/bad.go", "ignored/**") {
 		t.Fatalf("skipped = %#v, want ignored/bad.go with source=config pattern=ignored/**", report.Paths.Skipped)
 	}
+	if !hasString(report.Paths.IgnoredPaths, "ignored/bad.go") {
+		t.Fatalf("ignoredPaths = %#v, want ignored/bad.go", report.Paths.IgnoredPaths)
+	}
 }
 
 // TestAnalyzeIncludeIgnoredKeepsConfigIgnore proves --include-ignored opts into
@@ -293,6 +329,9 @@ func TestAnalyzeIncludeIgnoredKeepsConfigIgnore(t *testing.T) {
 	}
 	if !hasConfigSkip(report.Paths.Skipped, "ignored/bad.go", "ignored/**") {
 		t.Fatalf("skipped = %#v, want config skip preserved under --include-ignored", report.Paths.Skipped)
+	}
+	if !hasString(report.Paths.IgnoredPaths, "ignored/bad.go") {
+		t.Fatalf("ignoredPaths = %#v, want ignored/bad.go", report.Paths.IgnoredPaths)
 	}
 }
 
@@ -336,6 +375,16 @@ func TestAnalyzeDiffModeKeepsFullProjectContext(t *testing.T) {
 func hasConfigSkip(skipped []SkippedPath, path, pattern string) bool {
 	for _, item := range skipped {
 		if item.Path == path && item.Source == "config" && item.Pattern == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+// hasString reports whether values contains want.
+func hasString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
 			return true
 		}
 	}

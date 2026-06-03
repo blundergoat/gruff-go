@@ -69,17 +69,44 @@ func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	}
 }
 
-// TestAnalyseHelpDocumentsChangedRegionFlags checks that `help analyse` documents
-// every changed-region flag so the feature stays discoverable.
+// TestAnalyseHelpDocumentsChangedRegionFlags checks that both `help analyse` and
+// `analyse --help` document every native changed-region flag so downstream hooks
+// can detect support by string-matching GNU-style long flags.
 func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
-	var out, errOut bytes.Buffer
-	if code := Main([]string{"help", "analyse"}, &out, &errOut); code != 0 {
-		t.Fatalf("help analyse exit = %d, stderr = %s", code, errOut.String())
+	for _, args := range [][]string{
+		{"help", "analyse"},
+		{"analyse", "--help"},
+		{"analyse", "--diff", "--help"},
+	} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			if code := Main(args, &out, &errOut); code != 0 {
+				t.Fatalf("%v exit = %d, stderr = %s", args, code, errOut.String())
+			}
+			for _, flag := range []string{"--changed-ranges", "--changed-scope", "--no-baseline"} {
+				if !strings.Contains(out.String(), flag) {
+					t.Fatalf("%v help missing %s: %s", args, flag, out.String())
+				}
+			}
+		})
 	}
-	for _, flag := range []string{"--changed-ranges", "--since", "--diff mode", "--changed-scope"} {
-		if !strings.Contains(out.String(), flag) {
-			t.Fatalf("help missing %s: %s", flag, out.String())
-		}
+}
+
+// TestAnalyseHelpAfterPositionalStaysPath checks that the help pre-scan does
+// not turn a positional --help token into command help after path parsing has
+// already stopped.
+func TestAnalyseHelpAfterPositionalStaysPath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "--help", "not a go source file\n")
+	t.Chdir(root)
+
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"analyse", "--fail-on", "none", "main.go", "--help"}, &out, &errOut); code != 0 {
+		t.Fatalf("analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
+	}
+	if strings.Contains(out.String(), "gruff-go analyse [") {
+		t.Fatalf("positional --help should not render command help: %s", out.String())
 	}
 }
 

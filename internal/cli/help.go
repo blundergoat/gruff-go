@@ -81,14 +81,14 @@ func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrSt
 		usage(stderr, stderrStyle)
 		return 2
 	}
-	fmt.Fprintf(stdout, "  %s %s\n", stdoutStyle.green("gruff-go "+name), commandUsage)
+	writeCommandHelp(name, commandUsage, stdout, stdoutStyle)
 	return 0
 }
 
 // commandUsages maps each subcommand to its concrete usage flag list.
 var commandUsages = map[string]string{
-	"analyse":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"analyze":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyse":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyze":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
 	"baseline":     "--out path [--config path|--no-config] [--include-ignored] [path ...]",
 	"check-ignore": "[--format text|json] [--config path|--no-config] [--include-ignored] <path> ...",
 	"completion":   "[bash|zsh|fish]",
@@ -97,6 +97,13 @@ var commandUsages = map[string]string{
 	"summary":      "[--format text|json] [--top N] [--fail-on severity|--min-severity severity] [--config path|--no-config] [--include-ignored] [path ...]",
 	"report":       "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity|--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
 	"dashboard":    "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]",
+}
+
+// writeCommandHelp renders the stable one-line command usage. It intentionally
+// advertises GNU double-dash flags even though Go's flag package also accepts
+// single-dash forms for backward compatibility.
+func writeCommandHelp(name, commandUsage string, writer io.Writer, style ansiStyler) {
+	fmt.Fprintf(writer, "  %s %s\n", style.green("gruff-go "+name), commandUsage)
 }
 
 // padCommandName right-pads a command name to commandNameWidth for table layout.

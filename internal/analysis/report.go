@@ -181,6 +181,8 @@ type DisplayFilterSummary struct {
 type Paths struct {
 	// Scanned is the sorted set of project-relative files that reached the analysers.
 	Scanned []string `json:"scanned"`
+	// IgnoredPaths lists config paths.ignore matches as bare strings for cross-port consumers.
+	IgnoredPaths []string `json:"ignoredPaths"`
 	// Skipped lists discovered files that were excluded together with the reason.
 	Skipped []SkippedPath `json:"skipped"`
 	// Missing lists user-requested inputs that did not exist on disk.
@@ -237,6 +239,7 @@ type ReportInput struct {
 func NewReport(input ReportInput) Report {
 	scanned := nonNilStrings(input.Scanned)
 	skipped := nonNilSkipped(input.Skipped)
+	ignoredPaths := configIgnoredPaths(skipped)
 	missing := nonNilStrings(input.Missing)
 	diagnostics := nonNilDiagnostics(input.Diagnostics)
 	findings := nonNilFindings(input.Findings)
@@ -273,9 +276,10 @@ func NewReport(input ReportInput) Report {
 		Score:           scoring.Calculate(findings),
 		Rules:           definitions,
 		Paths: Paths{
-			Scanned: scanned,
-			Skipped: skipped,
-			Missing: missing,
+			Scanned:      scanned,
+			IgnoredPaths: ignoredPaths,
+			Skipped:      skipped,
+			Missing:      missing,
 		},
 		Diagnostics: diagnostics,
 		Findings:    findings,
@@ -341,6 +345,7 @@ func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failO
 // SortReport orders report collections for deterministic output.
 func SortReport(report *Report) {
 	slices.Sort(report.Paths.Scanned)
+	slices.Sort(report.Paths.IgnoredPaths)
 	slices.Sort(report.Paths.Missing)
 	slices.SortFunc(report.Paths.Skipped, func(a, b SkippedPath) int {
 		if a.Path == b.Path {
@@ -353,6 +358,26 @@ func SortReport(report *Report) {
 	slices.SortFunc(report.Rules, func(a, b rule.Definition) int {
 		return strings.Compare(a.ID, b.ID)
 	})
+}
+
+// configIgnoredPaths extracts the bare path list expected by cross-port
+// consumers from detailed skipped entries. Only config paths.ignore exclusions
+// are listed; git/default/generated skips remain available in paths.skipped.
+func configIgnoredPaths(skipped []SkippedPath) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, item := range skipped {
+		if item.Source != "config" && item.Reason != "config-ignore" {
+			continue
+		}
+		if _, ok := seen[item.Path]; ok {
+			continue
+		}
+		seen[item.Path] = struct{}{}
+		out = append(out, item.Path)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // compareDiagnostics orders diagnostics by file, line, stage, and message.

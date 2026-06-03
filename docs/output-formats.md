@@ -50,7 +50,7 @@ Top-level shape:
                      "topOffenders": [...], "complexityDistribution": {...},
                      "complexityDistributionScope": "finding-only" },
   "rules":         [ /* every rule definition active for this run, including capability */ ],
-  "paths":         { "scanned": [...], "skipped": [...], "missing": [] },
+  "paths":         { "scanned": [...], "ignoredPaths": [...], "skipped": [...], "missing": [] },
   "diagnostics":   [ /* parse errors, missing paths, config errors, etc. */ ],
   "findings":      [ /* one entry per finding */ ]
 }
@@ -88,6 +88,10 @@ Each rule definition in `rules[]` includes a `capability` field. The closed enum
 The `score.coverage` object names the score-impacting pillars that contributed penalties and adds a caveat when the composite is clean or driven by a narrow set of pillars. This is report honesty metadata: it does not change score math, exit-code semantics, or schema version.
 
 `score.complexityDistribution` is scoped by `score.complexityDistributionScope`. In v0.1 the scope is always `finding-only`, meaning the histogram bins over-threshold `complexity.cyclomatic` findings rather than every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
+
+`paths.ignoredPaths` is the cross-port bare-string list of files excluded by config `paths.ignore`, nested under `paths` in gruff-go to match the Rust and TypeScript ports. `paths.skipped[]` remains the detailed list for every skipped path, including `reason`, `source`, and the config `pattern` when one matched. `--include-ignored` can include git/default-ignored files, but config `paths.ignore` still wins and still appears in both lists.
+
+When `--diff`, `--since`, `--diff-base`, or `--changed-ranges` scopes findings to changed regions, JSON also emits top-level `suppressedCount`: the number of findings held back because they were outside the changed region. The `diff` object carries the changed files, filtered count, and the changed-region caveat.
 
 ## `summary-json`
 

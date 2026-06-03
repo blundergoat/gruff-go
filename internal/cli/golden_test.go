@@ -304,8 +304,9 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 	var parsed struct {
 		Paths struct {
-			Scanned []string `json:"scanned"`
-			Skipped []struct {
+			Scanned      []string `json:"scanned"`
+			IgnoredPaths []string `json:"ignoredPaths"`
+			Skipped      []struct {
 				Path   string `json:"path"`
 				Reason string `json:"reason"`
 			} `json:"skipped"`
@@ -316,6 +317,9 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 	if slices.Contains(parsed.Paths.Scanned, "secret.go") {
 		t.Fatalf("secret.go should not be scanned with config ignore; got %#v", parsed.Paths.Scanned)
+	}
+	if !slices.Contains(parsed.Paths.IgnoredPaths, "secret.go") {
+		t.Fatalf("secret.go should be listed in paths.ignoredPaths; got %#v", parsed.Paths.IgnoredPaths)
 	}
 	foundSkip := false
 	for _, item := range parsed.Paths.Skipped {

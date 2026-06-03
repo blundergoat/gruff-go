@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
@@ -113,8 +114,35 @@ func isVersionFlag(arg string) bool {
 	return arg == "-V" || arg == "--version"
 }
 
+// hasHelpFlag reports whether a subcommand argument list requests help before
+// the first positional path. Handling it before FlagSet.Parse lets command help
+// print to stdout and exit 0 without turning a positional "--help" into help.
+func hasHelpFlag(args []string) bool {
+	args = normalizeAnalyseDiffArgs(args)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+		if arg == "--" {
+			return false
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		if analyseFlagConsumesValue(arg) {
+			i++
+		}
+	}
+	return false
+}
+
 // runAnalyse executes the analyse subcommand and renders the scan report.
 func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
+	if hasHelpFlag(args) {
+		writeCommandHelp("analyse", commandUsages["analyse"], stdout, ansiStyler{})
+		return 0
+	}
 	flags, values, ok := parseAnalyseFlags(args, stderr)
 	if !ok {
 		return 2
@@ -169,34 +197,6 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	return analysisReport.Summary.ExitCode
 }
 
-// analyseFlagValues is the parsed analyse command state after validation.
-// minSeverityRaw + minSeverityExplicit replace the resolved FailThreshold so
-// runAnalyse can apply the ADR-010 precedence (CLI flag > minimumSeverity.cmd
-// > DefaultFailThresholdFor) after the config has been loaded.
-type analyseFlagValues struct {
-	format               string
-	minSeverityRaw       string
-	minSeverityExplicit  bool
-	configPath           string
-	noConfig             bool
-	baselinePath         string
-	generateBaselinePath string
-	diffBase             string
-	diffMode             string
-	since                string
-	diffPatch            []byte
-	changedRanges        string
-	changedScope         string
-	baselineShow         bool
-	includeRules         string
-	excludeRules         string
-	includePillars       string
-	excludePillars       string
-	editorLink           string
-	reportInteractive    bool
-	includeIgnored       bool
-}
-
 // resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
 // explicit CLI flag wins, otherwise the matching minimumSeverity.<cmd> config
 // entry, otherwise the binary default from DefaultFailThresholdFor. Returns
@@ -237,123 +237,6 @@ func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer
 		}
 	}
 	return explicit, true
-}
-
-// parseAnalyseFlags parses and validates analyse flags, printing validation
-// errors to stderr in the same style as the legacy inline parser.
-func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
-	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	args = normalizeAnalyseDiffArgs(args)
-	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
-	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
-	// returns (currently advisory, intentionally permissive after the 3-bucket
-	// migration). Help text shows this default; precedence in runAnalyse lets
-	// .gruff-go.yaml's minimumSeverity.analyse override it.
-	minSeverity := string(finding.DefaultFailThresholdFor("analyse"))
-	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
-	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
-	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
-	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
-	baselinePath := flags.String("baseline", "", "baseline file to apply")
-	baselineShow := flags.Bool("baseline-show", false, "render the unchanged and resolved baseline sets (counts are always reported)")
-	generateBaselinePath := flags.String("generate-baseline", "", "write current findings to a baseline file and exit cleanly")
-	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
-	diffMode := flags.String("diff", "", "changed-region source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
-	since := flags.String("since", "", "git base ref for changed-region filtering")
-	changedRanges := flags.String("changed-ranges", "", "explicit changed line ranges such as 3-3,8-10")
-	changedScope := flags.String("changed-scope", "symbol", "changed-region scope: symbol or hunk")
-	includeRules := flags.String("include-rules", "", "comma-separated rule IDs to display")
-	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
-	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
-	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
-	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
-	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
-	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	if err := flags.Parse(args); err != nil {
-		return flags, analyseFlagValues{}, false
-	}
-	if !validateAnalyseEnums(*format, *editorLink, *changedScope, stderr) {
-		return flags, analyseFlagValues{}, false
-	}
-	diffPatch, ok := resolveAndReadDiffPatch(*diffMode, *since, stderr)
-	if !ok {
-		return flags, analyseFlagValues{}, false
-	}
-	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
-	if !ok {
-		return flags, analyseFlagValues{}, false
-	}
-	values := analyseFlagValues{
-		format:               *format,
-		minSeverityRaw:       minSeverity,
-		minSeverityExplicit:  minSeverityExplicit,
-		configPath:           *configPath,
-		noConfig:             *noConfig,
-		baselinePath:         *baselinePath,
-		generateBaselinePath: *generateBaselinePath,
-		diffBase:             *diffBase,
-		diffMode:             *diffMode,
-		since:                *since,
-		diffPatch:            diffPatch,
-		changedRanges:        *changedRanges,
-		changedScope:         *changedScope,
-		baselineShow:         *baselineShow,
-		includeRules:         *includeRules,
-		excludeRules:         *excludeRules,
-		includePillars:       *includePillars,
-		excludePillars:       *excludePillars,
-		editorLink:           *editorLink,
-		reportInteractive:    *reportInteractive,
-		includeIgnored:       *includeIgnored,
-	}
-	if values.generateBaselinePath != "" {
-		if err := validateGenerateBaselineFlags(generateBaselineFlagState{
-			baselinePath:   values.baselinePath,
-			diffBase:       values.diffBase,
-			diffMode:       values.diffMode,
-			since:          values.since,
-			changedRanges:  values.changedRanges,
-			includeRules:   values.includeRules,
-			excludeRules:   values.excludeRules,
-			includePillars: values.includePillars,
-			excludePillars: values.excludePillars,
-		}); err != nil {
-			fmt.Fprintln(stderr, err)
-			return flags, analyseFlagValues{}, false
-		}
-	}
-	return flags, values, true
-}
-
-// generateBaselineFlagState groups analyse flags that change finding scope.
-type generateBaselineFlagState struct {
-	baselinePath   string
-	diffBase       string
-	diffMode       string
-	since          string
-	changedRanges  string
-	includeRules   string
-	excludeRules   string
-	includePillars string
-	excludePillars string
-}
-
-// validateGenerateBaselineFlags rejects combinations that would make the
-// generated baseline partial rather than a fresh snapshot of current findings.
-func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
-	switch {
-	case state.baselinePath != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with --baseline")
-	case state.diffBase != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with --diff-base")
-	case state.diffMode != "" || state.since != "" || state.changedRanges != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with changed-region flags")
-	case state.includeRules != "" || state.excludeRules != "" || state.includePillars != "" || state.excludePillars != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with display filters")
-	default:
-		return nil
-	}
 }
 
 // writeAnalysisReport serialises the analysis report to writer in the chosen format.
