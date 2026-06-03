@@ -1,5 +1,6 @@
-// Package rule: TEMPORARY independent-verification harness for
-// test-quality.static-analysis-redundant-test. Delete after capturing output.
+// Package rule exercises the flag / no-flag boundaries and finding metadata of
+// test-quality.static-analysis-redundant-test: the adversarial precision coverage
+// that backs the opt-in candidate's calibration toward a future default-on decision.
 package rule
 
 import (
@@ -38,6 +39,11 @@ func vTest(t *testing.T, body string) parser.Unit {
 	return parseOne(t, "pkg/widget/widget_test.go", body)
 }
 
+// TestVerifyStaticFactAdversarial pins the rule's flag / no-flag boundary: Group A
+// asserts supported reflect and FieldByName shapes are flagged (including aliased,
+// dot-import, benchmark, and testify variants); Group B asserts behaviour checks and
+// unsupported shapes stay silent; the closing subtests verify external/cross-directory
+// package isolation and finding metadata (assertion, staticFact, source proof).
 func TestVerifyStaticFactAdversarial(t *testing.T) {
 	prod := vProd(t)
 
