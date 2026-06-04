@@ -8,7 +8,7 @@
 - `SECURITY.md` = Vulnerability reporting channel, supported versions, in-scope/out-of-scope items.
 - `LICENSE` = MIT license text.
 - `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0`.
-- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 82-rule registry.
+- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 83-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
 - `scripts/bump-version.sh` = Updates every in-tree version literal and regenerates CLI golden snapshots; sanity-sweeps for stale references.
