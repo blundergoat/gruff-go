@@ -24,8 +24,10 @@ Thumbs.db
 !.env.example
 
 ### Go ###
+# bin/ holds local build output (scripts/build-bin-gruff-go.sh and the perf
+# harness build into it on demand). The gruff-go binary is a platform-specific
+# build artifact, not a committed file - do not track a ~12 MB blob; build it.
 /bin/*
-!/bin/gruff-go
 # Root build artifact from `go build ./cmd/gruff-go` (anchored so it does not
 # match the cmd/gruff-go source directory).
 /gruff-go

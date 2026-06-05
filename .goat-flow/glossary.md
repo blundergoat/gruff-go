@@ -1,6 +1,6 @@
 # Glossary - gruff-go
 
-Last reviewed 2026-05-24.
+Last reviewed 2026-06-06.
 
 This glossary defines terms used by `gruff-go`, its public reports, and local project memory. Keep shared gruff-family terms aligned with the sibling implementations; keep Go-specific differences explicit rather than making them look identical.
 
@@ -12,7 +12,7 @@ This glossary defines terms used by `gruff-go`, its public reports, and local pr
 
 ### Analysis Report
 
-The complete result of one scan: schema version, tool metadata, run metadata, paths, summary counts, score data, diagnostics, findings, baseline state, and optional diff state. Native JSON uses `gruff-go.analysis.v0.1`.
+The complete result of one scan: schema version, tool metadata, run metadata, paths, summary counts, score data, diagnostics, findings, baseline state, and optional diff state. Native JSON uses `gruff.analysis.v2`.
 
 ### Baseline
 

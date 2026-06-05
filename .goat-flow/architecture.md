@@ -45,7 +45,7 @@ Analyzer data flow:
 5. `internal/baseline` can suppress exact rule/file/fingerprint matches from a JSON baseline and report stale entries.
 6. `internal/diff` can ask local `git diff` for changed lines and filter findings to line-overlapping changes while reporting a partial-scope caveat.
 7. `internal/scoring` computes severity/confidence-weighted per-pillar and composite scores after suppression/filtering. `design.*` composite findings are score-neutral annotations and do not add a second penalty on top of the underlying findings.
-8. `internal/analysis` combines discovery, parse diagnostics, findings, skipped paths, missing paths, baseline/diff summaries, score, parser mode, rule metadata, and exit semantics into schema `gruff-go.analysis.v0.1`.
+8. `internal/analysis` combines discovery, parse diagnostics, findings, skipped paths, missing paths, baseline/diff summaries, score, parser mode, rule metadata, and exit semantics into schema `gruff.analysis.v2` (the `SchemaVersion` constant in `internal/analysis/report.go`).
 9. `internal/report` renders the report as compact text, full JSON, summary JSON, SARIF 2.1.0, GitHub annotations, standalone HTML, dashboard shell HTML, and optional interactive finding filters.
 
 npm dependency state flows from `package.json` through `package-lock.json` into `node_modules/`. `node_modules/` is a dependency cache and should not be edited directly.

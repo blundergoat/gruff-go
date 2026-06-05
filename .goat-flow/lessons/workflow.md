@@ -1,6 +1,6 @@
 ---
 category: workflow
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-06
 ---
 
 # Workflow Lessons
@@ -73,6 +73,8 @@ Worse, the same drift hit non-test code that *stores* user-supplied severity str
 CodeRabbit flagged two of the seven stale strings; codex and CodeRabbit missed the other five.
 
 **Do differently:** After an enum-like rename (severity, pillar, capability, status, log level), grep for `want <oldname>` and old-vocabulary string literals across the whole tree, not just the package that defines the enum. Concretely: `rg -nE '"(want |"|, |= ")(<old1>|<old2>|...)"\b'` flushes out format strings and test input literals in one pass. Plain `grep` for the assertion predicate (`SeverityMedium`) won't catch these because the predicate was already migrated; you have to grep for the *human-readable* name in string form. Treat this as a mandatory step in the verify phase of any enum rename.
+
+## Lesson: Never name source files after milestone/sprint IDs - file names survive every prose grep
 
 **Created:** 2026-05-24
 

@@ -26,3 +26,33 @@ Makefile text eol=lf
 *.ttf binary
 *.woff binary
 *.woff2 binary
+
+# --- Release archive hygiene (export-ignore) ---
+# `go install` / `go get` and proxy.golang.org build the module zip by running
+# `git archive` (golang.org/x/mod/zip CreateFromVCS, search the toolchain source
+# for `archive --format=zip`), which honours `export-ignore`. So these entries
+# keep agent/dev-harness files out of the consumed module zip and every other
+# `git archive` output. The paths stay tracked in git and are read from the
+# working tree by CI, the agent hooks, and the scanner itself, so only downloaded
+# archives are trimmed. Runtime/user-facing files (cmd/, internal/, docs/,
+# README.md, LICENSE, CHANGELOG.md, go.mod) are intentionally NOT listed here.
+
+# Agent and CI/dev-harness directories.
+/.agents export-ignore
+/.claude export-ignore
+/.codex export-ignore
+/.github export-ignore
+/.goat-flow export-ignore
+
+# Agent instruction files.
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+
+# Peer-agent ignore/config files (no runtime use to an installed tool).
+/.cursorignore export-ignore
+/.copilotignore export-ignore
+/.geminiignore export-ignore
+
+# Build artifacts: bin/ is gitignored, but if a binary is ever force-added it
+# must still never reach a release archive.
+/bin export-ignore

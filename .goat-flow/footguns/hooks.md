@@ -1,6 +1,6 @@
 ---
 category: hooks
-last_reviewed: 2026-06-04
+last_reviewed: 2026-06-06
 ---
 
 # Hook Footguns
@@ -22,4 +22,4 @@ All three were fixed 2026-06-04 (see `CHANGELOG.md`, search: `Agent hook changed
 How to avoid:
 - When you change changed-region derivation or scoping in `internal/diff` / `internal/analysis`, immediately re-read `.claude/hooks/gruff-code-quality.sh` (`parse_diff_ranges`, `git_diff_ranges`, `changed_ranges`, `supports_native_changed_regions`, `run_gruff_json`) and mirror the change. Prefer probing the binary (`analyse --help`) over hard-coding which port supports a flag.
 - The hook's `--self-test=smoke` (search: `self_test`) pins deletion-hunk anchoring and the help-probed native-scope selection; extend it whenever you mirror a new behaviour so the next drift is caught by the self-test, not by a reviewer.
-- e2e the hook by overriding `HOME` to a temp dir whose `.local/bin/<binary>` is a logging wrapper (an early `discover_binary` candidate, search: `discover_binary`), then feed a payload on stdin while running from a subdirectory — that proves both the flags passed and the working directory used. Do NOT drop the wrapper into `$root/bin/`; that path holds a committed binary (see the `bin/gruff-go` footgun in `setup.md`).
+- e2e the hook by overriding `HOME` to a temp dir whose `.local/bin/<binary>` is a logging wrapper (an early `discover_binary` candidate, search: `discover_binary`), then feed a payload on stdin while running from a subdirectory — that proves both the flags passed and the working directory used. Do NOT drop the wrapper into `$root/bin/`; that path holds a committed binary (see the `bin/gruff-go` footgun in `build-artifacts.md`).

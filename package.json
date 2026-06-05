@@ -1,6 +1,7 @@
 {
   "name": "gruff-go",
   "version": "0.3.0",
+  "private": true,
   "description": "Opinionated Go code-quality scanner that governs AI-generated code for human review - legible, secure, honestly tested (npm tooling metadata; the application is the Go binary under cmd/gruff-go).",
   "main": "index.js",
   "scripts": {
