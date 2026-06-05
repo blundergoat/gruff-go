@@ -18,7 +18,7 @@ var urlSanitizerWords = []string{"allow", "whitelist", "validate", "verif", "san
 
 // redirectSanitizerWords name the same-function evidence that a redirect target
 // was constrained to a safe destination before use.
-var redirectSanitizerWords = []string{"allow", "whitelist", "validate", "verif", "sanit", "islocal", "isrelative", "trusted", "parse", "clean", "prefix"}
+var redirectSanitizerWords = []string{"allow", "whitelist", "validate", "verif", "sanit", "islocal", "isrelative", "trusted", "parse", "prefix"}
 
 // RequestControlledURLRule flags request-derived values used as the URL of an
 // outbound HTTP request without allowlist or validation evidence.

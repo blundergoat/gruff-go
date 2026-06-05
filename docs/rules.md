@@ -783,7 +783,7 @@ Flags workflows triggered by `pull_request` or `pull_request_target` that refere
 - **Capability:** parser
 - **Tags:** `ci`, `github-actions`, `security`
 
-Flags third-party GitHub Actions referenced by a mutable branch ref (for example `@main` or `@master`), which a maintainer can repoint to new code without review. Version tags (`@v4`) and full commit-SHA pins pass, and first-party `actions/*` and `github/*` are exempt. Each finding's metadata carries the action and ref.
+Flags third-party GitHub Actions referenced by a mutable branch ref (for example `@main` or `@master`), which a maintainer can repoint to new code without review. Version-shaped tags (`@v4`, `@v4.1.0`) and full 40-character commit-SHA pins pass, and first-party `actions/*` and `github/*` are exempt. Each finding's metadata carries the action and ref.
 
 **Remediation.** Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you.
 
@@ -852,7 +852,7 @@ Each finding's metadata carries the redirect sink and request source label, neve
 - **Capability:** parser
 - **Tags:** `filesystem`, `path-traversal`, `security`
 
-Flags request-derived values passed to filesystem sinks (`os.Open`, `os.ReadFile`, `os.OpenFile`, `os.Create`, `os.WriteFile`, `os.Remove`, `ioutil.ReadFile`, …) or `http.ServeFile` without nearby `filepath.Clean`, `filepath.Rel`, `filepath.IsLocal`, basename reduction, or a containment helper. Taint propagates through `filepath.Join`/`path.Join` and string concatenation but not through arbitrary helpers, so a sanitising wrapper breaks the chain. Candidate wording, bounded same-function evidence.
+Flags request-derived values passed to filesystem sinks (`os.Open`, `os.ReadFile`, `os.OpenFile`, `os.Create`, `os.WriteFile`, `os.Remove`, `ioutil.ReadFile`, …) or `http.ServeFile` without nearby `filepath.Rel`, `filepath.IsLocal`, basename reduction, or a containment helper. `filepath.Clean` / `path.Clean` preserve request taint because normalising a path does not prove it stayed under the intended base directory. Taint propagates through `filepath.Join`/`path.Join`, `filepath.Clean`/`path.Clean`, and string concatenation but not through arbitrary helpers, so a sanitising wrapper breaks the chain. Candidate wording, bounded same-function evidence.
 
 Each finding's metadata carries the filesystem sink and request source label.
 

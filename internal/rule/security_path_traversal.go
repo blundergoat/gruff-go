@@ -11,11 +11,12 @@ import (
 )
 
 // pathSanitizerWords name the same-function containment evidence that makes a
-// request-controlled path safe: filepath.Clean/Rel/IsLocal/Base, a basename
-// reduction, or a project containment helper. Each entry is matched at a call-name
-// token boundary (see callNameMatchesAny), so "safe" matches safePath but not
-// unsafePath.
-var pathSanitizerWords = []string{"clean", "rel", "islocal", "base", "safe", "sanit", "within", "contain", "validate", "verif", "allow"}
+// request-controlled path safe: filepath.Rel/IsLocal/Base, a basename reduction,
+// or a project containment helper. filepath.Clean is intentionally excluded:
+// normalising a path does not prove it stayed under the intended base directory.
+// Each entry is matched at a call-name token boundary (see callNameMatchesAny),
+// so "safe" matches safePath but not unsafePath.
+var pathSanitizerWords = []string{"rel", "islocal", "base", "safe", "sanit", "within", "contain", "validate", "verif", "allow"}
 
 // PathTraversalFileAccessRule flags request-derived values used as a filesystem
 // path without nearby containment evidence.
@@ -27,7 +28,7 @@ func (PathTraversalFileAccessRule) Definition() Definition {
 	return Definition{
 		ID:             "security.path-traversal-file-access",
 		Title:          "Path traversal in file access",
-		Description:    "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Clean, Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording.",
+		Description:    "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording.",
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,

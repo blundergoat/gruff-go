@@ -178,6 +178,23 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 			want: 0,
 		},
 		{
+			name: "cleaned request url is still request controlled",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"path"
+)
+
+func fetch(w http.ResponseWriter, r *http.Request) {
+	target := path.Clean(r.FormValue("u"))
+	_, _ = http.Get(target)
+}
+`,
+			want: 1,
+		},
+		{
 			name: "test file skipped",
 			code: `// Package handler is a test package.
 package handler
@@ -322,6 +339,39 @@ import "net/http"
 
 func redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/"+r.URL.Query().Get("next"), 302)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "inline clean redirect target still flags",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"path"
+)
+
+func redirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, path.Clean(r.FormValue("next")), 302)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "stored clean redirect target still flags",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"path"
+)
+
+func redirect(w http.ResponseWriter, r *http.Request) {
+	target := path.Clean(r.FormValue("next"))
+	http.Redirect(w, r, target, 302)
 }
 `,
 			want: 1,

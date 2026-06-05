@@ -191,6 +191,9 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 		if arg, ok := conversionArg(e); ok {
 			return s.directRequestExpr(arg)
 		}
+		if arg, ok := s.pathCleanArg(e); ok {
+			return s.directRequestExpr(arg)
+		}
 		if s.isStringBuilderCall(e) || s.isReaderConsumer(e) {
 			for _, arg := range e.Args {
 				if s.directRequestExpr(arg) {
@@ -204,6 +207,24 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 		return ok
 	}
 	return false
+}
+
+// pathCleanArg returns the input to path.Clean/filepath.Clean. Clean normalises
+// syntax but does not remove attacker control, so request taint must flow through
+// it for callers that need a later containment check.
+func (s *requestTaintScope) pathCleanArg(call *ast.CallExpr) (ast.Expr, bool) {
+	if len(call.Args) != 1 {
+		return nil, false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Clean" {
+		return nil, false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	if !ok || (!s.filepathPkgs[receiver.Name] && !s.pathPkgs[receiver.Name]) {
+		return nil, false
+	}
+	return call.Args[0], true
 }
 
 // exprHasRequest walks expr for any request access or tainted local and returns a

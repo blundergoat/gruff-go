@@ -1,26 +1,47 @@
 ---
 category: security-rules
-last_reviewed: 2026-06-04
+last_reviewed: 2026-06-05
 ---
 
 # Security-Rule Footguns
 
+## Footgun: Workflow action ref safety is shape-based, not tag-aware
+
+**Status:** active | **Created:** 2026-06-05 | **Evidence:** OBSERVED
+
+`security.github-actions-unpinned-action` is a parser-only text rule. It cannot ask GitHub whether `owner/action@ref` names a tag or a branch, so the regexes in `internal/rule/security_workflow.go` (search: `isMutableActionRef`, `actionShaRefPattern`, `actionVersionTagPattern`) are the security boundary. Broad "looks pinned" patterns create false negatives: short SHA prefixes and digit-prefixed branch names can otherwise be misclassified as safe pins.
+
+How to avoid:
+- Keep commit pins to a full 40-character hex SHA and keep version-tag recognition narrow. When touching `isMutableActionRef`, add adversarial cases to `internal/rule/security_workflow_test.go` (search: `third-party short sha prefix`, `third-party digit-prefixed branch`) as well as positive release-tag cases, because a parser-only rule cannot recover later with API truth.
+
+## Footgun: Template XSS must classify Execute receivers, not file imports
+
+**Status:** active | **Created:** 2026-06-05 | **Evidence:** OBSERVED
+
+Importing `html/template` in a file does not make `text/template` auto-escaped. The `security.template-injection-xss` rule must decide whether an `Execute` call is backed by `text/template` from the call receiver, not from package presence alone. The relevant boundary is `internal/rule/security_template_xss.go` (search: `textTemplateXSSHit`, `templateExecuteReceiverKind`, `collectTemplateValueKinds`).
+
+How to avoid:
+- In mixed-import files, require same-file evidence that the `Execute` receiver came from `text/template`, while preserving `html/template` auto-escape as a no-finding case. Pin both sides in `internal/rule/security_template_xss_test.go` (search: `text template still flags when html template is also imported`, `html template execute stays safe when text template is also imported`).
+
+## Resolved Entries
+
 ## Footgun: `filepath.Clean` is suppressed by two independent mechanisms in the request-taint engine
 
-**Status:** active | **Created:** 2026-06-04 | **Evidence:** OBSERVED
+**Status:** resolved | **Created:** 2026-06-04 | **Resolved:** 2026-06-05 | **Evidence:** OBSERVED
 
 hallucination-risk: high (a PR review flagged "Clean is not containment" as if it were a one-line word-list edit; it is not)
 
-`filepath.Clean` normalises a path but does **not** constrain it (`Clean("../../etc/passwd")` is unchanged), so unlike `filepath.Rel` / `IsLocal` / `Base` it is not genuine path-traversal containment. PR #4's review (Copilot) correctly flagged that the path-traversal rule treats `Clean` as evidence. Acting on it is bigger than it looks, because two separate code paths suppress a Clean'd request value:
+`filepath.Clean` normalises a path but does **not** constrain it (`Clean("../../etc/passwd")` is unchanged), so unlike `filepath.Rel` / `IsLocal` / `Base` it is not genuine path-traversal containment. PR #4's review (Copilot) correctly flagged that the path-traversal rule treated `Clean` as evidence. Acting on it was bigger than it looked, because two separate code paths suppressed a Clean'd request value:
 
-- **The sanitizer word list.** `internal/rule/security_path_traversal.go` (search: `pathSanitizerWords`) contains `"clean"`. This only governs the **inline** sink form `os.Open(filepath.Clean(r.FormValue("f")))`, where the inline-sanitizer check (search: `argHasInlineSanitizer`) matches the `Clean` call name.
-- **Taint propagation.** `internal/rule/security_request_source.go` (search: `func (s *requestTaintScope) directRequestExpr`) propagates taint only through string builders, conversions, and `+`; an arbitrary call such as `filepath.Clean(x)` breaks the chain (it might be a sanitiser). So the **variable-stored** form `c := filepath.Clean(r.FormValue("f")); os.Open(c)` is already silent regardless of the word list, because `c` is never marked tainted.
+- **The sanitizer word list.** `internal/rule/security_path_traversal.go` (search: `pathSanitizerWords`) contained `"clean"`. That governed the **inline** sink form `os.Open(filepath.Clean(r.FormValue("f")))`, where the inline-sanitizer check (search: `argHasInlineSanitizer`) matched the `Clean` call name.
+- **Taint propagation.** `internal/rule/security_request_source.go` (search: `func (s *requestTaintScope) directRequestExpr`) propagated taint only through string builders, conversions, and `+`; an arbitrary call such as `filepath.Clean(x)` broke the chain. So the **variable-stored** form `c := filepath.Clean(r.FormValue("f")); os.Open(c)` was silent regardless of the word list, because `c` was never marked tainted.
 
-So deleting `"clean"` from `pathSanitizerWords` alone makes the inline form fire but leaves the var-stored form silent — an inconsistent half-fix where adding a local variable suppresses the finding. A coherent "Clean is not containment" change must ALSO make `filepath.Clean` taint-transparent in `directRequestExpr`, and that helper hangs off `requestTaintScope`, shared by the SSRF, open-redirect, and path-traversal rules — blast radius is three default-on rules, not one. Note `redirectSanitizerWords` (`internal/rule/security_request_url.go`) also lists `"clean"`.
+Deleting `"clean"` from `pathSanitizerWords` alone would have made the inline form fire but left the var-stored form silent - an inconsistent half-fix where adding a local variable suppressed the finding. The fix made `path.Clean` / `filepath.Clean` taint-transparent in `directRequestExpr`, removed `"clean"` from containment/sanitizer word lists where Clean alone was not enough, and added regression tests for inline and stored Clean forms.
 
-Evidence the current behaviour is deliberate, not an oversight to silently flip:
-- `internal/rule/security_path_traversal_test.go` (search: `cleaned and contained`) pins the var-stored Clean form to **zero** findings.
-- The rule's own remediation (search: `Constrain request-derived paths with filepath.Clean plus a containment check`) already says Clean PLUS a check — i.e. Clean alone is documented as insufficient, which contradicts accepting it as standalone evidence.
+Evidence for the resolved boundary:
+- `internal/rule/security_path_traversal_test.go` (search: `clean alone still flags`) pins the var-stored Clean form to a finding.
+- `internal/rule/security_path_traversal_test.go` (search: `clean plus containment helper`) keeps Clean plus a real containment helper quiet.
+- `internal/rule/security_request_url_test.go` (search: `cleaned request url is still request controlled`) pins that Clean does not erase taint for SSRF-style URL sinks.
 
-How to avoid:
-- Treat this as a scoped, tested precision change across all three request rules, not a word-list tweak: update the word lists AND `directRequestExpr`, flip/extend the `cleaned and contained` test (add a `Clean + containment helper` negative case), run `go run ./cmd/gruff-go analyse .` to confirm the dogfood stays grade A, and add a `CHANGELOG.md` entry. It is `Ask First` territory — it changes a default-on rule's findings.
+How to avoid repeating:
+- When changing request-sanitizer evidence, check both `internal/rule/security_request_source.go` (search: `func (s *requestTaintScope) directRequestExpr`) and the rule-specific sanitizer word list. Any taint-transparent wrapper added to `directRequestExpr` can affect SSRF, open redirect, and path traversal, so add focused tests in each impacted rule file and run the dogfood scan.

@@ -59,6 +59,7 @@ func (TemplateInjectionXSSRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 		fmt:          packageImportNames(unit.AST, "fmt", "fmt"),
 		io:           packageImportNames(unit.AST, "io", "io"),
 	}
+	fileTemplateValues := collectFileTemplateValueKinds(unit.AST, pkgs)
 	findings := []finding.Finding{}
 	visitFunc := func(funcType *ast.FuncType, body *ast.BlockStmt) {
 		if body == nil {
@@ -73,6 +74,7 @@ func (TemplateInjectionXSSRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			return
 		}
 		htmlContentType := functionSetsHTMLContentType(body)
+		templateValues := collectTemplateValueKinds(body, pkgs, fileTemplateValues)
 		ast.Inspect(body, func(node ast.Node) bool {
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
@@ -81,7 +83,13 @@ func (TemplateInjectionXSSRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !ok {
 				return true
 			}
-			if reason, pos, ok := templateXSSHit(call, scope, writers, pkgs, htmlContentType); ok {
+			if reason, pos, ok := templateXSSHit(call, templateXSSContext{
+				scope:           scope,
+				writers:         writers,
+				pkgs:            pkgs,
+				templateValues:  templateValues,
+				htmlContentType: htmlContentType,
+			}); ok {
 				position := unit.FileSet.Position(pos)
 				findings = append(findings, finding.Finding{
 					Message:  "request-controlled value reaches an HTML response without escaping (possible reflected XSS)",
@@ -114,16 +122,25 @@ type templateXSSPackages struct {
 	io           map[string]bool
 }
 
+// templateXSSContext carries same-function evidence used to classify one call.
+type templateXSSContext struct {
+	scope           *requestTaintScope
+	writers         map[string]bool
+	pkgs            templateXSSPackages
+	templateValues  templateValueKinds
+	htmlContentType bool
+}
+
 // templateXSSHit classifies one call against the three unescaped-HTML shapes and
 // returns the reason and report position when it fires. Each shape requires the
 // rendered value to be request-controlled, so trusted renders are not flagged.
-func templateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, htmlContentType bool) (string, token.Pos, bool) {
+func templateXSSHit(call *ast.CallExpr, ctx templateXSSContext) (string, token.Pos, bool) {
 	switch {
-	case textTemplateXSSHit(call, scope, writers, pkgs):
+	case textTemplateXSSHit(call, ctx.scope, ctx.writers, ctx.pkgs, ctx.templateValues):
 		return "text-template-response", call.Pos(), true
-	case htmlConversionXSSHit(call, scope, pkgs):
+	case htmlConversionXSSHit(call, ctx.scope, ctx.pkgs):
 		return "raw-html-conversion", call.Pos(), true
-	case rawWriteXSSHit(call, scope, writers, pkgs, htmlContentType):
+	case rawWriteXSSHit(call, ctx.scope, ctx.writers, ctx.pkgs, ctx.htmlContentType):
 		return "unescaped-response-write", call.Pos(), true
 	default:
 		return "", call.Pos(), false
@@ -131,15 +148,19 @@ func templateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[st
 }
 
 // textTemplateXSSHit reports whether call renders request-controlled data into a
-// response writer through text/template (with no html/template import), the
-// unescaped path. It requires the template data to be request-controlled so a
-// text/template render of trusted data is not flagged.
-func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages) bool {
-	if scope == nil || len(pkgs.textTemplate) == 0 || len(pkgs.htmlTemplate) > 0 {
+// response writer through text/template, the unescaped path. It requires the
+// template data to be request-controlled so a text/template render of trusted data
+// is not flagged. In mixed text/html template files, it also requires same-file
+// evidence that the Execute receiver originated from text/template.
+func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, templateValues templateValueKinds) bool {
+	if scope == nil || len(pkgs.textTemplate) == 0 {
 		return false
 	}
 	dataArg, ok := templateExecuteDataArg(call, writers)
 	if !ok {
+		return false
+	}
+	if len(pkgs.htmlTemplate) > 0 && templateExecuteReceiverKind(call, pkgs, templateValues) != templateKindText {
 		return false
 	}
 	_, ok = scope.exprHasRequest(dataArg, call.Pos())

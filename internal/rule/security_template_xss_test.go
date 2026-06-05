@@ -96,6 +96,66 @@ func render(w http.ResponseWriter, r *http.Request) {
 			want: 0,
 		},
 		{
+			name: "text template still flags when html template is also imported",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	htmltmpl "html/template"
+	"net/http"
+	texttmpl "text/template"
+)
+
+var _ = htmltmpl.HTMLEscapeString
+
+func render(w http.ResponseWriter, r *http.Request) {
+	t := texttmpl.Must(texttmpl.New("p").Parse("<b>{{.}}</b>"))
+	_ = t.Execute(w, r.URL.Query().Get("name"))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "html template execute stays safe when text template is also imported",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	htmltmpl "html/template"
+	"net/http"
+	texttmpl "text/template"
+)
+
+var _ = texttmpl.Must
+
+func render(w http.ResponseWriter, r *http.Request) {
+	t := htmltmpl.Must(htmltmpl.New("p").Parse("<b>{{.}}</b>"))
+	_ = t.Execute(w, r.URL.Query().Get("name"))
+}
+`,
+			want: 0,
+		},
+		{
+			name: "package text template still flags when html template is also imported",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	htmltmpl "html/template"
+	"net/http"
+	texttmpl "text/template"
+)
+
+var _ = htmltmpl.HTMLEscapeString
+var page = texttmpl.Must(texttmpl.New("p").Parse("<b>{{.}}</b>"))
+
+func render(w http.ResponseWriter, r *http.Request) {
+	_ = page.Execute(w, r.URL.Query().Get("name"))
+}
+`,
+			want: 1,
+		},
+		{
 			name: "escaped request value conversion",
 			code: `// Package handler is a test package.
 package handler

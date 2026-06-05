@@ -27,8 +27,8 @@ var (
 	workflowOnKeyPattern    = regexp.MustCompile(`^['"]?on['"]?\s*:`)
 	workflowPRTargetPattern = regexp.MustCompile(`pull_request_target`)
 	workflowPRPattern       = regexp.MustCompile(`pull_request\b`)
-	actionShaRefPattern     = regexp.MustCompile(`^[0-9a-fA-F]{7,40}$`)
-	actionVersionTagPattern = regexp.MustCompile(`^v?\d`)
+	actionShaRefPattern     = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
+	actionVersionTagPattern = regexp.MustCompile(`^(?:v\d+(?:\.\d+){0,2}|\d+\.\d+(?:\.\d+)?)$`)
 )
 
 // isWorkflowFile reports whether a path is a GitHub Actions workflow YAML file
@@ -52,7 +52,7 @@ func (GitHubActionsUnpinnedActionRule) Definition() Definition {
 	return Definition{
 		ID:             "security.github-actions-unpinned-action",
 		Title:          "Unpinned GitHub Actions action",
-		Description:    "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version tags (@v4) and commit-SHA pins pass, and first-party actions/* and github/* are exempt.",
+		Description:    "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version-shaped tags (@v4, @v4.1.0) and full 40-character commit-SHA pins pass, and first-party actions/* and github/* are exempt.",
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,

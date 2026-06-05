@@ -1160,7 +1160,7 @@
                 "text": "Unpinned GitHub Actions action"
               },
               "fullDescription": {
-                "text": "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version tags (@v4) and commit-SHA pins pass, and first-party actions/* and github/* are exempt."
+                "text": "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version-shaped tags (@v4, @v4.1.0) and full 40-character commit-SHA pins pass, and first-party actions/* and github/* are exempt."
               },
               "help": {
                 "text": "Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you."
@@ -1297,7 +1297,7 @@
                 "text": "Path traversal in file access"
               },
               "fullDescription": {
-                "text": "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Clean, Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording."
+                "text": "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording."
               },
               "help": {
                 "text": "Constrain request-derived paths with filepath.Clean plus a containment check (filepath.Rel/IsLocal) or reduce them to a basename before opening files."

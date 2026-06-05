@@ -59,7 +59,7 @@ func serve(w http.ResponseWriter, r *http.Request) {
 			want: 1,
 		},
 		{
-			name: "cleaned and contained",
+			name: "clean alone still flags",
 			code: `// Package handler is a test package.
 package handler
 
@@ -71,6 +71,46 @@ import (
 
 func read(w http.ResponseWriter, r *http.Request) {
 	clean := filepath.Clean(r.FormValue("file"))
+	_, _ = os.Open(clean)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "inline clean alone still flags",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func read(w http.ResponseWriter, r *http.Request) {
+	_, _ = os.Open(filepath.Clean(r.FormValue("file")))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "clean plus containment helper",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func isWithinBase(string) bool { return true }
+
+func read(w http.ResponseWriter, r *http.Request) {
+	clean := filepath.Clean(r.FormValue("file"))
+	if !isWithinBase(clean) {
+		return
+	}
 	_, _ = os.Open(clean)
 }
 `,
