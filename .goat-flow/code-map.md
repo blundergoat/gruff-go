@@ -43,8 +43,7 @@
 
 - `.codex/config.toml` = Codex permission profile and hooks feature flag.
 - `.codex/hooks.json` = Codex hook registration for GOAT Flow.
-- `.codex/hooks/deny-dangerous.sh` = Bash pre-tool safety hook.
-- `.codex/hooks/deny-dangerous.self-test.sh` = Self-test script for the safety hook.
+- `.codex/hooks/deny-dangerous.sh` = Bash pre-tool safety hook (includes self-test via `--self-test`; shared logic lives in `.goat-flow/hook-lib/`).
 - `.agents/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.agents/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.agents/skills/goat-debug/SKILL.md` = Debugging workflow skill.

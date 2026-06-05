@@ -13,12 +13,12 @@ hallucination-risk: high (the shared key name across gruff-go / gruff-rs / gruff
 
 Evidence:
 - `internal/rule/naming_acronym.go` (search: `AcceptedAbbreviations lists project-specific abbreviations whose lowercase form should not be flagged as a mis-cased initialism`) — the field exempts identifiers whose lowercase form matches a Go initialism the rule would otherwise want cased as `HTTP`/`URL`/`ID`. Entries are normalised via `lowerStringSet` (trim + lowercase) before matching, so case in the config is purely cosmetic for rule behaviour.
-- `internal/config/validate.go` (search: `validateAbbreviations`) — rejects blank entries only (as of 2026-05-25). The earlier "must be uppercase" check was relaxed when the cross-port seed was lowercased; see the `acceptedAbbreviations validator required UPPERCASE` entry under `## Resolved Entries` for the trail.
-- Sibling-port consumers (cross-checked 2026-05-25):
-  - `gruff-rs/src/built_in_rules/naming_rules.rs` (search: `accepted_abbreviations.contains`) — consumed inside `naming.short-variable` as a lowercase 2-char identifier allowlist.
-  - `gruff-ts/src/config.ts` (search: `acceptedAbbreviations: new Set`) — lowercased on import; the rule that reads it has not been confirmed in this checkout.
-  - `gruff-php/src/Rule/Naming/AbbreviationAllowlistRule.php` (search: `'naming.abbreviation-allowlist'`) — its own rule for 2–3 char lowercase identifiers.
-  - `gruff-py/src/gruffpy/rule/naming/abbreviation_rule.py` (search: `accepted_abbreviations`) — same pattern as PHP, rule id `naming.abbreviation`.
+- `internal/config/validate.go` (search: `validateAbbreviations`) — rejects blank entries only (as of 2026-05-25). The earlier "must be uppercase" check was relaxed when the cross-port seed was lowercased; see the `acceptedAbbreviations validator required UPPERCASE` entry in the resolved section below for the trail.
+- Sibling-port consumers (cross-checked 2026-05-25; these paths live in the sibling repos, not this checkout, so they are recorded as prose rather than verifiable refs):
+  - Rust (gruff-rs): consumed inside the `naming.short-variable` rule as a lowercase 2-char identifier allowlist (anchor `accepted_abbreviations.contains` in its built-in naming rules).
+  - TypeScript (gruff-ts): lowercased on import in its config loader (the `acceptedAbbreviations` set); the consuming rule was not confirmed in that checkout.
+  - PHP (gruff-php): its own `naming.abbreviation-allowlist` rule for 2-3 char lowercase identifiers.
+  - Python (gruff-py): same pattern as PHP, rule id `naming.abbreviation` (anchor `accepted_abbreviations`).
 
 What this means in practice: the same 16-entry seed is shared across all five ports, but each port consumes it for a different rule. In gruff-go, `naming.acronym-case` only fires on identifiers that look like mis-cased acronyms (`Url` vs `URL`), so the non-acronym entries from the shared list (`age, app, key, log, max, min, now, raw`) pass validation and lowercase normalisation but are inert here — they never match anything because no naming heuristic in gruff-go cares about those words. They earn their place in the rs/php/py rules.
 
@@ -79,7 +79,7 @@ The original destructive default (`init --force` clobbered tuning) is fixed in c
 hallucination-risk: high
 
 Evidence:
-- `package.json` (search: `"test": "echo \"Error: no test specified\" && exit 1"`)
+- `package.json` (search: `no test specified`)
 - Command measured 2026-05-13: `npm test` printed `Error: no test specified` and exited 1.
 
 The package exposes a `test` script, so script detection can look successful. Treating it as a valid health gate will create false failures or instruction files that claim this repo has a working test command.
@@ -91,7 +91,7 @@ The package exposes a `test` script, so script detection can look successful. Tr
 hallucination-risk: high
 
 Evidence:
-- `internal/cli/cli.go` (search: `output format: text, json, summary-json, sarif, github, or html`)
+- `internal/cli/cli.go` (search: `case "summary-json":`)
 - `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff-go.yaml"}`)
 - Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed the catalogue and exited 0. [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) (2026-05-18) subsequently flipped every shipped rule to `defaultEnabled: true`; `docs.config-field-comment` is default-enabled but remains path-scoped and no-op until `includePaths` is configured.
 

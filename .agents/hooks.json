@@ -1,0 +1,17 @@
+{
+  "deny-dangerous": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|view_file|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "gcd=\"$(git rev-parse --git-common-dir 2>/dev/null)\"; root=\"\"; case \"$gcd\" in */.git/modules/*|.git/modules/*) root=\"$(git rev-parse --show-toplevel 2>/dev/null || true)\" ;; /*) root=\"$(dirname \"$gcd\")\" ;; *) root=\"$(git rev-parse --show-toplevel 2>/dev/null || true)\" ;; esac; [ -f \"$root/.agents/hooks/deny-dangerous.sh\" ] || root=\"${CLAUDE_PROJECT_DIR:-}\"; [ -f \"$root/.agents/hooks/deny-dangerous.sh\" ] || { printf '{\"decision\":\"deny\",\"reason\":\"Policy hook unavailable: git repository root unavailable.\"}\\n'; exit 0; }; cd \"$root\" || { printf '{\"decision\":\"deny\",\"reason\":\"Policy hook unavailable: git repository root unavailable.\"}\\n'; exit 0; }; bash \"$root/.agents/hooks/deny-dangerous.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

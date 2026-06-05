@@ -1,8 +1,7 @@
 # ADR-015: Authoritative `paths.ignore` in Every Mode, and a `check-ignore` Command
 
-## Status
-
-Accepted (2026-05-30)
+**Status:** Accepted
+**Date:** 2026-05-30
 
 ## Context
 
