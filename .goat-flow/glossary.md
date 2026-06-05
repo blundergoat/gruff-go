@@ -28,7 +28,7 @@ The certainty tier attached to a finding. It helps scoring and reviewers disting
 
 ### Dashboard
 
-The local browser UI served by `gruff-go dashboard`. It binds to `127.0.0.1:8765` by default and has no authentication; use `--port` when another gruff dashboard is already using the port.
+The local browser UI served by `gruff-go dashboard`. It binds to `127.0.0.1` on port `8765` by default and has no authentication; use `--port` when another gruff dashboard is already using the port.
 
 ### Diagnostic
 

@@ -30,8 +30,7 @@
 ## Claude-Owned Surfaces
 
 - `.claude/settings.json` = Claude permissions and hook registration.
-- `.claude/hooks/deny-dangerous.sh` = Bash pre-tool safety hook.
-- `.claude/hooks/deny-dangerous.self-test.sh` = Self-test script for the safety hook.
+- `.claude/hooks/deny-dangerous.sh` = Bash pre-tool safety hook (includes self-test via `--self-test`; shared logic lives in `.goat-flow/hook-lib/`).
 - `.claude/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.claude/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.claude/skills/goat-debug/SKILL.md` = Debugging workflow skill.

@@ -27,16 +27,15 @@
 #
 # Changed-line model:
 #   Prefer changed ranges from the PostToolUse payload when present.
-#   Otherwise parse `git diff HEAD --unified=0 -- <file>` for tracked files
-#   (HEAD so staged-only edits still yield ranges).
+#   Otherwise parse `git diff --unified=0 -- <file>` for tracked files.
+#   Pathless fallback files also consult staged hunks when no unstaged hunk
+#   exists, because those paths can come from `git diff --cached`.
 #   New/untracked files are treated as fully changed. If no range can be
 #   derived, the hook exits quietly apart from a short stderr diagnostic.
-#   Analyzers that advertise native changed-region support are invoked with
-#   `--changed-ranges`, `--changed-scope symbol`, and `--no-baseline` so
-#   symbol-aware scope is used and adoption baselines do not hide agent feedback.
-#   Capability is probed from `analyse --help` (the trio of flags), so gruff-go
-#   and gruff-py both qualify; analyzers without the trio use the portable
-#   primary-line fallback above.
+#   Analyzers with native changed-region support own the filtering: gruff-py is
+#   invoked with `--changed-ranges`, `--changed-scope symbol`, and `--no-baseline`
+#   so symbol-aware scope is used and adoption baselines do not hide agent
+#   feedback. All other analyzers use the portable primary-line fallback above.
 #   Either way the surfaced findings are severity-sorted, floored, and capped
 #   identically.
 #
@@ -45,7 +44,7 @@
 #   `gruff-code-quality: <binary> <path> changed-lines=<ranges>; <n> on changed
 #   lines: <e> error, <w> warning, <a> advisory`, then one canonical finding line
 #   per surfaced finding `- [severity] file:line ruleId - message` (matching
-#   CONTRACT.md's normative per-finding line so hook and native CLI output read
+#   gruff's native CLI per-finding line so hook and analyzer output read
 #   identically). Findings on changed lines are sorted error -> warning ->
 #   advisory so the highest-value land first; they are floored at
 #   GRUFF_CODE_QUALITY_MIN_SEVERITY (default advisory) and capped at
@@ -89,7 +88,7 @@ json_field() {
     printf '%s' "$input" | jq -r "$expr // empty" 2>/dev/null || true
     return
   fi
-  return 1
+  return 0
 }
 
 json_tool_name() {
@@ -239,14 +238,23 @@ git_changed_supported_paths() {
   done | awk '!seen[$0]++'
 }
 
-file_paths_for_payload() {
+payload_file_paths() {
   local payload="$1"
-  local root="$2"
   local paths
   paths="$(json_file_paths "$payload" || true)"
   [[ -n "$paths" ]] || paths="$(fallback_file_paths "$payload")"
   if [[ -n "$paths" ]]; then
     printf '%s\n' "$paths" | awk 'length($0) && !seen[$0]++'
+  fi
+}
+
+file_paths_for_payload() {
+  local payload="$1"
+  local root="$2"
+  local paths
+  paths="$(payload_file_paths "$payload")"
+  if [[ -n "$paths" ]]; then
+    printf '%s\n' "$paths"
     return
   fi
   git_changed_supported_paths "$root"
@@ -336,7 +344,7 @@ payload_ranges() {
 
 parse_diff_ranges() {
   local diff_output="$1"
-  local line ranges start count end anchor
+  local line ranges start count end
   local hunk_re='^@@ -[0-9]+(,[0-9]+)? \+([0-9]+)(,([0-9]+))? @@'
   ranges=""
   while IFS= read -r line; do
@@ -344,16 +352,7 @@ parse_diff_ranges() {
       start="${BASH_REMATCH[2]}"
       count="${BASH_REMATCH[4]}"
       [[ -n "$count" ]] || count=1
-      if [[ "$count" -eq 0 ]]; then
-        # Pure-deletion hunk: the new-side count is 0 and start names the line
-        # just before the removed block. Anchor that line so the deletion's
-        # enclosing region stays in scope (mirrors internal/diff addHunkLines);
-        # otherwise a delete-only edit reports no changed lines and is skipped.
-        anchor="$start"
-        [[ "$anchor" -lt 1 ]] && anchor=1
-        ranges="${ranges}${ranges:+,}${anchor}-${anchor}"
-        continue
-      fi
+      [[ "$count" -eq 0 ]] && continue
       end=$((start + count - 1))
       ranges="${ranges}${ranges:+,}${start}-${end}"
     fi
@@ -365,14 +364,21 @@ git_diff_ranges() {
   local root="$1"
   local rel_path="$2"
   local abs_path="$3"
-  local diff_output
+  local include_cached="${4:-0}"
+  local diff_output ranges
   if ! git -C "$root" ls-files --error-unmatch -- "$rel_path" >/dev/null 2>&1; then
-    [[ -f "$abs_path" ]] && all_file_range "$abs_path"
+    if [[ -f "$abs_path" ]]; then
+      all_file_range "$abs_path"
+    fi
     return
   fi
-  # Diff against HEAD so a staged-only edit still yields ranges; plain `git diff`
-  # shows unstaged changes only, and the agent may have staged its edit.
-  diff_output="$(git -C "$root" diff HEAD --unified=0 -- "$rel_path" 2>/dev/null || true)"
+  diff_output="$(git -C "$root" diff --unified=0 -- "$rel_path" 2>/dev/null || true)"
+  ranges="$(parse_diff_ranges "$diff_output")"
+  if [[ -n "$ranges" || "$include_cached" -eq 0 ]]; then
+    printf '%s' "$ranges"
+    return
+  fi
+  diff_output="$(git -C "$root" diff --cached --unified=0 -- "$rel_path" 2>/dev/null || true)"
   parse_diff_ranges "$diff_output"
 }
 
@@ -387,7 +393,11 @@ changed_ranges() {
     printf '%s' "$ranges"
     return
   fi
-  git_diff_ranges "$root" "$rel_path" "$abs_path"
+  if [[ -n "$(payload_file_paths "$payload")" ]]; then
+    git_diff_ranges "$root" "$rel_path" "$abs_path" 0
+  else
+    git_diff_ranges "$root" "$rel_path" "$abs_path" 1
+  fi
 }
 
 self_test() {
@@ -450,34 +460,17 @@ self_test() {
     return 1
   }
 
-  # Pure-deletion hunk (new-side count 0) anchors the line before the removed
-  # block instead of dropping it, matching internal/diff.
-  [[ "$(parse_diff_ranges '@@ -4,2 +3,0 @@')" == "3-3" ]] || {
-    printf 'gruff-code-quality self-test: deletion-hunk anchor failed: %s\n' "$(parse_diff_ranges '@@ -4,2 +3,0 @@')" >&2
-    return 1
-  }
-
-  # Native changed-region scoping is probed from help text, not pinned to one
-  # binary: any analyzer advertising the trio qualifies, others fall back.
-  if ! supports_native_changed_regions '--changed-ranges --changed-scope --no-baseline'; then
-    printf 'gruff-code-quality self-test: native-scope probe (positive) failed\n' >&2
-    return 1
-  fi
-  if supports_native_changed_regions '--format json --fail-on'; then
-    printf 'gruff-code-quality self-test: native-scope probe (negative) failed\n' >&2
-    return 1
-  fi
-
   printf 'gruff-code-quality self-test: ok\n'
 }
 
 # An analyzer "owns" changed-region filtering when it can scope the scan itself.
-# Capability is probed purely from `analyse --help`: any binary that advertises
-# the symbol-aware trio (`--changed-ranges`, `--changed-scope`, `--no-baseline`)
-# gets native scoping instead of the portable primary-line filter. gruff-go and
-# gruff-py both expose the trio; binaries without it fall back.
+# Only gruff-py advertises the symbol-aware trio (`--changed-ranges`,
+# `--changed-scope`, `--no-baseline`); when present the hook delegates scoping to
+# it instead of filtering by primary line. Any other binary uses the fallback.
 supports_native_changed_regions() {
-  local help="$1"
+  local binary="$1"
+  local help="$2"
+  [[ "$binary" == "gruff-py" ]] || return 1
   [[ "$help" == *"--changed-ranges"* ]] || return 1
   [[ "$help" == *"--changed-scope"* ]] || return 1
   [[ "$help" == *"--no-baseline"* ]] || return 1
@@ -502,8 +495,8 @@ run_gruff_json() {
   local binary_path="$1"
   local help="$2"
   local file_path="$3"
-  local ranges="$4"
-  local root="$5"
+  local binary="$4"
+  local ranges="$5"
   local args timeout_seconds
   args=(analyse)
   if [[ "$help" == *"--format"* ]]; then
@@ -511,7 +504,7 @@ run_gruff_json() {
     if [[ "$help" == *"--fail-on"* ]]; then
       args+=(--fail-on none)
     fi
-    if supports_native_changed_regions "$help"; then
+    if supports_native_changed_regions "$binary" "$help"; then
       args+=(--no-baseline --changed-ranges "$ranges" --changed-scope symbol)
     fi
   elif [[ "$help" == *"-format"* ]]; then
@@ -525,14 +518,11 @@ run_gruff_json() {
     timeout_seconds=30
   fi
 
-  # Run from the repository root so the analyzer auto-loads the project
-  # `.gruff-go.yaml` and resolves the relative path against the right tree even
-  # when the hook process was started from another directory.
   if command -v timeout >/dev/null 2>&1; then
-    ( cd "$root" && timeout "$timeout_seconds" "$binary_path" "${args[@]}" "$file_path" ) 2>&1
+    timeout "$timeout_seconds" "$binary_path" "${args[@]}" "$file_path" 2>&1
     return $?
   fi
-  ( cd "$root" && "$binary_path" "${args[@]}" "$file_path" ) 2>&1
+  "$binary_path" "${args[@]}" "$file_path" 2>&1
 }
 
 valid_gruff_json() {
@@ -599,7 +589,9 @@ changed_findings_report() {
       parsed_ranges as $parsed
       | any($parsed[]; $line >= .start and $line <= .end);
     def sev_rank($s):
-      if $s == "error" then 3 elif $s == "warning" then 2 elif $s == "advisory" then 1 else 0 end;
+      # error > warning > everything else (advisory, or an unknown/missing severity)
+      # so an unrecognised severity still clears the default advisory floor and stays visible.
+      if $s == "error" then 3 elif $s == "warning" then 2 else 1 end;
 
     [ (.findings // [])[]
       | . as $finding
@@ -776,12 +768,12 @@ process_file() {
     return 0
   fi
   uses_native_regions=0
-  if supports_native_changed_regions "$help"; then
+  if supports_native_changed_regions "$binary" "$help"; then
     uses_native_regions=1
   fi
 
   set +e
-  output="$(run_gruff_json "$binary_path" "$help" "$rel_path" "$ranges" "$root")"
+  output="$(run_gruff_json "$binary_path" "$help" "$rel_path" "$binary" "$ranges")"
   status=$?
   set -e
 
@@ -874,8 +866,8 @@ main() {
   fi
 
   payload="$(read_stdin)"
-  tool_name="$(json_tool_name "$payload")"
-  [[ -n "$tool_name" ]] || tool_name="$(fallback_tool_name "$payload")"
+  tool_name="$(json_tool_name "$payload" || true)"
+  [[ -n "$tool_name" ]] || tool_name="$(fallback_tool_name "$payload" || true)"
   supported_tool "$tool_name" || exit 0
 
   root="$(repo_root)"
