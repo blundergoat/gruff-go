@@ -1,6 +1,6 @@
 # Contributing to gruff-go
 
-Thanks for considering a contribution. `gruff-go` is on the `0.1.x` line and the surface is small enough that focused PRs land quickly. This page covers the dev loop, the test gates the project expects to stay green, and a few conventions worth knowing before you open a change.
+Thanks for considering a contribution. `gruff-go` is pre-1.0 (currently on the `0.3.x` line) and the surface is small enough that focused PRs land quickly. This page covers the dev loop, the test gates the project expects to stay green, and a few conventions worth knowing before you open a change.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ make check
 | Directory | Purpose |
 |-----------|---------|
 | `cmd/gruff-go/` | Thin executable entrypoint; the meat lives under `internal/`. |
-| `internal/cli/` | CLI parser; subcommand dispatch for `analyse`, `baseline`, `dashboard`, `help`, `list`, `list-rules`, `report`, `summary`. |
+| `internal/cli/` | CLI parser; subcommand dispatch for `analyse`, `baseline`, `check-ignore`, `completion`, `dashboard`, `help`, `init`, `list`, `list-rules`, `report`, `summary`. |
 | `internal/source/` | File discovery; skips VCS, dependency caches, generated files. |
 | `internal/parser/` | Standard-library `go/parser` wrapper plus parse diagnostics. |
 | `internal/rule/` | Rule metadata, registry, dispatch, builtin rule pack. |
@@ -41,8 +41,8 @@ make check
 | `internal/baseline/` | Fingerprinted baseline persistence. |
 | `internal/diff/` | `git diff` changed-line filter. |
 | `internal/scoring/` | Severity-weighted pillar + composite scoring. |
-| `internal/analysis/` | End-to-end runner; produces the `gruff-go.analysis.v0.1` payload. |
-| `internal/report/` | Text, JSON, summary-JSON, SARIF, GitHub annotations, HTML, dashboard shell. |
+| `internal/analysis/` | End-to-end runner; produces the `gruff.analysis.v2` payload. |
+| `internal/report/` | Text, JSON, summary-JSON, SARIF, GitHub annotations, Markdown, HTML, dashboard shell. |
 | `internal/dashboard/` | Local HTTP server that wraps the HTML reporter. |
 | `docs/` | User-facing docs. Updated alongside code that changes them. |
 | `.goat-flow/` | Project memory: architecture, decisions, milestone plans, footguns. |
@@ -87,7 +87,7 @@ For larger changes (cross-cutting refactors, new rule families, schema changes, 
 - Keep commits focused and reviewable. Prefer multiple small commits over one large one when the changes are independent.
 - Commit messages follow the convention recorded in [`.github/git-commit-instructions.md`](.github/git-commit-instructions.md). When in doubt, mirror the style in `git log`.
 - Open the PR against `main`. Describe what changed and why; link to the milestone or footgun if relevant. Run `make check` locally first.
-- If you broke a schema or CLI flag, note it explicitly in the PR. `gruff-go` is `v0.1.x` - semver minor bumps may carry breaking changes, but they should be intentional and called out in `CHANGELOG.md`, never incidental.
+- If you broke a schema or CLI flag, note it explicitly in the PR. `gruff-go` is pre-1.0 - semver minor bumps may carry breaking changes, but they should be intentional and called out in `CHANGELOG.md`, never incidental.
 
 ## Security issues
 

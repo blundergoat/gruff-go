@@ -38,7 +38,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 ## Requirements
 
 - Go `1.25` or newer, matching [`go.mod`](go.mod).
-- Git only when using `--diff-base` changed-line filtering.
+- Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
 - No runtime dependencies outside the Go standard library.
 
 The project-pinned install flow uses Go's `tool` support, introduced before this module's current Go requirement. The binary itself still requires Go `1.25+`.
@@ -100,9 +100,11 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | `report` | Render static HTML or JSON to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a baseline file. |
 | `init` | Generate a default `.gruff-go.yaml`. |
+| `check-ignore` | Report whether `paths.ignore` / gitignore would exclude given paths, and why. |
 | `list-rules` | Print rule metadata as text or JSON. |
 | `dashboard` | Serve the local browser dashboard. |
 | `list`, `help` | Show command lists and command-specific help. |
+| `completion` | Print a shell completion script. |
 
 Run `go tool gruff-go help <command>` for command-specific flags.
 
@@ -118,6 +120,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `sarif` | SARIF 2.1.0 for code scanning. |
 | `github` | GitHub Actions workflow annotations. |
 | `html` | Self-contained inspection report. |
+| `markdown` | CI-ready Markdown summary for PR comments or job summaries. |
 
 `go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](docs/output-formats.md) for schema details and HTML flags.
 
@@ -234,7 +237,7 @@ Default scans are local source inspections. `gruff-go` parses Go source and sele
 
 ## Stability Contract
 
-Within `0.1.x`, the CLI surface, rule IDs, finding fingerprints, baseline identity, and schemas named in this README are compatibility-sensitive. Breaking changes to those surfaces land in a future minor release and are called out in [`CHANGELOG.md`](CHANGELOG.md). Rule precision is calibrated by dogfooding this repository and by scanning a separate Go service corpus before release.
+While gruff is pre-1.0, the CLI surface, rule IDs, finding fingerprints, baseline identity, and schemas named in this README are compatibility-sensitive within a patch series. Breaking changes to those surfaces land in a minor release and are called out in [`CHANGELOG.md`](CHANGELOG.md). Rule precision is calibrated by dogfooding this repository and by scanning a separate Go service corpus before release.
 
 ## How It Compares
 
