@@ -31,6 +31,36 @@ func TestAnalyzeReportsMissingPathAsDiagnostic(t *testing.T) {
 	}
 }
 
+// TestAnalyzeMissingBaselineDoesNotMarkApplied asserts that a baseline file which
+// fails to load leaves Baseline.Applied false, so the SARIF renderer does not
+// label every emitted result baselineState:"new" as though it had been compared
+// against a real baseline. The load failure must still surface as a diagnostic.
+func TestAnalyzeMissingBaselineDoesNotMarkApplied(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	t.Chdir(root)
+	report, err := Analyze(Options{
+		Registry:     rule.Defaults(),
+		FailOn:       finding.FailThresholdWarning,
+		BaselinePath: "no-such-baseline.json",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Baseline.Applied {
+		t.Fatal("Baseline.Applied = true after a failed load, want false")
+	}
+	hasBaselineDiagnostic := false
+	for _, diagnostic := range report.Diagnostics {
+		if diagnostic.Stage == "baseline" {
+			hasBaselineDiagnostic = true
+		}
+	}
+	if !hasBaselineDiagnostic {
+		t.Fatalf("diagnostics = %#v, want a baseline-stage diagnostic", report.Diagnostics)
+	}
+}
+
 // TestAnalyzeIsDeterministicExceptStartedAt confirms repeated runs match aside from timestamps.
 func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	root := t.TempDir()

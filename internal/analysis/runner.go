@@ -204,7 +204,6 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	if !filepath.IsAbs(loadPath) {
 		loadPath = filepath.Join(root, loadPath)
 	}
-	baselineSummary.Applied = true
 	baselineSummary.Path = displayPath
 	file, err := baseline.Load(loadPath)
 	if err != nil {
@@ -216,6 +215,12 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 		})
 		return findings, baselineSummary, diagnostics
 	}
+	// Applied marks a *successful* baseline comparison; it drives SARIF
+	// baselineState and the summary's baseline-applied line. Setting it only after
+	// Load succeeds keeps a missing or invalid baseline from labelling every
+	// emitted result baselineState:"new" as though it had been compared against a
+	// real baseline (the load failure is already surfaced as an error diagnostic).
+	baselineSummary.Applied = true
 	result := baseline.Apply(findings, file)
 	baselineSummary.Entries = result.Entries
 	baselineSummary.SuppressedFindings = result.SuppressedFindings

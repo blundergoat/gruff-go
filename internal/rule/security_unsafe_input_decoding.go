@@ -141,42 +141,75 @@ func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 		}
 		return true
 	})
-	// `dec.Entity = ...` evidence is scoped to the function that binds `dec` to an
-	// xml.NewDecoder result. Tracking decoder vars file-wide would let an unrelated
-	// `dec` (a different type that also has an Entity field) in another function
-	// produce a cross-scope false XXE finding.
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
+	// `dec.Entity = ...` evidence is scoped lexically. Collecting decoder vars
+	// file-wide would let an unrelated `dec` of a different type in another function
+	// produce a cross-scope false XXE finding, and descending into nested closures
+	// during collection would let a closure's decoder taint a same-named outer
+	// variable. Each function body is therefore its own scope, while enclosing
+	// decoder bindings stay visible to nested closures so a closure that configures
+	// an outer decoder is still flagged.
+	var walk func(body *ast.BlockStmt, enclosing map[string]bool)
+	walk = func(body *ast.BlockStmt, enclosing map[string]bool) {
+		visible := map[string]bool{}
+		for name := range enclosing {
+			visible[name] = true
 		}
-		decoderVars := collectXMLDecoderVars(fn.Body, xmlPackages)
-		if len(decoderVars) == 0 {
-			continue
+		for name := range collectXMLDecoderVars(body, xmlPackages) {
+			visible[name] = true
 		}
-		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			assign, ok := node.(*ast.AssignStmt)
-			if !ok {
-				return true
-			}
-			for _, lhs := range assign.Lhs {
-				if isDecoderEntityTarget(lhs, decoderVars) {
-					emit(lhs.Pos())
+		if len(visible) > 0 {
+			ast.Inspect(body, func(node ast.Node) bool {
+				if _, nested := node.(*ast.FuncLit); nested {
+					return false // a closure is visited as its own scope below
 				}
-			}
-			return true
-		})
+				if assign, ok := node.(*ast.AssignStmt); ok {
+					for _, lhs := range assign.Lhs {
+						if isDecoderEntityTarget(lhs, visible) {
+							emit(lhs.Pos())
+						}
+					}
+				}
+				return true
+			})
+		}
+		for _, lit := range directFuncLits(body) {
+			walk(lit.Body, visible)
+		}
+	}
+	for _, decl := range unit.AST.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil {
+			walk(fn.Body, nil)
+		}
 	}
 	return findings
 }
 
+// directFuncLits returns the function literals nested directly in body, stopping
+// at each one rather than descending: walk recurses into each returned literal in
+// turn, so a deeper closure is reached as the direct child of its own parent.
+func directFuncLits(body *ast.BlockStmt) []*ast.FuncLit {
+	var lits []*ast.FuncLit
+	ast.Inspect(body, func(node ast.Node) bool {
+		if lit, ok := node.(*ast.FuncLit); ok {
+			lits = append(lits, lit)
+			return false
+		}
+		return true
+	})
+	return lits
+}
+
 // collectXMLDecoderVars records locals bound to xml.NewDecoder results within the
-// given scope (a function body) so entity assignments on them can be recognised.
-// Scoping to one function keeps a same-named variable in another function from
-// being treated as the same decoder.
+// given scope (one function body), without descending into nested closures whose
+// decoders belong to their own scope. Scoping this way keeps a same-named variable
+// in another function - or in a nested closure - from being treated as the same
+// decoder.
 func collectXMLDecoderVars(scope ast.Node, xmlPackages map[string]bool) map[string]bool {
 	vars := map[string]bool{}
 	ast.Inspect(scope, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
 		switch stmt := node.(type) {
 		case *ast.AssignStmt:
 			for i, lhs := range stmt.Lhs {

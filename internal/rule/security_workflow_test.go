@@ -63,6 +63,8 @@ func TestGitHubActionsRemoteShellRule(t *testing.T) {
 		{name: "apt install is safe", src: "      - run: sudo apt-get install -y shellcheck\n", want: 0},
 		{name: "curl pipe bash in comment is ignored", src: "# install docs: curl https://example.com | bash\njobs:\n  x:\n    steps:\n      - uses: actions/checkout@v4\n", want: 0},
 		{name: "curl pipe bash in run block scalar", src: "      - run: |\n          curl https://example.com/i.sh | bash\n", want: 1},
+		{name: "curl pipe bash commented inside run block is ignored", src: "      - run: |\n          # install: curl https://example.com/i.sh | bash\n          echo ok\n", want: 0},
+		{name: "curl pipe bash with trailing comment still flags", src: "      - run: curl https://example.com/i.sh | bash # do it\n", want: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -33,6 +33,14 @@ var (
 
 // isWorkflowFile reports whether a path is a GitHub Actions workflow YAML file
 // under .github/workflows.
+//
+// This intentionally matches the segment anywhere in the path (not only at the
+// project root) because gruff renders paths outside the scan root as absolute, so
+// `gruff-go analyse /abs/project` reaches the rules with absolute paths. Anchoring
+// to a leading .github/workflows/ would silently disable every workflow rule for
+// absolute-path scans. The cost is that a nested docs/.github/workflows/ copy is
+// still treated as a workflow; that minor false positive is preferred over a
+// silent false negative across all workflow security rules.
 func isWorkflowFile(path string) bool {
 	clean := strings.ReplaceAll(path, "\\", "/")
 	if !strings.Contains(clean, ".github/workflows/") {
@@ -118,7 +126,13 @@ func (GitHubActionsRemoteShellRule) AnalyzeUnit(unit parser.Unit, _ Context) []f
 		if !runLines[lineNumber] {
 			continue
 		}
-		if workflowRemoteShellPattern.MatchString(line) || workflowProcessSubPattern.MatchString(line) {
+		// Strip shell comments before matching. A documented `# curl … | bash`
+		// inside a run: block is never executed, so matching the raw line would
+		// fire on inert documentation. stripYAMLComment cuts at a # that starts a
+		// comment (line start or after whitespace) while leaving an in-token #
+		// such as a URL fragment intact, matching shell comment semantics.
+		code := stripYAMLComment(line)
+		if workflowRemoteShellPattern.MatchString(code) || workflowProcessSubPattern.MatchString(code) {
 			findings = append(findings, finding.Finding{
 				Message:  "workflow step pipes a remote download into a shell",
 				File:     unit.File.Path,
@@ -331,8 +345,9 @@ func stripYAMLComment(line string) string {
 
 // executableRunLines returns the 0-indexed lines that belong to a run: step body —
 // the inline content on the run: line plus the more-indented block-scalar
-// continuation lines. Scanning for remote-shell pipelines only within these lines
-// keeps comments and non-run keys, which CI never executes, from matching.
+// continuation lines. Limiting the remote-shell scan to these lines excludes
+// non-run keys that CI never executes; the caller additionally strips shell
+// comments within these lines so a documented (non-executed) pipeline does not match.
 func executableRunLines(source string) map[int]bool {
 	lines := strings.Split(source, "\n")
 	inRun := map[int]bool{}

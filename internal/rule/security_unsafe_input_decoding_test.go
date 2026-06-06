@@ -215,6 +215,46 @@ func other(entities map[string]string) {
 `,
 			want: 0,
 		},
+		{
+			name: "closure decoder does not taint same-named outer non-decoder",
+			code: `// Package svc is a test package.
+package svc
+
+import "encoding/xml"
+
+type custom struct {
+	Entity map[string]string
+}
+
+func decode(entities map[string]string) {
+	_ = func() {
+		dec := xml.NewDecoder(nil)
+		_ = dec
+	}
+	dec := custom{}
+	dec.Entity = entities
+	_ = dec
+}
+`,
+			want: 0,
+		},
+		{
+			name: "closure configuring an enclosing decoder still flags",
+			code: `// Package svc is a test package.
+package svc
+
+import "encoding/xml"
+
+func decode(entities map[string]string) {
+	dec := xml.NewDecoder(nil)
+	func() {
+		dec.Entity = entities
+	}()
+	_ = dec
+}
+`,
+			want: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

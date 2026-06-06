@@ -128,7 +128,7 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						continue
 					}
 					if s.directRequestExpr(stmt.Rhs[i]) {
-						s.markTainted(ident)
+						s.markTaintedAt(ident.Name, s.taintIntroPos(stmt.Rhs[i], ident.Pos()))
 					}
 				}
 			case *ast.ValueSpec:
@@ -137,7 +137,7 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						continue
 					}
 					if s.directRequestExpr(stmt.Values[i]) {
-						s.markTainted(name)
+						s.markTaintedAt(name.Name, s.taintIntroPos(stmt.Values[i], name.Pos()))
 					}
 				}
 			}
@@ -146,14 +146,32 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 	}
 }
 
-// markTainted records ident as carrying request-controlled data and remembers the
-// earliest position at which that taint was introduced, so taintedBefore can keep
-// the taint from leaking backwards to sinks that run before the assignment.
-func (s *requestTaintScope) markTainted(ident *ast.Ident) {
-	s.tainted[ident.Name] = true
-	if prev, ok := s.firstTaintPos[ident.Name]; !ok || ident.Pos() < prev {
-		s.firstTaintPos[ident.Name] = ident.Pos()
+// markTaintedAt records name as carrying request-controlled data and remembers
+// the earliest position at which that taint became available, so taintedBefore
+// can keep the taint from leaking backwards to sinks that run before it.
+func (s *requestTaintScope) markTaintedAt(name string, pos token.Pos) {
+	s.tainted[name] = true
+	if prev, ok := s.firstTaintPos[name]; !ok || pos < prev {
+		s.firstTaintPos[name] = pos
 	}
+}
+
+// taintIntroPos resolves when an assignment's request taint becomes available. A
+// pure alias (b := a) inherits the source's earliest taint position, so a value
+// aliased before its source is tainted (a := safe; b := a; sink(b); a = req) is
+// not flagged at the alias; any other right-hand side taints at the assignment.
+func (s *requestTaintScope) taintIntroPos(rhs ast.Expr, fallback token.Pos) token.Pos {
+	switch e := rhs.(type) {
+	case *ast.ParenExpr:
+		return s.taintIntroPos(e.X, fallback)
+	case *ast.StarExpr:
+		return s.taintIntroPos(e.X, fallback)
+	case *ast.Ident:
+		if pos, ok := s.firstTaintPos[e.Name]; ok {
+			return pos
+		}
+	}
+	return fallback
 }
 
 // taintedBefore reports whether name carries request data introduced at or before
