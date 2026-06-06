@@ -53,6 +53,8 @@ Makefile text eol=lf
 /.copilotignore export-ignore
 /.geminiignore export-ignore
 
-# Build artifacts: bin/ is gitignored, but if a binary is ever force-added it
-# must still never reach a release archive.
+# Build artifacts: the compiled bin/gruff-go binary is gitignored and all of bin/
+# is export-ignored, so neither a force-added binary nor the tracked
+# bin/gruff-go.sh launcher reaches a release archive (module consumers run the
+# installed binary, not the launcher).
 /bin export-ignore
