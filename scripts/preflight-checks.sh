@@ -472,9 +472,9 @@ check_gruff_summary() {
         printf '%s' "$output"
         return "$status"
     fi
-    score=$(awk '/^score:/ {print $2; exit}' <<<"$output")
-    grade=$(awk '/^score:/ {print $NF; exit}' <<<"$output")
-    findings=$(awk '/^findings:/ {print $2; exit}' <<<"$output")
+    grade=$(awk '/^Composite:/ {print $2; exit}' <<<"$output")
+    score=$(awk -F'[()/]' '/^Composite:/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' <<<"$output")
+    findings=$(awk '/^Findings:/ {print $2; exit}' <<<"$output")
     printf 'grade %s - %s/100 - %s findings' "${grade:-?}" "${score:-?}" "${findings:-?}"
 }
 
