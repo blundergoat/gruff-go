@@ -3,7 +3,7 @@
 gruff-go's purpose is to make AI-generated code something a human can trust:
 legible enough to verify, secure where review misses, and tested for real rather
 than padded with low-signal ceremony. See the [README mission](../README.md#mission)
-for the framing and [ADR-011](../.goat-flow/decisions/ADR-011-mission-ai-generated-code-verifiability.md)
+for the framing and [ADR-011](../.goat-flow/learning-loop/decisions/ADR-011-mission-ai-generated-code-verifiability.md)
 for the decision record.
 
 This page is about deploying gruff for that purpose: as a gate on code a coding

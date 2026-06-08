@@ -23,14 +23,13 @@
 - `.claude/` = Claude-owned skills, settings, and safety hooks.
 - `.agents/` = Shared skill directory used by Codex and Gemini GOAT Flow installs.
 - `.codex/` = Codex-owned config, hook registration, and safety hooks.
-- `.github/` = GitHub-facing repository guidance.
+- `.github/` = GitHub-facing guidance, CI workflows, and Copilot agent surfaces (instructions, skills, hooks).
 - `node_modules/` = Installed dependency cache; generated/vendor content, never edit directly.
 - `.idea/` = Local IDE metadata; not part of project behavior.
 
 ## Claude-Owned Surfaces
 
 - `.claude/settings.json` = Claude permissions and hook registration.
-- `.claude/hooks/deny-dangerous.sh` = Bash pre-tool safety hook (includes self-test via `--self-test`; shared logic lives in `.goat-flow/hook-lib/`).
 - `.claude/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.claude/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.claude/skills/goat-debug/SKILL.md` = Debugging workflow skill.
@@ -43,7 +42,6 @@
 
 - `.codex/config.toml` = Codex permission profile and hooks feature flag.
 - `.codex/hooks.json` = Codex hook registration for GOAT Flow.
-- `.codex/hooks/deny-dangerous.sh` = Bash pre-tool safety hook (includes self-test via `--self-test`; shared logic lives in `.goat-flow/hook-lib/`).
 - `.agents/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.agents/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.agents/skills/goat-debug/SKILL.md` = Debugging workflow skill.
@@ -59,23 +57,27 @@
 - `.goat-flow/code-map.md` = This repository map.
 - `.goat-flow/glossary.md` = Project terminology for future agents.
 - `.goat-flow/security-policy.md` = Installed security policy reference.
+- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; pattern/policy logic under `deny-dangerous/`) and `gruff-code-quality.sh` (post-edit gruff scan). Registered per agent via each agent's settings/hooks config.
 - `.goat-flow/dashboard-state.json` = GOAT Flow dashboard state.
-- `.goat-flow/footguns/` = Evidence-backed architectural traps.
-- `.goat-flow/lessons/` = Durable behavioral lessons from incidents or git history.
-- `.goat-flow/patterns/` = Successful repeatable approaches.
-- `.goat-flow/decisions/` = Architecture decision records when needed.
-- `.goat-flow/tasks/` = Local milestone/task tracking.
+- `.goat-flow/learning-loop/footguns/` = Evidence-backed architectural traps.
+- `.goat-flow/learning-loop/lessons/` = Durable behavioral lessons from incidents or git history.
+- `.goat-flow/learning-loop/patterns/` = Successful repeatable approaches.
+- `.goat-flow/learning-loop/decisions/` = Architecture decision records when needed.
+- `.goat-flow/plans/` = Local milestone/plan tracking.
 - `.goat-flow/scratchpad/` = Local scratch notes.
 - `.goat-flow/logs/sessions/` = Local setup and session continuity.
 - `.goat-flow/logs/quality/` = Local quality review outputs.
 - `.goat-flow/logs/critiques/` = Local critique outputs.
 - `.goat-flow/logs/security/` = Local security review outputs.
-- `.goat-flow/skill-reference/` = Meta guidance for GOAT Flow skill behavior.
-- `.goat-flow/skill-playbooks/` = CLI/MCP availability playbooks.
+- `.goat-flow/skill-docs/` = Meta guidance for GOAT Flow skill behavior.
+- `.goat-flow/skill-docs/playbooks/` = CLI/MCP availability playbooks.
 
-## GitHub Guidance
+## Copilot-Owned Surfaces
 
-- `.github/git-commit-instructions.md` = Project-specific commit guidance for agents.
+- `.github/copilot-instructions.md` = Copilot hot-path instructions for this target project.
+- `.github/skills/` = Copilot GOAT Flow skills (goat dispatcher + goat-plan/debug/review/critique/security/qa).
+- `.github/hooks/hooks.json` = Copilot hook registration for GOAT Flow.
+- `.github/git-commit-instructions.md` = GitHub-visible commit guidance (canonical copy: `docs/coding-standards/git-commit.md`).
 
 ## Go Application Surface
 

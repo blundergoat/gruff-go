@@ -66,7 +66,7 @@ minimumSeverity:
   dashboard: advisory   # default `none`: gate this dashboard like CI
 ```
 
-**Precedence rule** (locked in [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md)):
+**Precedence rule** (locked in [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md)):
 
 ```
 CLI flag (--min-severity / --fail-on)  >  minimumSeverity.<cmd>  >  binary default
@@ -118,7 +118,7 @@ allowlists:
     - DTO
 ```
 
-Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/footguns/setup.md` for the cross-port consumer matrix.
+Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/learning-loop/footguns/setup.md` for the cross-port consumer matrix.
 
 ### `allowlists.secretPreviews`
 
