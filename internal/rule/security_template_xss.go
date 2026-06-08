@@ -150,8 +150,8 @@ func templateXSSHit(call *ast.CallExpr, ctx templateXSSContext) (string, token.P
 // textTemplateXSSHit reports whether call renders request-controlled data into a
 // response writer through text/template, the unescaped path. It requires the
 // template data to be request-controlled so a text/template render of trusted data
-// is not flagged. In mixed text/html template files, it also requires same-file
-// evidence that the Execute receiver originated from text/template.
+// is not flagged, and same-file evidence that the Execute receiver originated from
+// text/template so a custom Execute method is not misread as a template render.
 func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, templateValues templateValueKinds) bool {
 	if scope == nil || len(pkgs.textTemplate) == 0 {
 		return false
@@ -160,7 +160,11 @@ func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers ma
 	if !ok {
 		return false
 	}
-	if len(pkgs.htmlTemplate) > 0 && templateExecuteReceiverKind(call, pkgs, templateValues) != templateKindText {
+	// Require positive evidence that the Execute receiver is a text/template
+	// value, regardless of whether html/template is also imported. Otherwise a
+	// custom type with an Execute(w, data) method in a text/template-importing
+	// file would be misread as a text/template render and flagged.
+	if templateExecuteReceiverKind(call, pkgs, templateValues) != templateKindText {
 		return false
 	}
 	_, ok = scope.exprHasRequest(dataArg, call.Pos())
@@ -236,6 +240,12 @@ func functionSetsHTMLContentType(body *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if found {
+			return false
+		}
+		// A nested closure is a separate scope, visited on its own, so a
+		// Content-Type it sets must not gate raw writes in the enclosing body
+		// (which the raw-write walk likewise scopes by skipping FuncLit).
+		if _, nested := node.(*ast.FuncLit); nested {
 			return false
 		}
 		call, ok := node.(*ast.CallExpr)

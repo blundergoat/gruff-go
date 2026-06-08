@@ -94,6 +94,16 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	if !validateAnalyseEnums(*flagValues.format, *flagValues.editorLink, *flagValues.changedScope, stderr) {
 		return flags, analyseFlagValues{}, false
 	}
+	// Reject an incompatible --generate-baseline combination before reading a
+	// --diff=- stdin patch, so the documented error returns immediately instead
+	// of blocking on stdin in an interactive shell or hook. generateBaselineState
+	// reads only flag values, not the patch, so validating here is safe.
+	if *flagValues.generateBaselinePath != "" {
+		if err := validateGenerateBaselineFlags(flagValues.values(nil, false).generateBaselineState()); err != nil {
+			fmt.Fprintln(stderr, err)
+			return flags, analyseFlagValues{}, false
+		}
+	}
 	diffPatch, ok := resolveAndReadDiffPatch(*flagValues.diffMode, *flagValues.since, stderr)
 	if !ok {
 		return flags, analyseFlagValues{}, false
@@ -102,14 +112,7 @@ func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseF
 	if !ok {
 		return flags, analyseFlagValues{}, false
 	}
-	values := flagValues.values(diffPatch, minSeverityExplicit)
-	if values.generateBaselinePath != "" {
-		if err := validateGenerateBaselineFlags(values.generateBaselineState()); err != nil {
-			fmt.Fprintln(stderr, err)
-			return flags, analyseFlagValues{}, false
-		}
-	}
-	return flags, values, true
+	return flags, flagValues.values(diffPatch, minSeverityExplicit), true
 }
 
 // newAnalyseFlagSet creates the analyse flag parser with GNU-style usage text.

@@ -50,6 +50,14 @@ func TestGoModReplaceRules(t *testing.T) {
 			wantRemote: 0,
 		},
 		{
+			// go.mod permits a quoted replace target; the quotes must be stripped
+			// before classifying or "../lib" reads as a remote module path.
+			name:       "quoted local path",
+			src:        "module example.com/app\n\nreplace example.com/lib => \"../lib\"\n",
+			wantLocal:  1,
+			wantRemote: 0,
+		},
+		{
 			name:       "no replace directives",
 			src:        "module example.com/app\n\ngo 1.25.0\n\nrequire example.com/dep v1.0.0\n",
 			wantLocal:  0,

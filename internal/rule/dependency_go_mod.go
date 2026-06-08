@@ -5,6 +5,7 @@ package rule
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -126,13 +127,25 @@ func goModReplaceDirectives(source string) []goModReplace {
 		if len(fields) == 0 {
 			continue
 		}
+		target := unquoteGoModField(fields[0])
 		out = append(out, goModReplace{
 			line:        index + 1,
-			replacement: fields[0],
-			local:       isLocalReplacePath(fields[0]),
+			replacement: target,
+			local:       isLocalReplacePath(target),
 		})
 	}
 	return out
+}
+
+// unquoteGoModField removes the optional double quotes go.mod allows around a
+// path or module field, so a quoted local replace target such as "../lib" is
+// classified by its real path rather than the leading quote (which would
+// otherwise misroute it to the remote-replace rule and remediation).
+func unquoteGoModField(field string) string {
+	if unquoted, err := strconv.Unquote(field); err == nil {
+		return unquoted
+	}
+	return field
 }
 
 // isLocalReplacePath reports whether a replace target is a local filesystem path

@@ -225,6 +225,49 @@ func render(w http.ResponseWriter, r *http.Request) {
 `,
 			want: 0,
 		},
+		{
+			name: "html content type set only in a nested closure does not gate the outer write",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func render(w http.ResponseWriter, r *http.Request) {
+	later := func() {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	}
+	_ = later
+	fmt.Fprintf(w, "%s", r.URL.Query().Get("q"))
+}
+`,
+			want: 0,
+		},
+		{
+			name: "custom Execute method is not a text template render",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"net/http"
+	"text/template"
+)
+
+var _ = template.Must
+
+type renderer struct{}
+
+func (renderer) Execute(w http.ResponseWriter, data string) {}
+
+func render(w http.ResponseWriter, r *http.Request) {
+	var rr renderer
+	rr.Execute(w, r.URL.Query().Get("name"))
+}
+`,
+			want: 0,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

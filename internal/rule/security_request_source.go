@@ -146,48 +146,6 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 	}
 }
 
-// markTaintedAt records name as carrying request-controlled data and remembers
-// the earliest position at which that taint became available, so taintedBefore
-// can keep the taint from leaking backwards to sinks that run before it.
-func (s *requestTaintScope) markTaintedAt(name string, pos token.Pos) {
-	s.tainted[name] = true
-	if prev, ok := s.firstTaintPos[name]; !ok || pos < prev {
-		s.firstTaintPos[name] = pos
-	}
-}
-
-// taintIntroPos resolves when an assignment's request taint becomes available. A
-// pure alias (b := a) inherits the source's earliest taint position, so a value
-// aliased before its source is tainted (a := safe; b := a; sink(b); a = req) is
-// not flagged at the alias; any other right-hand side taints at the assignment.
-func (s *requestTaintScope) taintIntroPos(rhs ast.Expr, fallback token.Pos) token.Pos {
-	switch e := rhs.(type) {
-	case *ast.ParenExpr:
-		return s.taintIntroPos(e.X, fallback)
-	case *ast.StarExpr:
-		return s.taintIntroPos(e.X, fallback)
-	case *ast.Ident:
-		if pos, ok := s.firstTaintPos[e.Name]; ok {
-			return pos
-		}
-	}
-	return fallback
-}
-
-// taintedBefore reports whether name carries request data introduced at or before
-// sinkPos. An invalid sinkPos disables the ordering check (treating any taint as
-// in scope) so callers without a position still get the previous behaviour.
-func (s *requestTaintScope) taintedBefore(name string, sinkPos token.Pos) bool {
-	if !s.tainted[name] {
-		return false
-	}
-	if !sinkPos.IsValid() {
-		return true
-	}
-	pos, ok := s.firstTaintPos[name]
-	return ok && pos < sinkPos
-}
-
 // directRequestExpr reports whether expr is request-controlled through the
 // restricted propagation set (request accessors, tainted locals, string-builder
 // calls, conversions, and + concatenation). Arbitrary calls return false so a

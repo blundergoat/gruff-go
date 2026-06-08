@@ -212,6 +212,26 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 			want: 0,
 		},
 		{
+			name: "value wrapped before its source is tainted is not a sink",
+			code: `// Package handler is a test package.
+package handler
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func fetch(w http.ResponseWriter, r *http.Request) {
+	a := "https://fixed.example.com/status"
+	b := fmt.Sprintf("%s", a)
+	_, _ = http.Get(b)
+	a = r.FormValue("u")
+	_ = a
+}
+`,
+			want: 0,
+		},
+		{
 			name: "forward alias of a tainted value still flags",
 			code: `// Package handler is a test package.
 package handler

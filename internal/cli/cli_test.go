@@ -292,6 +292,9 @@ func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
 		{"analyse", "--generate-baseline", "baseline.json", "--changed-ranges", "3-3", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--since", "HEAD", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--diff", "working-tree", "complex.go"},
+		// --diff=- must be rejected before the stdin patch is read, so an interactive
+		// or hook invocation returns the error instead of blocking on stdin.
+		{"analyse", "--generate-baseline", "baseline.json", "--diff", "-", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-rules", "complexity.cyclomatic", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--exclude-rules", "complexity.cyclomatic", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-pillars", "complexity", "complex.go"},
