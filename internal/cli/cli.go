@@ -40,10 +40,19 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "gruff-go %s\n", toolVersion)
 		return 0
 	}
+	if args[0] == "--capabilities" {
+		if err := writeHookCapabilities(stdout); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		return 0
+	}
 
 	switch args[0] {
 	case "analyse", "analyze":
 		return runAnalyse(args[1:], stdout, stderr, interactive)
+	case "hook":
+		return runHook(args[1:], stdout, stderr)
 	case "baseline":
 		return runBaseline(args[1:], stdout, stderr)
 	case "init":

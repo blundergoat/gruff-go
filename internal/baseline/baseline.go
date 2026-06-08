@@ -32,6 +32,17 @@ type Entry struct {
 	File string `json:"file"`
 	// Fingerprint is the stable identity hash of the suppressed finding.
 	Fingerprint string `json:"fingerprint"`
+	// StableIdentity is the hook-contract identity used for value-independent
+	// new-only matching. Optional so older baselines still parse and keep their
+	// legacy fingerprint semantics.
+	StableIdentity string `json:"stableIdentity,omitempty"`
+}
+
+// matchKey preserves legacy baseline matching on rule/file/fingerprint only.
+type matchKey struct {
+	ruleID      string
+	file        string
+	fingerprint string
 }
 
 // ApplyResult summarises how a baseline affected a set of findings, classifying
@@ -70,9 +81,10 @@ func FromFindings(findings []finding.Finding) File {
 	entries := make([]Entry, 0, len(findings))
 	for _, item := range findings {
 		entries = append(entries, Entry{
-			RuleID:      item.RuleID,
-			File:        item.File,
-			Fingerprint: item.Fingerprint,
+			RuleID:         item.RuleID,
+			File:           item.File,
+			Fingerprint:    item.Fingerprint,
+			StableIdentity: item.ComputeContractStableIdentity(),
 		})
 	}
 	slices.SortFunc(entries, compareEntries)
@@ -131,17 +143,17 @@ func Marshal(file File) ([]byte, error) {
 // resolved. It collects each set in addition to the legacy counts so callers can
 // render the three states without re-running the match (ADR-012).
 func Apply(findings []finding.Finding, file File) ApplyResult {
-	entries := map[Entry]struct{}{}
+	entries := map[matchKey]Entry{}
 	for _, entry := range file.Findings {
-		entries[entry] = struct{}{}
+		entries[entry.matchKey()] = entry
 	}
-	matched := map[Entry]struct{}{}
+	matched := map[matchKey]struct{}{}
 	kept := make([]finding.Finding, 0, len(findings))
 	unchanged := make([]finding.Finding, 0)
 	for _, item := range findings {
-		entry := Entry{RuleID: item.RuleID, File: item.File, Fingerprint: item.Fingerprint}
-		if _, ok := entries[entry]; ok {
-			matched[entry] = struct{}{}
+		key := matchKey{ruleID: item.RuleID, file: item.File, fingerprint: item.Fingerprint}
+		if _, ok := entries[key]; ok {
+			matched[key] = struct{}{}
 			unchanged = append(unchanged, item)
 			continue
 		}
@@ -149,7 +161,7 @@ func Apply(findings []finding.Finding, file File) ApplyResult {
 	}
 	resolved := make([]Entry, 0, len(entries)-len(matched))
 	for _, entry := range file.Findings {
-		if _, ok := matched[entry]; !ok {
+		if _, ok := matched[entry.matchKey()]; !ok {
 			resolved = append(resolved, entry)
 		}
 	}
@@ -162,6 +174,11 @@ func Apply(findings []finding.Finding, file File) ApplyResult {
 		StaleEntries:       len(resolved),
 		Entries:            len(entries),
 	}
+}
+
+// matchKey returns the legacy fingerprint identity for one baseline entry.
+func (entry Entry) matchKey() matchKey {
+	return matchKey{ruleID: entry.RuleID, file: entry.File, fingerprint: entry.Fingerprint}
 }
 
 // compareEntries orders baseline entries by (file, ruleId, fingerprint), the same

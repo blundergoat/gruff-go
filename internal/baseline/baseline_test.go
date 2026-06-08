@@ -34,6 +34,31 @@ func TestApplySuppressesExactFingerprintMatches(t *testing.T) {
 	}
 }
 
+// TestFromFindingsPersistsContractStableIdentity verifies generated baselines
+// carry the hook identity needed for value-independent new-only matching.
+func TestFromFindingsPersistsContractStableIdentity(t *testing.T) {
+	item := finding.Finding{
+		RuleID:   "size.file-length",
+		Message:  "file has 510 lines, above threshold 500",
+		File:     "main.go",
+		Location: &finding.Location{Line: 501},
+		Metadata: map[string]any{"lines": 510, "threshold": 500},
+	}.WithFingerprint()
+
+	file := FromFindings([]finding.Finding{item})
+	if len(file.Findings) != 1 || file.Findings[0].StableIdentity == "" {
+		t.Fatalf("baseline entries = %#v, want stableIdentity", file.Findings)
+	}
+
+	grown := item
+	grown.Message = "file has 820 lines, above threshold 500"
+	grown.Metadata = map[string]any{"lines": 820, "threshold": 500}
+	if file.Findings[0].StableIdentity != grown.ComputeContractStableIdentity() {
+		t.Fatalf("stable identity changed across measured value: %q != %q",
+			file.Findings[0].StableIdentity, grown.ComputeContractStableIdentity())
+	}
+}
+
 // TestApplyReportsStaleEntries verifies stale entries are counted when no finding matches.
 func TestApplyReportsStaleEntries(t *testing.T) {
 	file := File{
