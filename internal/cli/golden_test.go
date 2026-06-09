@@ -187,6 +187,10 @@ func Hot(a bool, b bool) {
 }
 
 // compositeConfig returns a YAML config enabling rules used by compositeFixture.
+// hotspot-file is tuned to minFindings 2 so it fires on the two findings (size +
+// complexity) the fixture trips, keeping the composite golden exercising a
+// composite rule; the default minFindings of 3 would leave the fixture below
+// threshold.
 func compositeConfig() string {
 	return `
 rules:
@@ -194,8 +198,11 @@ rules:
     threshold: 4
   complexity.cyclomatic:
     threshold: 2
-  design.god-function:
+  design.hotspot-file:
     enabled: true
+    thresholds:
+      minFindings: 2
+      minPillars: 2
 `
 }
 
@@ -297,8 +304,9 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 	var parsed struct {
 		Paths struct {
-			Scanned []string `json:"scanned"`
-			Skipped []struct {
+			Scanned      []string `json:"scanned"`
+			IgnoredPaths []string `json:"ignoredPaths"`
+			Skipped      []struct {
 				Path   string `json:"path"`
 				Reason string `json:"reason"`
 			} `json:"skipped"`
@@ -309,6 +317,9 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 	if slices.Contains(parsed.Paths.Scanned, "secret.go") {
 		t.Fatalf("secret.go should not be scanned with config ignore; got %#v", parsed.Paths.Scanned)
+	}
+	if !slices.Contains(parsed.Paths.IgnoredPaths, "secret.go") {
+		t.Fatalf("secret.go should be listed in paths.ignoredPaths; got %#v", parsed.Paths.IgnoredPaths)
 	}
 	foundSkip := false
 	for _, item := range parsed.Paths.Skipped {

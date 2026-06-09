@@ -11,14 +11,20 @@ schemaVersion: "gruff-go.config.v0.1"
 # even when they are not ignored by Git.
 paths:
   ignore:
+    # .github is not listed: gruff-go dogfoods its own .github/workflows YAML
+    # through the CI/workflow security rules. Non-workflow .github content is
+    # still skipped by the built-in non-application-metadata default.
     - '.agents/**'
     - '.antigravitycli/**'
     - '.claude/**'
     - '.codex/**'
-    - '.github/**'
     - '.goat-flow/**'
     - internal/report/sensitive_redaction_test.go
     - internal/rule/sensitive_test.go
+    # Holds fixture secrets, PII, and PHI for the entropy/PII/PHI detectors;
+    # ignored for the same reason as sensitive_test.go so secret-pattern and the
+    # opt-in detectors never flag their own deliberate test vectors.
+    - internal/rule/sensitive_expansion_test.go
 
 # Project-wide allowlists for noisy signals.
 # acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path
@@ -45,7 +51,7 @@ rules:
   complexity.cognitive:
     enabled: true
     severity: warning
-    threshold: 35
+    threshold: 25
 
   # Flags Go functions whose branch count exceeds the default cyclomatic threshold.
   complexity.cyclomatic:
@@ -59,17 +65,6 @@ rules:
     severity: warning
     threshold: 4
 
-  # Flags functions whose acyclic execution-path count exceeds the configured cap.
-  # gruff-go raises the default (1024) because the scanner's own dispatchers
-  # (rule registry switches, config validators, comment-rubric aggregators)
-  # have legitimately wide branch fan-out that the modified NPath formula
-  # still scores high. Adopter projects with leaner code should keep the
-  # default; lower it deliberately to surface combinatorial blowup.
-  complexity.npath:
-    enabled: true
-    severity: warning
-    threshold: 9000
-
   # Flags empty control-flow blocks that usually indicate unfinished or unnecessary code.
   dead-code.empty-block:
     enabled: true
@@ -80,8 +75,13 @@ rules:
     enabled: true
     severity: advisory
 
-  # Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition.
-  design.god-function:
+  # Flags go.mod replace directives that redirect a dependency to a local filesystem path.
+  dependency.go-mod-local-replace:
+    enabled: true
+    severity: advisory
+
+  # Flags go.mod replace directives that redirect a dependency to a different remote module.
+  dependency.go-mod-remote-replace:
     enabled: true
     severity: advisory
 
@@ -161,12 +161,12 @@ rules:
 
   # Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go.
   modernisation.ioutil-deprecated:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags identifiers that spell configured Go initialisms with mixed casing.
   naming.acronym-case:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags generic range variables and accumulator names only when surrounding context is large enough that the name loses meaning.
@@ -179,7 +179,7 @@ rules:
 
   # Flags receiver accessor methods that use a Get prefix instead of a direct noun phrase.
   naming.get-prefix:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review.
@@ -210,21 +210,46 @@ rules:
 
   # Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry).
   naming.package-stutter:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags Go package names that use underscores instead of short lowercase words.
   naming.package-underscore:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags methods on the same type that use inconsistent receiver names or pointer/value forms.
   naming.receiver-consistency:
-    enabled: true
+    enabled: false
     severity: advisory
 
   # Flags archive extraction paths built from entry names without an obvious containment check.
   security.archive-path-traversal:
+    enabled: true
+    severity: advisory
+
+  # Flags workflows that grant blanket write access (permissions: write-all or bare write).
+  security.github-actions-broad-permissions:
+    enabled: true
+    severity: advisory
+
+  # Flags pull_request_target workflows that also check out or run code with secret access.
+  security.github-actions-pull-request-target:
+    enabled: true
+    severity: advisory
+
+  # Flags workflow run steps that pipe a remote download into a shell (curl ... | bash).
+  security.github-actions-remote-shell:
+    enabled: true
+    severity: advisory
+
+  # Flags pull-request workflows that reference a named secret other than GITHUB_TOKEN.
+  security.github-actions-secrets-in-pr:
+    enabled: true
+    severity: advisory
+
+  # Flags third-party actions pinned to a mutable branch ref instead of a tag or commit SHA.
+  security.github-actions-unpinned-action:
     enabled: true
     severity: advisory
 
@@ -243,6 +268,16 @@ rules:
     enabled: true
     severity: advisory
 
+  # Flags request-derived values passed to http.Redirect or a Location header without validation (possible open redirect).
+  security.open-redirect-candidate:
+    enabled: true
+    severity: advisory
+
+  # Flags request-derived values passed to filesystem or file-serving sinks without containment evidence (possible path traversal).
+  security.path-traversal-file-access:
+    enabled: true
+    severity: advisory
+
   # Flags os file and directory calls that use world-writable or overly permissive literal modes.
   security.permissive-file-mode:
     enabled: true
@@ -250,6 +285,16 @@ rules:
 
   # Flags io.ReadAll-style reads of http.Request.Body in production handlers without nearby MaxBytesReader or LimitReader evidence.
   security.request-body-without-limit:
+    enabled: true
+    severity: advisory
+
+  # Flags request-derived values used as an outbound net/http request URL without allowlist or validation (possible SSRF).
+  security.request-controlled-url:
+    enabled: true
+    severity: advisory
+
+  # Flags logging calls whose arguments carry secret-named identifiers, secret env reads, or request auth headers/cookies.
+  security.sensitive-data-logging:
     enabled: true
     severity: advisory
 
@@ -263,13 +308,28 @@ rules:
     enabled: true
     severity: advisory
 
+  # Flags request-derived values rendered into an HTML response without escaping (text/template, unsafe template.HTML conversions, raw writes).
+  security.template-injection-xss:
+    enabled: true
+    severity: advisory
+
   # Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.
   security.tls-insecure-config:
     enabled: true
     severity: warning
 
+  # Flags decoding of request-controlled input via encoding/gob or gopkg.in/yaml (possible unsafe deserialization).
+  security.unsafe-deserialization:
+    enabled: true
+    severity: advisory
+
   # Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits.
   security.weak-crypto:
+    enabled: true
+    severity: advisory
+
+  # Flags xml.Decoder configured with a custom entity map (possible XXE); stdlib encoding/xml is safe by default.
+  security.xxe-candidate:
     enabled: true
     severity: advisory
 
@@ -308,6 +368,14 @@ rules:
     enabled: true
     severity: error
 
+  # Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in heuristic; tune minLength and entropy. Emits only a redacted preview.
+  sensitive-data.high-entropy-string:
+    enabled: false
+    severity: warning
+    thresholds:
+      minLength: 20
+      entropy: 4.5
+
   # Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.
   sensitive-data.jwt-token:
     enabled: true
@@ -317,6 +385,16 @@ rules:
   sensitive-data.npm-token:
     enabled: true
     severity: error
+
+  # Flags protected health information identifiers (US SSNs, Medicare beneficiary IDs, label-anchored medical record numbers). Opt-in heuristic; emits only a redacted preview.
+  sensitive-data.phi-pattern:
+    enabled: false
+    severity: warning
+
+  # Flags personally identifiable information (emails, phone numbers, Luhn-valid payment cards). Opt-in heuristic; emits only a redacted preview. Government/health identifiers are covered by sensitive-data.phi-pattern.
+  sensitive-data.pii-pattern:
+    enabled: false
+    severity: warning
 
   # Flags PEM-encoded private keys embedded directly in source or text files.
   sensitive-data.private-key:
@@ -341,7 +419,7 @@ rules:
   # Flags Go files that exceed the default line-count threshold.
   size.file-length:
     enabled: true
-    severity: warning
+    severity: advisory
     threshold: 500
 
   # Flags Go functions that exceed the default line-count threshold.
@@ -384,6 +462,11 @@ rules:
   # Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.
   test-quality.skipped-test:
     enabled: true
+    severity: advisory
+
+  # Flags Go test assertions whose main evidence is a parser-visible code-shape fact rather than runtime behaviour.
+  test-quality.static-analysis-redundant-test:
+    enabled: false
     severity: advisory
 
   # Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.

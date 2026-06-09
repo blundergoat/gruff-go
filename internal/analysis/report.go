@@ -13,11 +13,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
 
-// SchemaVersion identifies the stable analysis report schema emitted by gruff-go.
-// SchemaVersion bumped from v0.1 to v0.2 by ADR-009 when the 5-bucket severity
-// fields (Critical/High/Medium/Low/Info on PillarDetail; same keys on
-// CountsBySeverity) were replaced with the 3-bucket Advisory/Warning/Error.
-const SchemaVersion = "gruff-go.analysis.v0.2"
+// SchemaVersion identifies the stable cross-port analysis report schema.
+const SchemaVersion = "gruff.analysis.v2"
 
 // Diagnostic describes a non-finding problem encountered while building a report.
 type Diagnostic struct {
@@ -47,6 +44,8 @@ type Report struct {
 	Baseline BaselineSummary `json:"baseline"`
 	// Diff records changed-line filtering applied against a git base.
 	Diff DiffSummary `json:"diff"`
+	// SuppressedCount counts findings excluded as outside the changed region.
+	SuppressedCount *int `json:"suppressedCount,omitempty"`
 	// DisplayFilter records presentation-only filters that hid findings.
 	DisplayFilter DisplayFilterSummary `json:"displayFilter"`
 	// Score holds the grade and pillar breakdown produced by the scoring engine.
@@ -105,7 +104,11 @@ type Summary struct {
 	TypeLoadingEnabled bool `json:"typeLoadingEnabled"`
 }
 
-// BaselineSummary records how a baseline affected findings.
+// BaselineSummary records how a baseline affected findings, classified into the
+// three states from ADR-012. The count fields are always emitted (additive);
+// the Unchanged/Resolved detail arrays render only when Show is set (the
+// --baseline-show flag), so default JSON stays compact and text/HTML stay
+// byte-identical to pre-M24 output.
 type BaselineSummary struct {
 	// Applied is true when a baseline file was successfully loaded and used.
 	Applied bool `json:"applied"`
@@ -113,10 +116,33 @@ type BaselineSummary struct {
 	Path string `json:"path,omitempty"`
 	// Entries is the total number of suppression entries declared in the baseline file.
 	Entries int `json:"entries"`
-	// SuppressedFindings is the count of findings the baseline hid this run.
+	// SuppressedFindings is the count of findings the baseline hid this run (== UnchangedFindings).
 	SuppressedFindings int `json:"suppressedFindings"`
-	// StaleEntries is the count of baseline entries that matched no current finding.
+	// StaleEntries is the count of baseline entries that matched no current finding (== ResolvedFindings).
 	StaleEntries int `json:"staleEntries"`
+	// NewFindings counts current findings absent from the baseline (the gated set M26 fails on).
+	NewFindings int `json:"newFindings"`
+	// UnchangedFindings counts current findings the baseline matched and suppressed.
+	UnchangedFindings int `json:"unchangedFindings"`
+	// ResolvedFindings counts baseline entries that no current finding matched (fixed since the baseline).
+	ResolvedFindings int `json:"resolvedFindings"`
+	// Unchanged lists the suppressed findings; populated and rendered only under --baseline-show.
+	Unchanged []finding.Finding `json:"unchanged,omitempty"`
+	// Resolved lists the resolved baseline entries; populated and rendered only under --baseline-show.
+	Resolved []BaselineEntry `json:"resolved,omitempty"`
+	// Show is the --baseline-show directive; it gates rendering of the detail arrays and is never serialised.
+	Show bool `json:"-"`
+}
+
+// BaselineEntry is a report-shaped resolved baseline entry: a finding identity
+// (rule, file, fingerprint) with no live location, fixed since the baseline.
+type BaselineEntry struct {
+	// RuleID is the rule whose finding was resolved.
+	RuleID string `json:"ruleId"`
+	// File is the repo-relative path the resolved finding targeted.
+	File string `json:"file"`
+	// Fingerprint is the stable identity hash of the resolved finding.
+	Fingerprint string `json:"fingerprint"`
 }
 
 // DiffSummary records changed-line filtering applied to findings.
@@ -155,6 +181,8 @@ type DisplayFilterSummary struct {
 type Paths struct {
 	// Scanned is the sorted set of project-relative files that reached the analysers.
 	Scanned []string `json:"scanned"`
+	// IgnoredPaths lists config paths.ignore matches as bare strings for cross-port consumers.
+	IgnoredPaths []string `json:"ignoredPaths"`
 	// Skipped lists discovered files that were excluded together with the reason.
 	Skipped []SkippedPath `json:"skipped"`
 	// Missing lists user-requested inputs that did not exist on disk.
@@ -167,6 +195,11 @@ type SkippedPath struct {
 	Path string `json:"path"`
 	// Reason is the human-readable explanation (gitignore, vendored directory, etc.).
 	Reason string `json:"reason"`
+	// Source classifies the deciding ignore layer: config | gitignore | default | generated.
+	// Additive (omitempty) so existing {path,reason} JSON/SARIF consumers keep working.
+	Source string `json:"source,omitempty"`
+	// Pattern is the exact config paths.ignore glob that matched; set only when Source is config.
+	Pattern string `json:"pattern,omitempty"`
 }
 
 // ReportInput contains inputs needed to assemble a Report.
@@ -198,12 +231,15 @@ type ReportInput struct {
 	Baseline BaselineSummary
 	// Diff is the pre-computed DiffSummary when --diff-base ran.
 	Diff DiffSummary
+	// SuppressedCount is present when changed-region filtering ran.
+	SuppressedCount *int
 }
 
 // NewReport assembles a deterministic report from analysis inputs.
 func NewReport(input ReportInput) Report {
 	scanned := nonNilStrings(input.Scanned)
 	skipped := nonNilSkipped(input.Skipped)
+	ignoredPaths := configIgnoredPaths(skipped)
 	missing := nonNilStrings(input.Missing)
 	diagnostics := nonNilDiagnostics(input.Diagnostics)
 	findings := nonNilFindings(input.Findings)
@@ -214,7 +250,7 @@ func NewReport(input ReportInput) Report {
 		SchemaVersion: SchemaVersion,
 		Tool: Tool{
 			Name:    "gruff-go",
-			Version: "0.2.0",
+			Version: "0.3.0",
 		},
 		Run: RunMetadata{
 			WorkingDirectory: input.Root,
@@ -234,14 +270,16 @@ func NewReport(input ReportInput) Report {
 			ParserMode:         "parser-only",
 			TypeLoadingEnabled: false,
 		},
-		Baseline: input.Baseline,
-		Diff:     input.Diff,
-		Score:    scoring.Calculate(findings),
-		Rules:    definitions,
+		Baseline:        input.Baseline,
+		Diff:            input.Diff,
+		SuppressedCount: input.SuppressedCount,
+		Score:           scoring.Calculate(findings),
+		Rules:           definitions,
 		Paths: Paths{
-			Scanned: scanned,
-			Skipped: skipped,
-			Missing: missing,
+			Scanned:      scanned,
+			IgnoredPaths: ignoredPaths,
+			Skipped:      skipped,
+			Missing:      missing,
 		},
 		Diagnostics: diagnostics,
 		Findings:    findings,
@@ -307,6 +345,7 @@ func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failO
 // SortReport orders report collections for deterministic output.
 func SortReport(report *Report) {
 	slices.Sort(report.Paths.Scanned)
+	slices.Sort(report.Paths.IgnoredPaths)
 	slices.Sort(report.Paths.Missing)
 	slices.SortFunc(report.Paths.Skipped, func(a, b SkippedPath) int {
 		if a.Path == b.Path {
@@ -319,6 +358,26 @@ func SortReport(report *Report) {
 	slices.SortFunc(report.Rules, func(a, b rule.Definition) int {
 		return strings.Compare(a.ID, b.ID)
 	})
+}
+
+// configIgnoredPaths extracts the bare path list expected by cross-port
+// consumers from detailed skipped entries. Only config paths.ignore exclusions
+// are listed; git/default/generated skips remain available in paths.skipped.
+func configIgnoredPaths(skipped []SkippedPath) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, item := range skipped {
+		if item.Source != "config" && item.Reason != "config-ignore" {
+			continue
+		}
+		if _, ok := seen[item.Path]; ok {
+			continue
+		}
+		seen[item.Path] = struct{}{}
+		out = append(out, item.Path)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // compareDiagnostics orders diagnostics by file, line, stage, and message.

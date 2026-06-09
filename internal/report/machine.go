@@ -49,7 +49,7 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 				SemanticVersion: report.Tool.Version,
 				Rules:           sarifRules(report.Rules),
 			}},
-			Results:    sarifResults(report.Findings, report.Rules),
+			Results:    sarifResults(report.Findings, report.Rules, report.Baseline.Applied),
 			Properties: sarifRunPropertiesFromReport(report),
 		}},
 	}
@@ -174,6 +174,9 @@ type sarifResult struct {
 	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
 	// Properties carries gruff-specific finding metadata.
 	Properties map[string]any `json:"properties"`
+	// BaselineState is the SARIF 2.1.0 baselineState ("new") set only when a
+	// baseline was applied; omitted otherwise so non-baseline runs are unchanged.
+	BaselineState string `json:"baselineState,omitempty"`
 }
 
 // sarifRunProperties carries gruff-go metadata at the SARIF run level.
@@ -246,7 +249,9 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 }
 
 // sarifResults converts findings into SARIF results, indexing each entry into the driver rule list.
-func sarifResults(findings []finding.Finding, definitions []rule.Definition) []sarifResult {
+// When baselineApplied is true, every emitted result is the surviving "new" set
+// (suppressed unchanged findings are not rendered), so each carries baselineState "new".
+func sarifResults(findings []finding.Finding, definitions []rule.Definition, baselineApplied bool) []sarifResult {
 	ruleIndices := map[string]int{}
 	for index, definition := range definitions {
 		ruleIndices[definition.ID] = index
@@ -285,6 +290,12 @@ func sarifResults(findings []finding.Finding, definitions []rule.Definition) []s
 		}
 		if len(findingItem.Metadata) > 0 {
 			result.Properties["metadata"] = findingItem.Metadata
+		}
+		if baselineApplied {
+			// Emitted results are the surviving "new" set - suppressed (unchanged)
+			// findings are not rendered as SARIF results (ADR-012), so every result
+			// here is new relative to the baseline. SARIF 2.1.0 §3.27.25.
+			result.BaselineState = "new"
 		}
 		out = append(out, result)
 	}

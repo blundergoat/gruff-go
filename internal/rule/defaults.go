@@ -29,6 +29,7 @@ func defaultUnitRules(config Config) []UnitRule {
 	rules = append(rules, defaultMetricUnitRules(config)...)
 	rules = append(rules, defaultMaintainabilityUnitRules()...)
 	rules = append(rules, defaultSecurityUnitRules()...)
+	rules = append(rules, defaultDependencyUnitRules()...)
 	rules = append(rules, defaultDocumentationUnitRules(config)...)
 	rules = append(rules, defaultSensitiveDataUnitRules(config)...)
 	rules = append(rules, defaultNamingUnitRules(config)...)
@@ -43,7 +44,6 @@ func defaultMetricUnitRules(config Config) []UnitRule {
 		FunctionLengthRule{MaxLines: intThreshold(config, "size.function-length", "maxLines", functionLengthThreshold)},
 		CognitiveComplexityRule{MaxComplexity: intThreshold(config, "complexity.cognitive", "maxComplexity", cognitiveComplexityThreshold)},
 		CyclomaticComplexityRule{MaxComplexity: intThreshold(config, "complexity.cyclomatic", "maxComplexity", cyclomaticThreshold)},
-		NPathComplexityRule{MaxComplexity: intThreshold(config, "complexity.npath", "maxComplexity", npathThreshold)},
 		EmptyBlockRule{},
 		UnreachableCodeRule{},
 		ParameterCountRule{MaxParameters: intThreshold(config, "size.parameter-count", "maxParameters", parameterCountThreshold)},
@@ -77,6 +77,28 @@ func defaultSecurityUnitRules() []UnitRule {
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
 		WeakCryptoRule{},
+		RequestControlledURLRule{},
+		PathTraversalFileAccessRule{},
+		OpenRedirectRule{},
+		SensitiveDataLoggingRule{},
+		UnsafeDeserializationRule{},
+		XXECandidateRule{},
+		TemplateInjectionXSSRule{},
+		GitHubActionsUnpinnedActionRule{},
+		GitHubActionsRemoteShellRule{},
+		GitHubActionsBroadPermissionsRule{},
+		GitHubActionsPullRequestTargetRule{},
+		GitHubActionsSecretsInPRRule{},
+	}
+}
+
+// defaultDependencyUnitRules returns parser-only Go-module dependency-posture
+// checks. They emit the security pillar but carry dependency.* IDs to mirror the
+// cross-port dependency rule family.
+func defaultDependencyUnitRules() []UnitRule {
+	return []UnitRule{
+		GoModLocalReplaceRule{},
+		GoModRemoteReplaceRule{},
 	}
 }
 
@@ -93,6 +115,10 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 }
 
 // defaultSensitiveDataUnitRules returns vendor and generic sensitive-data checks.
+// The entropy, PII, and PHI detectors ship opt-in (DefaultEnabled:false on their
+// own definitions): they are heuristic and noisier than the exact-prefix vendor
+// rules, so per ADR-007/ADR-009 they stay out of default scans until a project
+// enables them, rather than riding at an inflated severity to dodge the gate.
 func defaultSensitiveDataUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
@@ -108,6 +134,12 @@ func defaultSensitiveDataUnitRules(config Config) []UnitRule {
 		GCPServiceAccountRule{},
 		NPMTokenRule{},
 		GitLabTokenRule{},
+		HighEntropyStringRule{
+			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
+			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
+		},
+		PIIPatternRule{},
+		PHIPatternRule{},
 	}
 }
 
@@ -167,7 +199,11 @@ func defaultProjectRules(config Config) []ProjectRule {
 			AllowMixed:   stringSliceOption(config, "naming.receiver-consistency", "allowMixed"),
 			InspectGroup: stringOption(config, "naming.receiver-consistency", "inspectGroup", "both"),
 		},
+		UnusedPrivateConstRule{},
 		UnusedPrivateFunctionRule{},
+		UnusedPrivateTypeRule{},
+		UnusedPrivateVarRule{},
+		StaticAnalysisRedundantTestRule{},
 		CommentRubricRule{
 			MinPackageCommentLines:   intThreshold(config, "docs.comment-rubric", "minPackageCommentLines", commentRubricMinPackageCommentLines),
 			MinWordsBeyondSymbol:     intOption(config, "docs.comment-rubric", "minWordsBeyondSymbol", 0),
@@ -188,7 +224,6 @@ func defaultProjectRules(config Config) []ProjectRule {
 // defaultCompositeRules builds the composite rule slice from strict config.
 func defaultCompositeRules(config Config) []CompositeRule {
 	return []CompositeRule{
-		DesignGodFunctionRule{},
 		DesignHotspotFileRule{
 			MinFindings: intThreshold(config, "design.hotspot-file", "minFindings", hotspotFileMinFindings),
 			MinPillars:  intThreshold(config, "design.hotspot-file", "minPillars", hotspotFileMinPillars),
@@ -294,6 +329,22 @@ func intThreshold(config Config, ruleID string, name string, fallback int) int {
 		return fallback
 	}
 	return int(value)
+}
+
+// floatThreshold reads a named positive floating-point threshold from strict
+// config, falling back when absent or non-positive. It mirrors intThreshold for
+// rules whose knob is fractional - e.g. the entropy rule's bits-per-character
+// cutoff, where rounding to an int would collapse the meaningful 4.0-6.0 range.
+func floatThreshold(config Config, ruleID string, name string, fallback float64) float64 {
+	values, ok := config.Thresholds[ruleID]
+	if !ok {
+		return fallback
+	}
+	value, ok := values[name]
+	if !ok || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 // intOption reads an integer rule option from strict config, accepting numeric forms (int, int64, float64).

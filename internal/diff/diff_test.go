@@ -3,6 +3,7 @@
 package diff
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,6 +53,58 @@ func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	}
 }
 
+// TestParseMarksNewFilesWholeFileChanged checks that a new-file diff marks the
+// entire file changed, so a finding on any line of it is retained.
+func TestParseMarksNewFilesWholeFileChanged(t *testing.T) {
+	changed := Parse("main", []byte(`diff --git a/new.go b/new.go
+new file mode 100644
+--- /dev/null
++++ b/new.go
+@@ -0,0 +1,3 @@
++package main
++func main() {}
+`))
+	item := finding.Finding{RuleID: "r", File: "new.go", Location: &finding.Location{Line: 99}}
+	result := Filter([]finding.Finding{item}, changed)
+	if len(result.Findings) != 1 || result.FilteredFindings != 0 {
+		t.Fatalf("result = %#v, want whole new file retained", result)
+	}
+}
+
+// TestParseAnchorsDeletionOnlyHunk verifies a pure-deletion hunk in a still-present
+// file (zero added lines) records its anchor line, so a deletion-only edit keeps its
+// enclosing region in scope instead of dropping out of the changed set with an empty
+// line map (which would silently suppress findings in the edited function).
+func TestParseAnchorsDeletionOnlyHunk(t *testing.T) {
+	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -4,2 +3,0 @@
+-removed one
+-removed two
+`))
+	if _, ok := changed.LinesByFile["a.go"][3]; !ok {
+		t.Fatalf("changed lines = %#v, want deletion anchored at line 3", changed.LinesByFile["a.go"])
+	}
+	item := finding.Finding{RuleID: "r", File: "a.go", Location: &finding.Location{Line: 3}}
+	result := Filter([]finding.Finding{item}, changed)
+	if len(result.Findings) != 1 || result.FilteredFindings != 0 {
+		t.Fatalf("result = %#v, want finding on the deletion anchor retained", result)
+	}
+}
+
+// TestExplicitRangesApplyToFiles checks that explicit ranges are applied per file:
+// a line inside a range counts as changed and one outside does not.
+func TestExplicitRangesApplyToFiles(t *testing.T) {
+	changed, err := ExplicitRanges("explicit", "3-3,8-10", []string{"a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !RangeChanged(changed, "a.go", 9, 9) || RangeChanged(changed, "a.go", 4, 4) {
+		t.Fatalf("changed ranges = %#v", changed.LinesByFile["a.go"])
+	}
+}
+
 // TestFromGitReportsWorkingTreeBaseRef shells out to git and confirms changed line detection.
 func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	root := t.TempDir()
@@ -63,7 +116,7 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	runGit(t, root, "commit", "-q", "-m", "initial")
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {\n\tprintln(\"changed\")\n}\n")
 
-	changed, err := FromGit(root, "HEAD", []string{"."})
+	changed, err := FromGit(context.Background(), root, "HEAD", []string{"."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,9 +128,30 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	}
 }
 
+// TestFromModeWorkingTreeIncludesUntrackedWholeFiles checks that working-tree mode
+// counts an untracked file as wholly changed, not just edits to tracked files.
+func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "test@example.test")
+	runGit(t, root, "config", "user.name", "test")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	runGit(t, root, "add", "main.go")
+	runGit(t, root, "commit", "-q", "-m", "initial")
+	writeFile(t, root, "new.go", "package main\n\nfunc added() {}\n")
+
+	changed, err := FromMode(context.Background(), root, "working-tree", []string{"."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := changed.WholeFiles["new.go"]; !ok {
+		t.Fatalf("whole files = %#v, want new.go", changed.WholeFiles)
+	}
+}
+
 // TestFromGitReportsNonGitDiagnostics ensures non-repo invocations return an error.
 func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
-	_, err := FromGit(t.TempDir(), "HEAD", []string{"."})
+	_, err := FromGit(context.Background(), t.TempDir(), "HEAD", []string{"."})
 	if err == nil {
 		t.Fatal("expected non-git error")
 	}

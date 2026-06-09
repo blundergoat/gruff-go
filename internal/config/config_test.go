@@ -330,8 +330,6 @@ func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 rules:
-  design.god-function:
-    enabled: true
   design.hotspot-file:
     enabled: true
     thresholds:
@@ -342,8 +340,8 @@ rules:
 		t.Fatal(err)
 	}
 	options := cfg.RuleOptions()
-	if !options.Enabled["design.god-function"] || !options.Enabled["design.hotspot-file"] {
-		t.Fatalf("enabled map = %#v, want composite rules enabled", options.Enabled)
+	if !options.Enabled["design.hotspot-file"] {
+		t.Fatalf("enabled map = %#v, want composite rule enabled", options.Enabled)
 	}
 	if options.Thresholds["design.hotspot-file"]["minFindings"] != 4 {
 		t.Fatalf("thresholds = %#v, want design.hotspot-file minFindings=4", options.Thresholds)

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
@@ -17,7 +16,7 @@ import (
 )
 
 // toolVersion is the released gruff-go semantic version printed by --version.
-const toolVersion = "0.2.0"
+const toolVersion = "0.3.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
@@ -41,10 +40,19 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "gruff-go %s\n", toolVersion)
 		return 0
 	}
+	if args[0] == "--capabilities" {
+		if err := writeHookCapabilities(stdout); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		return 0
+	}
 
 	switch args[0] {
 	case "analyse", "analyze":
 		return runAnalyse(args[1:], stdout, stderr, interactive)
+	case "hook":
+		return runHook(args[1:], stdout, stderr)
 	case "baseline":
 		return runBaseline(args[1:], stdout, stderr)
 	case "init":
@@ -53,6 +61,8 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return runCompletion(args[1:], stdout, stderr)
 	case "list-rules":
 		return runListRules(args[1:], stdout, stderr)
+	case "check-ignore":
+		return runCheckIgnore(args[1:], stdout, stderr)
 	case "summary":
 		return runSummary(args[1:], stdout, stderr, interactive)
 	case "report":
@@ -113,8 +123,35 @@ func isVersionFlag(arg string) bool {
 	return arg == "-V" || arg == "--version"
 }
 
+// hasHelpFlag reports whether a subcommand argument list requests help before
+// the first positional path. Handling it before FlagSet.Parse lets command help
+// print to stdout and exit 0 without turning a positional "--help" into help.
+func hasHelpFlag(args []string) bool {
+	args = normalizeAnalyseDiffArgs(args)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+		if arg == "--" {
+			return false
+		}
+		if !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		if analyseFlagConsumesValue(arg) {
+			i++
+		}
+	}
+	return false
+}
+
 // runAnalyse executes the analyse subcommand and renders the scan report.
 func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
+	if hasHelpFlag(args) {
+		writeCommandHelp("analyse", commandUsages["analyse"], stdout, ansiStyler{})
+		return 0
+	}
 	flags, values, ok := parseAnalyseFlags(args, stderr)
 	if !ok {
 		return 2
@@ -151,6 +188,11 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		IncludeIgnored: values.includeIgnored,
 		BaselinePath:   values.baselinePath,
 		DiffBase:       values.diffBase,
+		DiffMode:       values.resolvedDiffMode(),
+		DiffPatch:      values.diffPatch,
+		ChangedRanges:  values.changedRanges,
+		ChangedScope:   values.changedScope,
+		BaselineShow:   values.baselineShow,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -162,28 +204,6 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		return 2
 	}
 	return analysisReport.Summary.ExitCode
-}
-
-// analyseFlagValues is the parsed analyse command state after validation.
-// minSeverityRaw + minSeverityExplicit replace the resolved FailThreshold so
-// runAnalyse can apply the ADR-010 precedence (CLI flag > minimumSeverity.cmd
-// > DefaultFailThresholdFor) after the config has been loaded.
-type analyseFlagValues struct {
-	format               string
-	minSeverityRaw       string
-	minSeverityExplicit  bool
-	configPath           string
-	noConfig             bool
-	baselinePath         string
-	generateBaselinePath string
-	diffBase             string
-	includeRules         string
-	excludeRules         string
-	includePillars       string
-	excludePillars       string
-	editorLink           string
-	reportInteractive    bool
-	includeIgnored       bool
 }
 
 // resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
@@ -226,104 +246,6 @@ func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer
 		}
 	}
 	return explicit, true
-}
-
-// parseAnalyseFlags parses and validates analyse flags, printing validation
-// errors to stderr in the same style as the legacy inline parser.
-func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
-	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
-	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
-	// returns (currently advisory, intentionally permissive after the 3-bucket
-	// migration). Help text shows this default; precedence in runAnalyse lets
-	// .gruff-go.yaml's minimumSeverity.analyse override it.
-	minSeverity := string(finding.DefaultFailThresholdFor("analyse"))
-	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
-	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
-	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
-	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
-	baselinePath := flags.String("baseline", "", "baseline file to apply")
-	generateBaselinePath := flags.String("generate-baseline", "", "write current findings to a baseline file and exit cleanly")
-	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
-	includeRules := flags.String("include-rules", "", "comma-separated rule IDs to display")
-	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
-	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
-	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
-	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
-	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
-	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	if err := flags.Parse(args); err != nil {
-		return flags, analyseFlagValues{}, false
-	}
-	if !supportedAnalysisFormat(*format) {
-		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
-		return flags, analyseFlagValues{}, false
-	}
-	if !supportedEditorLink(*editorLink) {
-		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
-		return flags, analyseFlagValues{}, false
-	}
-	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
-	if !ok {
-		return flags, analyseFlagValues{}, false
-	}
-	values := analyseFlagValues{
-		format:               *format,
-		minSeverityRaw:       minSeverity,
-		minSeverityExplicit:  minSeverityExplicit,
-		configPath:           *configPath,
-		noConfig:             *noConfig,
-		baselinePath:         *baselinePath,
-		generateBaselinePath: *generateBaselinePath,
-		diffBase:             *diffBase,
-		includeRules:         *includeRules,
-		excludeRules:         *excludeRules,
-		includePillars:       *includePillars,
-		excludePillars:       *excludePillars,
-		editorLink:           *editorLink,
-		reportInteractive:    *reportInteractive,
-		includeIgnored:       *includeIgnored,
-	}
-	if values.generateBaselinePath != "" {
-		if err := validateGenerateBaselineFlags(generateBaselineFlagState{
-			baselinePath:   values.baselinePath,
-			diffBase:       values.diffBase,
-			includeRules:   values.includeRules,
-			excludeRules:   values.excludeRules,
-			includePillars: values.includePillars,
-			excludePillars: values.excludePillars,
-		}); err != nil {
-			fmt.Fprintln(stderr, err)
-			return flags, analyseFlagValues{}, false
-		}
-	}
-	return flags, values, true
-}
-
-// generateBaselineFlagState groups analyse flags that change finding scope.
-type generateBaselineFlagState struct {
-	baselinePath   string
-	diffBase       string
-	includeRules   string
-	excludeRules   string
-	includePillars string
-	excludePillars string
-}
-
-// validateGenerateBaselineFlags rejects combinations that would make the
-// generated baseline partial rather than a fresh snapshot of current findings.
-func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
-	switch {
-	case state.baselinePath != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with --baseline")
-	case state.diffBase != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with --diff-base")
-	case state.includeRules != "" || state.excludeRules != "" || state.includePillars != "" || state.excludePillars != "":
-		return fmt.Errorf("--generate-baseline cannot be combined with display filters")
-	default:
-		return nil
-	}
 }
 
 // writeAnalysisReport serialises the analysis report to writer in the chosen format.
@@ -385,107 +307,4 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return 0
-}
-
-// configuredRegistry builds the rule registry honouring the loaded config file.
-// Also returns the loaded Config so callers can consult MinimumSeverity. When
-// no config file is on disk the returned Config is zero-valued; nil-map lookups
-// on cfg.MinimumSeverity[cmd] yield empty string, which is the "no value"
-// signal callers expect.
-func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, cfgpkg.Config, error) {
-	defaults := rule.Defaults()
-	root, err := os.Getwd()
-	if err != nil {
-		return rule.Registry{}, nil, cfgpkg.Config{}, err
-	}
-	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
-	if err != nil {
-		return rule.Registry{}, nil, cfgpkg.Config{}, err
-	}
-	if loaded.Path == "" {
-		return defaults, nil, cfgpkg.Config{}, nil
-	}
-	cfg := loaded.Config
-	registry, err := rule.DefaultsConfigured(cfg.RuleOptions())
-	if err != nil {
-		return rule.Registry{}, nil, cfgpkg.Config{}, err
-	}
-	return registry, cfg.IgnorePaths, cfg, nil
-}
-
-// supportedAnalysisFormat reports whether format names a known analyse output.
-func supportedAnalysisFormat(format string) bool {
-	switch format {
-	case "text", "json", "summary-json", "sarif", "github", "html", "markdown", "md":
-		return true
-	default:
-		return false
-	}
-}
-
-// supportedEditorLink reports whether value names a supported editor-link mode.
-func supportedEditorLink(value string) bool {
-	switch value {
-	case "none", "vscode", "phpstorm":
-		return true
-	default:
-		return false
-	}
-}
-
-// parseDisplayFilter validates the rule and pillar filter flags into a DisplayFilter.
-func parseDisplayFilter(includeRules, excludeRules, includePillars, excludePillars string, definitions []rule.Definition) (analysis.DisplayFilter, error) {
-	ruleIDs := map[string]struct{}{}
-	for _, definition := range definitions {
-		ruleIDs[definition.ID] = struct{}{}
-	}
-	filter := analysis.DisplayFilter{
-		IncludeRules: splitCSV(includeRules),
-		ExcludeRules: splitCSV(excludeRules),
-	}
-	for _, id := range append(append([]string{}, filter.IncludeRules...), filter.ExcludeRules...) {
-		if _, ok := ruleIDs[id]; !ok {
-			return analysis.DisplayFilter{}, fmt.Errorf("unknown rule %q", id)
-		}
-	}
-	var err error
-	filter.IncludePillars, err = parsePillars(includePillars)
-	if err != nil {
-		return analysis.DisplayFilter{}, err
-	}
-	filter.ExcludePillars, err = parsePillars(excludePillars)
-	if err != nil {
-		return analysis.DisplayFilter{}, err
-	}
-	return filter, nil
-}
-
-// parsePillars converts a comma-separated pillar list into validated Pillar values.
-func parsePillars(input string) ([]finding.Pillar, error) {
-	values := splitCSV(input)
-	out := make([]finding.Pillar, 0, len(values))
-	for _, value := range values {
-		pillar := finding.Pillar(value)
-		if !pillar.Valid() {
-			return nil, fmt.Errorf("unknown pillar %q", value)
-		}
-		out = append(out, pillar)
-	}
-	return out, nil
-}
-
-// splitCSV splits a comma-separated input string and trims surrounding whitespace.
-func splitCSV(input string) []string {
-	if input == "" {
-		return nil
-	}
-	parts := strings.Split(input, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		value := strings.TrimSpace(part)
-		if value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }

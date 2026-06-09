@@ -65,7 +65,7 @@ jobs:
           go-version: '1.25'
 
       - name: Install gruff-go
-        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0
 
       - name: Scan (diff-mode for PRs, full for push)
         run: |
@@ -119,7 +119,7 @@ gruff-go:
   image: golang:1.25
   stage: test
   script:
-    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0
     - gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif
   artifacts:
     when: always
@@ -148,7 +148,7 @@ jobs:
       - checkout
       - run:
           name: Install gruff-go
-          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0
       - run:
           name: Scan
           command: gruff-go analyse --baseline gruff-baseline.json .
@@ -172,7 +172,7 @@ pipeline {
     stages {
         stage('gruff-go') {
             steps {
-                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0'
+                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0'
                 sh 'gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif'
             }
             post {
@@ -208,7 +208,7 @@ Pair `--diff-base HEAD` with `--min-severity error` so the hook stays fast and o
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the gate entirely (report findings, always exit 0). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md).
+- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the gate entirely (report findings, always exit 0). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
 - `--fail-on` is an alias for `--min-severity`.
 
 For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:

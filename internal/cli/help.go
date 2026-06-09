@@ -24,9 +24,11 @@ type optionDescription struct {
 var commandList = []commandDescription{
 	{"analyse", "Run the rule registry over the supplied paths and emit a report."},
 	{"baseline", "Write a JSON baseline of current findings for use with --baseline."},
+	{"check-ignore", "Report whether paths.ignore / gitignore would exclude given paths, and why."},
 	{"completion", "Dump a shell completion script."},
 	{"dashboard", "Serve the local gruff-go dashboard."},
 	{"help", "Display help for a command, or the command list if none is given."},
+	{"hook", "Emit the gruff.hook.v1 agent-hook JSON contract for edited regions."},
 	{"init", "Generate a default .gruff-go.yaml mirroring the built-in registry defaults."},
 	{"list", "List the available commands."},
 	{"list-rules", "List gruff rule metadata."},
@@ -80,21 +82,30 @@ func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrSt
 		usage(stderr, stderrStyle)
 		return 2
 	}
-	fmt.Fprintf(stdout, "  %s %s\n", stdoutStyle.green("gruff-go "+name), commandUsage)
+	writeCommandHelp(name, commandUsage, stdout, stdoutStyle)
 	return 0
 }
 
 // commandUsages maps each subcommand to its concrete usage flag list.
 var commandUsages = map[string]string{
-	"analyse":    "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"analyze":    "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--generate-baseline path] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"baseline":   "--out path [--config path|--no-config] [--include-ignored] [path ...]",
-	"completion": "[bash|zsh|fish]",
-	"init":       "[--force [--reset]]",
-	"list-rules": "[--format text|json] [--config path|--no-config]",
-	"summary":    "[--format text|json] [--top N] [--fail-on severity|--min-severity severity] [--config path|--no-config] [--include-ignored] [path ...]",
-	"report":     "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity|--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"dashboard":  "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]",
+	"analyse":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"analyze":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"baseline":     "--out path [--config path|--no-config] [--include-ignored] [path ...]",
+	"check-ignore": "[--format text|json] [--config path|--no-config] [--include-ignored] <path> ...",
+	"completion":   "[bash|zsh|fish]",
+	"hook":         "[--format json] [--capabilities] [--config path|--no-config] [--changed-ranges ranges] [--diff ref|working-tree|staged|unstaged|-] [--baseline path] [--include-ignored] [path ...]",
+	"init":         "[--force [--reset]]",
+	"list-rules":   "[--format text|json] [--config path|--no-config]",
+	"summary":      "[--format text|json] [--top N] [--fail-on severity|--min-severity severity] [--config path|--no-config] [--include-ignored] [path ...]",
+	"report":       "[--format html|json] [--output path] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity|--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
+	"dashboard":    "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]",
+}
+
+// writeCommandHelp renders the stable one-line command usage. It intentionally
+// advertises GNU double-dash flags even though Go's flag package also accepts
+// single-dash forms for backward compatibility.
+func writeCommandHelp(name, commandUsage string, writer io.Writer, style ansiStyler) {
+	fmt.Fprintf(writer, "  %s %s\n", style.green("gruff-go "+name), commandUsage)
 }
 
 // padCommandName right-pads a command name to commandNameWidth for table layout.

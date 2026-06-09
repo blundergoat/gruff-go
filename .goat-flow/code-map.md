@@ -8,7 +8,7 @@
 - `SECURITY.md` = Vulnerability reporting channel, supported versions, in-scope/out-of-scope items.
 - `LICENSE` = MIT license text.
 - `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0`.
-- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 64-rule registry.
+- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 83-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
 - `scripts/bump-version.sh` = Updates every in-tree version literal and regenerates CLI golden snapshots; sanity-sweeps for stale references.
@@ -23,15 +23,13 @@
 - `.claude/` = Claude-owned skills, settings, and safety hooks.
 - `.agents/` = Shared skill directory used by Codex and Gemini GOAT Flow installs.
 - `.codex/` = Codex-owned config, hook registration, and safety hooks.
-- `.github/` = GitHub-facing repository guidance.
+- `.github/` = GitHub-facing guidance, CI workflows, and Copilot agent surfaces (instructions, skills, hooks).
 - `node_modules/` = Installed dependency cache; generated/vendor content, never edit directly.
 - `.idea/` = Local IDE metadata; not part of project behavior.
 
 ## Claude-Owned Surfaces
 
 - `.claude/settings.json` = Claude permissions and hook registration.
-- `.claude/hooks/deny-dangerous.sh` = Bash pre-tool safety hook.
-- `.claude/hooks/deny-dangerous.self-test.sh` = Self-test script for the safety hook.
 - `.claude/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.claude/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.claude/skills/goat-debug/SKILL.md` = Debugging workflow skill.
@@ -44,8 +42,6 @@
 
 - `.codex/config.toml` = Codex permission profile and hooks feature flag.
 - `.codex/hooks.json` = Codex hook registration for GOAT Flow.
-- `.codex/hooks/deny-dangerous.sh` = Bash pre-tool safety hook.
-- `.codex/hooks/deny-dangerous.self-test.sh` = Self-test script for the safety hook.
 - `.agents/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.agents/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.agents/skills/goat-debug/SKILL.md` = Debugging workflow skill.
@@ -61,23 +57,27 @@
 - `.goat-flow/code-map.md` = This repository map.
 - `.goat-flow/glossary.md` = Project terminology for future agents.
 - `.goat-flow/security-policy.md` = Installed security policy reference.
+- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; pattern/policy logic under `deny-dangerous/`) and `gruff-code-quality.sh` (post-edit gruff scan). Registered per agent via each agent's settings/hooks config.
 - `.goat-flow/dashboard-state.json` = GOAT Flow dashboard state.
-- `.goat-flow/footguns/` = Evidence-backed architectural traps.
-- `.goat-flow/lessons/` = Durable behavioral lessons from incidents or git history.
-- `.goat-flow/patterns/` = Successful repeatable approaches.
-- `.goat-flow/decisions/` = Architecture decision records when needed.
-- `.goat-flow/tasks/` = Local milestone/task tracking.
+- `.goat-flow/learning-loop/footguns/` = Evidence-backed architectural traps.
+- `.goat-flow/learning-loop/lessons/` = Durable behavioral lessons from incidents or git history.
+- `.goat-flow/learning-loop/patterns/` = Successful repeatable approaches.
+- `.goat-flow/learning-loop/decisions/` = Architecture decision records when needed.
+- `.goat-flow/plans/` = Local milestone/plan tracking.
 - `.goat-flow/scratchpad/` = Local scratch notes.
 - `.goat-flow/logs/sessions/` = Local setup and session continuity.
 - `.goat-flow/logs/quality/` = Local quality review outputs.
 - `.goat-flow/logs/critiques/` = Local critique outputs.
 - `.goat-flow/logs/security/` = Local security review outputs.
-- `.goat-flow/skill-reference/` = Meta guidance for GOAT Flow skill behavior.
-- `.goat-flow/skill-playbooks/` = CLI/MCP availability playbooks.
+- `.goat-flow/skill-docs/` = Meta guidance for GOAT Flow skill behavior.
+- `.goat-flow/skill-docs/playbooks/` = CLI/MCP availability playbooks.
 
-## GitHub Guidance
+## Copilot-Owned Surfaces
 
-- `.github/git-commit-instructions.md` = Project-specific commit guidance for agents.
+- `.github/copilot-instructions.md` = Copilot hot-path instructions for this target project.
+- `.github/skills/` = Copilot GOAT Flow skills (goat dispatcher + goat-plan/debug/review/critique/security/qa).
+- `.github/hooks/hooks.json` = Copilot hook registration for GOAT Flow.
+- `.github/git-commit-instructions.md` = GitHub-visible commit guidance (canonical copy: `docs/coding-standards/git-commit.md`).
 
 ## Go Application Surface
 
@@ -86,14 +86,14 @@
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, gitignore-respecting filter (ADR-004/ADR-005), and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
-- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 64-rule default-enabled catalogue (ADR-007).
+- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 83-rule catalogue (70 default-enabled, 13 opt-in).
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
 - `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.
 - `internal/pathfilter/` = Shared relative path glob validation and matching.
 - `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, exit semantics, and the `Tool.Version` literal that flows into JSON/SARIF reports.
 - `internal/dashboard/` = Local-only dashboard HTTP server, request handling, scan option mapping, and shutdown behavior.
-- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
+- `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, Markdown, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
 - `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring with score-neutral `design.*` annotations and per-pillar coverage labelling.
-- `.github/workflows/gruff-go.yml` = GitHub Actions dogfood gate that builds `bin/gruff-go` and runs `./bin/gruff-go analyse .` on PRs and pushes to `main`.
-- No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, package-manager distribution, or automated release publishing surface exists yet. The public 0.1 install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0`.
+- `.github/workflows/gruff-go.yml` = GitHub Actions gate that runs `scripts/preflight-checks.sh` (gofmt, go vet, go test, govulncheck, shellcheck, and the `go run ./cmd/gruff-go summary .` dogfood self-scan) on PRs and pushes to `main`.
+- Release distribution is the tagged Go module plus GoReleaser GitHub Release archives: `.goreleaser.yaml` and `.github/workflows/release.yml` build and publish per-OS/arch binaries on a `v*` tag push, and `scripts/publish-go-pkg.sh` drives the tag push plus proxy/install verification. No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package-manager (brew/apt/scoop) distribution exists yet. The public install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0`.

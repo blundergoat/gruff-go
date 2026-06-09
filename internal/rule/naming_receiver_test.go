@@ -122,10 +122,10 @@ func (svc *Service) Stop() {}
 	}
 }
 
-// TestReceiverConsistencyIsDefaultEnabled asserts the rule ships enabled with parser capability.
-func TestReceiverConsistencyIsDefaultEnabled(t *testing.T) {
-	if !(ReceiverConsistencyRule{}).Definition().DefaultEnabled {
-		t.Error("naming.receiver-consistency must be default-enabled")
+// TestReceiverConsistencyIsOptIn asserts the convention-only rule ships opt-in with parser capability.
+func TestReceiverConsistencyIsOptIn(t *testing.T) {
+	if (ReceiverConsistencyRule{}).Definition().DefaultEnabled {
+		t.Error("naming.receiver-consistency must be opt-in")
 	}
 	if (ReceiverConsistencyRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.receiver-consistency must be parser-capability")

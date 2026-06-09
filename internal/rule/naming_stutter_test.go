@@ -127,10 +127,10 @@ type RuleRegistry struct{}
 	}
 }
 
-// TestPackageStutterIsDefaultEnabled asserts the rule ships enabled with parser capability.
-func TestPackageStutterIsDefaultEnabled(t *testing.T) {
-	if !(PackageStutterRule{}).Definition().DefaultEnabled {
-		t.Error("naming.package-stutter must be default-enabled")
+// TestPackageStutterIsOptIn asserts the convention-only rule ships opt-in with parser capability.
+func TestPackageStutterIsOptIn(t *testing.T) {
+	if (PackageStutterRule{}).Definition().DefaultEnabled {
+		t.Error("naming.package-stutter must be opt-in")
 	}
 	if (PackageStutterRule{}).Definition().Capability != CapabilityParser {
 		t.Error("naming.package-stutter must be parser-capability")

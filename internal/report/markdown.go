@@ -33,13 +33,13 @@ func WriteMarkdown(writer io.Writer, report analysis.Report) error {
 	return nil
 }
 
-// writeMarkdownHeader emits the title and headline grade/score line.
+// writeMarkdownHeader emits the title and the canonical composite score line.
 func writeMarkdownHeader(writer io.Writer, report analysis.Report) error {
 	if _, err := fmt.Fprintf(writer, "# gruff-go report\n\n"); err != nil {
 		return err
 	}
 	grade := gradeOrNA(report.Score.Grade)
-	if _, err := fmt.Fprintf(writer, "**Grade:** %s (%d / 100)\n", grade, report.Score.Composite); err != nil {
+	if _, err := fmt.Fprintf(writer, "Composite: **%s (%.2f / 100)**\n", grade, float64(report.Score.Composite)); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(writer, "**Schema:** `%s`\n", report.SchemaVersion); err != nil {
@@ -51,12 +51,13 @@ func writeMarkdownHeader(writer io.Writer, report analysis.Report) error {
 	return nil
 }
 
-// writeMarkdownSeverityCounts emits the severity totals line.
+// writeMarkdownSeverityCounts emits the canonical error-first findings tally line
+// using the middot (U+00B7) separator shared across the gruff ports.
 func writeMarkdownSeverityCounts(writer io.Writer, report analysis.Report) error {
 	counts := severityCounts(report)
 	_, err := fmt.Fprintf(
 		writer,
-		"**Findings:** %d total - %d error, %d warning, %d advisory\n",
+		"Findings: %d total · %d error · %d warning · %d advisory\n",
 		counts.total,
 		counts.error,
 		counts.warning,

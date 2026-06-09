@@ -31,80 +31,11 @@ func TestDefaultsListRules(t *testing.T) {
 			t.Fatalf("rules = %#v, want %#v", got, want)
 		}
 	}
+	defaultDisabled := defaultDisabledRuleIDs()
 	for _, id := range want {
-		if !enabled[id] {
-			t.Fatalf("rule %s should be default enabled", id)
+		if enabled[id] == defaultDisabled[id] {
+			t.Fatalf("rule %s defaultEnabled = %v, want %v", id, enabled[id], !defaultDisabled[id])
 		}
-	}
-}
-
-// defaultRuleIDs returns the sorted built-in rule IDs expected from Defaults.
-func defaultRuleIDs() []string {
-	return []string{
-		"complexity.cognitive",
-		"complexity.cyclomatic",
-		"complexity.nesting-depth",
-		"complexity.npath",
-		"dead-code.empty-block",
-		"dead-code.unreachable-code",
-		"dead-code.unused-private-function",
-		"design.god-function",
-		"design.hotspot-file",
-		"docs.comment-rubric",
-		"docs.config-field-comment",
-		"docs.exported-symbol-comment",
-		"docs.package-comment",
-		"docs.suppression-without-rationale",
-		"maintainability.context-todo-production",
-		"maintainability.defer-in-loop",
-		"maintainability.ignored-error",
-		"maintainability.log-fatal-library",
-		"maintainability.loop-variable-address",
-		"maintainability.production-panic",
-		"modernisation.ioutil-deprecated",
-		"naming.acronym-case",
-		"naming.contextual-generic",
-		"naming.get-prefix",
-		"naming.identifier-quality",
-		"naming.misspelling",
-		"naming.negated-boolean",
-		"naming.package-stutter",
-		"naming.package-underscore",
-		"naming.receiver-consistency",
-		"security.archive-path-traversal",
-		"security.http-client-no-timeout",
-		"security.http-server-no-timeout",
-		"security.insecure-random-secret",
-		"security.permissive-file-mode",
-		"security.request-body-without-limit",
-		"security.shell-command",
-		"security.sql-string-query",
-		"security.tls-insecure-config",
-		"security.weak-crypto",
-		"sensitive-data.anthropic-api-key",
-		"sensitive-data.aws-access-key",
-		"sensitive-data.connection-string",
-		"sensitive-data.gcp-service-account",
-		"sensitive-data.github-token",
-		"sensitive-data.gitlab-token",
-		"sensitive-data.google-api-key",
-		"sensitive-data.jwt-token",
-		"sensitive-data.npm-token",
-		"sensitive-data.private-key",
-		"sensitive-data.secret-pattern",
-		"sensitive-data.slack-token",
-		"sensitive-data.stripe-key",
-		"size.file-length",
-		"size.function-length",
-		"size.parameter-count",
-		"test-quality.empty-test",
-		"test-quality.fatal-in-goroutine",
-		"test-quality.helper-missing-t-helper",
-		"test-quality.no-failure-path",
-		"test-quality.parallel-range-capture",
-		"test-quality.skipped-test",
-		"test-quality.sleep-in-test",
-		"test-quality.tempdir-misuse",
 	}
 }
 

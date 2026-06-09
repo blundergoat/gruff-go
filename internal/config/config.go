@@ -285,7 +285,19 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 // RuleOptions converts parsed config into registry enablement and overrides.
 func (cfg Config) RuleOptions() rule.Config {
 	cfg = cfg.Normalized()
-	options := rule.Config{
+	defaults := rule.Defaults()
+	definitions := defaults.Definitions()
+	byID := definitionsByID(definitions)
+	options := newRuleOptions(cfg)
+	applySelectedRules(&options, cfg, definitions, byID)
+	applyRuleOverrides(&options, cfg, definitions, byID)
+	applyExcludedRules(&options, cfg, definitions, byID)
+	return options
+}
+
+// newRuleOptions seeds registry options with project-wide config knobs.
+func newRuleOptions(cfg Config) rule.Config {
+	return rule.Config{
 		Enabled:                       map[string]bool{},
 		Thresholds:                    map[string]map[string]float64{},
 		Severities:                    map[string]finding.Severity{},
@@ -293,11 +305,12 @@ func (cfg Config) RuleOptions() rule.Config {
 		SensitiveDataPreviewAllowlist: cfg.SensitiveData.PreviewAllowlist,
 		AcceptedAbbreviations:         cfg.AcceptedAbbreviations,
 	}
-	defaults := rule.Defaults()
-	definitions := defaults.Definitions()
+}
+
+// applySelectedRules converts selection allowlists into explicit enablement.
+func applySelectedRules(options *rule.Config, cfg Config, definitions []rule.Definition, byID map[string]rule.Definition) {
 	if len(cfg.Select) > 0 || len(cfg.Selection.Pillars) > 0 {
 		selected := map[string]struct{}{}
-		byID := definitionsByID(definitions)
 		for _, id := range cfg.Select {
 			if canonical, ok := canonicalRuleID(id, byID); ok {
 				selected[canonical] = struct{}{}
@@ -313,14 +326,18 @@ func (cfg Config) RuleOptions() rule.Config {
 			options.Enabled[definition.ID] = selectedRule || selectedPillar
 		}
 	}
+}
+
+// applyRuleOverrides overlays per-rule enablement, severity, thresholds, and options.
+func applyRuleOverrides(options *rule.Config, cfg Config, definitions []rule.Definition, byID map[string]rule.Definition) {
 	for id, ruleConfig := range cfg.Rules {
-		canonical, _ := canonicalRuleID(id, definitionsByID(definitions))
+		canonical, _ := canonicalRuleID(id, byID)
 		if ruleConfig.Enabled != nil {
 			options.Enabled[canonical] = *ruleConfig.Enabled
 		}
 		thresholds := copyThresholds(ruleConfig.Thresholds)
 		if ruleConfig.Threshold != nil {
-			definition := definitionsByID(definitions)[canonical]
+			definition := byID[canonical]
 			for name := range definition.Thresholds {
 				thresholds[name] = *ruleConfig.Threshold
 			}
@@ -336,8 +353,12 @@ func (cfg Config) RuleOptions() rule.Config {
 			options.Options[canonical] = ruleConfig.Options
 		}
 	}
+}
+
+// applyExcludedRules removes rule and pillar denylist entries after selection and overrides.
+func applyExcludedRules(options *rule.Config, cfg Config, definitions []rule.Definition, byID map[string]rule.Definition) {
 	for _, id := range cfg.ExcludeRules {
-		canonical, _ := canonicalRuleID(id, definitionsByID(definitions))
+		canonical, _ := canonicalRuleID(id, byID)
 		options.Enabled[canonical] = false
 	}
 	for _, pillar := range cfg.Selection.ExcludePillars {
@@ -347,7 +368,6 @@ func (cfg Config) RuleOptions() rule.Config {
 			}
 		}
 	}
-	return options
 }
 
 // copyThresholds returns an isolated copy of rule threshold overrides.

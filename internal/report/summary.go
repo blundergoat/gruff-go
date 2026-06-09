@@ -82,7 +82,8 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	score := report.Score
 	header := fmt.Sprintf(
-		"gruff-go summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\n",
+		"%s %s summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\n",
+		report.Tool.Name, report.Tool.Version,
 		summaryInputs(report.Run.Inputs),
 		summaryWorkingDir(report.Run.WorkingDirectory),
 		report.Summary.FilesScanned, report.Summary.FilesSkipped,
@@ -100,13 +101,13 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(writer, "schema: %s\nscore: %d / 100  grade: %s\nfindings: %d total\n", report.SchemaVersion, score.Composite, gradeOrNA(score.Grade), report.Summary.FindingsCount); err != nil {
+	if _, err := fmt.Fprintf(writer, "schema: %s\n", report.SchemaVersion); err != nil {
+		return err
+	}
+	if err := writeCompositeBlock(writer, report); err != nil {
 		return err
 	}
 	if err := writeScoreCoverage(writer, score); err != nil {
-		return err
-	}
-	if err := writeSeverityCounts(writer, report.Summary.CountsBySeverity); err != nil {
 		return err
 	}
 	if err := writePillarsBlock(writer, BuildPillarSummaryRows(report)); err != nil {
@@ -118,10 +119,25 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if err := writeTopOffenders(writer, score.TopOffender, top); err != nil {
 		return err
 	}
+	if err := writeSummaryBaseline(writer, report.Baseline); err != nil {
+		return err
+	}
 	if err := writeFreshStartHint(writer, report); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
+	return err
+}
+
+// writeSummaryBaseline prints the three-state baseline counts when a baseline was
+// applied. Counts only (no detail lists) - the summary digest stays compact, and
+// runs without a baseline emit nothing so existing summaries are unchanged.
+func writeSummaryBaseline(writer io.Writer, summary analysis.BaselineSummary) error {
+	if !summary.Applied {
+		return nil
+	}
+	_, err := fmt.Fprintf(writer, "baseline: %d new, %d unchanged, %d resolved\n",
+		summary.NewFindings, summary.UnchangedFindings, summary.ResolvedFindings)
 	return err
 }
 
@@ -170,19 +186,6 @@ func writeScoreCoverage(writer io.Writer, score scoring.Score) error {
 	}
 	if score.ComplexityDistributionScope != "" {
 		if _, err := fmt.Fprintf(writer, "complexity distribution: %s\n", score.ComplexityDistributionScope); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// writeSeverityCounts emits the severity breakdown table for the summary digest.
-func writeSeverityCounts(writer io.Writer, counts map[string]int) error {
-	if _, err := fmt.Fprintln(writer, "severity:"); err != nil {
-		return err
-	}
-	for _, severity := range []string{"error", "warning", "advisory"} {
-		if _, err := fmt.Fprintf(writer, "  %-8s %d\n", severity, counts[severity]); err != nil {
 			return err
 		}
 	}
@@ -368,6 +371,21 @@ func gradeOrNA(grade string) string {
 		return "n/a"
 	}
 	return grade
+}
+
+// writeCompositeBlock emits the cross-port canonical two-line score block shared
+// by the summary digest and the analyse text header. The composite score renders
+// with two fixed decimals and the findings tally is error-first, middot-separated
+// (U+00B7), matching the gruff-ts reference port byte-for-byte (only the language
+// token and data differ across ports).
+func writeCompositeBlock(writer io.Writer, report analysis.Report) error {
+	counts := severityCounts(report)
+	if _, err := fmt.Fprintf(writer, "Composite: %s (%.2f / 100)\n", gradeOrNA(report.Score.Grade), float64(report.Score.Composite)); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(writer, "Findings: %d total · %d error · %d warning · %d advisory\n",
+		counts.total, counts.error, counts.warning, counts.advisory)
+	return err
 }
 
 // summaryInputs renders the run's input paths for the scanned line, falling back to "." when the slice is empty.

@@ -9,8 +9,10 @@ The default is `text` if you omit `--format`.
 Compact terminal-friendly output:
 
 ```text
-gruff-go analysis
-schema: gruff-go.analysis.v0.2
+gruff-go 0.3.0 analyse
+Composite: A (99.00 / 100)
+Findings: 1 total · 0 error · 1 warning · 0 advisory
+schema: gruff.analysis.v2
 files: 65 scanned, 6 skipped
 score coverage: size
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
@@ -24,7 +26,7 @@ The text format is intentionally terse. For human review of a full run, prefer `
 
 ## `json`
 
-Full structured report. Schema: `gruff-go.analysis.v0.2`.
+Full structured report. Schema: `gruff.analysis.v2`.
 
 ```bash
 gruff-go analyse --format json . > analysis.json
@@ -34,12 +36,13 @@ Top-level shape:
 
 ```jsonc
 {
-  "schemaVersion": "gruff-go.analysis.v0.2",
-  "tool":          { "name": "gruff-go", "version": "0.2.0" },
+  "schemaVersion": "gruff.analysis.v2",
+  "tool":          { "name": "gruff-go", "version": "0.3.0" },
   "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "advisory" },
   "summary":       { "filesScanned": 65, "filesSkipped": 6, "findingsCount": 3,
                      "countsBySeverity": {...}, "countsByPillar": {...}, "exitCode": 1 },
-  "baseline":      { "applied": false, "entries": 0, "suppressedFindings": 0, "staleEntries": 0 },
+  "baseline":      { "applied": false, "entries": 0, "suppressedFindings": 0, "staleEntries": 0,
+                     "newFindings": 0, "unchangedFindings": 0, "resolvedFindings": 0 },
   "diff":          { "enabled": false, "changedFiles": [], "filteredFindings": 0 },
   "displayFilter": { "applied": false, "...": "..." },
   "score":         { "composite": 92, "grade": "A",
@@ -47,7 +50,7 @@ Top-level shape:
                      "topOffenders": [...], "complexityDistribution": {...},
                      "complexityDistributionScope": "finding-only" },
   "rules":         [ /* every rule definition active for this run, including capability */ ],
-  "paths":         { "scanned": [...], "skipped": [...], "missing": [] },
+  "paths":         { "scanned": [...], "ignoredPaths": [...], "skipped": [...], "missing": [] },
   "diagnostics":   [ /* parse errors, missing paths, config errors, etc. */ ],
   "findings":      [ /* one entry per finding */ ]
 }
@@ -60,24 +63,35 @@ Every finding looks like:
   "ruleId":      "complexity.cyclomatic",
   "message":     "function cyclomatic complexity is 23, above threshold 20",
   "file":        "internal/foo/bar.go",
+  "line":        42,
+  "endLine":     78,
+  "column":      null,
   "location":    { "line": 42, "endLine": 78 },
   "symbol":      "DoTheThing",
   "severity":    "warning",
-  "confidence":  "high",
   "pillar":      "complexity",
+  "secondaryPillars": [],
+  "tier":        "v0.1",
+  "confidence":  "high",
   "remediation": "Split independent decisions or move branches into named helpers.",
-  "metadata":    { "complexity": 23, "threshold": 20 },
-  "fingerprint": "a3b1c2d4e5f6a7b8"
+  "fingerprint": "a3b1c2d4e5f6a7b8",
+  "stableIdentity": "b8a7f6e5d4c2b1a3",
+  "metadata":    { "complexity": 23, "threshold": 20 }
 }
 ```
 
 The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same - that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
+The 16-character `stableIdentity` is line-insensitive and intended for external diff tooling; baseline matching still uses `fingerprint`. The nested `location` object is retained for one release while consumers move to the top-level `line` / `endLine` / `column` fields.
 
 Each rule definition in `rules[]` includes a `capability` field. The closed enum is `parser`, `type`, `ssa`, or `dataflow`; all rules shipped in v0.1 currently report `parser` because they use source text, Go parser units, ASTs, or already-produced findings, not type loading or dataflow analysis.
 
 The `score.coverage` object names the score-impacting pillars that contributed penalties and adds a caveat when the composite is clean or driven by a narrow set of pillars. This is report honesty metadata: it does not change score math, exit-code semantics, or schema version.
 
 `score.complexityDistribution` is scoped by `score.complexityDistributionScope`. In v0.1 the scope is always `finding-only`, meaning the histogram bins over-threshold `complexity.cyclomatic` findings rather than every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
+
+`paths.ignoredPaths` is the cross-port bare-string list of files excluded by config `paths.ignore`, nested under `paths` in gruff-go to match the Rust and TypeScript ports. `paths.skipped[]` remains the detailed list for every skipped path, including `reason`, `source`, and the config `pattern` when one matched. `--include-ignored` can include git/default-ignored files, but config `paths.ignore` still wins and still appears in both lists.
+
+When `--diff`, `--since`, `--diff-base`, or `--changed-ranges` scopes findings to changed regions, JSON also emits top-level `suppressedCount`: the number of findings held back because they were outside the changed region. The `diff` object carries the changed files, filtered count, and the changed-region caveat.
 
 ## `summary-json`
 
@@ -87,7 +101,7 @@ Same shape as `json` minus the per-finding `findings` array. Useful for CI dashb
 gruff-go analyse --format summary-json .
 ```
 
-Schema is still `gruff-go.analysis.v0.2` - the missing `findings` field is the only difference.
+Schema is still `gruff.analysis.v2` - the missing `findings` field is the only difference.
 
 ## `sarif`
 
@@ -200,10 +214,10 @@ Output shape:
 ```markdown
 # gruff-go report
 
-**Grade:** A (100 / 100)
-**Schema:** `gruff-go.analysis.v0.2`
+Composite: **A (100.00 / 100)**
+**Schema:** `gruff.analysis.v2`
 **Files:** 148 scanned, 13 skipped
-**Findings:** 0 total - 0 error, 0 warning, 0 advisory
+Findings: 0 total · 0 error · 0 warning · 0 advisory
 
 ## Pillars
 
@@ -233,7 +247,7 @@ Set `--min-severity` to control where the line falls (default: `advisory`).
 
 | Schema | Used by | File |
 |--------|---------|------|
-| `gruff-go.analysis.v0.2` | `json`, `summary-json` | `internal/analysis/report.go` |
+| `gruff.analysis.v2`      | `json`, `summary-json` | `internal/analysis/report.go` |
 | `gruff-go.config.v0.1`   | `.gruff-go.yaml` config loader | `internal/config/config.go` |
 | `gruff-go.baseline.v0.1` | `baseline` subcommand | `internal/baseline/baseline.go` |
 | `sarif-2.1.0`            | `sarif` | `internal/report/machine.go` |

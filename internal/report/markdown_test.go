@@ -24,10 +24,10 @@ func TestWriteMarkdownRendersCoreSections(t *testing.T) {
 
 	required := []string{
 		"# gruff-go report",
-		"**Grade:**",
-		"**Schema:** `gruff-go.analysis.v0.2`",
+		"Composite: **",
+		"**Schema:** `gruff.analysis.v2`",
 		"**Files:** 3 scanned, 0 skipped",
-		"**Findings:** 5 total - 2 error, 2 warning, 1 advisory",
+		"Findings: 5 total · 2 error · 2 warning · 1 advisory",
 		"\n## Pillars\n",
 		"| Pillar | Grade | Score | Findings | Advisory | Warning | Error |",
 		"| --- | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -112,7 +112,7 @@ func TestWriteMarkdownCleanScan(t *testing.T) {
 	if strings.Contains(body, "## Top rules") {
 		t.Errorf("clean scan should omit the Top rules section; got:\n%s", body)
 	}
-	if !strings.Contains(body, "**Findings:** 0 total - 0 error, 0 warning, 0 advisory\n") {
+	if !strings.Contains(body, "Findings: 0 total · 0 error · 0 warning · 0 advisory\n") {
 		t.Errorf("clean scan severity totals incorrect; got:\n%s", body)
 	}
 }

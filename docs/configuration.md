@@ -66,7 +66,7 @@ minimumSeverity:
   dashboard: advisory   # default `none`: gate this dashboard like CI
 ```
 
-**Precedence rule** (locked in [ADR-010](../.goat-flow/decisions/ADR-010-per-command-minimum-severity.md)):
+**Precedence rule** (locked in [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md)):
 
 ```
 CLI flag (--min-severity / --fail-on)  >  minimumSeverity.<cmd>  >  binary default
@@ -99,6 +99,10 @@ paths:
 
 Patterns are matched against the project-relative path. Trailing slashes mark directory prefixes; glob characters (`*`, `**`, `?`) follow standard `path/filepath.Match` semantics.
 
+`paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and built-in default skips only; it never overrides config `paths.ignore`.
+
+In `analyse --format json`, config-ignored paths appear as bare strings under `paths.ignoredPaths` and as detailed objects under `paths.skipped[]` with `reason: "config-ignore"`, `source: "config"`, and the matching `pattern`. The bare list is nested under `paths` in gruff-go to match the Rust and TypeScript ports while preserving the detailed skip objects for existing consumers.
+
 ### `allowlists.acceptedAbbreviations`
 
 Identifiers that naming rules will treat as accepted words. `naming.acronym-case` uses this list to suppress configured initialism findings for project-specific terms.
@@ -114,7 +118,7 @@ allowlists:
     - DTO
 ```
 
-Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/footguns/setup.md` for the cross-port consumer matrix.
+Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/learning-loop/footguns/setup.md` for the cross-port consumer matrix.
 
 ### `allowlists.secretPreviews`
 
@@ -145,13 +149,13 @@ The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--
 
 Per-rule overrides. Every field is optional:
 
-- `enabled` - toggle a rule on or off. All built-in rules are enabled by default; set `false` to disable a rule that does not fit the project.
+- `enabled` - toggle a rule on or off. Most built-in rules are enabled by default; opt-in rules start disabled and can be enabled with `true`.
 - `threshold` - shorthand for rules with a single named threshold (most metric rules use `maxComplexity`, `maxLength`, `maxParameters`, etc.; see [`docs/rules.md`](rules.md) for each rule's threshold key).
 - `thresholds` - for rules with multiple thresholds, name them explicitly.
 - `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.2.0 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
 - `options` - opaque per-rule map for rules with bespoke options.
 
-Default size rules have one built-in calibration: when `size.file-length` or `size.function-length` uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. A non-warning configured `severity` applies to test files too and disables that default downranking for the overridden rule.
+Default size rules have one built-in calibration: when a size rule uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. Advisory defaults such as `size.file-length` are already softened, and a non-warning configured `severity` applies to test files too and disables warning downranking for the overridden rule.
 
 Examples:
 

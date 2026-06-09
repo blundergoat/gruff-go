@@ -1,6 +1,6 @@
 # Glossary - gruff-go
 
-Last reviewed 2026-05-24.
+Last reviewed 2026-06-06.
 
 This glossary defines terms used by `gruff-go`, its public reports, and local project memory. Keep shared gruff-family terms aligned with the sibling implementations; keep Go-specific differences explicit rather than making them look identical.
 
@@ -12,7 +12,7 @@ This glossary defines terms used by `gruff-go`, its public reports, and local pr
 
 ### Analysis Report
 
-The complete result of one scan: schema version, tool metadata, run metadata, paths, summary counts, score data, diagnostics, findings, baseline state, and optional diff state. Native JSON uses `gruff-go.analysis.v0.1`.
+The complete result of one scan: schema version, tool metadata, run metadata, paths, summary counts, score data, diagnostics, findings, baseline state, and optional diff state. Native JSON uses `gruff.analysis.v2`.
 
 ### Baseline
 
@@ -28,7 +28,7 @@ The certainty tier attached to a finding. It helps scoring and reviewers disting
 
 ### Dashboard
 
-The local browser UI served by `gruff-go dashboard`. It binds to `127.0.0.1:8765` by default and has no authentication; use `--port` when another gruff dashboard is already using the port.
+The local browser UI served by `gruff-go dashboard`. It binds to `127.0.0.1` on port `8765` by default and has no authentication; use `--port` when another gruff dashboard is already using the port.
 
 ### Diagnostic
 
@@ -110,11 +110,11 @@ An initialism accepted by naming rules through `allowlists.acceptedAbbreviations
 
 ### Composite Design Finding
 
-A score-neutral `design.*` finding derived from already-emitted base findings. Current examples include god-function overlap and multi-pillar file hotspots; composite findings do not feed other composite rules.
+A score-neutral `design.*` finding derived from already-emitted base findings. The current example is the multi-pillar file hotspot (`design.hotspot-file`); composite findings do not feed other composite rules.
 
 ### Default-Enabled Rule
 
-Built-in default state before config is applied. Every shipped rule is enabled in registry metadata; path-scoped rules such as `docs.comment-rubric` and `docs.config-field-comment` may still be no-ops until `includePaths` is configured, which is why `list-rules --no-config` matters.
+Built-in default state before config is applied. Most shipped rules are enabled in registry metadata; opt-in rules start disabled until `rules.<id>.enabled: true`, and path-scoped rules such as `docs.comment-rubric` and `docs.config-field-comment` may still be no-ops until `includePaths` is configured. Use `list-rules --no-config` to inspect the built-in state.
 
 ### Gitignored Discovery Skip
 
@@ -136,4 +136,4 @@ Files one agent setup owns without widening scope. Claude owns `CLAUDE.md` and `
 
 ### Learning Loop
 
-Durable shared project-memory directories under `.goat-flow/footguns/`, `.goat-flow/lessons/`, `.goat-flow/patterns/`, and `.goat-flow/decisions/`.
+Durable shared project-memory directories under `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, and `.goat-flow/learning-loop/decisions/`.

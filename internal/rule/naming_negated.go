@@ -16,7 +16,18 @@ import (
 var defaultNegatedBooleanPrefixes = []string{"No", "Not", "Disable", "Disallow", "Without", "Suppress"}
 
 // defaultNegatedBooleanAllowList enumerates identifiers that look negated but are accepted as-is.
-var defaultNegatedBooleanAllowList = []string{"NoOp", "Notify", "Notice", "Now", "NoCopy", "Notation", "Notebook"}
+var defaultNegatedBooleanAllowList = []string{
+	"NoOp",
+	"Notify",
+	"Notice",
+	"Now",
+	"NoCopy",
+	"Notation",
+	"Notebook",
+	"NoConfig",
+	"NoBaseline",
+	"NoInteraction",
+}
 
 // NegatedBooleanRule flags boolean identifiers whose names start with negation prefixes.
 type NegatedBooleanRule struct {

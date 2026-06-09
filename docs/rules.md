@@ -1,6 +1,8 @@
 # Rule Catalog
 
-`gruff-go` v0.1 ships **64 rules** across **11 pillars**. **All rules are enabled by default.** Projects can disable any rule via `selection.excludeRules` or `rules.<id>.enabled: false`.
+`gruff-go` ships **83 rules** across **11 pillars**. **70 rules are enabled by default** and 13 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+
+Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -14,15 +16,18 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
-| [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 35` | Functions whose nested control flow and boolean decisions exceed the threshold. |
+| [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 25` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
-| [`complexity.npath`](#complexitynpath) | complexity | warning | parser | `maxComplexity: 1024` | Functions whose acyclic execution path count exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
+| [`dead-code.unused-private-const`](#dead-codeunused-private-const) | dead-code | advisory | parser | - | Opt-in candidate for package-private constants that are not referenced in their parsed package. |
 | [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
-| [`design.god-function`](#designgod-function) | design | advisory | parser | - | Functions that already have both size and complexity findings. |
-| [`design.hotspot-file`](#designhotspot-file) | maintainability | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`dead-code.unused-private-type`](#dead-codeunused-private-type) | dead-code | advisory | parser | - | Opt-in candidate for package-private named types that are not referenced in their parsed package. |
+| [`dead-code.unused-private-var`](#dead-codeunused-private-var) | dead-code | advisory | parser | - | Opt-in candidate for package-private variables that are not referenced in their parsed package. |
+| [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
+| [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
+| [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | warning | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
@@ -45,15 +50,27 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | advisory | parser | - | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | advisory | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
 | [`security.archive-path-traversal`](#securityarchive-path-traversal) | security | advisory | parser | - | Archive entry paths joined into extraction destinations without containment evidence. |
+| [`security.github-actions-broad-permissions`](#securitygithub-actions-broad-permissions) | security | advisory | parser | - | Workflows granting blanket write access (permissions: write-all or bare write). |
+| [`security.github-actions-pull-request-target`](#securitygithub-actions-pull-request-target) | security | advisory | parser | - | pull_request_target workflows that also check out or run code. |
+| [`security.github-actions-remote-shell`](#securitygithub-actions-remote-shell) | security | advisory | parser | - | Workflow run steps piping a remote download into a shell. |
+| [`security.github-actions-secrets-in-pr`](#securitygithub-actions-secrets-in-pr) | security | advisory | parser | - | Pull-request workflows referencing a named secret other than GITHUB_TOKEN. |
+| [`security.github-actions-unpinned-action`](#securitygithub-actions-unpinned-action) | security | advisory | parser | - | Third-party actions pinned to a mutable branch ref instead of a tag or SHA. |
 | [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | advisory | parser | - | `http.Client` literals in production files without `Timeout`. |
 | [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | advisory | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | advisory | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
+| [`security.open-redirect-candidate`](#securityopen-redirect-candidate) | security | advisory | parser | - | Request-derived values used as a redirect target without validation. |
+| [`security.path-traversal-file-access`](#securitypath-traversal-file-access) | security | advisory | parser | - | Request-derived paths reaching filesystem sinks without containment evidence. |
 | [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | advisory | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
 | [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
+| [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
+| [`security.sensitive-data-logging`](#securitysensitive-data-logging) | security | advisory | parser | - | Logging calls whose arguments carry secret-named values, secret env reads, or request auth headers/cookies. |
 | [`security.shell-command`](#securityshell-command) | security | error | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
+| [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
+| [`security.unsafe-deserialization`](#securityunsafe-deserialization) | security | advisory | parser | - | Decoding request-controlled input via `encoding/gob` or `gopkg.in/yaml`. |
 | [`security.weak-crypto`](#securityweak-crypto) | security | advisory | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
+| [`security.xxe-candidate`](#securityxxe-candidate) | security | advisory | parser | - | `xml.Decoder` configured with a custom entity map (possible XXE); stdlib XML is safe by default. |
 | [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | error | parser | - | Anthropic API key literals (`sk-ant-…`). |
 | [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | error | parser | - | AWS access key id (AKIA…) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | error | parser | - | Database/queue URLs with embedded passwords. |
@@ -61,15 +78,18 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | error | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
 | [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | error | parser | - | GitLab personal, trigger, runner, and application token literals. |
 | [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | error | parser | - | Google API key literals (`AIza…`). |
+| [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 20`, `entropy: 4.5` | Opt-in. Long high-entropy tokens no provider rule covers. |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | error | parser | - | JWT-shaped literals (`eyJ…`). |
 | [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | error | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
+| [`sensitive-data.phi-pattern`](#sensitive-dataphi-pattern) | sensitive-data | warning | parser | - | Opt-in. US SSN, Medicare MBI, and labelled MRN identifiers. |
+| [`sensitive-data.pii-pattern`](#sensitive-datapii-pattern) | sensitive-data | warning | parser | - | Opt-in. Email, phone, and Luhn-valid payment-card numbers. |
 | [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | error | parser | - | PEM-encoded private keys embedded in source. |
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
 | [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
-| [`size.file-length`](#sizefile-length) | size | warning | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
+| [`size.file-length`](#sizefile-length) | size | advisory | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
-| [`size.parameter-count`](#sizeparameter-count) | size | warning | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
+| [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | warning | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
@@ -77,9 +97,10 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | advisory | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
 | [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | advisory | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 | [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | advisory | parser | - | `time.Sleep` calls in tests. |
+| [`test-quality.static-analysis-redundant-test`](#test-qualitystatic-analysis-redundant-test) | test-quality | advisory | parser | - | Opt-in candidate for test assertions that restate parser-visible code-shape facts. |
 | [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | advisory | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
-Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Under the built-in warning severity, `_test.go` size findings still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Non-warning severity overrides in config apply to test files too.
+Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Warning-severity size findings in `_test.go` files still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Advisory defaults such as `size.file-length` are already softened, and non-warning severity overrides in config apply to test files too.
 
 ## Severity tiers
 
@@ -100,7 +121,7 @@ The `--min-severity` flag (default `advisory`) sets the threshold at which findi
 - **Pillar:** complexity
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `maxComplexity` (default `35`)
+- **Threshold:** `maxComplexity` (default `25`)
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `metric`
@@ -139,22 +160,6 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 
 **Remediation.** Extract nested branches into named helpers or return early on guard conditions.
 
-### `complexity.npath`
-
-- **Pillar:** complexity
-- **Default severity:** warning
-- **Default-enabled:** yes
-- **Threshold:** `maxComplexity` (default `1024`)
-- **Confidence:** high
-- **Capability:** parser
-- **Tags:** `metric`
-
-Flags Go functions whose modified NPath count exceeds the configured threshold. The rule treats terminating guards such as `return`, `panic`, `os.Exit`, `log.Fatal*`, and `runtime.Goexit` as exit points so idiomatic Go error chains grow linearly; nested switches and multi-way if/else branches without terminators still expose combinatorial review paths.
-
-Each finding's metadata carries the measured path count and the active threshold.
-
-**Remediation.** Split independent decision trees, return early from guard branches, or extract nested switches and condition clusters into named helpers.
-
 ### `dead-code.empty-block`
 
 - **Pillar:** dead-code
@@ -176,9 +181,22 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 - **Capability:** parser
 - **Tags:** `control-flow`
 
-Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. Labels reset the same-block check because a `goto` may target the label. The rule stays conservative and does not try to prove full control-flow reachability across branches.
+Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` in the same lexical block. It also treats an `if`/`else`, `switch`, type switch, or `select` as terminal when every syntactic branch exits. Switch and type-switch checks require a `default` case and skip `fallthrough` shapes so reachable-after-branch code is not mislabelled. Labels reset the same-block check because a `goto` may target the label.
 
 **Remediation.** Remove the unreachable statement or move it before the terminating control-flow statement.
+
+### `dead-code.unused-private-const`
+
+- **Pillar:** dead-code
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `candidate`, `cross-file`, `dead-code`
+
+Opt-in candidate for package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, iota groups, and multi-name const specs are excluded to keep parser-only evidence precision-first.
+
+**Remediation.** Delete the constant if it is abandoned, or leave the candidate disabled where grouped constants or build tags make parser-only certainty too weak.
 
 ### `dead-code.unused-private-function`
 
@@ -193,18 +211,61 @@ Flags package-private top-level functions whose names are not referenced anywher
 
 **Remediation.** Remove the unused helper, make the missing call explicit, or rename/export it only when another package is expected to call it.
 
-### `design.god-function`
+### `dead-code.unused-private-type`
 
-- **Pillar:** design
+- **Pillar:** dead-code
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `candidate`, `cross-file`, `dead-code`
+
+Opt-in candidate for package-private top-level types whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, and reflection-heavy packages are excluded, and name collisions elsewhere in the package suppress the finding because the rule does not resolve bindings.
+
+**Remediation.** Delete the type if it is abandoned, or keep the rule opt-in until reflective and build-tagged references are ruled out for the package.
+
+### `dead-code.unused-private-var`
+
+- **Pillar:** dead-code
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `candidate`, `cross-file`, `dead-code`
+
+Opt-in candidate for package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, blank identifiers, and common registration tables are excluded to avoid noisy parser-only false positives.
+
+**Remediation.** Delete the variable if it is abandoned, or keep the rule opt-in where indirect registration or build-tagged references are part of the package contract.
+
+### `dependency.go-mod-local-replace`
+
+- **Pillar:** security
 - **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
-- **Tags:** `composite`
+- **Tags:** `dependency`, `security`, `supply-chain`
 
-Flags functions that already have at least one size finding and at least one complexity finding on the same file and symbol. The composite finding has no source line so its fingerprint remains stable when the function body shifts but the file and symbol identity stay the same.
+Flags `go.mod` replace directives whose replacement target is a local filesystem path (`./…`, `../…`, an absolute path, or a Windows drive path), in both the single-line and block (`replace ( … )`) forms. Local replacements do not reproduce for other clones or CI and usually indicate in-progress local development that should not ship. Scanned as text; no `go list` or proxy queries.
 
-**Remediation.** Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.
+Each finding's metadata carries the replacement target.
+
+**Remediation.** Remove the local replace before shipping and depend on a published module version, or vendor the dependency explicitly.
+
+### `dependency.go-mod-remote-replace`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `dependency`, `security`, `supply-chain`
+
+Flags `go.mod` replace directives whose replacement target is a different remote module path or version. Remote replacements silently swap a dependency's source and warrant a supply-chain review. Scanned as text; no `go list` or proxy queries.
+
+Each finding's metadata carries the replacement target.
+
+**Remediation.** Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible.
 
 ### `design.hotspot-file`
 
@@ -216,7 +277,7 @@ Flags functions that already have at least one size finding and at least one com
 - **Capability:** parser
 - **Tags:** `composite`
 
-Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules, so a god-function finding will not itself create a hotspot-file finding.
+Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules: design-pillar findings (including hotspot-file's own output) are excluded from the evidence the rule counts.
 
 **Remediation.** Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.
 
@@ -225,7 +286,7 @@ Flags files with at least `minFindings` findings across at least `minPillars` di
 - **Pillar:** documentation
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Threshold:** `minPackageCommentLines` (default `2`)
+- **Threshold:** `minPackageCommentLines` (default `1`)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `comments`, `documentation`, `rubric`
@@ -408,7 +469,7 @@ Flags direct `panic` calls with literal message evidence in reusable production 
 
 - **Pillar:** modernisation
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `go-style`
@@ -423,7 +484,7 @@ Each finding's metadata carries the deprecated API and replacement API.
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -484,7 +545,7 @@ rules:
 
 - **Pillar:** modernisation
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -563,10 +624,10 @@ rules:
 - **Tags:** `go-style`, `naming`
 - **Options:**
   - `prefixes []string` - default `[No, Not, Disable, Disallow, Without, Suppress]`
-  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook]` (English words that begin with a prefix but are not negations)
+  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook, NoConfig, NoBaseline, NoInteraction]` (English words and CLI/config flag vocabulary that begin with a prefix but are not negations)
   - `scope string` - default `"exported"`; alternatives `"all"` and `"locals"`
 
-Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if state.Baseline != "" && state.NoBaseline != "1"`) and obscure the actual intent.
+Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if !state.NoCache`) and obscure the actual intent. Public CLI/config vocabulary that mirrors flags such as `--no-config`, `--no-baseline`, and `--no-interaction` is accepted by default.
 
 Type-aware: only flags identifiers whose syntactic type is `bool`, so `NoOp func()` and `Notify chan struct{}` are correctly ignored. The default `scope: exported` checks struct fields and exported declarations; switch to `"locals"` to additionally flag local `var` declarations inside function bodies, or `"all"` for both.
 
@@ -583,13 +644,13 @@ rules:
       scope: "locals"
 ```
 
-**Remediation.** Rename to the positive form: `NoConfig` → `SkipConfig` if the boolean still means "skip", or `EnableConfig` with inverted truth values if you want callers to read positive logic. CLI flag names like `--no-config` can stay as the public surface; only rename the internal Go field.
+**Remediation.** Rename to the positive form: `NoCache` → `SkipCache` if the boolean still means "skip", or `EnableCache` with inverted truth values if you want callers to read positive logic. CLI/config flag names like `--no-config` can stay as the public surface.
 
 ### `naming.package-stutter`
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -615,7 +676,7 @@ rules:
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `go-style`
@@ -628,7 +689,7 @@ Flags Go package names that use underscores instead of short lowercase words (th
 
 - **Pillar:** naming
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
@@ -660,6 +721,71 @@ Flags Go files that import `archive/zip` or `archive/tar` and join an archive en
 Each finding's metadata carries the archive entry expression and the missing check kind.
 
 **Remediation.** Clean the joined path and verify it remains inside the extraction root before creating files.
+
+### `security.github-actions-broad-permissions`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags GitHub Actions workflows that grant blanket write access with `permissions: write-all` or a bare `permissions: write`. Scoped grants such as a `permissions:` block with `contents: write` underneath are not flagged. Workflow YAML under `.github/workflows` is scanned as text.
+
+**Remediation.** Grant the least-privilege permission scopes the workflow needs (for example `contents: read`) instead of blanket write access.
+
+### `security.github-actions-pull-request-target`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags workflows triggered by `pull_request_target` that also check out or run code. `pull_request_target` runs with repository secrets in the context of a fork's pull request, so executing PR-controlled code can leak them. Candidate wording.
+
+**Remediation.** Use `pull_request` for untrusted contributions, or keep `pull_request_target` jobs free of fork-controlled checkout and execution.
+
+### `security.github-actions-remote-shell`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags workflow run steps that download a remote script with `curl`/`wget`/`Invoke-WebRequest` and pipe it into a shell (for example `curl … | bash`), executing unreviewed remote code in CI.
+
+**Remediation.** Download the script to a file, verify its checksum, and review it before executing rather than piping a remote download into a shell.
+
+### `security.github-actions-secrets-in-pr`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags workflows triggered by `pull_request` or `pull_request_target` that reference a named secret other than the auto-provided `GITHUB_TOKEN`, exposing it to fork-controlled runs. Candidate wording. Each finding's metadata carries the referenced secret name.
+
+**Remediation.** Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or `workflow_run`.
+
+### `security.github-actions-unpinned-action`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `ci`, `github-actions`, `security`
+
+Flags third-party GitHub Actions referenced by a mutable branch ref (for example `@main` or `@master`), which a maintainer can repoint to new code without review. Version-shaped tags (`@v4`, `@v4.1.0`) and full 40-character commit-SHA pins pass, and first-party `actions/*` and `github/*` are exempt. Each finding's metadata carries the action and ref.
+
+**Remediation.** Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you.
 
 ### `security.http-client-no-timeout`
 
@@ -702,6 +828,36 @@ Each finding's metadata carries the random API and context word.
 
 **Remediation.** Use `crypto/rand` for security-sensitive random values and keep `math/rand` for sampling, tests, and simulations.
 
+### `security.open-redirect-candidate`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `redirect`, `security`
+
+Flags request-derived values passed to `http.Redirect` or a `Location` response header without a nearby allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. A target that begins with a host-relative `/` literal (but not protocol-relative `//`) is treated as safe, as is a value cleared by a validator/allowlist call. Candidate wording.
+
+Each finding's metadata carries the redirect sink and request source label, never a raw value.
+
+**Remediation.** Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations.
+
+### `security.path-traversal-file-access`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `filesystem`, `path-traversal`, `security`
+
+Flags request-derived values passed to filesystem sinks (`os.Open`, `os.ReadFile`, `os.OpenFile`, `os.Create`, `os.WriteFile`, `os.Remove`, `ioutil.ReadFile`, …) or `http.ServeFile` without nearby `filepath.Rel`, `filepath.IsLocal`, basename reduction, or a containment helper. `filepath.Clean` / `path.Clean` preserve request taint because normalising a path does not prove it stayed under the intended base directory. Taint propagates through `filepath.Join`/`path.Join`, `filepath.Clean`/`path.Clean`, and string concatenation but not through arbitrary helpers, so a sanitising wrapper breaks the chain. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries the filesystem sink and request source label.
+
+**Remediation.** Constrain request-derived paths with `filepath.Clean` plus a containment check (`filepath.Rel`/`IsLocal`) or reduce them to a basename before opening files.
+
 ### `security.permissive-file-mode`
 
 - **Pillar:** security
@@ -729,6 +885,37 @@ Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Reques
 Each finding's metadata carries the request parameter name and read call.
 
 **Remediation.** Wrap request bodies with `http.MaxBytesReader` or `io.LimitReader` before reading them fully.
+
+### `security.request-controlled-url`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`, `ssrf`
+
+Flags request-derived values passed as the URL of an outbound `net/http` request (`http.Get`/`Head`/`Post`/`PostForm`, `http.NewRequest`/`NewRequestWithContext`, or the same methods on an `http.Client` value) without a nearby allowlist or parse/validate check (possible SSRF). The request value may be inline or a same-function local tainted from a request accessor, including through `io.ReadAll(r.Body)`, string concatenation, and `fmt.Sprintf`. A validator/allowlist call or `url.Parse` referencing the value suppresses the finding. Candidate wording.
+
+Each finding's metadata carries the HTTP sink and request source label.
+
+**Remediation.** Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching.
+
+### `security.sensitive-data-logging`
+
+- **Pillar:** security
+- **Secondary pillar:** sensitive-data
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `logging`, `security`, `sensitive-data`
+
+Flags logging and print calls (`log.*`, `fmt.Print*`/`Fprint*`, `log/slog`, and methods on a logger-named receiver) whose arguments carry credentials: identifiers whose name contains `password`/`secret`/`credential`/`bearer`/`passphrase`, secret-named `os.Getenv`/`os.LookupEnv` reads, or request `Authorization`/`Cookie` reads. Static text-only messages, non-secret values, plain form values, and values wrapped in a redaction/hash helper are ignored. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries only the logging sink and a classification reason; the raw value is never included.
+
+**Remediation.** Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential.
 
 ### `security.shell-command`
 
@@ -758,6 +945,21 @@ Each finding's metadata carries the call name and construction kind.
 
 **Remediation.** Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text.
 
+### `security.template-injection-xss`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `http`, `security`, `xss`
+
+Flags request-derived values reaching an HTML response without escaping: `text/template` (not `html/template`) executed into an `http.ResponseWriter`, `html/template` `HTML`/`JS`/`URL`/`CSS`/`HTMLAttr` conversions of request-derived values, and raw `w.Write`/`fmt.Fprintf(w, …)`/`io.WriteString(w, …)` of request-derived data when the handler sets an HTML `Content-Type`. `html/template` auto-escaping and `html.EscapeString` (or other escape/sanitise wrappers) are treated as safe. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries the reason (`text-template-response`, `raw-html-conversion`, or `unescaped-response-write`).
+
+**Remediation.** Render HTML with `html/template` so output is auto-escaped, or escape request-derived values with `html.EscapeString` before writing them to the response.
+
 ### `security.tls-insecure-config`
 
 - **Pillar:** security
@@ -773,6 +975,21 @@ Each finding's metadata carries the unsafe `field` and `value`.
 
 **Remediation.** Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.
 
+### `security.unsafe-deserialization`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `deserialization`, `security`
+
+Flags decoding of request-controlled input through formats that over-trust their payload: `encoding/gob` (`gob.NewDecoder(r.Body)`), and `gopkg.in/yaml.v2`/`v3` (`yaml.NewDecoder(r.Body)` or `yaml.Unmarshal` of request bytes). Request bytes read via `io.ReadAll(r.Body)` are tracked. Decoding a concrete typed value from a trusted local source, and `encoding/json` of request bodies, are not flagged. Candidate wording, bounded same-function evidence.
+
+Each finding's metadata carries the decoded format and request source label.
+
+**Remediation.** Decode untrusted input into a concrete typed struct with a vetted format (such as `encoding/json` with a size limit) rather than gob or unrestricted YAML.
+
 ### `security.weak-crypto`
 
 - **Pillar:** security
@@ -787,6 +1004,21 @@ Flags weak cryptographic primitives when the parser-only evidence is concrete: `
 Each finding's metadata carries the primitive and reason.
 
 **Remediation.** Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits.
+
+### `security.xxe-candidate`
+
+- **Pillar:** security
+- **Default severity:** advisory
+- **Default-enabled:** yes
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `security`, `xml`, `xxe`
+
+Flags `xml.Decoder` configurations that populate a custom `Entity` map — either `decoder.Entity = …` on a value created by `xml.NewDecoder`, or an `&xml.Decoder{Entity: …}` literal — which re-enables entity resolution (possible XXE). The Go standard library `encoding/xml` does not expand external entities by default, so a plain decoder is never flagged. Candidate wording.
+
+Each finding's metadata records the `entity-map` evidence.
+
+**Remediation.** Leave `xml.Decoder.Entity` unset so `encoding/xml`'s safe default applies, or validate and constrain any custom entity map fed from untrusted input.
 
 ### `sensitive-data.anthropic-api-key`
 
@@ -885,6 +1117,20 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 
 **Remediation.** Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager.
 
+### `sensitive-data.high-entropy-string`
+
+- **Pillar:** sensitive-data
+- **Default severity:** warning
+- **Default-enabled:** no (opt-in)
+- **Threshold:** `minLength` (default `20`), `entropy` (default `4.5` bits/char)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `secrets`
+
+Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern - the catch-all for rotated, custom, or vendor-less credentials the exact-prefix rules miss. A token is scored by Shannon entropy (bits per character); the `4.5` default sits above random hex (max `4.0`) and ordinary prose (~1-3) while still catching random base64 secrets (~5-6). To bound false positives the rule skips all-hex ids, UUIDs, SRI/digest prefixes, and path/URL fragments, and defers to the provider-specific rules so one embedded AWS key or JWT is reported once by its precise rule, not twice. Ships opt-in because entropy is a heuristic that cannot prove a token is live; enable it where leaked-credential coverage matters more than occasional review of a legitimate constant.
+
+**Remediation.** Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the `entropy`/`minLength` thresholds or add an inline `#nosec` / `//nolint:gosec` suppression.
+
 ### `sensitive-data.jwt-token`
 
 - **Pillar:** sensitive-data
@@ -910,6 +1156,36 @@ Flags JWT-shaped literals - three base64url segments separated by dots, the firs
 Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes when the token body matches expected length and character constraints. Preview metadata is redacted through the shared sensitive-data output path.
 
 **Remediation.** Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration.
+
+### `sensitive-data.phi-pattern`
+
+- **Pillar:** sensitive-data
+- **Default severity:** warning
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `secrets`, `phi`
+
+Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries only a redacted preview and a `category` tag.
+
+**Overlap with `sensitive-data.pii-pattern`.** Government and health identifiers belong to this rule, not the PII rule, so an SSN is reported once here rather than by both. Enable both rules together for full personal-data coverage without double-counting.
+
+**Remediation.** Remove the identifier from source; use synthetic fixture data and store real PHI only in HIPAA-compliant systems. Mask or tokenise PHI before it reaches logs or reports.
+
+### `sensitive-data.pii-pattern`
+
+- **Pillar:** sensitive-data
+- **Default severity:** warning
+- **Default-enabled:** no (opt-in)
+- **Confidence:** medium
+- **Capability:** parser
+- **Tags:** `secrets`, `pii`
+
+Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries only a redacted preview and a `category` tag.
+
+**Overlap with `sensitive-data.phi-pattern`.** This rule covers contact and payment PII; government/health identifiers (SSN, Medicare, MRN) are owned by `sensitive-data.phi-pattern` so they are never counted twice.
+
+**Remediation.** Remove the identifier from source; use synthetic fixture data or load real values from runtime configuration. Mask or tokenise PII before it reaches logs or reports.
 
 ### `sensitive-data.private-key`
 
@@ -969,13 +1245,13 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 ### `size.file-length`
 
 - **Pillar:** size
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Threshold:** `maxLines` (default `500`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
+Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. Raw file length is advisory by default; `design.hotspot-file` provides stronger signal when size combines with findings from other pillars.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 
@@ -997,9 +1273,9 @@ Flags Go functions that exceed the configured code-line threshold. Blank lines, 
 ### `size.parameter-count`
 
 - **Pillar:** size
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
-- **Threshold:** `maxParameters` (default `5`)
+- **Threshold:** `maxParameters` (default `8`)
 - **Confidence:** high
 - **Capability:** parser
 
@@ -1103,6 +1379,21 @@ Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Co
 Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load.
 
 **Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
+
+### `test-quality.static-analysis-redundant-test`
+
+- **Pillar:** test-quality
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** high
+- **Capability:** parser
+- **Tags:** `candidate`, `tests`
+
+Flags Go unit-test assertions whose main evidence is a parser-visible static code-shape fact rather than runtime behaviour. The initial candidate set covers same-package reflection assertions such as `reflect.TypeOf(T{}).Kind() != reflect.Struct`, `Name() != "T"`, `NumField() != N`, and direct `FieldByName("Field")` existence checks when the matching type or field declaration is visible in parsed Go source.
+
+The rule is opt-in while calibration proves precision. It does not execute reflection, load packages, or use SSA/type information, and it does not flag assertions about returned values, errors, parsing, IO, security behaviour, or interaction between components.
+
+**Remediation.** Remove the shape assertion if it is the only evidence in the test, or replace it with an assertion about meaningful runtime behaviour.
 
 ### `test-quality.tempdir-misuse`
 

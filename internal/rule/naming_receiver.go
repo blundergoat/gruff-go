@@ -48,7 +48,7 @@ func (r ReceiverConsistencyRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"go-style", "naming"},
 		Options:        map[string]any{"allowMixed": []string{}, "inspectGroup": "both"},
 		Remediation:    "Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form.",

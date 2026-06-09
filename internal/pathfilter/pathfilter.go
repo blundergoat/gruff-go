@@ -35,12 +35,22 @@ func Validate(pattern string) error {
 
 // MatchesAny reports whether any of the supplied patterns matches the relative path.
 func MatchesAny(patterns []string, rel string) bool {
-	for _, pattern := range patterns {
-		if Matches(pattern, rel) {
-			return true
+	matched, _ := FirstMatch(patterns, rel)
+	return matched
+}
+
+// FirstMatch reports whether any pattern matches rel and returns the first
+// matching pattern verbatim. The pattern is returned so callers (discovery,
+// check-ignore) can tell a consumer exactly which configured glob excluded a
+// path, not merely that one did. Patterns are tried in order, so the returned
+// glob is the earliest match in the supplied slice.
+func FirstMatch(patterns []string, rel string) (matched bool, pattern string) {
+	for _, candidate := range patterns {
+		if Matches(candidate, rel) {
+			return true, candidate
 		}
 	}
-	return false
+	return false, ""
 }
 
 // Matches reports whether the pattern matches the relative path.

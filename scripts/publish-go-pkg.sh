@@ -96,7 +96,7 @@ normalize_version() {
     # tag like 1.2.3+meta would fail verify_go_proxy after the tag is on the
     # remote.
     if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-        fail "version '$raw' is not a Go-compatible SemVer (want 0.2.0 or 1.0.0-rc.1; no leading zeros, no build metadata)"
+        fail "version '$raw' is not a Go-compatible SemVer (want 0.2.0 or 0.3.0-rc.1; no leading zeros, no build metadata)"
     fi
     printf '%s' "$version"
 }

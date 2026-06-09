@@ -6,19 +6,31 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
 [![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
 
-`gruff-go` is an opinionated code-quality scanner for Go projects. It reads Go packages, scores findings across quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard. It is heuristic static analysis; run it beside `go vet`, `staticcheck`, `govulncheck`, tests, and code review, not instead of them.
+`gruff-go` is an opinionated code-quality scanner for Go, built to govern AI-generated code. Its primary use is as a **coding-agent hook**: it forces an agent to produce code a human who didn't write it can read, review, and trust. It reads Go packages, scores findings across quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
+
+## Mission
+
+gruff exists to make AI-generated code something a human can trust. Its primary use is a **coding-agent hook**: when an agent writes code, gruff is the gate that forces output a reviewer who didn't write it can actually sign off on. It optimises for three things:
+
+- **Legible enough to verify** — a reviewer can confirm the code does what was asked.
+- **Secure where the eye fails** — it catches the security classes human review reliably misses.
+- **Tested for real, not padded** — it forces high-signal tests and rejects low-signal test ceremony.
+
+The framing it encodes: *you are a coding agent, and a human who didn't write this code has to read, review, and trust it.* That is also why doc comments are required even on a private one-liner — not as ceremony, but because coding agents routinely produce code that superficially works while misunderstanding the requirement. Forcing the agent to state intent, usage, contract, and failure behaviour in prose gives the reviewer something to check the implementation against; a mismatch between the doc comment and the code is a signal the change needs a deeper look.
+
+gruff is heuristic static analysis, not a proof: it can create the artifact a reviewer checks (a doc comment, an assertion) but cannot verify that artifact is truthful. Run it beside `go vet`, `staticcheck`, `govulncheck`, tests, and human review — as the forcing function that makes that review tractable, not a replacement for it.
 
 ## Status At A Glance
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.2.0` package line |
+| Release line | Published `0.3.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 64 rules across 11 pillars; 64 enabled by default |
+| Rule catalogue | 83 rules across 11 pillars; 70 enabled by default |
 | Primary config | `.gruff-go.yaml` |
-| Analysis schema | `gruff-go.analysis.v0.2` |
+| Analysis schema | `gruff.analysis.v2` |
 | Baseline schema | `gruff-go.baseline.v0.1` |
 | Severity gate | `--min-severity` with `advisory`, `warning`, `error` |
 | Dashboard | `127.0.0.1:8765` by default |
@@ -26,7 +38,7 @@
 ## Requirements
 
 - Go `1.25` or newer, matching [`go.mod`](go.mod).
-- Git only when using `--diff-base` changed-line filtering.
+- Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
 - No runtime dependencies outside the Go standard library.
 
 The project-pinned install flow uses Go's `tool` support, introduced before this module's current Go requirement. The binary itself still requires Go `1.25+`.
@@ -36,7 +48,7 @@ The project-pinned install flow uses Go's `tool` support, introduced before this
 Install as a project-pinned dev tool:
 
 ```bash
-go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0
 go tool gruff-go init
 go tool gruff-go summary .
 ```
@@ -88,9 +100,11 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | `report` | Render static HTML or JSON to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a baseline file. |
 | `init` | Generate a default `.gruff-go.yaml`. |
+| `check-ignore` | Report whether `paths.ignore` / gitignore would exclude given paths, and why. |
 | `list-rules` | Print rule metadata as text or JSON. |
 | `dashboard` | Serve the local browser dashboard. |
 | `list`, `help` | Show command lists and command-specific help. |
+| `completion` | Print a shell completion script. |
 
 Run `go tool gruff-go help <command>` for command-specific flags.
 
@@ -101,11 +115,12 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | Format | Use it for |
 | --- | --- |
 | `text` | Human terminal output. |
-| `json` | Full `gruff-go.analysis.v0.2` report. |
+| `json` | Full `gruff.analysis.v2` report. |
 | `summary-json` | Compact CI digest without the full finding list. |
 | `sarif` | SARIF 2.1.0 for code scanning. |
 | `github` | GitHub Actions workflow annotations. |
 | `html` | Self-contained inspection report. |
+| `markdown` | CI-ready Markdown summary for PR comments or job summaries. |
 
 `go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](docs/output-formats.md) for schema details and HTML flags.
 
@@ -164,21 +179,21 @@ See [`docs/configuration.md`](docs/configuration.md) for the full schema and val
 
 ## Rules And Pillars
 
-The current checkout contains 64 rules across 11 pillars. All 64 rules are enabled by default.
+The current checkout contains 83 rules across 11 pillars. 70 rules are enabled by default; the 13 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the entropy/PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
 
 | Pillar | Rules |
 | --- | ---: |
 | `complexity` | 3 |
-| `dead-code` | 2 |
+| `dead-code` | 6 |
 | `design` | 1 |
 | `documentation` | 5 |
-| `maintainability` | 7 |
+| `maintainability` | 6 |
 | `modernisation` | 2 |
 | `naming` | 8 |
-| `security` | 10 |
-| `sensitive-data` | 13 |
+| `security` | 24 |
+| `sensitive-data` | 16 |
 | `size` | 3 |
-| `test-quality` | 7 |
+| `test-quality` | 9 |
 
 See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 
@@ -193,11 +208,15 @@ go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
 
-Changed-line scans use Git only when requested:
+Changed-region scans use Git only when requested:
 
 ```bash
-go tool gruff-go analyse --diff-base origin/main .
+go tool gruff-go analyse --format json --changed-ranges "3-3,8-10" src/foo.go
+go tool gruff-go analyse --format json --since HEAD src/foo.go
+git diff | go tool gruff-go analyse --format json --diff -
 ```
+
+`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and adds `suppressedCount` when changed-region filtering is active. The older `--diff-base` flag remains supported as a base-ref alias.
 
 Display filters such as `--include-pillars`, `--exclude-rules`, and `--include-rules` reduce report noise without changing which rules execute.
 
@@ -218,7 +237,7 @@ Default scans are local source inspections. `gruff-go` parses Go source and sele
 
 ## Stability Contract
 
-Within `0.1.x`, the CLI surface, rule IDs, finding fingerprints, baseline identity, and schemas named in this README are compatibility-sensitive. Breaking changes to those surfaces land in a future minor release and are called out in [`CHANGELOG.md`](CHANGELOG.md). Rule precision is calibrated by dogfooding this repository and by scanning a separate Go service corpus before release.
+While gruff is pre-1.0, the CLI surface, rule IDs, finding fingerprints, baseline identity, and schemas named in this README are compatibility-sensitive within a patch series. Breaking changes to those surfaces land in a minor release and are called out in [`CHANGELOG.md`](CHANGELOG.md). Rule precision is calibrated by dogfooding this repository and by scanning a separate Go service corpus before release.
 
 ## How It Compares
 

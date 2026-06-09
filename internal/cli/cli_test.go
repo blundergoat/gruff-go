@@ -24,7 +24,7 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	if code := Main([]string{"analyse", "."}, &textOut, &textErr); code != 0 {
 		t.Fatalf("text exit = %d, stderr = %s", code, textErr.String())
 	}
-	if !strings.Contains(textOut.String(), "gruff-go analysis") {
+	if !strings.Contains(textOut.String(), "gruff-go "+toolVersion+" analyse") {
 		t.Fatalf("text output missing header: %s", textOut.String())
 	}
 
@@ -46,6 +46,67 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 		if definition.Capability != "parser" {
 			t.Fatalf("rule %s capability = %q, want parser", definition.ID, definition.Capability)
 		}
+	}
+}
+
+// TestAnalyseChangedRangesFailOnNoneExitsZero checks that a changed-ranges scan
+// with --fail-on none exits 0 and still reports suppressedCount in the JSON.
+func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "complex.go", complexFixture())
+	t.Chdir(root)
+
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "--changed-ranges", "3-3", "complex.go"}, &out, &errOut); code != 0 {
+		t.Fatalf("changed-ranges analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
+	}
+	var parsed analysis.Report
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.SuppressedCount == nil {
+		t.Fatalf("suppressedCount missing from changed-region JSON: %s", out.String())
+	}
+}
+
+// TestAnalyseHelpDocumentsChangedRegionFlags checks that both `help analyse` and
+// `analyse --help` document every native changed-region flag so downstream hooks
+// can detect support by string-matching GNU-style long flags.
+func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"help", "analyse"},
+		{"analyse", "--help"},
+		{"analyse", "--diff", "--help"},
+	} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			if code := Main(args, &out, &errOut); code != 0 {
+				t.Fatalf("%v exit = %d, stderr = %s", args, code, errOut.String())
+			}
+			for _, flag := range []string{"--changed-ranges", "--changed-scope", "--no-baseline"} {
+				if !strings.Contains(out.String(), flag) {
+					t.Fatalf("%v help missing %s: %s", args, flag, out.String())
+				}
+			}
+		})
+	}
+}
+
+// TestAnalyseHelpAfterPositionalStaysPath checks that the help pre-scan does
+// not turn a positional --help token into command help after path parsing has
+// already stopped.
+func TestAnalyseHelpAfterPositionalStaysPath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "--help", "not a go source file\n")
+	t.Chdir(root)
+
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"analyse", "--fail-on", "none", "main.go", "--help"}, &out, &errOut); code != 0 {
+		t.Fatalf("analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
+	}
+	if strings.Contains(out.String(), "gruff-go analyse [") {
+		t.Fatalf("positional --help should not render command help: %s", out.String())
 	}
 }
 
@@ -228,6 +289,12 @@ func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
 	cases := [][]string{
 		{"analyse", "--generate-baseline", "baseline.json", "--baseline", "existing.json", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--diff-base", "HEAD", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--changed-ranges", "3-3", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--since", "HEAD", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--diff", "working-tree", "complex.go"},
+		// --diff=- must be rejected before the stdin patch is read, so an interactive
+		// or hook invocation returns the error instead of blocking on stdin.
+		{"analyse", "--generate-baseline", "baseline.json", "--diff", "-", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-rules", "complexity.cyclomatic", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--exclude-rules", "complexity.cyclomatic", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-pillars", "complexity", "complex.go"},
@@ -344,9 +411,8 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 }
 
 // complexFixture returns a Go source string that triggers a complexity finding.
-// The switch shape (sum semantics under NPath, product under cyclomatic) keeps
-// only complexity.cyclomatic above threshold; npath stays under its 200 cap and
-// the exported name keeps dead-code.unused-private-function from firing.
+// The switch shape keeps complexity.cyclomatic above threshold; the exported
+// name keeps dead-code.unused-private-function from firing.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample

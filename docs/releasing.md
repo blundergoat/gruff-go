@@ -44,11 +44,12 @@ against `gruff-go list-rules --format json`.
 
 ## Binary Wrapper
 
-`bin/gruff-go` must expose the same command surface as source. Rebuild or remove
-the tracked binary whenever CLI source changes:
+`bin/gruff-go` is local build output (gitignored, not tracked). Build a fresh
+binary from source whenever you need to exercise the CLI surface directly so it
+matches the current code:
 
 ```sh
-go build -o bin/gruff-go ./cmd/gruff-go
+go build -o bin/gruff-go ./cmd/gruff-go   # or: scripts/build-bin-gruff-go.sh
 bin/gruff-go --help
 ```
 

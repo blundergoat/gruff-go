@@ -19,6 +19,7 @@ var completionCommands = []string{
 	"completion",
 	"dashboard",
 	"help",
+	"hook",
 	"init",
 	"list",
 	"list-rules",

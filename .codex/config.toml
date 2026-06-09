@@ -5,8 +5,8 @@
 # - Filesystem allow/deny policy uses Codex permission profiles, not Claude's
 #   settings.json permissions.allow/permissions.deny syntax
 # - Hook registrations live in .codex/hooks.json for goat-flow installs
-# - The shipped codex-hooks.json template registers the PreToolUse deny hook
-# - Command deny policy still lives in the Bash-matched PreToolUse hook because
+# - The shipped codex-hooks.json template registers Bash-matched guardrail hooks
+# - Command deny policy still lives in those PreToolUse hooks because
 #   Codex permission profiles describe filesystem/network access, not shell
 #   command pattern denies like git push or sudo
 default_permissions = "goat-flow"
@@ -14,18 +14,28 @@ default_permissions = "goat-flow"
 [features]
 hooks = true
 
+[permissions.goat-flow]
+description = "goat-flow workspace editing with secret-path read denies."
+extends = ":workspace"
+
 [permissions.goat-flow.filesystem]
 glob_scan_max_depth = 3
 
 [permissions.goat-flow.filesystem.":workspace_roots"]
-"." = "write"
-# Codex 0.131 accepts exact paths and trailing "/**" subtrees only.
-# Exact entries must point at files that exist in this checkout; absent paths
-# can make Codex fail before shell startup. Filename globs (*.key, *.pem, etc.)
-# and direct literal Bash reads are covered by .codex/hooks/deny-dangerous.sh.
-"secrets/**" = "none"
-".ssh/**" = "none"
-".aws/**" = "none"
-".docker/**" = "none"
-".gnupg/**" = "none"
-".kube/**" = "none"
+# Codex deny rules win over same-profile read rules. Unlike Claude settings,
+# Codex cannot re-allow recursive sample env reads behind a broad filename
+# deny, so .env.example is intentionally denied here to keep .env* variants
+# protected consistently across agents.
+"**/.env*" = "deny"
+"**/secrets/**" = "deny"
+"**/.ssh/**" = "deny"
+"**/.aws/**" = "deny"
+"**/.docker/**" = "deny"
+"**/.gnupg/**" = "deny"
+"**/.kube/**" = "deny"
+"**/credentials*" = "deny"
+"**/.npmrc" = "deny"
+"**/.pypirc" = "deny"
+"**/*.pem" = "deny"
+"**/*.key" = "deny"
+"**/*.pfx" = "deny"

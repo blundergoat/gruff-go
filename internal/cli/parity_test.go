@@ -137,15 +137,14 @@ func TestSummaryCommandText(t *testing.T) {
 		t.Fatalf("summary exit = %d, stderr = %s", code, errBuf.String())
 	}
 	for _, fragment := range []string{
-		"gruff-go summary",
+		"gruff-go " + toolVersion + " summary",
 		"scanned: . (in ",
 		"files: ",
 		" analysed, ",
 		" skipped",
 		"scan time: ",
-		"score:",
-		"findings:",
-		"severity:",
+		"Composite: ",
+		"Findings: ",
 	} {
 		if !strings.Contains(out.String(), fragment) {
 			t.Errorf("summary missing %q; got: %s", fragment, out.String())

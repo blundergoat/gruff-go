@@ -1,12 +1,15 @@
 complexity.cognitive	complexity	warning	parser	Cognitive complexity
 complexity.cyclomatic	complexity	warning	parser	Cyclomatic complexity
 complexity.nesting-depth	complexity	warning	parser	Nesting depth
-complexity.npath	complexity	warning	parser	NPath complexity
 dead-code.empty-block	dead-code	advisory	parser	Empty control-flow block
 dead-code.unreachable-code	dead-code	advisory	parser	Unreachable code
+dead-code.unused-private-const	dead-code	advisory	parser	Unused private const
 dead-code.unused-private-function	dead-code	advisory	parser	Unused private function
-design.god-function	design	advisory	parser	God function
-design.hotspot-file	maintainability	advisory	parser	Hotspot file
+dead-code.unused-private-type	dead-code	advisory	parser	Unused private type
+dead-code.unused-private-var	dead-code	advisory	parser	Unused private var
+dependency.go-mod-local-replace	security	advisory	parser	Local go.mod replace directive
+dependency.go-mod-remote-replace	security	advisory	parser	Remote go.mod replace directive
+design.hotspot-file	design	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric
 docs.config-field-comment	documentation	advisory	parser	Config field comment
 docs.exported-symbol-comment	documentation	advisory	parser	Exported symbol comment
@@ -29,15 +32,27 @@ naming.package-stutter	naming	advisory	parser	Package stutter
 naming.package-underscore	naming	advisory	parser	Package name contains underscore
 naming.receiver-consistency	naming	advisory	parser	Receiver consistency
 security.archive-path-traversal	security	advisory	parser	Archive path traversal
+security.github-actions-broad-permissions	security	advisory	parser	Broad workflow permissions
+security.github-actions-pull-request-target	security	advisory	parser	Risky pull_request_target workflow
+security.github-actions-remote-shell	security	advisory	parser	Remote script piped to shell in workflow
+security.github-actions-secrets-in-pr	security	advisory	parser	Secrets in pull-request workflow
+security.github-actions-unpinned-action	security	advisory	parser	Unpinned GitHub Actions action
 security.http-client-no-timeout	security	advisory	parser	HTTP client without timeout
 security.http-server-no-timeout	security	advisory	parser	HTTP server without timeout
 security.insecure-random-secret	security	advisory	parser	Insecure random secret
+security.open-redirect-candidate	security	advisory	parser	Open redirect candidate
+security.path-traversal-file-access	security	advisory	parser	Path traversal in file access
 security.permissive-file-mode	security	advisory	parser	Permissive file mode
 security.request-body-without-limit	security	advisory	parser	Request body read without limit
+security.request-controlled-url	security	advisory	parser	Request-controlled request URL
+security.sensitive-data-logging	security	advisory	parser	Sensitive data in logging
 security.shell-command	security	warning	parser	Shell command execution
 security.sql-string-query	security	advisory	parser	SQL string query construction
+security.template-injection-xss	security	advisory	parser	Template injection / reflected XSS
 security.tls-insecure-config	security	warning	parser	TLS insecure config
+security.unsafe-deserialization	security	advisory	parser	Unsafe deserialization
 security.weak-crypto	security	advisory	parser	Weak crypto primitive
+security.xxe-candidate	security	advisory	parser	XML external entity candidate
 sensitive-data.anthropic-api-key	sensitive-data	error	parser	Anthropic API key literal
 sensitive-data.aws-access-key	sensitive-data	error	parser	AWS access key id
 sensitive-data.connection-string	sensitive-data	error	parser	Connection string with embedded password
@@ -45,13 +60,16 @@ sensitive-data.gcp-service-account	sensitive-data	error	parser	GCP service-accou
 sensitive-data.github-token	sensitive-data	error	parser	GitHub token literal
 sensitive-data.gitlab-token	sensitive-data	error	parser	GitLab token literal
 sensitive-data.google-api-key	sensitive-data	error	parser	Google API key literal
+sensitive-data.high-entropy-string	sensitive-data	warning	parser	High-entropy string
 sensitive-data.jwt-token	sensitive-data	error	parser	JWT token literal
 sensitive-data.npm-token	sensitive-data	error	parser	npm token literal
+sensitive-data.phi-pattern	sensitive-data	warning	parser	PHI pattern
+sensitive-data.pii-pattern	sensitive-data	warning	parser	PII pattern
 sensitive-data.private-key	sensitive-data	error	parser	Embedded private key
 sensitive-data.secret-pattern	sensitive-data	error	parser	Secret-like literal
 sensitive-data.slack-token	sensitive-data	error	parser	Slack token literal
 sensitive-data.stripe-key	sensitive-data	error	parser	Stripe live key literal
-size.file-length	size	warning	parser	File length
+size.file-length	size	advisory	parser	File length
 size.function-length	size	warning	parser	Function length
 size.parameter-count	size	advisory	parser	Parameter count
 test-quality.empty-test	test-quality	advisory	parser	Empty test
@@ -61,4 +79,5 @@ test-quality.no-failure-path	test-quality	advisory	parser	Test cannot fail
 test-quality.parallel-range-capture	test-quality	advisory	parser	Parallel subtest captures range variable
 test-quality.skipped-test	test-quality	advisory	parser	Skipped test
 test-quality.sleep-in-test	test-quality	advisory	parser	Sleep in test
+test-quality.static-analysis-redundant-test	test-quality	advisory	parser	Static-analysis-redundant test candidate
 test-quality.tempdir-misuse	test-quality	advisory	parser	Test temp dir misuse

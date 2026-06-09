@@ -21,7 +21,7 @@ var skipTodoMarkers = []string{"todo", "fixme", "xxx", "hack", "wip"}
 // PackageNameUnderscoreRule flags Go package names that contain underscores.
 type PackageNameUnderscoreRule struct{}
 
-// Definition declares the naming.package-underscore rule under the naming pillar with low severity and high confidence.
+// Definition declares the naming.package-underscore rule under the naming pillar with advisory severity and high confidence.
 func (PackageNameUnderscoreRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-underscore",
@@ -30,7 +30,7 @@ func (PackageNameUnderscoreRule) Definition() Definition {
 		Pillar:         finding.PillarNaming,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"go-style"},
 		Remediation:    "Rename the package to a short lowercase name without underscores.",
 	}

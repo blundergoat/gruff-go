@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.2.0",
+          "semanticVersion": "0.3.0",
           "rules": [
             {
               "id": "complexity.cognitive",
@@ -30,7 +30,7 @@
                   "metric"
                 ],
                 "thresholds": {
-                  "maxComplexity": 35
+                  "maxComplexity": 25
                 }
               },
               "defaultConfiguration": {
@@ -90,35 +90,6 @@
               }
             },
             {
-              "id": "complexity.npath",
-              "name": "NPath complexity",
-              "shortDescription": {
-                "text": "NPath complexity"
-              },
-              "fullDescription": {
-                "text": "Flags functions whose number of acyclic execution paths (NPath) exceeds the configured threshold. The modified NPath formula treats return/panic guards as exit points so idiomatic Go error chains grow linearly; genuine branch-combination blowups (nested switches, multi-way if/else without terminators) still flag."
-              },
-              "help": {
-                "text": "Collapse boolean conditions, extract helper functions, or replace nested switches with table-driven dispatch so the path-combination count drops."
-              },
-              "properties": {
-                "pillar": "complexity",
-                "defaultSeverity": "warning",
-                "confidence": "high",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "metric"
-                ],
-                "thresholds": {
-                  "maxComplexity": 1024
-                }
-              },
-              "defaultConfiguration": {
-                "level": "warning"
-              }
-            },
-            {
               "id": "dead-code.empty-block",
               "name": "Empty control-flow block",
               "shortDescription": {
@@ -168,6 +139,34 @@
               }
             },
             {
+              "id": "dead-code.unused-private-const",
+              "name": "Unused private const",
+              "shortDescription": {
+                "text": "Unused private const"
+              },
+              "fullDescription": {
+                "text": "Flags package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Iota groups, multi-name const specs, test files, generated files, vendor paths, and reflection-heavy packages are excluded."
+              },
+              "help": {
+                "text": "Delete the constant if it is abandoned, or leave the candidate rule opt-in where grouped constants or build tags make parser-only certainty too weak."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "cross-file",
+                  "dead-code"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "dead-code.unused-private-function",
               "name": "Unused private function",
               "shortDescription": {
@@ -195,29 +194,111 @@
               }
             },
             {
-              "id": "design.god-function",
-              "name": "God function",
+              "id": "dead-code.unused-private-type",
+              "name": "Unused private type",
               "shortDescription": {
-                "text": "God function"
+                "text": "Unused private type"
               },
               "fullDescription": {
-                "text": "Flags functions that already have both size and complexity findings, prioritising routines that need structural decomposition."
+                "text": "Flags package-private top-level types whose names are not referenced anywhere else in the same parsed package. Generated, test, vendor, and reflection-heavy packages are excluded so the parser-only candidate stays precision-first."
               },
               "help": {
-                "text": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared."
+                "text": "Delete the type if it is abandoned, or enable the rule only after confirming generated, reflective, and build-tagged references are not part of the package contract."
               },
               "properties": {
-                "pillar": "design",
-                "secondaryPillars": [
-                  "size",
-                  "complexity"
-                ],
+                "pillar": "dead-code",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "cross-file",
+                  "dead-code"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dead-code.unused-private-var",
+              "name": "Unused private var",
+              "shortDescription": {
+                "text": "Unused private var"
+              },
+              "fullDescription": {
+                "text": "Flags package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, registration tables, blank identifiers, vendor paths, and reflection-heavy packages are excluded."
+              },
+              "help": {
+                "text": "Delete the variable if it is abandoned, or keep the rule opt-in until parser-only evidence can prove indirect registration use is not involved."
+              },
+              "properties": {
+                "pillar": "dead-code",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "cross-file",
+                  "dead-code"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dependency.go-mod-local-replace",
+              "name": "Local go.mod replace directive",
+              "shortDescription": {
+                "text": "Local go.mod replace directive"
+              },
+              "fullDescription": {
+                "text": "Flags go.mod replace directives that redirect a dependency to a local filesystem path (./…, ../…, or an absolute path). Local replacements do not reproduce for other clones or CI and usually indicate in-progress local development that should not ship."
+              },
+              "help": {
+                "text": "Remove the local replace before shipping and depend on a published module version, or vendor the dependency explicitly."
+              },
+              "properties": {
+                "pillar": "security",
                 "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
-                  "composite"
+                  "dependency",
+                  "security",
+                  "supply-chain"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "dependency.go-mod-remote-replace",
+              "name": "Remote go.mod replace directive",
+              "shortDescription": {
+                "text": "Remote go.mod replace directive"
+              },
+              "fullDescription": {
+                "text": "Flags go.mod replace directives that redirect a dependency to a different remote module path or version. Remote replacements silently swap a dependency's source and should be reviewed as a supply-chain decision."
+              },
+              "help": {
+                "text": "Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "dependency",
+                  "security",
+                  "supply-chain"
                 ]
               },
               "defaultConfiguration": {
@@ -237,7 +318,7 @@
                 "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
               },
               "properties": {
-                "pillar": "maintainability",
+                "pillar": "design",
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
@@ -246,7 +327,7 @@
                   "composite"
                 ],
                 "thresholds": {
-                  "minFindings": 3,
+                  "minFindings": 2,
                   "minPillars": 2
                 }
               },
@@ -580,7 +661,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style"
                 ],
@@ -609,7 +690,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -710,7 +791,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -823,7 +904,10 @@
                     "Now",
                     "NoCopy",
                     "Notation",
-                    "Notebook"
+                    "Notebook",
+                    "NoConfig",
+                    "NoBaseline",
+                    "NoInteraction"
                   ],
                   "prefixes": [
                     "No",
@@ -857,7 +941,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -890,7 +974,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style"
                 ]
@@ -916,7 +1000,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "go-style",
                   "naming"
@@ -950,6 +1034,146 @@
                 "defaultEnabled": true,
                 "tags": [
                   "archive",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-broad-permissions",
+              "name": "Broad workflow permissions",
+              "shortDescription": {
+                "text": "Broad workflow permissions"
+              },
+              "fullDescription": {
+                "text": "Flags workflows that grant blanket write access with `permissions: write-all` or a bare `permissions: write`. Scoped grants such as `permissions:` with `contents: write` underneath are not flagged."
+              },
+              "help": {
+                "text": "Grant the least-privilege permission scopes the workflow needs (for example `contents: read`) instead of blanket write access."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-pull-request-target",
+              "name": "Risky pull_request_target workflow",
+              "shortDescription": {
+                "text": "Risky pull_request_target workflow"
+              },
+              "fullDescription": {
+                "text": "Flags workflows triggered by pull_request_target that also check out or run code. pull_request_target runs with repository secrets in the context of a fork's pull request, so executing PR-controlled code can leak secrets. Candidate wording."
+              },
+              "help": {
+                "text": "Use pull_request for untrusted contributions, or keep pull_request_target jobs free of fork-controlled checkout and execution."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-remote-shell",
+              "name": "Remote script piped to shell in workflow",
+              "shortDescription": {
+                "text": "Remote script piped to shell in workflow"
+              },
+              "fullDescription": {
+                "text": "Flags workflow run steps that download a remote script with curl/wget/Invoke-WebRequest and pipe it into a shell (for example `curl … | bash`), which executes unreviewed remote code in CI."
+              },
+              "help": {
+                "text": "Download the script to a file, verify its checksum, and review it before executing rather than piping a remote download directly into a shell."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-secrets-in-pr",
+              "name": "Secrets in pull-request workflow",
+              "shortDescription": {
+                "text": "Secrets in pull-request workflow"
+              },
+              "fullDescription": {
+                "text": "Flags workflows triggered by pull_request or pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. Candidate wording."
+              },
+              "help": {
+                "text": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.github-actions-unpinned-action",
+              "name": "Unpinned GitHub Actions action",
+              "shortDescription": {
+                "text": "Unpinned GitHub Actions action"
+              },
+              "fullDescription": {
+                "text": "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version-shaped tags (@v4, @v4.1.0) and full 40-character commit-SHA pins pass, and first-party actions/* and github/* are exempt."
+              },
+              "help": {
+                "text": "Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "ci",
+                  "github-actions",
                   "security"
                 ]
               },
@@ -1039,6 +1263,62 @@
               }
             },
             {
+              "id": "security.open-redirect-candidate",
+              "name": "Open redirect candidate",
+              "shortDescription": {
+                "text": "Open redirect candidate"
+              },
+              "fullDescription": {
+                "text": "Flags request-derived values passed to http.Redirect or a Location header without a nearby allowlist or validation check (possible open redirect). Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "redirect",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.path-traversal-file-access",
+              "name": "Path traversal in file access",
+              "shortDescription": {
+                "text": "Path traversal in file access"
+              },
+              "fullDescription": {
+                "text": "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Constrain request-derived paths with filepath.Clean plus a containment check (filepath.Rel/IsLocal) or reduce them to a basename before opening files."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "filesystem",
+                  "path-traversal",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.permissive-file-mode",
               "name": "Permissive file mode",
               "shortDescription": {
@@ -1086,6 +1366,65 @@
                 "tags": [
                   "http",
                   "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.request-controlled-url",
+              "name": "Request-controlled request URL",
+              "shortDescription": {
+                "text": "Request-controlled request URL"
+              },
+              "fullDescription": {
+                "text": "Flags request-derived values passed as the URL of an outbound net/http request without a nearby allowlist or parse/validate check (possible SSRF). Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security",
+                  "ssrf"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.sensitive-data-logging",
+              "name": "Sensitive data in logging",
+              "shortDescription": {
+                "text": "Sensitive data in logging"
+              },
+              "fullDescription": {
+                "text": "Flags logging and print calls whose arguments are credential-bearing: secret-named identifiers, secret-named environment reads, or request auth headers and cookies. Static text-only messages and redaction-wrapped values are ignored. Candidate wording, bounded same-function evidence."
+              },
+              "help": {
+                "text": "Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential."
+              },
+              "properties": {
+                "pillar": "security",
+                "secondaryPillars": [
+                  "sensitive-data"
+                ],
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "logging",
+                  "security",
+                  "sensitive-data"
                 ]
               },
               "defaultConfiguration": {
@@ -1149,6 +1488,34 @@
               }
             },
             {
+              "id": "security.template-injection-xss",
+              "name": "Template injection / reflected XSS",
+              "shortDescription": {
+                "text": "Template injection / reflected XSS"
+              },
+              "fullDescription": {
+                "text": "Flags text/template rendered into an HTTP response, html/template HTML/JS/URL/CSS conversions of request-derived values, and raw writes of request-derived data on an HTML content type. html/template auto-escaping and html.EscapeString are treated as safe. Candidate wording, bounded same-function evidence."
+              },
+              "help": {
+                "text": "Render HTML with html/template so output is auto-escaped, or escape request-derived values with html.EscapeString before writing them to the response."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "http",
+                  "security",
+                  "xss"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.tls-insecure-config",
               "name": "TLS insecure config",
               "shortDescription": {
@@ -1176,6 +1543,33 @@
               }
             },
             {
+              "id": "security.unsafe-deserialization",
+              "name": "Unsafe deserialization",
+              "shortDescription": {
+                "text": "Unsafe deserialization"
+              },
+              "fullDescription": {
+                "text": "Flags decoding of request-controlled input via encoding/gob or gopkg.in/yaml, which over-trust their payload. Decoding a concrete typed struct from a trusted local source is not flagged. Uses bounded same-function evidence and candidate wording."
+              },
+              "help": {
+                "text": "Decode untrusted input into a concrete typed struct with a vetted format (such as encoding/json with a size limit) rather than gob or unrestricted YAML."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "deserialization",
+                  "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "security.weak-crypto",
               "name": "Weak crypto primitive",
               "shortDescription": {
@@ -1196,6 +1590,34 @@
                 "tags": [
                   "crypto",
                   "security"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "security.xxe-candidate",
+              "name": "XML external entity candidate",
+              "shortDescription": {
+                "text": "XML external entity candidate"
+              },
+              "fullDescription": {
+                "text": "Flags xml.Decoder configurations that populate a custom entity map, which re-enables entity resolution (possible XXE). The Go standard library encoding/xml does not expand external entities by default, so a plain decoder is not flagged. Candidate wording."
+              },
+              "help": {
+                "text": "Leave xml.Decoder.Entity unset so encoding/xml's safe default applies, or validate and constrain any custom entity map fed from untrusted input."
+              },
+              "properties": {
+                "pillar": "security",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": true,
+                "tags": [
+                  "security",
+                  "xml",
+                  "xxe"
                 ]
               },
               "defaultConfiguration": {
@@ -1385,6 +1807,36 @@
               }
             },
             {
+              "id": "sensitive-data.high-entropy-string",
+              "name": "High-entropy string",
+              "shortDescription": {
+                "text": "High-entropy string"
+              },
+              "fullDescription": {
+                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview."
+              },
+              "help": {
+                "text": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "warning",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "secrets"
+                ],
+                "thresholds": {
+                  "entropy": 4.5,
+                  "minLength": 20
+                }
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
               "id": "sensitive-data.jwt-token",
               "name": "JWT token literal",
               "shortDescription": {
@@ -1434,6 +1886,60 @@
               },
               "defaultConfiguration": {
                 "level": "error"
+              }
+            },
+            {
+              "id": "sensitive-data.phi-pattern",
+              "name": "PHI pattern",
+              "shortDescription": {
+                "text": "PHI pattern"
+              },
+              "fullDescription": {
+                "text": "Flags protected health information identifiers (US Social Security numbers, Medicare beneficiary identifiers, and label-anchored medical record numbers) embedded in source or text files. Opt-in; emits only a redacted preview."
+              },
+              "help": {
+                "text": "Remove the identifier from source; use synthetic fixture data and load or store real PHI only in HIPAA-compliant systems. Mask or tokenise PHI before it reaches logs or reports."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "warning",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "phi",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "sensitive-data.pii-pattern",
+              "name": "PII pattern",
+              "shortDescription": {
+                "text": "PII pattern"
+              },
+              "fullDescription": {
+                "text": "Flags personally identifiable information (email addresses, phone numbers, and Luhn-valid payment card numbers) embedded in source or text files. Opt-in; emits only a redacted preview. Government/health identifiers are covered by sensitive-data.phi-pattern."
+              },
+              "help": {
+                "text": "Remove the identifier from source; use synthetic fixture data or load real values from runtime configuration. Mask or tokenise PII before it reaches logs or reports."
+              },
+              "properties": {
+                "pillar": "sensitive-data",
+                "defaultSeverity": "warning",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "pii",
+                  "secrets"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "warning"
               }
             },
             {
@@ -1551,7 +2057,7 @@
               },
               "properties": {
                 "pillar": "size",
-                "defaultSeverity": "warning",
+                "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1560,7 +2066,7 @@
                 }
               },
               "defaultConfiguration": {
-                "level": "warning"
+                "level": "note"
               }
             },
             {
@@ -1799,6 +2305,33 @@
               }
             },
             {
+              "id": "test-quality.static-analysis-redundant-test",
+              "name": "Static-analysis-redundant test candidate",
+              "shortDescription": {
+                "text": "Static-analysis-redundant test candidate"
+              },
+              "fullDescription": {
+                "text": "Flags Go unit-test assertions whose main evidence is a parser-visible static code-shape fact rather than runtime behaviour."
+              },
+              "help": {
+                "text": "Remove the redundant assertion if it is the only behaviour under test, or replace it with an assertion about runtime behaviour or meaningful values."
+              },
+              "properties": {
+                "pillar": "test-quality",
+                "defaultSeverity": "advisory",
+                "confidence": "high",
+                "capability": "parser",
+                "defaultEnabled": false,
+                "tags": [
+                  "candidate",
+                  "tests"
+                ]
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "test-quality.tempdir-misuse",
               "name": "Test temp dir misuse",
               "shortDescription": {
@@ -1829,53 +2362,8 @@
       },
       "results": [
         {
-          "ruleId": "design.god-function",
-          "ruleIndex": 7,
-          "level": "note",
-          "message": {
-            "text": "function Hot combines size and complexity findings"
-          },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "composite.go"
-                }
-              }
-            }
-          ],
-          "partialFingerprints": {
-            "gruffFingerprint": "4a10c037e95fba2e"
-          },
-          "properties": {
-            "confidence": "high",
-            "fingerprint": "4a10c037e95fba2e",
-            "metadata": {
-              "complexityFindings": 1,
-              "primaryLine": 4,
-              "ruleIds": [
-                "complexity.cyclomatic",
-                "size.function-length"
-              ],
-              "sizeFindings": 1,
-              "underlyingFingerprints": [
-                "6c2b61fff900ee69",
-                "d8293925f32a0f34"
-              ]
-            },
-            "pillar": "design",
-            "remediation": "Split the function around cohesive responsibilities, then re-run the size and complexity rules to confirm both signals cleared.",
-            "secondaryPillars": [
-              "size",
-              "complexity"
-            ],
-            "severity": "advisory",
-            "symbol": "Hot"
-          }
-        },
-        {
           "ruleId": "design.hotspot-file",
-          "ruleIndex": 8,
+          "ruleIndex": 11,
           "level": "note",
           "message": {
             "text": "file has findings across multiple quality pillars"
@@ -1897,7 +2385,7 @@
             "fingerprint": "c8f0761928502c92",
             "metadata": {
               "findings": 3,
-              "minFindings": 3,
+              "minFindings": 2,
               "minPillars": 2,
               "pillars": [
                 "complexity",
@@ -1916,7 +2404,7 @@
                 "d8293925f32a0f34"
               ]
             },
-            "pillar": "maintainability",
+            "pillar": "design",
             "remediation": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
             "severity": "advisory"
           }
@@ -1959,7 +2447,7 @@
         },
         {
           "ruleId": "docs.exported-symbol-comment",
-          "ruleIndex": 11,
+          "ruleIndex": 14,
           "level": "note",
           "message": {
             "text": "exported function \"Hot\" has no doc comment"
@@ -1994,7 +2482,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 54,
+          "ruleIndex": 72,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"
@@ -2031,8 +2519,8 @@
         }
       ],
       "properties": {
-        "gruffSchemaVersion": "gruff-go.analysis.v0.2",
-        "score": 94,
+        "gruffSchemaVersion": "gruff.analysis.v2",
+        "score": 97,
         "grade": "A"
       }
     }

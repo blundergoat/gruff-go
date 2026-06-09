@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 )
 
+// DefaultTier is the current rule maturity tier emitted for findings.
+const DefaultTier = "v0.1"
+
 // Finding is a single rule result emitted by the analyser pipeline.
 type Finding struct {
 	// RuleID is the identifier of the rule that produced the finding.
@@ -28,17 +31,25 @@ type Finding struct {
 	Pillar Pillar `json:"pillar"`
 	// SecondaryPillars lists additional quality categories the finding touches.
 	SecondaryPillars []Pillar `json:"secondaryPillars,omitempty"`
+	// Tier is the rule catalogue maturity tier that owns the finding.
+	Tier string `json:"tier,omitempty"`
 	// Remediation is a short suggested fix or pointer to remediation guidance.
 	Remediation string `json:"remediation,omitempty"`
 	// Metadata carries rule-specific structured data (thresholds, measured values, etc.).
 	Metadata map[string]any `json:"metadata,omitempty"`
 	// Fingerprint is the stable identity hash used by baseline matching.
 	Fingerprint string `json:"fingerprint"`
+	// StableIdentity is the line-insensitive identity used by external diff tooling.
+	StableIdentity string `json:"stableIdentity,omitempty"`
 }
 
-// WithFingerprint returns a copy of the finding with Fingerprint populated.
+// WithFingerprint returns a copy of the finding with identity fields populated.
 func (f Finding) WithFingerprint() Finding {
 	f.Fingerprint = f.ComputeFingerprint()
+	f.StableIdentity = f.ComputeStableIdentity()
+	if f.Tier == "" {
+		f.Tier = DefaultTier
+	}
 	return f
 }
 
@@ -73,4 +84,114 @@ func (f Finding) ComputeFingerprint() string {
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])[:16]
+}
+
+// ComputeStableIdentity hashes line-insensitive finding fields for external diff tooling.
+func (f Finding) ComputeStableIdentity() string {
+	symbolOrMessage := f.Symbol
+	if symbolOrMessage == "" {
+		symbolOrMessage = f.Message
+	}
+	hasher := sha256.New()
+	hasher.Write([]byte(f.RuleID))
+	hasher.Write([]byte{0})
+	hasher.Write([]byte(f.File))
+	hasher.Write([]byte{0})
+	hasher.Write([]byte(symbolOrMessage))
+	return hex.EncodeToString(hasher.Sum(nil))[:16]
+}
+
+// MarshalJSON emits the canonical flat finding shape while retaining the legacy
+// nested location object for one release.
+func (f Finding) MarshalJSON() ([]byte, error) {
+	payload := struct {
+		RuleID           string         `json:"ruleId"`
+		Message          string         `json:"message"`
+		File             string         `json:"file"`
+		Line             *int           `json:"line"`
+		EndLine          *int           `json:"endLine"`
+		Column           *int           `json:"column"`
+		Location         *Location      `json:"location,omitempty"`
+		Symbol           *string        `json:"symbol"`
+		Severity         Severity       `json:"severity"`
+		Pillar           Pillar         `json:"pillar"`
+		SecondaryPillars []Pillar       `json:"secondaryPillars"`
+		Tier             string         `json:"tier"`
+		Confidence       Confidence     `json:"confidence"`
+		Remediation      *string        `json:"remediation"`
+		Fingerprint      string         `json:"fingerprint"`
+		StableIdentity   string         `json:"stableIdentity"`
+		Metadata         map[string]any `json:"metadata"`
+	}{
+		RuleID:           f.RuleID,
+		Message:          f.Message,
+		File:             f.File,
+		Line:             locationInt(f.Location, func(location Location) int { return location.Line }),
+		EndLine:          locationInt(f.Location, func(location Location) int { return location.EndLine }),
+		Column:           locationInt(f.Location, func(location Location) int { return location.Column }),
+		Location:         f.Location,
+		Symbol:           nonEmptyString(f.Symbol),
+		Severity:         f.Severity,
+		Pillar:           f.Pillar,
+		SecondaryPillars: nonNilPillars(f.SecondaryPillars),
+		Tier:             f.resolvedTier(),
+		Confidence:       f.Confidence,
+		Remediation:      nonEmptyString(f.Remediation),
+		Fingerprint:      f.Fingerprint,
+		StableIdentity:   f.resolvedStableIdentity(),
+		Metadata:         nonNilMetadata(f.Metadata),
+	}
+	return json.Marshal(payload)
+}
+
+// resolvedTier returns the finding tier, defaulting old in-memory findings to v0.1.
+func (f Finding) resolvedTier() string {
+	if f.Tier != "" {
+		return f.Tier
+	}
+	return DefaultTier
+}
+
+// resolvedStableIdentity returns the finding's stable identity, computing it for old fixtures.
+func (f Finding) resolvedStableIdentity() string {
+	if f.StableIdentity != "" {
+		return f.StableIdentity
+	}
+	return f.ComputeStableIdentity()
+}
+
+// locationInt extracts a positive location field or nil for unknown values.
+func locationInt(location *Location, value func(Location) int) *int {
+	if location == nil {
+		return nil
+	}
+	out := value(*location)
+	if out <= 0 {
+		return nil
+	}
+	return &out
+}
+
+// nonEmptyString returns nil for absent optional finding strings.
+func nonEmptyString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// nonNilPillars serializes absent secondary pillars as an empty canonical list.
+func nonNilPillars(values []Pillar) []Pillar {
+	if values == nil {
+		return []Pillar{}
+	}
+	return values
+}
+
+// nonNilMetadata serializes absent metadata as an empty canonical object.
+func nonNilMetadata(values map[string]any) map[string]any {
+	if values == nil {
+		return map[string]any{}
+	}
+	return values
 }

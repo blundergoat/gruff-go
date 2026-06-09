@@ -41,7 +41,7 @@ func (r FileLengthRule) maxLines() int {
 	return r.MaxLines
 }
 
-// Definition declares the size.file-length rule with a default 500-line cap, medium severity, and high confidence.
+// Definition declares the size.file-length rule with a default 500-line cap, advisory severity, and high confidence.
 func (r FileLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
@@ -49,7 +49,7 @@ func (r FileLengthRule) Definition() Definition {
 		Title:          "File length",
 		Description:    "Flags Go files that exceed the default line-count threshold.",
 		Pillar:         finding.PillarSize,
-		Severity:       finding.SeverityWarning,
+		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},

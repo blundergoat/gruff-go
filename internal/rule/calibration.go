@@ -4,7 +4,8 @@ package rule
 
 import "github.com/blundergoat/gruff-go/internal/finding"
 
-// shouldCalibrateTestSizeFinding reports whether a size finding on a test file should be down-weighted.
+// shouldCalibrateTestSizeFinding reports whether a warning-size finding on a
+// test file should be down-weighted; advisory defaults are already softened.
 func shouldCalibrateTestSizeFinding(item finding.Finding, definition Definition) bool {
 	if definition.Severity != finding.SeverityWarning {
 		return false

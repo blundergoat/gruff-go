@@ -11,7 +11,7 @@ import (
 )
 
 // cognitiveComplexityThreshold is the default parser-only cognitive complexity cap.
-const cognitiveComplexityThreshold = 35
+const cognitiveComplexityThreshold = 25
 
 // CognitiveComplexityRule flags functions whose cognitive complexity exceeds the maximum.
 type CognitiveComplexityRule struct {

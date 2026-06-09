@@ -24,8 +24,15 @@ Thumbs.db
 !.env.example
 
 ### Go ###
+# bin/ holds the tracked family launcher (bin/gruff-go.sh) plus local build
+# output: scripts/build-bin-gruff-go.sh, the perf harness, and the launcher build
+# the compiled gruff-go binary into bin/ on demand. That binary is a ~12 MB
+# platform-specific artifact - never tracked; only the launcher is committed.
 /bin/*
-!/bin/gruff-go
+!/bin/gruff-go.sh
+# Root build artifact from `go build ./cmd/gruff-go` (anchored so it does not
+# match the cmd/gruff-go source directory).
+/gruff-go
 *.out
 coverage.out
 coverage.html
