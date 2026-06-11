@@ -20,7 +20,7 @@ var privateVar = privateType{}
 
 func privateFunc() {}
 `)
-	index := newPackageReferenceIndex([]parser.Unit{unit})
+	index := newPackageReferenceIndex([]parser.Unit{unit}, Context{})
 	group := index.groups[packageReferenceKey{dir: "pkg/sample", packageName: "sample"}]
 	if group == nil {
 		t.Fatalf("package group missing: %#v", index.groups)

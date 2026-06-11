@@ -3,7 +3,6 @@
 package source
 
 import (
-	"bufio"
 	"context"
 	"os"
 	"path/filepath"
@@ -397,35 +396,6 @@ func classify(path string) (FileType, bool) {
 		}
 		return "", false
 	}
-}
-
-// isGeneratedGo reports whether a Go file carries the generated-file marker comment.
-func isGeneratedGo(path string) bool {
-	// #nosec G304 -- scanner intentionally opens files selected by discovery.
-	file, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "package ") {
-			return false
-		}
-		if !strings.HasPrefix(line, "//") && !strings.HasPrefix(line, "/*") && !strings.HasPrefix(line, "*") {
-			return false
-		}
-		lower := strings.ToLower(line)
-		if strings.Contains(lower, "code generated") && strings.Contains(lower, "do not edit") {
-			return true
-		}
-	}
-	return false
 }
 
 // displayPath converts an absolute filesystem path into a repo-relative display form.

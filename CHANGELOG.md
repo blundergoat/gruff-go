@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+- **0.4.0 precision groundwork** - Generated Go detection now uses a shared leading-comment helper that requires both `generated` and `DO NOT EDIT`, and `--include-ignored` now carries through rule-level generated-file guards so explicitly opted-in generated files are scanned consistently.
+- **Sensitive-data false-positive reductions** - Go comment-only secret-shaped examples, `${name}` documentation placeholders, runtime-generated secret values, private-key-prefix prose, and PEM delimiter manipulation are skipped while real code-bearing literals, raw string literals, raw PEM blocks, JWTs, and provider tokens still flag.
+- **Test-quality precision fixes** - `test-quality.no-failure-path` excludes benchmarks and recognises same-file failure helpers plus assertion-capable helper objects initialized with the active testing receiver before the assertion call. `test-quality.sleep-in-test` accepts only bounded polling loops with a deadline or explicit attempt counter, an observable exit condition, and a failure path.
+- **Reporting and calibration docs** - `design.hotspot-file` is now described as score-neutral composite triage over underlying findings, `allowlists.secretPreviews` is documented as preview-only rather than suppression, and a local scratchpad-corpus calibration script records files, skipped paths, findings, grades, timings, and top rules per module. Scratchpad calibration kept default thresholds, severities, and scoring policy unchanged; the 0.4.0 changes are precision-focused.
+- **Explicit-file project context** - `analyse path/to/file.go` now loads same-directory Go siblings as bounded project-rule context, preventing cross-file `dead-code.unused-private-function` and `docs.package-comment` false positives while keeping context-only findings out of reports.
+- **SQL construction precision** - `security.sql-string-query` now accepts literal-only query fragment assembly, including parameterized fragments with bind arguments, while continuing to flag `fmt.Sprintf` SQL construction and identifier interpolation into SQL text.
+- **Hook diff resilience** - `hook --diff HEAD` in a no-commit repository now emits the normal `gruff.hook.v1` JSON payload with a stderr diagnostic and falls back to scanning requested paths without diff/new-only filtering. Git-base exports are scoped to requested paths, widening explicit Go files only to their package directory for project-rule context.
+
 ## v0.3.0 - 2026-06-09
 
 Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that makes AI-generated code a human can verify, trust, and sign off on (legible enough to review, secure where the eye fails, honestly tested rather than padded with low-signal ceremony) - and aligns the default rule pack, the rule catalogue, and the docs to it. The catalogue ends this release at **83 rules across 11 pillars (70 default-enabled, 13 opt-in)**. This release intentionally keeps the project on the `0.x` line while the remaining 1.0 adoption milestones settle.

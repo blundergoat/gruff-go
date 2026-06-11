@@ -44,7 +44,7 @@ type packageSymbolDecl struct {
 }
 
 // newPackageReferenceIndex groups units by package and records parser-only declarations and references.
-func newPackageReferenceIndex(units []parser.Unit) packageReferenceIndex {
+func newPackageReferenceIndex(units []parser.Unit, ctx Context) packageReferenceIndex {
 	index := packageReferenceIndex{groups: map[packageReferenceKey]*packageReferenceGroup{}}
 	for _, unit := range units {
 		if unit.AST == nil || unit.AST.Name == nil {
@@ -53,7 +53,7 @@ func newPackageReferenceIndex(units []parser.Unit) packageReferenceIndex {
 		key := packageReferenceKey{dir: filepath.Dir(unit.File.Path), packageName: unit.AST.Name.Name}
 		group := index.group(key)
 		group.units = append(group.units, unit)
-		if hasGeneratedHeader(unit.Source) || isVendorPath(unit.File.Path) || importsReflectPackage(unit.AST) {
+		if shouldSkipGeneratedUnit(unit, ctx) || isVendorPath(unit.File.Path) || importsReflectPackage(unit.AST) {
 			group.skipForPrecision = true
 		}
 		group.countIdentifiers(unit.AST)

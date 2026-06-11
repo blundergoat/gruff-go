@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -210,6 +211,14 @@ func TestHookReportsIgnoredPathsAndConfigErrors(t *testing.T) {
 // runHookReport executes the CLI and decodes gruff.hook.v1 JSON.
 func runHookReport(t *testing.T, args ...string) (hookReport, int) {
 	t.Helper()
+	payload, code, _ := runHookReportWithStderr(t, args...)
+	return payload, code
+}
+
+// runHookReportWithStderr executes hook mode and returns decoded JSON plus
+// stderr for tests that assert diagnostic surfaces.
+func runHookReportWithStderr(t *testing.T, args ...string) (hookReport, int, string) {
+	t.Helper()
 	var out, errOut bytes.Buffer
 	code := Main(args, &out, &errOut)
 	if out.Len() == 0 {
@@ -219,7 +228,7 @@ func runHookReport(t *testing.T, args ...string) (hookReport, int) {
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("hook json %v: %v\nstdout=%s\nstderr=%s", args, err, out.String(), errOut.String())
 	}
-	return payload, code
+	return payload, code, errOut.String()
 }
 
 // requireHookFinding returns a named finding or fails the test.
@@ -374,5 +383,55 @@ func TestHookDiffUnstagedBaseIsIndexNotHead(t *testing.T) {
 	}
 	if findHookFinding(staged, "size.file-length") != nil {
 		t.Fatalf("unstaged new-only used HEAD not the index; staged file-length resurfaced: %#v", staged.Findings)
+	}
+}
+
+// TestHookDiffNoHeadDegradesToJSON proves empty git repositories still emit the
+// hook JSON contract with an actionable stderr diagnostic instead of failing
+// before the agent can consume findings.
+func TestHookDiffNoHeadDegradesToJSON(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	hookRunGit(t, root, "init", "-q")
+
+	writeFile(t, root, "long.go", hookLongFixture(510))
+	payload, code, stderr := runHookReportWithStderr(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "long.go")
+	if code != 0 {
+		t.Fatalf("no-HEAD hook exit = %d, stderr = %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "git diff base unavailable") || !strings.Contains(stderr, "without diff/new-only filtering") {
+		t.Fatalf("stderr = %q, want actionable no-HEAD degrade diagnostic", stderr)
+	}
+	if !payload.Config.SchemaOK || len(payload.Findings) == 0 {
+		t.Fatalf("payload = %#v, want normal hook JSON findings", payload)
+	}
+}
+
+// TestExportGitTreeScopesToRequestedPackageContext proves hook base export is
+// bounded to the package context needed for explicit Go file scans.
+func TestExportGitTreeScopesToRequestedPackageContext(t *testing.T) {
+	root := t.TempDir()
+	hookRunGit(t, root, "init", "-q")
+	hookRunGit(t, root, "config", "user.email", "test@example.test")
+	hookRunGit(t, root, "config", "user.name", "test")
+	writeFile(t, root, "pkg/a.go", "package pkg\n")
+	writeFile(t, root, "pkg/b.go", "package pkg\n")
+	writeFile(t, root, "other/other.go", "package other\n")
+	hookRunGit(t, root, "add", ".")
+	hookRunGit(t, root, "commit", "-q", "-m", "baseline")
+
+	baseRoot, cleanup, err := exportGitTree(context.Background(), root, "HEAD", []string{"pkg/a.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(filepath.Join(baseRoot, "pkg/a.go")); err != nil {
+		t.Fatalf("requested file missing from base export: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(baseRoot, "pkg/b.go")); err != nil {
+		t.Fatalf("package sibling missing from base export: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(baseRoot, "other/other.go")); !os.IsNotExist(err) {
+		t.Fatalf("unrelated file exported, err=%v", err)
 	}
 }

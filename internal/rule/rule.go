@@ -16,6 +16,8 @@ import (
 type Context struct {
 	// Root is the project root directory that file paths are reported relative to.
 	Root string
+	// IncludeIgnored is true when the run intentionally scans gitignored, default-ignored, or generated files.
+	IncludeIgnored bool
 }
 
 // Config carries rule enablement and override values derived from config files.
@@ -210,6 +212,12 @@ func (r *Registry) refreshActiveRules() {
 
 // Analyze dispatches active rules and returns findings in deterministic order.
 func (r *Registry) Analyze(units []parser.Unit, context Context) []finding.Finding {
+	return r.AnalyzeWithProjectContext(units, units, context)
+}
+
+// AnalyzeWithProjectContext dispatches unit rules against reportable units while
+// letting project rules see a broader parser context.
+func (r *Registry) AnalyzeWithProjectContext(units []parser.Unit, projectUnits []parser.Unit, context Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, unit := range units {
 		for _, entry := range r.activeUnitRules {
@@ -221,7 +229,7 @@ func (r *Registry) Analyze(units []parser.Unit, context Context) []finding.Findi
 	}
 	for _, entry := range r.activeProjectRules {
 		definition := entry.definition
-		for _, item := range entry.rule.AnalyzeProject(units, context) {
+		for _, item := range entry.rule.AnalyzeProject(projectUnits, context) {
 			findings = append(findings, applyDefinition(item, definition))
 		}
 	}

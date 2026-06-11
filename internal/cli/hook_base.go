@@ -73,7 +73,7 @@ func resolveHookBaseIdentities(ctx context.Context, root string, values hookFlag
 	if !ok {
 		return hookIdentitySet{}, nil
 	}
-	baseRoot, cleanup, err := exportGitTree(ctx, root, baseRef)
+	baseRoot, cleanup, err := exportGitTree(ctx, root, baseRef, values.paths)
 	if err != nil {
 		return hookIdentitySet{}, err
 	}

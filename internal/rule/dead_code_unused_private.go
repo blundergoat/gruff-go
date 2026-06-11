@@ -46,8 +46,8 @@ func (UnusedPrivateFunctionRule) Definition() Definition {
 }
 
 // AnalyzeProject emits findings for unreferenced package-private functions.
-func (UnusedPrivateFunctionRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
-	index := newPackageReferenceIndex(units)
+func (UnusedPrivateFunctionRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
+	index := newPackageReferenceIndex(units, ctx)
 	findings := []finding.Finding{}
 	for _, group := range index.ordered {
 		if group.skipForPrecision {

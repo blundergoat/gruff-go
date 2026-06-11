@@ -32,7 +32,7 @@ paths:
 
 allowlists:
   acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
-  secretPreviews: []          # literal strings that look like secrets but are documented dummies
+  secretPreviews: []          # path globs where redacted secret previews may be shown
 
 selection:
   rules: []           # if non-empty, only these rule IDs run (allowlist)
@@ -87,7 +87,7 @@ The block is additive: omitting any key falls back to the binary default. Omitti
 
 ### `paths.ignore`
 
-A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), non-application metadata directories (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`), dependency caches (`vendor/`, `node_modules/`), and generated Go files (`//go:generate`-emitted with the standard `Code generated … DO NOT EDIT.` header). The entries you add are layered on top.
+A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), non-application metadata directories (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`), dependency caches (`vendor/`, `node_modules/`), and generated Go files whose leading comments contain both `generated` and `DO NOT EDIT`. The entries you add are layered on top.
 
 ```yaml
 paths:
@@ -122,13 +122,13 @@ Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. T
 
 ### `allowlists.secretPreviews`
 
-Literal strings the `sensitive-data.secret-pattern` rule should not flag. Use this for documented sample tokens, public test keys, and CI placeholder values that the rule's pattern detection would otherwise call out.
+Path globs where sensitive-data findings may include the matched redacted preview. This is an output-control allowlist only: it does not suppress findings, change scoring, or mark sample secrets as safe. Use `selection.excludeRules`, `paths.ignore`, or an inline suppression when a finding should intentionally be hidden.
 
 ```yaml
 allowlists:
   secretPreviews:
-    - "ghp_exampletokenforreadmes"
-    - "AKIAIOSFODNN7EXAMPLE"
+    - "docs/**"
+    - "internal/rule/testdata/**"
 ```
 
 ### `selection`

@@ -29,8 +29,8 @@ func (DeferInLoopRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for defers inside the lexical loop body of one function.
-func (DeferInLoopRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || hasGeneratedHeader(unit.Source) {
+func (DeferInLoopRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	findings := []finding.Finding{}
@@ -63,8 +63,8 @@ func (LogFatalLibraryRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for direct log.Fatal* and os.Exit calls in reusable production code.
-func (LogFatalLibraryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || unit.AST.Name.Name == "main" || isBootstrapPath(unit.File.Path) || hasGeneratedHeader(unit.Source) {
+func (LogFatalLibraryRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || unit.AST.Name.Name == "main" || isBootstrapPath(unit.File.Path) || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	logPackages := packageImportNames(unit.AST, "log", "log")
@@ -120,8 +120,8 @@ func (LoopVariableAddressRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings when a range variable address is stored beyond the iteration.
-func (LoopVariableAddressRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || hasGeneratedHeader(unit.Source) {
+func (LoopVariableAddressRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	findings := []finding.Finding{}

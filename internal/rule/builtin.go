@@ -313,15 +313,25 @@ func (SensitiveDataRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for every line that matches the secret-assignment pattern.
+// AnalyzeUnit emits findings for every code-bearing line that matches the secret-assignment pattern.
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
+	inBlockComment := false
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		if unit.File.Type == source.FileTypeGo && !lineIsCodeBearing(line, &inBlockComment) {
+			continue
+		}
 		matches := secretPattern.FindStringSubmatch(line)
 		if len(matches) < 2 || matches[1] == "" {
 			continue
 		}
 		match := matches[1]
+		if unit.File.Type == source.FileTypeGo && !goSecretAssignmentLooksLiteral(match) {
+			continue
+		}
+		if isPlaceholderSecretAssignment(match) {
+			continue
+		}
 		metadata := map[string]any{}
 		if len(r.PreviewAllowlist) == 0 || pathfilter.MatchesAny(r.PreviewAllowlist, unit.File.Path) {
 			metadata["preview"] = redact(match)
@@ -334,6 +344,45 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		})
 	}
 	return findings
+}
+
+// goSecretAssignmentLooksLiteral keeps the generic secret rule focused on
+// literals in Go code. Function calls such as password := generateToken() are
+// not embedded secrets even when the variable name is secret-shaped.
+func goSecretAssignmentLooksLiteral(match string) bool {
+	for _, separator := range []string{":=", "=", ":"} {
+		index := strings.Index(match, separator)
+		if index < 0 {
+			continue
+		}
+		value := strings.TrimSpace(match[index+len(separator):])
+		return strings.HasPrefix(value, `"`) || strings.HasPrefix(value, "'") || strings.HasPrefix(value, "`")
+	}
+	return false
+}
+
+// isPlaceholderSecretAssignment reports whether a generic key/value match uses
+// an obvious documentation placeholder rather than a secret-shaped value.
+func isPlaceholderSecretAssignment(match string) bool {
+	value := secretAssignmentValue(match)
+	if value == "" {
+		return false
+	}
+	return strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") && len(value) > 3
+}
+
+// secretAssignmentValue extracts the right-hand value from a generic secret assignment match.
+func secretAssignmentValue(match string) string {
+	for _, separator := range []string{":=", "=", ":"} {
+		index := strings.Index(match, separator)
+		if index < 0 {
+			continue
+		}
+		value := strings.TrimSpace(match[index+len(separator):])
+		value = strings.Trim(value, `"'`)
+		return strings.TrimPrefix(value, "Bearer ")
+	}
+	return ""
 }
 
 // cyclomaticComplexity counts the cyclomatic complexity of a function body.

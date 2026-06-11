@@ -81,15 +81,16 @@ func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 	findings := []finding.Finding{}
 	testingPackages := testingPackageNames(unit.AST)
 	assertionPackages := assertionPackageNames(unit.AST)
+	failureHelpers := localFailureHelperNames(unit.AST, testingPackages, assertionPackages)
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || !isRunnableTestFunction(fn, testingPackages) {
+		if !ok || !isRunnableFailurePathTestFunction(fn, testingPackages) {
 			continue
 		}
 		if fn.Body == nil || len(fn.Body.List) == 0 {
 			continue
 		}
-		if hasFailureCall(fn, testingPackages, assertionPackages) {
+		if hasFailureCallWithHelpers(fn, testingPackages, assertionPackages, failureHelpers) {
 			continue
 		}
 		position := unit.FileSet.Position(fn.Name.NamePos)
@@ -118,12 +119,14 @@ func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 // literal - fuzz tests put their assertions inside `f.Fuzz(func(t *testing.T,
 // ...){ t.Fatal(...) })`, where the inner `t` is the only handle that calls
 // failure methods.
-func hasFailureCall(fn *ast.FuncDecl, testingPackages, assertionPackages map[string]bool) bool {
+// hasFailureCallWithHelpers reports whether fn directly fails through a
+// testing receiver or delegates to a proven same-file failure helper.
+func hasFailureCallWithHelpers(fn *ast.FuncDecl, testingPackages, assertionPackages, failureHelpers map[string]bool) bool {
 	receivers := testingReceiverNames(fn, testingPackages)
 	if len(receivers) == 0 {
 		return false
 	}
-	return blockHasFailureCall(fn.Body, testingPackages, assertionPackages, receivers)
+	return blockHasFailureCallWithHelpers(fn.Body, testingPackages, assertionPackages, receivers, failureHelpers)
 }
 
 // isReceiverFailureCall reports whether the call is `<t>.<failing-method>(...)`
@@ -169,6 +172,72 @@ func isAssertionHelperCall(call *ast.CallExpr, receivers map[string]bool, assert
 		return true
 	}
 	return false
+}
+
+// isCapturedAssertionHelperCall reports whether a local helper object that was
+// initialized with the testing receiver calls an assertion-prefixed method.
+func isCapturedAssertionHelperCall(call *ast.CallExpr, helperObjects map[string][]token.Pos) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || !hasAssertionHelperPrefix(selector.Sel.Name) {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	return ok && capturedHelperObjectAvailableBefore(helperObjects[receiver.Name], call.Pos())
+}
+
+// capturedHelperObjectAvailableBefore reports whether a helper object was
+// initialized with a testing receiver before an assertion-looking method call.
+func capturedHelperObjectAvailableBefore(positions []token.Pos, before token.Pos) bool {
+	for _, pos := range positions {
+		if pos < before {
+			return true
+		}
+	}
+	return false
+}
+
+// localFailureHelperNames summarises same-file helpers that accept a testing
+// receiver and can fail the test. This suppresses no-failure-path false
+// positives on tests that delegate all assertions to non-Assert-prefixed local
+// helpers such as runMigrationCompatibilityTest(t, ...).
+func localFailureHelperNames(file *ast.File, testingPackages, assertionPackages map[string]bool) map[string]bool {
+	candidates := map[string]*ast.FuncDecl{}
+	if file == nil {
+		return map[string]bool{}
+	}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name == nil || fn.Body == nil || fn.Recv != nil || isRunnableTestFunction(fn, testingPackages) {
+			continue
+		}
+		if receivers := testingReceiverNames(fn, testingPackages); len(receivers) > 0 {
+			candidates[fn.Name.Name] = fn
+		}
+	}
+	resolved := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for name, fn := range candidates {
+			if resolved[name] {
+				continue
+			}
+			if hasFailureCallWithHelpers(fn, testingPackages, assertionPackages, resolved) {
+				resolved[name] = true
+				changed = true
+			}
+		}
+	}
+	return resolved
+}
+
+// isLocalFailureHelperCall reports whether call invokes a same-file helper that
+// was proven to fail through a testing receiver.
+func isLocalFailureHelperCall(call *ast.CallExpr, receivers map[string]bool, failureHelpers map[string]bool) bool {
+	if len(failureHelpers) == 0 || !callPassesTestingReceiver(call, receivers) {
+		return false
+	}
+	fn, ok := call.Fun.(*ast.Ident)
+	return ok && failureHelpers[fn.Name]
 }
 
 // collectTestingReceiverVariables records local variables initialised as

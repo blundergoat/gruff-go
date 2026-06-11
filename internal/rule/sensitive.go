@@ -8,6 +8,7 @@ import (
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
+	"github.com/blundergoat/gruff-go/internal/source"
 )
 
 // Regular expressions used by the sensitive-data rules to detect embedded secrets in source.
@@ -168,6 +169,9 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 		if match == "" {
 			continue
 		}
+		if isNonSecretPrivateKeyMention(unit, line, match) {
+			continue
+		}
 		findings = append(findings, finding.Finding{
 			Message:  message,
 			File:     unit.File.Path,
@@ -176,6 +180,44 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 		})
 	}
 	return findings
+}
+
+// isNonSecretPrivateKeyMention accepts narrow documentation prose and delimiter
+// manipulation that name a private-key header without embedding key material.
+func isNonSecretPrivateKeyMention(unit parser.Unit, line string, match string) bool {
+	if !privateKeyPattern.MatchString(match) {
+		return false
+	}
+	if unit.File.Type == source.FileTypeGo {
+		return isGoPrivateKeyDelimiterUse(line, match)
+	}
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, match) {
+		return false
+	}
+	lowerLine := strings.ToLower(trimmed)
+	lowerMatch := strings.ToLower(match)
+	for _, phrase := range []string{"begins with", "starts with", "starting with"} {
+		index := strings.Index(lowerLine, phrase)
+		if index < 0 {
+			continue
+		}
+		rest := strings.TrimLeft(lowerLine[index+len(phrase):], " \t`\"'(:")
+		if strings.HasPrefix(rest, lowerMatch) {
+			return true
+		}
+	}
+	return false
+}
+
+// isGoPrivateKeyDelimiterUse reports common code paths that strip or re-wrap a
+// caller-provided PEM key using header/footer delimiter strings. These lines
+// name the delimiter but do not contain a private key.
+func isGoPrivateKeyDelimiterUse(line string, match string) bool {
+	if strings.Contains(line, "ReplaceAll(") || strings.Contains(line, "TrimPrefix(") || strings.Contains(line, "TrimSuffix(") {
+		return true
+	}
+	return strings.Contains(line, match+`\\n" +`) || strings.Contains(line, match+`\n" +`)
 }
 
 // scanUnitForCoOccurrence emits one finding per file when both primary and secondary patterns each match on a code-bearing line.

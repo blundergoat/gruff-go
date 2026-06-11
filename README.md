@@ -162,6 +162,7 @@ paths:
 
 allowlists:
   acceptedAbbreviations: ["ID", "HTTP", "JSON", "AST"]
+  secretPreviews: [] # path globs where redacted secret previews may be shown
 
 selection:
   excludeRules: []

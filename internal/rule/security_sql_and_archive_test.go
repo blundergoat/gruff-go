@@ -118,6 +118,96 @@ func sample(db DB, id string) {
 			want: 0,
 		},
 		{
+			name: "parameterized static fragments with args slice",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(ctx Context, db DB, id string) {
+	query := "SELECT * FROM users" + " WHERE id = $1"
+	args := []interface{}{id}
+	db.QueryContext(ctx, query, args...)
+}
+`,
+			want: 0,
+		},
+		{
+			name: "static query fragments",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(db DB) {
+	db.Query("SELECT *" + " FROM users")
+}
+`,
+			want: 0,
+		},
+		{
+			name: "parameterized fragments without bind args still fires",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(ctx Context, db DB) {
+	query := "SELECT * FROM users" + " WHERE id = $1"
+	db.QueryContext(ctx, query)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "fmt sprintf placeholder index still fires",
+			code: `// Package sample is a test package.
+package sample
+
+import "fmt"
+
+func sample(ctx Context, db DB, id string, index int) {
+	query := fmt.Sprintf("SELECT * FROM users WHERE id = $%d", index)
+	db.QueryContext(ctx, query, id)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "identifier interpolation still fires",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(ctx Context, db DB, column string) {
+	query := "SELECT * FROM users ORDER BY " + column
+	db.QueryContext(ctx, query)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "unsafe query before later static reassignment still fires",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(ctx Context, db DB, id string) {
+	query := "SELECT * FROM users WHERE id = " + id
+	db.QueryContext(ctx, query)
+	query = "SELECT *" + " FROM users"
+	_ = query
+}
+`,
+			want: 1,
+		},
+		{
+			name: "static query before later unsafe reassignment stays clean",
+			code: `// Package sample is a test package.
+package sample
+
+func sample(ctx Context, db DB, id string) {
+	query := "SELECT *" + " FROM users"
+	db.QueryContext(ctx, query)
+	query = "SELECT * FROM users WHERE id = " + id
+	_ = query
+}
+`,
+			want: 0,
+		},
+		{
 			name: "const query identifier",
 			code: `// Package sample is a test package.
 package sample

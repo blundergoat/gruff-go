@@ -244,6 +244,89 @@ func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	}
 }
 
+// TestSensitiveDataRuleSkipsGoCommentOnlyLines aligns the generic secret-pattern
+// rule with the exact sensitive-data rules' Go comment boundary.
+func TestSensitiveDataRuleSkipsGoCommentOnlyLines(t *testing.T) {
+	tokenValue := secretPatternFixtureValue()
+	cases := map[string]string{
+		"line comment":  "package pkg\n\n// auth_token = \"" + tokenValue + "\"\nfunc Run() {}\n",
+		"block comment": "/*\nclient_secret: \"" + tokenValue + "\"\n*/\npackage pkg\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			unit := parseOne(t, "pkg/comment.go", src)
+			if got := (SensitiveDataRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("comment-only secret assignment should not flag, got %#v", got)
+			}
+		})
+	}
+}
+
+// TestSensitiveDataRuleStillFlagsCodeBearingAssignments keeps the generic rule
+// strict on real source/config assignments and Go raw strings.
+func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
+	tokenValue := secretPatternFixtureValue()
+	goUnit := parseOne(t, "pkg/secrets.go", "package pkg\n\n"+
+		"const authToken = \""+tokenValue+"\"\n"+
+		"const accessToken = \""+tokenValue+"\" // fixture comment\n"+
+		"const docs = `auth_token = \""+tokenValue+"\"`\n")
+	goFindings := SensitiveDataRule{}.AnalyzeUnit(goUnit, Context{})
+	if len(goFindings) != 3 {
+		t.Fatalf("go assignments and raw string should still flag, got %#v", goFindings)
+	}
+
+	textUnit := parser.Unit{
+		File:   source.File{Path: "config.yaml", Type: source.FileTypeText},
+		Source: "auth_token: " + tokenValue + "\n",
+	}
+	if got := (SensitiveDataRule{}).AnalyzeUnit(textUnit, Context{}); len(got) != 1 {
+		t.Fatalf("text/config assignment should still flag, got %#v", got)
+	}
+}
+
+// TestSensitiveDataRuleSkipsGoGeneratedSecretValues avoids treating calls that
+// produce credentials at runtime as embedded literals.
+func TestSensitiveDataRuleSkipsGoGeneratedSecretValues(t *testing.T) {
+	unit := parseOne(t, "pkg/secrets.go", `package pkg
+
+func Run(randomBytes []byte) {
+	password := base64.RawURLEncoding.EncodeToString(randomBytes)
+	accessToken := buildAuthenticationTokenValue()
+	_ = password
+	_ = accessToken
+}
+`)
+	if got := (SensitiveDataRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("runtime-generated secret values should not flag as embedded literals, got %#v", got)
+	}
+}
+
+// TestSensitiveDataRuleSkipsPlaceholderExamples confirms OpenAPI-style
+// placeholders are documentation, while adjacent raw token values still fire.
+func TestSensitiveDataRuleSkipsPlaceholderExamples(t *testing.T) {
+	placeholder := parser.Unit{
+		File:   source.File{Path: "openapi.yaml", Type: source.FileTypeText},
+		Source: "examples:\n  token: ${sessionToken}\n",
+	}
+	if got := (SensitiveDataRule{}).AnalyzeUnit(placeholder, Context{}); len(got) != 0 {
+		t.Fatalf("placeholder example should not flag, got %#v", got)
+	}
+
+	raw := parser.Unit{
+		File:   source.File{Path: "openapi.yaml", Type: source.FileTypeText},
+		Source: "examples:\n  auth_token: " + secretPatternFixtureValue() + "\n",
+	}
+	if got := (SensitiveDataRule{}).AnalyzeUnit(raw, Context{}); len(got) != 1 {
+		t.Fatalf("raw example token should still flag, got %#v", got)
+	}
+}
+
+// secretPatternFixtureValue builds the token body across literals so dogfood
+// scans do not treat this test file itself as containing a credential.
+func secretPatternFixtureValue() string {
+	return "abcdefghijklmnopqrstuvwxyz" + "123456"
+}
+
 // TestExpansionRules covers the expansion rule pack (package name, empty block, shell, skip).
 func TestExpansionRules(t *testing.T) {
 	packageUnit := parseOne(t, "bad/package.go", `// Package bad_name is a test package.

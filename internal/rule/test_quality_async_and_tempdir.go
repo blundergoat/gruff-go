@@ -29,8 +29,8 @@ func (FatalInGoroutineRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for fatal testing calls inside go func bodies.
-func (FatalInGoroutineRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") || hasGeneratedHeader(unit.Source) {
+func (FatalInGoroutineRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	testingPackages := testingPackageNames(unit.AST)
@@ -71,8 +71,8 @@ func (TempDirMisuseRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for empty-parent temporary directories inside test scopes.
-func (TempDirMisuseRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") || hasGeneratedHeader(unit.Source) {
+func (TempDirMisuseRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	testingPackages := testingPackageNames(unit.AST)

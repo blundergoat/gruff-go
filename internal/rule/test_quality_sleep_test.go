@@ -66,6 +66,101 @@ func waitOnce() {
 	}
 }
 
+// TestSleepInTestRuleAcceptsBoundedPolling accepts sleeps only when the loop
+// has a finite bound, observable condition, and failure after timeout.
+func TestSleepInTestRuleAcceptsBoundedPolling(t *testing.T) {
+	unit := parseOne(t, "poll_test.go", `package sample
+
+import (
+	"testing"
+	"time"
+)
+
+type serviceState struct{}
+
+func (serviceState) Ready() bool { return true }
+
+func TestPollReady(t *testing.T) {
+	service := serviceState{}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if service.Ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("service never became ready")
+}
+`)
+	if got := (SleepInTestRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("bounded polling sleep should be accepted, got %#v", got)
+	}
+}
+
+// TestSleepInTestRuleKeepsIncompletePollingFindings rejects polling loops that
+// are missing a timeout, observable condition, or failure path.
+func TestSleepInTestRuleKeepsIncompletePollingFindings(t *testing.T) {
+	unit := parseOne(t, "poll_test.go", `package sample
+
+import (
+	"testing"
+	"time"
+)
+
+type serviceState struct{}
+
+func (serviceState) Ready() bool { return true }
+
+func TestNoTimeout(t *testing.T) {
+	service := serviceState{}
+	for {
+		if service.Ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestNoFailureAfterTimeout(t *testing.T) {
+	service := serviceState{}
+	for i := 0; i < 3; i++ {
+		if service.Ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestBlindSleepBeforeAssertion(t *testing.T) {
+	go func() {}()
+	time.Sleep(10 * time.Millisecond)
+	t.Fatalf("still blind")
+}
+
+func TestStateComparisonIsNotFiniteBound(t *testing.T) {
+	service := serviceState{}
+	events := []string{}
+	for len(events) < 1 {
+		if service.Ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("events never arrived")
+}
+`)
+	findings := SleepInTestRule{}.AnalyzeUnit(unit, Context{})
+	got := map[string]bool{}
+	for _, item := range findings {
+		got[item.Symbol] = true
+	}
+	for _, want := range []string{"TestNoTimeout", "TestNoFailureAfterTimeout", "TestBlindSleepBeforeAssertion", "TestStateComparisonIsNotFiniteBound"} {
+		if !got[want] {
+			t.Fatalf("%s should still flag; got %#v", want, findings)
+		}
+	}
+}
+
 // TestSleepInTestRuleRespectsImportAlias verifies aliased time imports are still detected.
 func TestSleepInTestRuleRespectsImportAlias(t *testing.T) {
 	unit := parseOne(t, "alias_test.go", `package sample

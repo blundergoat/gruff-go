@@ -194,6 +194,12 @@ func BenchmarkWithFatal(b *testing.B) {
 	b.Fatal("broken")
 }
 
+func BenchmarkNoAssertion(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = i
+	}
+}
+
 func FuzzWithFatal(f *testing.F) {
 	f.Fatal("broken")
 }
@@ -208,6 +214,9 @@ func TestEmpty(t *testing.T) {
 	}
 	if len(got) != 2 || !got["TestNoAssertion"] || !got["TestOnlyErrorString"] {
 		t.Fatalf("expected findings for assertionless tests; got %#v", findings)
+	}
+	if got["BenchmarkNoAssertion"] {
+		t.Fatalf("ordinary benchmarks are out of scope for no-failure-path; got %#v", findings)
 	}
 }
 
