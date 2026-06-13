@@ -286,10 +286,14 @@ func conditionObservesState(expr ast.Expr) bool {
 		}
 		switch current := node.(type) {
 		case *ast.CallExpr:
-			if callFunctionName(current) != "Now" {
-				found = true
+			switch callFunctionName(current) {
+			case "Now", "Since", "Until":
+				// Pure wall-clock reads are not observation of the system under
+				// test; do not descend (the time.X selector would otherwise count).
 				return false
 			}
+			found = true
+			return false
 		case *ast.SelectorExpr, *ast.IndexExpr:
 			found = true
 			return false
@@ -330,9 +334,16 @@ func statementsHaveFailureCall(statements []ast.Stmt, testingPackages, assertion
 	return blockHasFailureCall(&ast.BlockStmt{List: statements}, testingPackages, assertionPackages, receivers)
 }
 
-// recordSleepCalls stores every time.Sleep call inside block.
+// recordSleepCalls accepts only the polling loop's own backoff sleeps. It does
+// not descend into nested function literals (goroutines, subtests, helpers) or
+// nested loops, whose sleeps are not the bounded-polling backoff and must keep
+// flagging even when the enclosing loop qualifies.
 func recordSleepCalls(block *ast.BlockStmt, timePackages map[string]bool, accepted map[token.Pos]bool) {
 	ast.Inspect(block, func(node ast.Node) bool {
+		switch node.(type) {
+		case *ast.FuncLit, *ast.ForStmt, *ast.RangeStmt:
+			return false
+		}
 		call, ok := node.(*ast.CallExpr)
 		if ok && selectorCallMatches(call, timePackages, "Sleep") {
 			accepted[call.Pos()] = true

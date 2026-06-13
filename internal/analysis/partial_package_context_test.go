@@ -101,3 +101,36 @@ func TestAnalyzeExplicitFileHidesContextOnlyFindings(t *testing.T) {
 		}
 	}
 }
+
+// TestAnalyzeExplicitFileStillReportsMissingPackageComment proves a genuine
+// package-level violation is reported (re-anchored to the requested file) even
+// when the lexicographically-first file in the package is a context-only
+// sibling, so the explicit-file context feature does not hide it.
+func TestAnalyzeExplicitFileStillReportsMissingPackageComment(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "aaa.go", "package svc\n\nfunc Helper() {}\n")
+	writeFile(t, root, "zzz.go", "package svc\n\nfunc Run() {}\n")
+	t.Chdir(root)
+
+	report, err := Analyze(Options{
+		Paths:    []string{"zzz.go"},
+		Registry: rule.Defaults(),
+		FailOn:   finding.FailThresholdNone,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range report.Findings {
+		if item.RuleID != "docs.package-comment" {
+			continue
+		}
+		found = true
+		if item.File != "zzz.go" {
+			t.Fatalf("package-comment finding should anchor to the requested file zzz.go, got %q", item.File)
+		}
+	}
+	if !found {
+		t.Fatalf("explicit scan of zzz.go should still report the package's missing comment, got %#v", report.Findings)
+	}
+}

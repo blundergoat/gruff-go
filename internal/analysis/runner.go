@@ -117,7 +117,7 @@ func Analyze(opts Options) (Report, error) {
 	diagnostics = append(diagnostics, diagnosticsFromDiscovery(discovery.Missing)...)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
 	registry := opts.Registry
-	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored})
+	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
 	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
 	if err := ctx.Err(); err != nil {
 		return Report{}, err

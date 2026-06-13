@@ -210,10 +210,21 @@ func isNonSecretPrivateKeyMention(unit parser.Unit, line string, match string) b
 	return false
 }
 
+// pemKeyBodyPattern matches a run of base64 characters long enough to be real
+// PEM key material, distinguishing an embedded key literal from a line that
+// merely names the delimiter for stripping (a bare `-----BEGIN ...-----` string
+// has no such run).
+var pemKeyBodyPattern = regexp.MustCompile(`[A-Za-z0-9+/]{40,}`)
+
 // isGoPrivateKeyDelimiterUse reports common code paths that strip or re-wrap a
 // caller-provided PEM key using header/footer delimiter strings. These lines
-// name the delimiter but do not contain a private key.
+// name the delimiter but do not contain a private key. A line that also carries
+// inline key material (a long base64 run) is a real embedded key and is never
+// suppressed here, so committed single-line PEM literals still flag.
 func isGoPrivateKeyDelimiterUse(line string, match string) bool {
+	if pemKeyBodyPattern.MatchString(line) {
+		return false
+	}
 	if strings.Contains(line, "ReplaceAll(") || strings.Contains(line, "TrimPrefix(") || strings.Contains(line, "TrimSuffix(") {
 		return true
 	}

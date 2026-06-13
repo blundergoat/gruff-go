@@ -247,13 +247,14 @@ func (PackageCommentRule) Definition() Definition {
 }
 
 // AnalyzeProject emits one finding per Go package that has no package-level comment.
-func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	type packageState struct {
-		name       string
-		file       string
-		hasDoc     bool
-		hasCode    bool
-		hasNonTest bool
+		name        string
+		file        string
+		primaryFile string
+		hasDoc      bool
+		hasCode     bool
+		hasNonTest  bool
 	}
 	packages := map[string]packageState{}
 	for _, unit := range units {
@@ -264,6 +265,12 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 		state := packages[key]
 		if state.file == "" || unit.File.Path < state.file {
 			state.file = unit.File.Path
+		}
+		// Prefer a reportable file as the anchor so an explicit-file scan still
+		// reports a genuine package-comment violation instead of dropping a
+		// finding anchored to a context-only sibling.
+		if ctx.isReportable(unit.File.Path) && (state.primaryFile == "" || unit.File.Path < state.primaryFile) {
+			state.primaryFile = unit.File.Path
 		}
 		state.name = unit.AST.Name.Name
 		state.hasCode = true
@@ -283,9 +290,13 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 		if !state.hasNonTest && strings.HasSuffix(state.name, "_test") {
 			continue
 		}
+		file := state.primaryFile
+		if file == "" {
+			file = state.file
+		}
 		findings = append(findings, finding.Finding{
 			Message:  fmt.Sprintf("package %s has no package comment", state.name),
-			File:     state.file,
+			File:     file,
 			Location: &finding.Location{Line: 1},
 			Metadata: map[string]any{"package": state.name},
 		})

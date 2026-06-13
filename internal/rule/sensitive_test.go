@@ -86,6 +86,21 @@ func clean(privateKeyPEM string) []byte {
 	}
 }
 
+// TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall ensures a real PEM key
+// embedded in a normalization call (strings.ReplaceAll) is still flagged rather
+// than mistaken for delimiter manipulation. The key body is built at runtime so
+// the dogfood scan never reads this test file as carrying a credential.
+func TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall(t *testing.T) {
+	body := strings.Repeat("A", 64)
+	unit := parser.Unit{
+		File:   source.File{Path: "keys.go", Type: source.FileTypeGo},
+		Source: `var key = strings.ReplaceAll("-----BEGIN PRIVATE KEY-----\n` + body + `", "\r", "")` + "\n",
+	}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("inline PEM literal inside ReplaceAll should still flag, got %#v", got)
+	}
+}
+
 func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},

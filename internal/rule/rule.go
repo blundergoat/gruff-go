@@ -18,6 +18,23 @@ type Context struct {
 	Root string
 	// IncludeIgnored is true when the run intentionally scans gitignored, default-ignored, or generated files.
 	IncludeIgnored bool
+	// ReportableFiles, when non-empty, is the set of file paths whose findings
+	// survive into the report. Explicit-file scans pull in sibling files for
+	// project context but report only the requested files; project rules should
+	// anchor package-level findings to a reportable file so the post-filter does
+	// not drop them. Empty means every discovered file is reportable.
+	ReportableFiles map[string]struct{}
+}
+
+// isReportable reports whether findings anchored to path survive the report
+// filter. An empty ReportableFiles set means every discovered file is reportable
+// (the default for whole-directory scans).
+func (c Context) isReportable(path string) bool {
+	if len(c.ReportableFiles) == 0 {
+		return true
+	}
+	_, ok := c.ReportableFiles[path]
+	return ok
 }
 
 // Config carries rule enablement and override values derived from config files.

@@ -260,3 +260,69 @@ func TestSleepInTestRuleIsDefaultEnabled(t *testing.T) {
 		t.Errorf("severity = %q, want advisory", def.Severity)
 	}
 }
+
+// TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling ensures a sleep in a
+// goroutine spawned inside a bounded polling loop still flags: it is not the
+// loop's backoff, so accepting the loop must not whitelist nested-closure sleeps.
+func TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling(t *testing.T) {
+	unit := parseOne(t, "poll_test.go", `package sample
+
+import (
+	"testing"
+	"time"
+)
+
+type serviceState struct{}
+
+func (serviceState) Ready() bool { return true }
+
+func TestPollWithGoroutineSleep(t *testing.T) {
+	service := serviceState{}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+		}()
+		if service.Ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("service never became ready")
+}
+`)
+	findings := SleepInTestRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("goroutine sleep inside polling loop should flag while the backoff sleep is accepted; got %d: %#v", len(findings), findings)
+	}
+}
+
+// TestSleepInTestRuleRejectsWallClockOnlyExit ensures a polling loop whose only
+// exit checks elapsed wall-clock time (time.Since) is not accepted: it is still
+// sleeping on the clock rather than synchronizing on the system under test.
+func TestSleepInTestRuleRejectsWallClockOnlyExit(t *testing.T) {
+	unit := parseOne(t, "poll_test.go", `package sample
+
+import (
+	"testing"
+	"time"
+)
+
+func TestWallClockPolling(t *testing.T) {
+	start := time.Now()
+	deadline := start.Add(time.Second)
+	timeout := time.Second / 2
+	for time.Now().Before(deadline) {
+		if time.Since(start) > timeout {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("never finished")
+}
+`)
+	findings := SleepInTestRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("wall-clock-only polling exit should not be accepted; the sleep must flag, got %d: %#v", len(findings), findings)
+	}
+}
