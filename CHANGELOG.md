@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-- **0.4.0 precision groundwork** - Generated Go detection now uses a shared leading-comment helper that requires both `generated` and `DO NOT EDIT`, and `--include-ignored` now carries through rule-level generated-file guards so explicitly opted-in generated files are scanned consistently.
+## v0.4.0 - 2026-06-14
+
+A precision release - fewer false positives across the security, sensitive-data, and test-quality rules and steadier agent-hook behaviour, with no schema or config changes from v0.3.0.
+
+- **Generated-file handling** - Generated Go detection now uses a shared leading-comment helper that requires both `generated` and `DO NOT EDIT`, and `--include-ignored` now carries through rule-level generated-file guards so explicitly opted-in generated files are scanned consistently.
 - **Sensitive-data false-positive reductions** - Go comment-only secret-shaped examples, `${name}` documentation placeholders, runtime-generated secret values, private-key-prefix prose, and PEM delimiter manipulation are skipped while real code-bearing literals, raw string literals, raw PEM blocks, JWTs, and provider tokens still flag.
 - **Test-quality precision fixes** - `test-quality.no-failure-path` excludes benchmarks and recognises same-file failure helpers plus assertion-capable helper objects initialized with the active testing receiver before the assertion call. `test-quality.sleep-in-test` accepts only bounded polling loops with a deadline or explicit attempt counter, an observable exit condition, and a failure path.
 - **Reporting and calibration docs** - `design.hotspot-file` is now described as score-neutral composite triage over underlying findings, `allowlists.secretPreviews` is documented as preview-only rather than suppression, and a local scratchpad-corpus calibration script records files, skipped paths, findings, grades, timings, and top rules per module. Scratchpad calibration kept default thresholds, severities, and scoring policy unchanged; the 0.4.0 changes are precision-focused.
@@ -33,7 +37,7 @@ Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that ma
 
 ## v0.2.0 - 2026-05-28
 
-Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration recipes in [`release.md`](.goat-flow/scratchpad/release.md).
+Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration notes are in the per-change entries below.
 
 - **Severity vocabulary** - 5→3 buckets (`advisory / warning / error`) matching gruff-rs / gruff-ts / gruff-py / gruff-php. The old names (`critical / high / medium / low / info / notice / warn`) are rejected at config and CLI load with `unknown severity "<name>"`. Mapping: `critical / high → error`; `medium / warn → warning`; `low / info / notice → advisory`; `info` dropped (no rule emitted it). See [ADR-009](.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md).
 - **Per-command `minimumSeverity:` block** - New top-level `.gruff-go.yaml` key with sub-keys `analyse / summary / report / dashboard` and values `advisory | warning | error | none`. Precedence: CLI flag > config block > binary default. Additive and optional - configs without the block load unchanged; no config schema bump. Default thresholds split per command: `analyse / summary: medium → advisory` (gating commands fail loudly on any finding), `report / dashboard: medium → none` (inspection commands never exit 1). Set `minimumSeverity.analyse: warning` to retain the prior `medium`-equivalent gate. See [ADR-010](.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
