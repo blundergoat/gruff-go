@@ -46,6 +46,77 @@ func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawPrivateKey)
 }
 
+// TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks keeps documentation
+// wording out of findings without accepting actual PEM-like key blocks.
+func TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks(t *testing.T) {
+	prose := parser.Unit{
+		File:   source.File{Path: "README.txt", Type: source.FileTypeText},
+		Source: "The private key begins with -----BEGIN RSA PRIVATE KEY-----.\nOnly PKCS1 format (starting with \"-----BEGIN RSA PRIVATE KEY-----\") is supported.\n",
+	}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(prose, Context{}); len(got) != 0 {
+		t.Fatalf("private-key prefix prose should not flag, got %#v", got)
+	}
+
+	raw := parser.Unit{
+		File:   source.File{Path: "key.pem", Type: source.FileTypeText},
+		Source: "-----BEGIN RSA PRIVATE KEY-----\nredacted-test-body-that-is-secret-shaped\n-----END RSA PRIVATE KEY-----\n",
+	}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(raw, Context{}); len(got) != 1 {
+		t.Fatalf("raw private-key block should still flag, got %#v", got)
+	}
+}
+
+// TestPrivateKeyRuleSkipsGoDelimiterManipulation avoids flagging code that
+// strips or re-wraps caller-provided PEM data without embedding key material.
+func TestPrivateKeyRuleSkipsGoDelimiterManipulation(t *testing.T) {
+	unit := parser.Unit{
+		File: source.File{Path: "pem.go", Type: source.FileTypeGo},
+		Source: `package pem
+
+import "strings"
+
+func clean(privateKeyPEM string) []byte {
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "-----BEGIN PRIVATE KEY-----", "")
+	return []byte("-----BEGIN PRIVATE KEY-----\n" + privateKeyPEM + "\n-----END PRIVATE KEY-----")
+}
+`,
+	}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("PEM delimiter manipulation should not flag, got %#v", got)
+	}
+}
+
+// TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall ensures a real PEM key
+// embedded in a normalization call (strings.ReplaceAll) is still flagged rather
+// than mistaken for delimiter manipulation. The key body is built at runtime so
+// the dogfood scan never reads this test file as carrying a credential.
+func TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall(t *testing.T) {
+	body := strings.Repeat("A", 64)
+	unit := parser.Unit{
+		File:   source.File{Path: "keys.go", Type: source.FileTypeGo},
+		Source: `var key = strings.ReplaceAll("-----BEGIN PRIVATE KEY-----\n` + body + `", "\r", "")` + "\n",
+	}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("inline PEM literal inside ReplaceAll should still flag, got %#v", got)
+	}
+}
+
+// TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall ensures a real PEM key
+// written as a multiline raw string inside strings.ReplaceAll is still flagged.
+// The body and the raw-string backtick are assembled at runtime so the dogfood
+// scan never reads this test file as carrying a credential.
+func TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall(t *testing.T) {
+	body := strings.Repeat("A", 64)
+	bt := "`"
+	src := "package keys\n\nimport \"strings\"\n\nvar k = strings.ReplaceAll(" + bt +
+		"-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----" + bt +
+		", \"\\r\", \"\")\n"
+	unit := parser.Unit{File: source.File{Path: "keys.go", Type: source.FileTypeGo}, Source: src}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("multiline PEM literal inside ReplaceAll should still flag, got %#v", got)
+	}
+}
+
 func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},

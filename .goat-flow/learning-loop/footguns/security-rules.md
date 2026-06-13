@@ -1,6 +1,6 @@
 ---
 category: security-rules
-last_reviewed: 2026-06-05
+last_reviewed: 2026-06-14
 ---
 
 # Security-Rule Footguns
@@ -22,6 +22,20 @@ Importing `html/template` in a file does not make `text/template` auto-escaped. 
 
 How to avoid:
 - In mixed-import files, require same-file evidence that the `Execute` receiver came from `text/template`, while preserving `html/template` auto-escape as a no-finding case. Pin both sides in `internal/rule/security_template_xss_test.go` (search: `text template still flags when html template is also imported`, `html template execute stays safe when text template is also imported`).
+
+## Footgun: secret-pattern precision guards are Go-only; config files and test fixtures both bite
+
+**Status:** active | **Created:** 2026-06-14 | **Evidence:** OBSERVED
+
+The generic `sensitive-data.secret-pattern` rule (`internal/rule/builtin.go`, search: `func (r SensitiveDataRule) AnalyzeUnit`) is `SeverityError`, so a false positive fails the grade and blocks a CI/agent gate. Two related traps live here:
+
+- **Precision guards were gated to Go.** The comment-skip (search: `lineIsCodeBearing`) and the "value looks like a literal" check (search: `goSecretAssignmentLooksLiteral`) only run when `unit.File.Type == source.FileTypeGo`. Config files (`.toml` / `.yaml` / `.env`) are `FileTypeText` and got none of them, so commented-out example assignments like `# api_key = "your-minimax-api-key"` flagged at Error severity. Corpus calibration surfaced 16 such false positives in `cc-connect/config.example.toml`, all `#`-commented `your-…` placeholders. The fix added `textLineIsComment` (skips `#` / `//` / `;` comment-only lines for non-Go text) and broadened `isPlaceholderSecretAssignment` beyond `${VAR}` to `your-` prefixes and a narrow `placeholderSecretTokens` list (`changeme`, `placeholder`, `redacted`, …). Keep that list narrow: a broad substring match creates false negatives on real high-entropy secrets, which for a security rule is the worse failure.
+- **Test fixtures self-flag in the dogfood scan.** Any `_test.go` line carrying ≥20 contiguous `[A-Za-z0-9_./+=-]` chars after a secret-shaped key (e.g. `access_token = "abcdefghijklmnopqrstuvwxyz123456"`) is itself a secret-pattern hit when gruff-go scans its own repo, dropping the dogfood from grade A. Build real-token fixtures from `secretPatternFixtureValue()` (search in `internal/rule/builtin_test.go`), which splits the body across two literals so no single source line matches.
+
+How to avoid:
+- When changing secret detection, exercise BOTH file types: Go (`builtin_test.go`) and non-Go config (`internal/rule/secret_pattern_config_test.go`, search: `TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders`), with negative cases (comments, placeholders) and positive cases (real credentials still flag).
+- `internal/rule/builtin_test.go` sits near the 500-line `size.file-length` cap; add new secret-pattern fixtures to a focused sibling test file, not to `builtin_test.go`, or the dogfood gains a `size.file-length` advisory.
+- After any change, run `go run ./cmd/gruff-go analyse .` and confirm grade A, then re-scan the corpus to confirm the false-positive count dropped without zeroing real-credential detection.
 
 ## Resolved Entries
 

@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.3.0",
+          "semanticVersion": "0.4.0",
           "rules": [
             {
               "id": "complexity.cognitive",
@@ -312,10 +312,10 @@
                 "text": "Hotspot file"
               },
               "fullDescription": {
-                "text": "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots."
+                "text": "Emits score-neutral composite triage when a file has findings across multiple quality pillars."
               },
               "help": {
-                "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
+                "text": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit."
               },
               "properties": {
                 "pillar": "design",
@@ -2366,7 +2366,7 @@
           "ruleIndex": 11,
           "level": "note",
           "message": {
-            "text": "file has findings across multiple quality pillars"
+            "text": "score-neutral hotspot: triage underlying findings across multiple quality pillars"
           },
           "locations": [
             {
@@ -2378,11 +2378,11 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "c8f0761928502c92"
+            "gruffFingerprint": "adb30add240e33eb"
           },
           "properties": {
             "confidence": "medium",
-            "fingerprint": "c8f0761928502c92",
+            "fingerprint": "adb30add240e33eb",
             "metadata": {
               "findings": 3,
               "minFindings": 2,
@@ -2405,7 +2405,7 @@
               ]
             },
             "pillar": "design",
-            "remediation": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
+            "remediation": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit.",
             "severity": "advisory"
           }
         },

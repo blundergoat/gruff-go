@@ -29,8 +29,8 @@ func (SuppressionWithoutRationaleRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for suppression directives that contain no rationale.
-func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.Source == "" || hasGeneratedHeader(unit.Source) || isVendorPath(unit.File.Path) {
+func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.Source == "" || shouldSkipGeneratedUnit(unit, ctx) || isVendorPath(unit.File.Path) {
 		return nil
 	}
 	if unit.AST != nil && unit.FileSet != nil {

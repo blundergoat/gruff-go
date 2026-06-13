@@ -10,6 +10,8 @@ Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go 
 
 Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
 
+Generated Go files are skipped by default when their leading comments contain both `generated` and `DO NOT EDIT`, case-insensitive. `--include-ignored` opts those files back into scanning, and rule-level generated-file guards respect that run setting.
+
 `docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
 
 `docs.config-field-comment` is path-scoped: it enforces doc comments on exported struct fields only for files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected configuration schema files in.
@@ -27,7 +29,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 | [`dead-code.unused-private-var`](#dead-codeunused-private-var) | dead-code | advisory | parser | - | Opt-in candidate for package-private variables that are not referenced in their parsed package. |
 | [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
 | [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
-| [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Files with findings across multiple quality pillars. |
+| [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Score-neutral composite triage for files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | warning | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
@@ -269,7 +271,7 @@ Each finding's metadata carries the replacement target.
 
 ### `design.hotspot-file`
 
-- **Pillar:** maintainability
+- **Pillar:** design
 - **Default severity:** advisory
 - **Default-enabled:** yes
 - **Threshold:** `minFindings` (default `3`), `minPillars` (default `2`)
@@ -277,9 +279,9 @@ Each finding's metadata carries the replacement target.
 - **Capability:** parser
 - **Tags:** `composite`
 
-Flags files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules: design-pillar findings (including hotspot-file's own output) are excluded from the evidence the rule counts.
+Emits score-neutral composite triage for files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules: design-pillar findings (including hotspot-file's own output) are excluded from the evidence the rule counts. Treat this as a grouping hint over the underlying findings, not a separate fix target.
 
-**Remediation.** Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.
+**Remediation.** Triage the file as a cluster, then fix the underlying findings. Once the underlying findings are handled, the composite disappears; there is no separate hotspot-only edit to make.
 
 ### `docs.comment-rubric`
 
@@ -1142,7 +1144,7 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, set the preview into `allowlists.secretPreviews` so it stops triggering.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only controls whether redacted previews may be shown; it does not suppress findings.
 
 ### `sensitive-data.npm-token`
 
@@ -1196,7 +1198,7 @@ Flags personally identifiable information embedded in source or text: email addr
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
+Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", and Go code that only strips or re-wraps PEM header delimiters are skipped; a raw PEM block still fires. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
 
 **Remediation.** Remove the key, rotate it, and load it from a secret manager or environment-specific runtime configuration.
 
@@ -1210,9 +1212,9 @@ Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedd
 
 Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, `bearer = "…"`, and `authorization = "Bearer …"`.
 
-All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`.
+All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
 
-Add documented dummies to `allowlists.secretPreviews` so example values in tests and READMEs aren't flagged.
+Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. `allowlists.secretPreviews` is preview-only: it allows redacted previews in configured paths but does not suppress findings.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
 
@@ -1331,9 +1333,9 @@ Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`,
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags `Test…` / `Benchmark…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. A test that cannot fail is asserting nothing and provides false confidence.
+Flags `Test…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. Benchmarks are excluded because many legitimate benchmarks measure setup or throughput without assertions. A test that cannot fail is asserting nothing and provides false confidence.
 
-The rule walks the function body looking for those methods on the test function's `*testing.T`, `*testing.B`, or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
+The rule walks the function body looking for those methods on the test function's `*testing.T` or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`, and same-file helpers that accept the active testing receiver and contain a parser-visible failure path. Captured helper objects are recognised only when they were initialized with the active testing receiver before the assertion call and the called method has an assertion-like name. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
 
@@ -1376,7 +1378,7 @@ Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Co
 - **Capability:** parser
 - **Tags:** `flake`, `tests`
 
-Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load.
+Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load. The rule accepts bounded polling loops when the parser can see all three safety signals: a finite deadline or explicit attempt counter, an observable state-based exit condition, and a failure path after the loop. Blind sleeps, state-comparison loops without a real bound, and polling that never fails still emit findings.
 
 **Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
 

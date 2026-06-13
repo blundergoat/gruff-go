@@ -8,6 +8,7 @@ import (
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
+	"github.com/blundergoat/gruff-go/internal/source"
 )
 
 // Regular expressions used by the sensitive-data rules to detect embedded secrets in source.
@@ -168,6 +169,9 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 		if match == "" {
 			continue
 		}
+		if isNonSecretPrivateKeyMention(unit, line, match) {
+			continue
+		}
 		findings = append(findings, finding.Finding{
 			Message:  message,
 			File:     unit.File.Path,
@@ -176,6 +180,65 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 		})
 	}
 	return findings
+}
+
+// isNonSecretPrivateKeyMention accepts narrow documentation prose and delimiter
+// manipulation that name a private-key header without embedding key material.
+func isNonSecretPrivateKeyMention(unit parser.Unit, line string, match string) bool {
+	if !privateKeyPattern.MatchString(match) {
+		return false
+	}
+	if unit.File.Type == source.FileTypeGo {
+		return isGoPrivateKeyDelimiterUse(line, match)
+	}
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, match) {
+		return false
+	}
+	lowerLine := strings.ToLower(trimmed)
+	lowerMatch := strings.ToLower(match)
+	for _, phrase := range []string{"begins with", "starts with", "starting with"} {
+		index := strings.Index(lowerLine, phrase)
+		if index < 0 {
+			continue
+		}
+		rest := strings.TrimLeft(lowerLine[index+len(phrase):], " \t`\"'(:")
+		if strings.HasPrefix(rest, lowerMatch) {
+			return true
+		}
+	}
+	return false
+}
+
+// pemKeyBodyPattern matches a run of base64 characters long enough to be real
+// PEM key material, distinguishing an embedded key literal from a line that
+// merely names the delimiter for stripping (a bare `-----BEGIN ...-----` string
+// has no such run).
+var pemKeyBodyPattern = regexp.MustCompile(`[A-Za-z0-9+/]{40,}`)
+
+// isGoPrivateKeyDelimiterUse reports common code paths that strip or re-wrap a
+// caller-provided PEM key using header/footer delimiter strings. These lines
+// name the delimiter but do not contain a private key. A line that also carries
+// inline key material (a long base64 run) is a real embedded key and is never
+// suppressed here, so committed single-line PEM literals still flag.
+func isGoPrivateKeyDelimiterUse(line string, match string) bool {
+	if index := strings.Index(line, match); index >= 0 {
+		before, after := line[:index], line[index+len(match):]
+		// Delimiter that opens an unclosed raw-string literal: the key body runs
+		// onto following lines, so this is a real multiline embedded key, not a
+		// delimiter passed to a strip helper.
+		if strings.Count(before, "`")%2 == 1 && !strings.Contains(after, "`") {
+			return false
+		}
+	}
+	// Inline key body on the same line is a real single-line embedded key.
+	if pemKeyBodyPattern.MatchString(line) {
+		return false
+	}
+	if strings.Contains(line, "ReplaceAll(") || strings.Contains(line, "TrimPrefix(") || strings.Contains(line, "TrimSuffix(") {
+		return true
+	}
+	return strings.Contains(line, match+`\\n" +`) || strings.Contains(line, match+`\n" +`)
 }
 
 // scanUnitForCoOccurrence emits one finding per file when both primary and secondary patterns each match on a code-bearing line.

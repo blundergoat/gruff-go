@@ -39,8 +39,8 @@ func (r GetPrefixRule) Definition() Definition {
 }
 
 // AnalyzeUnit walks function declarations and reports accessor methods using a Get prefix.
-func (r GetPrefixRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || hasGeneratedHeader(unit.Source) || pathfilter.MatchesAny(r.ExcludePaths, unit.File.Path) {
+func (r GetPrefixRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) || pathfilter.MatchesAny(r.ExcludePaths, unit.File.Path) {
 		return nil
 	}
 	excludeNames := exactStringSet(r.ExcludeNames)

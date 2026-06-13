@@ -101,7 +101,7 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	writeRenderStringList(buf, "  ignore", preservedIgnorePaths(opts))
 	fmt.Fprintln(buf)
 
-	fmt.Fprintln(buf, "# Project-wide allowlists for noisy signals.")
+	fmt.Fprintln(buf, "# Project-wide allowlists and preview controls.")
 	fmt.Fprintln(buf, "# acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path")
 	fmt.Fprintln(buf, "# globs where sensitive-data rules may include the matched preview.")
 	fmt.Fprintln(buf, "allowlists:")

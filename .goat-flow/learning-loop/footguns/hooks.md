@@ -1,6 +1,6 @@
 ---
 category: hooks
-last_reviewed: 2026-06-06
+last_reviewed: 2026-06-14
 ---
 
 # Hook Footguns
@@ -23,3 +23,12 @@ How to avoid:
 - When you change changed-region derivation or scoping in `internal/diff` / `internal/analysis`, immediately re-read `.goat-flow/hooks/gruff-code-quality.sh` (`parse_diff_ranges`, `git_diff_ranges`, `changed_ranges`, `supports_native_changed_regions`, `run_gruff_json`) and mirror the change. Prefer probing the binary (`analyse --help`) over hard-coding which port supports a flag.
 - The hook's `--self-test=smoke` (search: `self_test`) pins deletion-hunk anchoring and the help-probed native-scope selection; extend it whenever you mirror a new behaviour so the next drift is caught by the self-test, not by a reviewer.
 - e2e the hook by overriding `HOME` to a temp dir whose `.local/bin/<binary>` is a logging wrapper (an early `discover_binary` candidate, search: `discover_binary`), then feed a payload on stdin while running from a subdirectory — that proves both the flags passed and the working directory used. Do NOT drop the wrapper into `$root/bin/`; that path holds a committed binary (see the `bin/gruff-go` footgun in `build-artifacts.md`).
+
+## Footgun: the hook is advisory exit 0 with in-band skip/ignore reporting — do not make it exit 2
+
+**Status:** active | **Created:** 2026-06-14 | **Evidence:** OBSERVED
+
+`analyse` exits 2 when every explicit input is skipped before parsing: `ReportAllSkippedInputs` adds an error diagnostic and `ResolveExitCode` (`internal/analysis/report.go`, search: `func ResolveExitCode`) returns 2 for any diagnostic. The `hook` command deliberately does NOT mirror this — it omits `ReportAllSkippedInputs` and returns exit 0 for ignored/skipped explicit inputs, surfacing them in-band through the `gruff.hook.v1` payload (`internal/cli/hook.go`, search: `analysisReport.Summary.ExitCode == 2`; the contract's `Ignored.Paths` field). The hook contract is advisory exit 0 with structured `ignored`/`suppressed`/`config` fields so a PostToolUse hook never hard-fails an agent on an ignored path. A PR reviewer (Cursor, PR #5) read this as an inconsistency bug; it is intended behaviour.
+
+How to avoid:
+- Do not add `ReportAllSkippedInputs: true` (or any analyse-style fail-louder option) to the hook's `analysis.Options` to "fix" the apparent inconsistency. It breaks the advisory contract and `internal/cli/hook_test.go` (search: `TestHookReportsIgnoredPathsAndConfigErrors`), which pins exit 0 plus `Ignored.Paths` for a config-ignored explicit input. If a skipped explicit path should be more visible to agents, add it to an in-band payload field, not the exit code.

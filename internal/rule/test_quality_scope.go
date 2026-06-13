@@ -4,6 +4,7 @@ package rule
 
 import (
 	"go/ast"
+	"go/token"
 	"path"
 	"strconv"
 	"strings"
@@ -33,6 +34,16 @@ func isRunnableTestFunction(fn *ast.FuncDecl, testingPackages map[string]bool) b
 	}
 	paramType, ok := singleParameterType(fn.Type.Params)
 	return ok && isSpecificTestingReceiverType(paramType, testingPackages, kind)
+}
+
+// isRunnableFailurePathTestFunction reports whether no-failure-path should
+// inspect fn. Benchmarks are excluded here only; other test-quality rules still
+// use isRunnableTestFunction so their benchmark scope does not change.
+func isRunnableFailurePathTestFunction(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
+	if fn == nil || fn.Name == nil || strings.HasPrefix(fn.Name.Name, "Benchmark") {
+		return false
+	}
+	return isRunnableTestFunction(fn, testingPackages)
 }
 
 // testFunctionReceiverKind maps a runnable Go test function name to its required
@@ -157,11 +168,18 @@ func assertionPackageNames(file *ast.File) map[string]bool {
 // blockHasFailureCall walks one lexical function body with receiver names scoped
 // to that function and nested function literals.
 func blockHasFailureCall(body *ast.BlockStmt, testingPackages, assertionPackages, receivers map[string]bool) bool {
+	return blockHasFailureCallWithHelpers(body, testingPackages, assertionPackages, receivers, nil)
+}
+
+// blockHasFailureCallWithHelpers walks one lexical function body and includes
+// same-file failure helper summaries when matching delegated assertion paths.
+func blockHasFailureCallWithHelpers(body *ast.BlockStmt, testingPackages, assertionPackages, receivers, failureHelpers map[string]bool) bool {
 	if body == nil {
 		return false
 	}
 	localReceivers := copyReceiverNames(receivers)
 	collectTestingReceiverVariables(body, testingPackages, localReceivers)
+	helperObjects := capturedAssertionHelperObjects(body, localReceivers)
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if found {
@@ -169,17 +187,63 @@ func blockHasFailureCall(body *ast.BlockStmt, testingPackages, assertionPackages
 		}
 		if funcLit, ok := node.(*ast.FuncLit); ok {
 			nestedReceivers := scopedReceiversForFuncType(localReceivers, funcLit.Type, testingPackages)
-			found = blockHasFailureCall(funcLit.Body, testingPackages, assertionPackages, nestedReceivers)
+			found = blockHasFailureCallWithHelpers(funcLit.Body, testingPackages, assertionPackages, nestedReceivers, failureHelpers)
 			return false
 		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		found = isReceiverFailureCall(call, localReceivers) || isAssertionHelperCall(call, localReceivers, assertionPackages)
+		found = isReceiverFailureCall(call, localReceivers) ||
+			isAssertionHelperCall(call, localReceivers, assertionPackages) ||
+			isCapturedAssertionHelperCall(call, helperObjects) ||
+			isLocalFailureHelperCall(call, localReceivers, failureHelpers)
 		return !found
 	})
 	return found
+}
+
+// capturedAssertionHelperObjects records local helper objects initialized from
+// calls that receive a testing handle, such as h := NewHarness(t).
+func capturedAssertionHelperObjects(body *ast.BlockStmt, receivers map[string]bool) map[string][]token.Pos {
+	objects := map[string][]token.Pos{}
+	if body == nil {
+		return objects
+	}
+	ast.Inspect(body, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		switch stmt := node.(type) {
+		case *ast.AssignStmt:
+			for index, rhs := range stmt.Rhs {
+				if index >= len(stmt.Lhs) || !callExprPassesTestingReceiver(rhs, receivers) {
+					continue
+				}
+				if ident, ok := stmt.Lhs[index].(*ast.Ident); ok && ident.Name != "_" {
+					objects[ident.Name] = append(objects[ident.Name], rhs.Pos())
+				}
+			}
+		case *ast.ValueSpec:
+			for index, value := range stmt.Values {
+				if index >= len(stmt.Names) || !callExprPassesTestingReceiver(value, receivers) {
+					continue
+				}
+				if name := stmt.Names[index]; name.Name != "_" {
+					objects[name.Name] = append(objects[name.Name], value.Pos())
+				}
+			}
+		}
+		return true
+	})
+	return objects
+}
+
+// callExprPassesTestingReceiver reports whether expr is a call whose arguments
+// include a known testing receiver.
+func callExprPassesTestingReceiver(expr ast.Expr, receivers map[string]bool) bool {
+	call, ok := expr.(*ast.CallExpr)
+	return ok && callPassesTestingReceiver(call, receivers)
 }
 
 // scopedReceiversForFuncType applies nested function parameters to an inherited

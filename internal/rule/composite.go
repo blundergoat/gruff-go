@@ -51,7 +51,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 	return Definition{
 		ID:             "design.hotspot-file",
 		Title:          "Hotspot file",
-		Description:    "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.",
+		Description:    "Emits score-neutral composite triage when a file has findings across multiple quality pillars.",
 		Pillar:         finding.PillarDesign,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
@@ -61,7 +61,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 			"minPillars":  float64(minPillars),
 		},
 		Tags:        []string{"composite"},
-		Remediation: "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds.",
+		Remediation: "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit.",
 	}
 }
 
@@ -101,7 +101,7 @@ func (r DesignHotspotFileRule) AnalyzeFindings(findings []finding.Finding, _ Con
 		metadata["minFindings"] = minFindings
 		metadata["minPillars"] = minPillars
 		out = append(out, finding.Finding{
-			Message:  "file has findings across multiple quality pillars",
+			Message:  "score-neutral hotspot: triage underlying findings across multiple quality pillars",
 			File:     group.file,
 			Metadata: metadata,
 		})

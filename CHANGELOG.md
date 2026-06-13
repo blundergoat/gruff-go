@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+## v0.4.0 - 2026-06-14
+
+A precision release: fewer false positives in the security, sensitive-data, and test-quality rules, plus a steadier agent hook. No schema or config changes from v0.3.0.
+
+- **Generated-file handling** - Go generated-file detection now requires both `generated` and `DO NOT EDIT` in the leading comments, `--include-ignored` reaches the rule-level guards, and the skip is Go-only, so a `DO NOT EDIT` banner in a non-Go file no longer hides findings.
+- **Sensitive-data false positives** - In Go and config files alike, the secret scanner now skips comment-only lines, `${name}` placeholders, `your-`/`CHANGEME`-style examples, runtime-generated values, and PEM-delimiter prose; real secrets, PEM blocks, JWTs, and provider tokens — including a key embedded inline or multiline in a `strings.ReplaceAll`/trim call — still flag. This clears the example-config false positives found in corpus testing.
+- **Test-quality precision** - `test-quality.no-failure-path` skips benchmarks and recognises your own failure/assertion helpers. `test-quality.sleep-in-test` only allows a sleep inside a real polling loop (deadline or attempt cap, a visible exit, and a failure check after it); `continue`/`goto`/`fallthrough` no longer count as that exit, a sleep in a nested goroutine is not whitelisted by the enclosing loop, and a loop whose only exit checks wall-clock time still flags.
+- **Explicit-file scans** - `analyse path/to/file.go` now reads same-directory Go siblings for context, so cross-file false positives like `dead-code.unused-private-function` and `docs.package-comment` are gone, while the siblings' own findings stay out of the report. A sibling that fails to parse reports a diagnostic instead of silently causing a false positive, and a genuine package-level violation (such as a missing package comment) is re-anchored to the requested file rather than dropped.
+- **SQL detection** - `security.sql-string-query` now accepts queries built only from string literals (including parameterised fragments with bind arguments) and still flags `fmt.Sprintf` and identifier interpolation.
+- **Agent hook resilience** - `hook --diff HEAD` in a repo with no commits now returns the normal `gruff.hook.v1` JSON with a warning and scans without diff filtering instead of failing. Git-base exports are scoped to the requested paths.
+- **Docs and tooling** - `design.hotspot-file` is documented as score-neutral triage (a grouping pointer, not a fix target), `allowlists.secretPreviews` as preview-only, and a new local corpus-calibration script reports files, skips, findings, grades, and timings per module.
+
 ## v0.3.0 - 2026-06-09
 
 Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that makes AI-generated code a human can verify, trust, and sign off on (legible enough to review, secure where the eye fails, honestly tested rather than padded with low-signal ceremony) - and aligns the default rule pack, the rule catalogue, and the docs to it. The catalogue ends this release at **83 rules across 11 pillars (70 default-enabled, 13 opt-in)**. This release intentionally keeps the project on the `0.x` line while the remaining 1.0 adoption milestones settle.
@@ -22,7 +36,7 @@ Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that ma
 
 ## v0.2.0 - 2026-05-28
 
-Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration recipes in [`release.md`](.goat-flow/scratchpad/release.md).
+Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration notes are in the per-change entries below.
 
 - **Severity vocabulary** - 5→3 buckets (`advisory / warning / error`) matching gruff-rs / gruff-ts / gruff-py / gruff-php. The old names (`critical / high / medium / low / info / notice / warn`) are rejected at config and CLI load with `unknown severity "<name>"`. Mapping: `critical / high → error`; `medium / warn → warning`; `low / info / notice → advisory`; `info` dropped (no rule emitted it). See [ADR-009](.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md).
 - **Per-command `minimumSeverity:` block** - New top-level `.gruff-go.yaml` key with sub-keys `analyse / summary / report / dashboard` and values `advisory | warning | error | none`. Precedence: CLI flag > config block > binary default. Additive and optional - configs without the block load unchanged; no config schema bump. Default thresholds split per command: `analyse / summary: medium → advisory` (gating commands fail loudly on any finding), `report / dashboard: medium → none` (inspection commands never exit 1). Set `minimumSeverity.analyse: warning` to retain the prior `medium`-equivalent gate. See [ADR-010](.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).

@@ -247,13 +247,14 @@ func (PackageCommentRule) Definition() Definition {
 }
 
 // AnalyzeProject emits one finding per Go package that has no package-level comment.
-func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	type packageState struct {
-		name       string
-		file       string
-		hasDoc     bool
-		hasCode    bool
-		hasNonTest bool
+		name        string
+		file        string
+		primaryFile string
+		hasDoc      bool
+		hasCode     bool
+		hasNonTest  bool
 	}
 	packages := map[string]packageState{}
 	for _, unit := range units {
@@ -264,6 +265,12 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 		state := packages[key]
 		if state.file == "" || unit.File.Path < state.file {
 			state.file = unit.File.Path
+		}
+		// Prefer a reportable file as the anchor so an explicit-file scan still
+		// reports a genuine package-comment violation instead of dropping a
+		// finding anchored to a context-only sibling.
+		if ctx.isReportable(unit.File.Path) && (state.primaryFile == "" || unit.File.Path < state.primaryFile) {
+			state.primaryFile = unit.File.Path
 		}
 		state.name = unit.AST.Name.Name
 		state.hasCode = true
@@ -283,9 +290,13 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, _ Context) []findi
 		if !state.hasNonTest && strings.HasSuffix(state.name, "_test") {
 			continue
 		}
+		file := state.primaryFile
+		if file == "" {
+			file = state.file
+		}
 		findings = append(findings, finding.Finding{
 			Message:  fmt.Sprintf("package %s has no package comment", state.name),
-			File:     state.file,
+			File:     file,
 			Location: &finding.Location{Line: 1},
 			Metadata: map[string]any{"package": state.name},
 		})
@@ -313,15 +324,28 @@ func (SensitiveDataRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for every line that matches the secret-assignment pattern.
+// AnalyzeUnit emits findings for every code-bearing line that matches the secret-assignment pattern.
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
+	inBlockComment := false
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		if unit.File.Type == source.FileTypeGo && !lineIsCodeBearing(line, &inBlockComment) {
+			continue
+		}
+		if unit.File.Type != source.FileTypeGo && textLineIsComment(line) {
+			continue
+		}
 		matches := secretPattern.FindStringSubmatch(line)
 		if len(matches) < 2 || matches[1] == "" {
 			continue
 		}
 		match := matches[1]
+		if unit.File.Type == source.FileTypeGo && !goSecretAssignmentLooksLiteral(match) {
+			continue
+		}
+		if isPlaceholderSecretAssignment(match) {
+			continue
+		}
 		metadata := map[string]any{}
 		if len(r.PreviewAllowlist) == 0 || pathfilter.MatchesAny(r.PreviewAllowlist, unit.File.Path) {
 			metadata["preview"] = redact(match)
@@ -334,6 +358,81 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		})
 	}
 	return findings
+}
+
+// goSecretAssignmentLooksLiteral keeps the generic secret rule focused on
+// literals in Go code. Function calls such as password := generateToken() are
+// not embedded secrets even when the variable name is secret-shaped.
+func goSecretAssignmentLooksLiteral(match string) bool {
+	for _, separator := range []string{":=", "=", ":"} {
+		index := strings.Index(match, separator)
+		if index < 0 {
+			continue
+		}
+		value := strings.TrimSpace(match[index+len(separator):])
+		return strings.HasPrefix(value, `"`) || strings.HasPrefix(value, "'") || strings.HasPrefix(value, "`")
+	}
+	return false
+}
+
+// textLineIsComment reports whether a non-Go config/text line is comment-only.
+// Go comment handling lives in lineIsCodeBearing; this covers the line-comment
+// markers that dominate config formats (#, //, ;) so a secret-shaped example a
+// maintainer commented out (e.g. `# api_key = "your-key"` in a .env or .toml)
+// is not flagged as a live secret assignment.
+func textLineIsComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "#") ||
+		strings.HasPrefix(trimmed, "//") ||
+		strings.HasPrefix(trimmed, ";")
+}
+
+// placeholderSecretTokens are documentation-placeholder markers that mark an
+// otherwise secret-shaped value as an example rather than a real credential.
+// They are matched as a value prefix (not a substring) so a real secret that
+// merely contains one of these runs is not skipped.
+var placeholderSecretTokens = []string{
+	"changeme", "change-me", "change_me",
+	"replaceme", "replace-me", "replace_me",
+	"placeholder", "redacted", "dummy", "xxxxxxxx",
+}
+
+// isPlaceholderSecretAssignment reports whether a generic key/value match uses
+// an obvious documentation placeholder rather than a secret-shaped value, so
+// example configs (${VAR}, your-api-key, CHANGEME, REDACTED) do not flag while
+// real high-entropy credentials still do.
+func isPlaceholderSecretAssignment(match string) bool {
+	value := secretAssignmentValue(match)
+	if value == "" {
+		return false
+	}
+	if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") && len(value) > 3 {
+		return true
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "your-") || strings.HasPrefix(lower, "your_") {
+		return true
+	}
+	for _, token := range placeholderSecretTokens {
+		if strings.HasPrefix(lower, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// secretAssignmentValue extracts the right-hand value from a generic secret assignment match.
+func secretAssignmentValue(match string) string {
+	for _, separator := range []string{":=", "=", ":"} {
+		index := strings.Index(match, separator)
+		if index < 0 {
+			continue
+		}
+		value := strings.TrimSpace(match[index+len(separator):])
+		value = strings.Trim(value, `"'`)
+		return strings.TrimPrefix(value, "Bearer ")
+	}
+	return ""
 }
 
 // cyclomaticComplexity counts the cyclomatic complexity of a function body.

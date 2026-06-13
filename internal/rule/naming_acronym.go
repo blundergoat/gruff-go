@@ -3,7 +3,6 @@
 package rule
 
 import (
-	"bufio"
 	"fmt"
 	"go/ast"
 	"strings"
@@ -82,8 +81,8 @@ func (r AcronymCaseRule) Definition() Definition {
 }
 
 // AnalyzeUnit walks the unit and emits findings for identifiers that mis-case configured initialisms.
-func (r AcronymCaseRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || hasGeneratedHeader(unit.Source) {
+func (r AcronymCaseRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	specs := r.acronymSpecs()
@@ -207,18 +206,6 @@ func splitIdentifierTokens(name string) []string {
 	}
 	flush(len(runes))
 	return tokens
-}
-
-// hasGeneratedHeader reports whether the source's first lines mark it as machine-generated.
-func hasGeneratedHeader(source string) bool {
-	scanner := bufio.NewScanner(strings.NewReader(source))
-	for index := 0; index < 10 && scanner.Scan(); index++ {
-		line := scanner.Text()
-		if strings.Contains(line, "Code generated") || strings.Contains(line, "DO NOT EDIT") {
-			return true
-		}
-	}
-	return false
 }
 
 // exactStringSet returns a set keyed by the unmodified, non-empty entries of values.

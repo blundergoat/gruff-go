@@ -29,8 +29,8 @@ func (UnusedPrivateTypeRule) Definition() Definition {
 }
 
 // AnalyzeProject emits candidate findings for unreferenced package-private types.
-func (UnusedPrivateTypeRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
-	return unusedPrivateSymbolFindings(newPackageReferenceIndex(units), "type")
+func (UnusedPrivateTypeRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
+	return unusedPrivateSymbolFindings(newPackageReferenceIndex(units, ctx), "type")
 }
 
 // UnusedPrivateVarRule flags private package variables that have no parser-visible references.
@@ -53,8 +53,8 @@ func (UnusedPrivateVarRule) Definition() Definition {
 }
 
 // AnalyzeProject emits candidate findings for unreferenced package-private vars.
-func (UnusedPrivateVarRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
-	return unusedPrivateSymbolFindings(newPackageReferenceIndex(units), "var")
+func (UnusedPrivateVarRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
+	return unusedPrivateSymbolFindings(newPackageReferenceIndex(units, ctx), "var")
 }
 
 // UnusedPrivateConstRule flags private package constants that have no parser-visible references.
@@ -77,8 +77,8 @@ func (UnusedPrivateConstRule) Definition() Definition {
 }
 
 // AnalyzeProject emits candidate findings for unreferenced package-private consts.
-func (UnusedPrivateConstRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
-	return unusedPrivateSymbolFindings(newPackageReferenceIndex(units), "const")
+func (UnusedPrivateConstRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
+	return unusedPrivateSymbolFindings(newPackageReferenceIndex(units, ctx), "const")
 }
 
 // unusedPrivateSymbolFindings emits findings for the selected declaration kind in deterministic package order.

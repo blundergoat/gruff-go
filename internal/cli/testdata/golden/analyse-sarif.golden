@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.3.0",
+          "semanticVersion": "0.4.0",
           "rules": [
             {
               "id": "complexity.cognitive",
@@ -312,10 +312,10 @@
                 "text": "Hotspot file"
               },
               "fullDescription": {
-                "text": "Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots."
+                "text": "Emits score-neutral composite triage when a file has findings across multiple quality pillars."
               },
               "help": {
-                "text": "Triage the file as a unit: separate unrelated responsibilities before tuning individual rule thresholds."
+                "text": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit."
               },
               "properties": {
                 "pillar": "design",

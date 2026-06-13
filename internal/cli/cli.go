@@ -16,7 +16,7 @@ import (
 )
 
 // toolVersion is the released gruff-go semantic version printed by --version.
-const toolVersion = "0.3.0"
+const toolVersion = "0.4.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
@@ -180,19 +180,20 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		return 2
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          flags.Args(),
-		Format:         values.format,
-		FailOn:         failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: values.includeIgnored,
-		BaselinePath:   values.baselinePath,
-		DiffBase:       values.diffBase,
-		DiffMode:       values.resolvedDiffMode(),
-		DiffPatch:      values.diffPatch,
-		ChangedRanges:  values.changedRanges,
-		ChangedScope:   values.changedScope,
-		BaselineShow:   values.baselineShow,
+		Paths:                  flags.Args(),
+		Format:                 values.format,
+		FailOn:                 failOn,
+		Registry:               registry,
+		IgnorePaths:            ignorePaths,
+		IncludeIgnored:         values.includeIgnored,
+		ReportAllSkippedInputs: true,
+		BaselinePath:           values.baselinePath,
+		DiffBase:               values.diffBase,
+		DiffMode:               values.resolvedDiffMode(),
+		DiffPatch:              values.diffPatch,
+		ChangedRanges:          values.changedRanges,
+		ChangedScope:           values.changedScope,
+		BaselineShow:           values.baselineShow,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

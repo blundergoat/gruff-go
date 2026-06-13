@@ -9,7 +9,7 @@ The default is `text` if you omit `--format`.
 Compact terminal-friendly output:
 
 ```text
-gruff-go 0.3.0 analyse
+gruff-go 0.4.0 analyse
 Composite: A (99.00 / 100)
 Findings: 1 total · 0 error · 1 warning · 0 advisory
 schema: gruff.analysis.v2
@@ -37,7 +37,7 @@ Top-level shape:
 ```jsonc
 {
   "schemaVersion": "gruff.analysis.v2",
-  "tool":          { "name": "gruff-go", "version": "0.3.0" },
+  "tool":          { "name": "gruff-go", "version": "0.4.0" },
   "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "advisory" },
   "summary":       { "filesScanned": 65, "filesSkipped": 6, "findingsCount": 3,
                      "countsBySeverity": {...}, "countsByPillar": {...}, "exitCode": 1 },

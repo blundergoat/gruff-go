@@ -26,7 +26,7 @@ paths:
     # opt-in detectors never flag their own deliberate test vectors.
     - internal/rule/sensitive_expansion_test.go
 
-# Project-wide allowlists for noisy signals.
+# Project-wide allowlists and preview controls.
 # acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path
 # globs where sensitive-data rules may include the matched preview.
 allowlists:
@@ -85,7 +85,7 @@ rules:
     enabled: true
     severity: advisory
 
-  # Flags files with findings across multiple quality pillars, highlighting cross-cutting maintenance hotspots.
+  # Emits score-neutral composite triage when a file has findings across multiple quality pillars.
   design.hotspot-file:
     enabled: true
     severity: advisory

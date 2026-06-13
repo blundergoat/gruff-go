@@ -43,6 +43,12 @@ changed region with the diff-aware flags - `--diff`, `--since`,
 `gruff-go analyse --help` and [CI Integration](ci-integration.md) for the exact
 recipes. Feed the findings back to the agent and re-run until clean.
 
+Agent harnesses that consume `gruff-go hook --format json --diff ...` receive the
+stable `gruff.hook.v1` payload. In a new git repository with no commits yet,
+`--diff HEAD` cannot resolve a base; hook mode writes an actionable stderr
+diagnostic and falls back to scanning the requested paths without diff/new-only
+filtering rather than dropping the JSON contract.
+
 ### Respecting `paths.ignore` (authoritative in every mode)
 
 A hook passes gruff the exact files the agent changed - explicit paths, not a
@@ -110,6 +116,23 @@ gruff-go analyse --baseline gruff-baseline.json --min-severity advisory .
 
 Tune these in [Configuration](configuration.md); the full catalogue is in
 [Rules](rules.md).
+
+## Triage actions
+
+Treat every finding as requiring one explicit action before handoff:
+
+| Action | Use when | Agent response |
+| --- | --- | --- |
+| `APPLY` | The finding names a local, mechanical fix. | Edit the code and rerun gruff. |
+| `APPLY-WITH-CHECK` | The fix changes behaviour, security posture, concurrency, or test intent. | Edit, then run the relevant test or reproduction before rerunning gruff. |
+| `CONFIGURE` | The finding is legitimate but the project policy differs from the default rule pack. | Change config only with maintainer intent; record why the rule or path is out of scope. |
+| `BASELINE` | Existing debt should be tracked without blocking unrelated new work. | Generate or refresh a baseline and keep new findings gated. |
+| `LARGER-REFACTOR` | The finding points at a real design issue that is too broad for the current change. | Leave an explicit follow-up with the underlying findings grouped; do not hide the signal. |
+| `SKIP-CODEBASE` | The path is generated, vendored, fixture-only, or otherwise outside the review boundary. | Use `check-ignore` / `paths.ignore` so gruff reports the skip instead of asking for a code edit. |
+
+`design.hotspot-file` is a composite triage pointer. Use it to group related
+underlying findings in one file; do not treat it as an extra standalone edit after
+the underlying findings are handled.
 
 ## Recommended settings for agent-generated code
 

@@ -37,6 +37,8 @@ type Options struct {
 	IgnorePaths []string
 	// IncludeIgnored disables gitignore and metadata directory pruning when true.
 	IncludeIgnored bool
+	// ReportAllSkippedInputs reports explicit input paths that are all skipped as diagnostics.
+	ReportAllSkippedInputs bool
 	// BaselinePath points at an optional baseline file used to suppress previously accepted findings.
 	BaselinePath string
 	// DiffBase enables changed-lines-only mode against this git revision when non-empty.
@@ -83,6 +85,9 @@ func Analyze(opts Options) (Report, error) {
 		return Report{}, err
 	}
 	diagnostics := []Diagnostic{}
+	if opts.ReportAllSkippedInputs {
+		diagnostics = append(diagnostics, diagnosticsFromAllSkippedInputs(opts.Paths, discovery)...)
+	}
 	// Parse and analyse the full discovered project even in diff mode: project-level
 	// rules (such as cross-file dead-code) and baseline classification need complete
 	// context to avoid false positives, so the changed-region scope is applied to
@@ -90,14 +95,30 @@ func Analyze(opts Options) (Report, error) {
 	// they are parsed.
 	changed, diffSummary, diagnostics := resolveChangedScope(ctx, root, discovery.Files, diagnostics, opts)
 
+	projectFiles, err := projectContextFiles(root, opts, discovery.Files)
+	if err != nil {
+		return Report{}, err
+	}
 	units, parseDiagnostics := parser.Parse(discovery.Files)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
+	projectUnits := units
+	if !sameSourceFileSet(discovery.Files, projectFiles) {
+		var projectParseDiagnostics []parser.Diagnostic
+		projectUnits, projectParseDiagnostics = parser.Parse(projectFiles)
+		// A sibling pulled in only for package context can strip evidence a
+		// project rule depends on (an unparsed caller makes a used symbol look
+		// dead), so surface its parse/read failures rather than letting them
+		// drive a silent false positive. Primary-file diagnostics are reported
+		// below, so only the context-only entries are added here.
+		parseDiagnostics = append(parseDiagnostics, contextOnlyParseDiagnostics(projectParseDiagnostics, discovery.Files)...)
+	}
 	diagnostics = append(diagnostics, diagnosticsFromDiscovery(discovery.Missing)...)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
 	registry := opts.Registry
-	findings := registry.Analyze(units, rule.Context{Root: root})
+	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
+	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}

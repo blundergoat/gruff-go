@@ -165,8 +165,11 @@ func (SQLStringQueryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 			if !ok || len(call.Args) <= queryArgIndex {
 				return true
 			}
-			kind, ok := sqlConstructionKind(call.Args[queryArgIndex], constructedVars, fmtPackages)
+			construction, ok := sqlConstructionKind(call.Args[queryArgIndex], constructedVars, fmtPackages, call.Pos())
 			if !ok {
+				return true
+			}
+			if isAcceptedStaticSQLConstruction(call, queryArgIndex, construction) {
 				return true
 			}
 			if isTestSupportPath(unit.File.Path) && isTestSchemaCreation(call.Args[queryArgIndex], testSchemaVars) {
@@ -179,7 +182,7 @@ func (SQLStringQueryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 				Location: &finding.Location{Line: position.Line, Column: position.Column},
 				Metadata: map[string]any{
 					"call": callName,
-					"kind": kind,
+					"kind": construction.kind,
 				},
 			})
 			return true
@@ -253,9 +256,11 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return findings
 }
 
-// collectConstructedSQLVars records same-function variables initialized from dynamic SQL construction.
-func collectConstructedSQLVars(body *ast.BlockStmt, fmtPackages map[string]bool) map[string]string {
-	vars := map[string]string{}
+// collectConstructedSQLVars records same-function variables initialized from
+// SQL construction, preserving assignment order so later reassignment cannot
+// change the classification of an earlier query call.
+func collectConstructedSQLVars(body *ast.BlockStmt, fmtPackages map[string]bool) map[string][]sqlConstructionAssignment {
+	vars := map[string][]sqlConstructionAssignment{}
 	ast.Inspect(body, func(node ast.Node) bool {
 		if _, nested := node.(*ast.FuncLit); nested {
 			return false
@@ -266,8 +271,8 @@ func collectConstructedSQLVars(body *ast.BlockStmt, fmtPackages map[string]bool)
 				if name.Name == "_" || i >= len(stmt.Values) {
 					continue
 				}
-				if kind, ok := sqlConstructionKind(stmt.Values[i], vars, fmtPackages); ok {
-					vars[name.Name] = kind
+				if kind, ok := sqlConstructionKind(stmt.Values[i], vars, fmtPackages, stmt.Values[i].Pos()); ok {
+					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Values[i].Pos(), construction: kind})
 				}
 			}
 		case *ast.AssignStmt:
@@ -276,8 +281,21 @@ func collectConstructedSQLVars(body *ast.BlockStmt, fmtPackages map[string]bool)
 				if !ok || name.Name == "_" || i >= len(stmt.Rhs) {
 					continue
 				}
-				if kind, ok := sqlConstructionKind(stmt.Rhs[i], vars, fmtPackages); ok {
-					vars[name.Name] = kind
+				if kind, ok := sqlConstructionKind(stmt.Rhs[i], vars, fmtPackages, stmt.Rhs[i].Pos()); ok {
+					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Rhs[i].Pos(), construction: kind})
+					continue
+				}
+				// A purely static literal append (e.g. q += " ORDER BY id LIMIT ?")
+				// keeps the query safe, so it must not invalidate the static class.
+				if _, static := staticStringExpr(stmt.Rhs[i]); static {
+					continue
+				}
+				// A tracked static SQL var reassigned or appended (+=) with a
+				// genuinely dynamic RHS (one carrying a variable) becomes dynamic;
+				// record a non-static entry so a later use is not accepted under the
+				// stale static classification.
+				if _, tracked := vars[name.Name]; tracked || stmt.Tok == token.ADD_ASSIGN {
+					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Rhs[i].Pos(), construction: sqlConstruction{kind: "string-concat"}})
 				}
 			}
 		}
@@ -323,21 +341,38 @@ func looksLikeContextArgument(expr ast.Expr) bool {
 }
 
 // sqlConstructionKind reports dynamic SQL construction only when the expression carries SQL keyword evidence.
-func sqlConstructionKind(expr ast.Expr, constructedVars map[string]string, fmtPackages map[string]bool) (string, bool) {
+func sqlConstructionKind(expr ast.Expr, constructedVars map[string][]sqlConstructionAssignment, fmtPackages map[string]bool, before token.Pos) (sqlConstruction, bool) {
 	switch value := expr.(type) {
 	case *ast.Ident:
-		kind, ok := constructedVars[value.Name]
-		return kind, ok
+		return latestSQLConstructionBefore(constructedVars[value.Name], before)
 	case *ast.CallExpr:
 		if isFmtSprintfCall(value, fmtPackages) && exprHasSQLKeyword(value) {
-			return "fmt.Sprintf", true
+			return sqlConstruction{kind: "fmt.Sprintf"}, true
 		}
 	case *ast.BinaryExpr:
 		if isStringConcatWithSQL(value) {
-			return "string-concat", true
+			if text, ok := staticStringExpr(value); ok {
+				return sqlConstruction{
+					kind:          "static-string-concat",
+					static:        true,
+					parameterized: sqlPlaceholderPattern.MatchString(text),
+				}, true
+			}
+			return sqlConstruction{kind: "string-concat"}, true
 		}
 	}
-	return "", false
+	return sqlConstruction{}, false
+}
+
+// latestSQLConstructionBefore returns the last known construction assignment
+// that occurs before a query call or another variable assignment.
+func latestSQLConstructionBefore(assignments []sqlConstructionAssignment, before token.Pos) (sqlConstruction, bool) {
+	for index := len(assignments) - 1; index >= 0; index-- {
+		if before == token.NoPos || assignments[index].pos < before {
+			return assignments[index].construction, true
+		}
+	}
+	return sqlConstruction{}, false
 }
 
 // isFmtSprintfCall reports whether call is fmt.Sprintf through a real fmt import name.

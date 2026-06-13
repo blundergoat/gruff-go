@@ -80,8 +80,8 @@ func (r ContextualGenericRule) Definition() Definition {
 }
 
 // AnalyzeUnit walks each function in the unit and emits range and accumulator findings.
-func (r ContextualGenericRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || strings.HasSuffix(unit.File.Path, "_test.go") || hasGeneratedHeader(unit.Source) {
+func (r ContextualGenericRule) AnalyzeUnit(unit parser.Unit, runCtx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || strings.HasSuffix(unit.File.Path, "_test.go") || shouldSkipGeneratedUnit(unit, runCtx) {
 		return nil
 	}
 	ctx := r.context()

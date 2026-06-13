@@ -69,15 +69,24 @@ func runHook(args []string, stdout, stderr io.Writer) int {
 	}
 	root := analysisReport.Run.WorkingDirectory
 	ctx := context.Background()
+	gitBaseWarningWritten := false
 	changed, changedEnabled, err := resolveHookChanged(ctx, root, analysisReport.Paths.Scanned, values)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
+		if !isDegradableHookGitBaseError(values.diffMode, err) {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
+		changedEnabled = false
 	}
 	baseSet, err := resolveHookBaseIdentities(ctx, root, values, registry, ignorePaths)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
+		if !isDegradableHookGitBaseError(values.diffMode, err) {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
+		baseSet = hookIdentitySet{}
 	}
 	payload := buildHookReport(analysisReport, registry.Definitions(), changed, changedEnabled, baseSet)
 	if err := report.WriteJSON(stdout, payload); err != nil {
@@ -170,4 +179,34 @@ func hookConfigErrorReport(err error) hookReport {
 		Ignored:         hookIgnored{Paths: []hookIgnoredPath{}},
 		Config:          hookConfigState{SchemaOK: false, Error: &message},
 	}
+}
+
+// isDegradableHookGitBaseError reports no-commit/default-HEAD failures where a
+// hook can still return useful findings by dropping diff/new-only filtering.
+func isDegradableHookGitBaseError(diffMode string, err error) bool {
+	if err == nil {
+		return false
+	}
+	switch diffMode {
+	case "HEAD", "working-tree", "staged":
+	default:
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "ambiguous argument") ||
+		strings.Contains(message, "unknown revision") ||
+		strings.Contains(message, "bad revision") ||
+		strings.Contains(message, "not a valid object name") ||
+		strings.Contains(message, "invalid object name") ||
+		strings.Contains(message, "does not have any commits")
+}
+
+// writeHookGitBaseWarning emits the schema-compatible fallback diagnostic once
+// per hook run.
+func writeHookGitBaseWarning(stderr io.Writer, err error, written *bool) {
+	if *written {
+		return
+	}
+	fmt.Fprintf(stderr, "git diff base unavailable: %v; scanning requested paths without diff/new-only filtering\n", err)
+	*written = true
 }

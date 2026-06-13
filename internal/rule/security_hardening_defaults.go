@@ -30,8 +30,8 @@ func (HTTPServerNoTimeoutRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for production HTTP servers without local timeout evidence.
-func (HTTPServerNoTimeoutRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || hasGeneratedHeader(unit.Source) {
+func (HTTPServerNoTimeoutRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	httpPackages := packageImportNames(unit.AST, "net/http", "http")
@@ -85,8 +85,8 @@ func (PermissiveFileModeRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for obvious permissive modes passed to os filesystem helpers.
-func (PermissiveFileModeRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || hasGeneratedHeader(unit.Source) {
+func (PermissiveFileModeRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
+	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
 	osPackages := packageImportNames(unit.AST, "os", "os")
