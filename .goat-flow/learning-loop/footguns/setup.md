@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-06-06
+last_reviewed: 2026-06-14
 ---
 
 # Setup Footguns
@@ -96,6 +96,17 @@ Evidence:
 - Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed the catalogue and exited 0. [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) (2026-05-18) subsequently flipped every shipped rule to `defaultEnabled: true`; `docs.config-field-comment` is default-enabled but remains path-scoped and no-op until `includePaths` is configured.
 
 The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a GitHub Actions dogfood workflow. Per [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) the rule pack moved to an opt-out posture, and [ADR-016](../decisions/ADR-016-default-pack-retune-to-verifiability-mission.md) then retuned it: the current catalogue has 83 rules - 70 default-enabled and 13 opt-in. The previous "small opt-in expansion pack" framing is superseded - the default posture is opt-out, with the 13 opt-in rules (convention-only naming/modernisation, parser-only dead-code, heuristic sensitive-data, and the redundant-test candidate) enabled by exception. Two documentation rules are path-scoped no-ops until configured with `includePaths`: `docs.comment-rubric` and `docs.config-field-comment`. Trend storage, hosted dashboard/service surfaces, external linter ingestion, package-manager distribution, and automated release publishing are still not implemented. Do not claim those published integration surfaces until later milestones add them.
+
+## Footgun: release docs lag the version literals; committed docs must not link into the gitignored scratchpad
+
+**Status:** active | **Created:** 2026-06-14 | **Evidence:** OBSERVED
+
+`scripts/bump-version.sh` updates the four in-tree version literals plus `package.json`/lock and the CLI goldens, but deliberately leaves `CHANGELOG.md`, `README.md`, and `docs/` (search the script header: "Does NOT touch CHANGELOG.md, README.md"). Two release traps follow:
+
+- **Install pins reflect the latest *published* tag, not the in-tree literal.** README's `go get ...@vX` and "Published `X` package line", plus `docs/ci-integration.md`'s `go install ...@vX`, point at a version a user can actually fetch. Bumping them the instant you bump the literals documents an uninstallable version until `vX` is tagged and pushed to the proxy. Bump install pins (and promote `CHANGELOG.md [Unreleased]` to a dated section, keeping `[Unreleased]` empty per the changelog playbook) at tag time, or only when intentionally shipping the docs ahead of the tag.
+- **Committed docs linking into `.goat-flow/scratchpad/` break for cloners.** `CHANGELOG.md` once linked `[release.md](.goat-flow/scratchpad/release.md)`, but `.goat-flow/scratchpad/` is gitignored, so the target is absent in every clone, and the scratchpad is overwritten each release (the v0.2.0 entry pointed at v0.3.0 content). Keep release-narrative cross-references inside committed files; the scratchpad `release.md` is a working draft for the GitHub Release body only.
+
+How to avoid: after `bump-version.sh`, review its "remaining references to <old>" list and decide per file - code/test literals bump now; published-install pins and the changelog date bump at tag time (unless deliberately leading the tag). Never link a committed doc to a path under `.goat-flow/scratchpad/`.
 
 ## Resolved Entries
 

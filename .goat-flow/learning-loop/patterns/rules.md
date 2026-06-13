@@ -1,6 +1,6 @@
 ---
 category: rules
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-14
 ---
 
 # Rule-Authoring Patterns
@@ -44,3 +44,13 @@ last_reviewed: 2026-06-03
 **Context:** Adding `test-quality.static-analysis-redundant-test` required proving both sides of a narrow parser-only contract: same-package reflection assertions that restate source declarations should flag, while behaviour tests, external `_test` packages, runtime-value reflection, missing-field checks, and unsupported syntax should stay silent. The focused tests now cover supported reflection shape assertions and behaviour/external-package suppressions (file evidence: `internal/rule/test_quality_static_fact_test.go`, search: `TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions`; `internal/rule/test_quality_static_fact_test.go`, search: `TestStaticAnalysisRedundantTestIgnoresBehaviourAssertions`; `internal/rule/test_quality_static_fact_test.go`, search: `TestStaticAnalysisRedundantTestIgnoresExternalTestPackages`).
 
 **Approach:** For parser-only static-shape rules, build fixtures in same-package production/test pairs and divide cases into explicit "must flag" and "must not flag" groups. Positive probes should cover operand order, aliases, init-bound values, supported assertion helpers, and metadata (`assertion`, `staticFact`, `staticFactFile`, `staticFactLine`, `confidenceReason`). Negative probes should cover real behaviour, wrong expected static values, runtime-derived values, external packages, cross-directory same-package names, and intentionally unsupported forms. Keep the rule opt-in until those probes plus external-codebase calibration show the findings are precise enough for default scans.
+
+## Pattern: Validate a precision/rule change against the corpus before shipping
+
+**Created:** 2026-06-14
+
+**Evidence:** OBSERVED
+
+**Context:** A default-rule precision change (a new skip, a broadened or narrowed match) can fix one false positive while creating others, and unit fixtures rarely cover real-world shapes. Unit tests proved the v0.4.0 `sensitive-data.secret-pattern` fix in isolation, but only the corpus showed it removed exactly the 16 commented-placeholder false positives in `cc-connect/config.example.toml` without zeroing the genuine test-fixture and code-sample hits in other repos.
+
+**Approach:** Build once (`go build -o /tmp/gruff ./cmd/gruff-go`). Per corpus repo (cd-per-repo - see the corpus footgun in `../footguns/calibration.md`), capture `analyse --format json --no-config .` and break findings down by `ruleId` (`jq -r '.findings[].ruleId' | sort | uniq -c | sort -rn`). Drill into the rules the change touched plus the high-confidence security/sensitive-data rules: pull `file:line + message`, read the source at each site, and judge true-positive vs false-positive - high-volume rules (docs/complexity/size) on large mature repos are usually working as designed, so spend the budget on the changed and Error-severity rules. Re-scan after the fix and diff the per-rule counts: confirm the FP count dropped to the expected number AND that real positives elsewhere did not disappear (no over-suppression). Finish with the dogfood scan (grade A) - a fixture that embeds a contiguous secret-shaped literal or pushes a `_test.go` past the 500-line `size.file-length` cap will regress gruff's own scan (see the secret-pattern footgun in `../footguns/security-rules.md`).
