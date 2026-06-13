@@ -222,6 +222,16 @@ var pemKeyBodyPattern = regexp.MustCompile(`[A-Za-z0-9+/]{40,}`)
 // inline key material (a long base64 run) is a real embedded key and is never
 // suppressed here, so committed single-line PEM literals still flag.
 func isGoPrivateKeyDelimiterUse(line string, match string) bool {
+	if index := strings.Index(line, match); index >= 0 {
+		before, after := line[:index], line[index+len(match):]
+		// Delimiter that opens an unclosed raw-string literal: the key body runs
+		// onto following lines, so this is a real multiline embedded key, not a
+		// delimiter passed to a strip helper.
+		if strings.Count(before, "`")%2 == 1 && !strings.Contains(after, "`") {
+			return false
+		}
+	}
+	// Inline key body on the same line is a real single-line embedded key.
 	if pemKeyBodyPattern.MatchString(line) {
 		return false
 	}

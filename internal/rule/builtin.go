@@ -389,7 +389,8 @@ func textLineIsComment(line string) bool {
 
 // placeholderSecretTokens are documentation-placeholder markers that mark an
 // otherwise secret-shaped value as an example rather than a real credential.
-// Kept narrow so genuine high-entropy secrets still flag.
+// They are matched as a value prefix (not a substring) so a real secret that
+// merely contains one of these runs is not skipped.
 var placeholderSecretTokens = []string{
 	"changeme", "change-me", "change_me",
 	"replaceme", "replace-me", "replace_me",
@@ -413,7 +414,7 @@ func isPlaceholderSecretAssignment(match string) bool {
 		return true
 	}
 	for _, token := range placeholderSecretTokens {
-		if strings.Contains(lower, token) {
+		if strings.HasPrefix(lower, token) {
 			return true
 		}
 	}

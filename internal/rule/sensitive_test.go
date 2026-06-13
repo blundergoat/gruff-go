@@ -101,6 +101,22 @@ func TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall(t *testing.T) {
 	}
 }
 
+// TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall ensures a real PEM key
+// written as a multiline raw string inside strings.ReplaceAll is still flagged.
+// The body and the raw-string backtick are assembled at runtime so the dogfood
+// scan never reads this test file as carrying a credential.
+func TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall(t *testing.T) {
+	body := strings.Repeat("A", 64)
+	bt := "`"
+	src := "package keys\n\nimport \"strings\"\n\nvar k = strings.ReplaceAll(" + bt +
+		"-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----" + bt +
+		", \"\\r\", \"\")\n"
+	unit := parser.Unit{File: source.File{Path: "keys.go", Type: source.FileTypeGo}, Source: src}
+	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("multiline PEM literal inside ReplaceAll should still flag, got %#v", got)
+	}
+}
+
 func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},

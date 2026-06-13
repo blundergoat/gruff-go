@@ -423,3 +423,22 @@ func read(entry Entry, dest string) {
 		})
 	}
 }
+
+// TestSQLStringQueryRuleFlagsStaticThenMutatedQuery covers a query var that
+// starts as static literal concatenation but is later appended with non-static
+// content whose RHS carries no SQL keyword; the stale static classification must
+// not suppress the finding.
+func TestSQLStringQueryRuleFlagsStaticThenMutatedQuery(t *testing.T) {
+	unit := parseOne(t, "query.go", `// Package sample is a test package.
+package sample
+
+func sample(db DB, userInput string) {
+	q := "SELECT *" + " FROM users"
+	q += " " + userInput
+	db.Query(q)
+}
+`)
+	if got := (SQLStringQueryRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("query mutated with non-static content after a static init should flag, got %#v", got)
+	}
+}

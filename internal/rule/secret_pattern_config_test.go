@@ -44,3 +44,18 @@ func TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders(t *testing.T) {
 		t.Fatalf("real uncommented credential should still flag, got %#v", got)
 	}
 }
+
+// TestSensitiveDataRuleFlagsSecretContainingPlaceholderSubstring ensures the
+// placeholder skip is prefix-anchored: a real secret that merely contains a
+// placeholder word mid-value (not as a prefix) still flags. The value is built
+// across literals so the dogfood scan never reads this file as a credential.
+func TestSensitiveDataRuleFlagsSecretContainingPlaceholderSubstring(t *testing.T) {
+	value := "aB3xK9" + "dummy" + "Qz7Mn4Pl2Vr8Wt6Yh"
+	unit := parser.Unit{
+		File:   source.File{Path: "config.toml", Type: source.FileTypeText},
+		Source: "api_key = \"" + value + "\"\n",
+	}
+	if got := (SensitiveDataRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("a real secret merely containing a placeholder word should still flag, got %#v", got)
+	}
+}

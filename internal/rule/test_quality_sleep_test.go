@@ -326,3 +326,35 @@ func TestWallClockPolling(t *testing.T) {
 		t.Fatalf("wall-clock-only polling exit should not be accepted; the sleep must flag, got %d: %#v", len(findings), findings)
 	}
 }
+
+// TestSleepInTestRuleRejectsNoProgressCounter ensures a loop whose counter never
+// advances (`i = i`) is not treated as a finite attempt bound, so its sleep still
+// flags instead of being accepted as bounded polling.
+func TestSleepInTestRuleRejectsNoProgressCounter(t *testing.T) {
+	unit := parseOne(t, "poll_test.go", `package sample
+
+import (
+	"testing"
+	"time"
+)
+
+type serviceState struct{}
+
+func (serviceState) Ready() bool { return true }
+
+func TestNoProgressPolling(t *testing.T) {
+	service := serviceState{}
+	for i := 0; i < 3; i = i {
+		if service.Ready() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("service never became ready")
+}
+`)
+	findings := SleepInTestRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("a counter that never advances (i = i) is not a finite bound; the sleep must flag, got %d: %#v", len(findings), findings)
+	}
+}

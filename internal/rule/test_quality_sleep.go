@@ -231,19 +231,49 @@ func conditionBoundsCounter(expr ast.Expr, counter string) bool {
 	return exprIsIdent(binary.X, counter) || exprIsIdent(binary.Y, counter)
 }
 
-// postUpdatesCounter reports whether stmt visibly advances the loop counter.
+// postUpdatesCounter reports whether stmt visibly advances the loop counter, so
+// a no-op post like `i = i` or `i += 0` is not mistaken for a finite bound.
 func postUpdatesCounter(stmt ast.Stmt, counter string) bool {
 	switch current := stmt.(type) {
 	case *ast.IncDecStmt:
 		return exprIsIdent(current.X, counter)
 	case *ast.AssignStmt:
-		for _, lhs := range current.Lhs {
-			if exprIsIdent(lhs, counter) {
-				return true
+		for index, lhs := range current.Lhs {
+			if !exprIsIdent(lhs, counter) || index >= len(current.Rhs) {
+				continue
 			}
+			return assignmentAdvancesCounter(current.Tok, current.Rhs[index], counter)
 		}
 	}
 	return false
+}
+
+// assignmentAdvancesCounter reports whether an assignment to the loop counter
+// makes visible progress: a compound += / -= by a non-zero amount, or a plain
+// = whose RHS is `counter ± x` with a non-zero other operand.
+func assignmentAdvancesCounter(tok token.Token, rhs ast.Expr, counter string) bool {
+	switch tok {
+	case token.ADD_ASSIGN, token.SUB_ASSIGN:
+		return !isZeroLiteral(rhs)
+	case token.ASSIGN:
+		binary, ok := rhs.(*ast.BinaryExpr)
+		if !ok || (binary.Op != token.ADD && binary.Op != token.SUB) {
+			return false
+		}
+		if exprIsIdent(binary.X, counter) {
+			return !isZeroLiteral(binary.Y)
+		}
+		if exprIsIdent(binary.Y, counter) {
+			return !isZeroLiteral(binary.X)
+		}
+	}
+	return false
+}
+
+// isZeroLiteral reports whether expr is the integer literal 0.
+func isZeroLiteral(expr ast.Expr) bool {
+	literal, ok := expr.(*ast.BasicLit)
+	return ok && literal.Kind == token.INT && literal.Value == "0"
 }
 
 // exprIsIdent reports whether expr is the named identifier.

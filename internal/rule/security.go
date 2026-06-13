@@ -283,6 +283,19 @@ func collectConstructedSQLVars(body *ast.BlockStmt, fmtPackages map[string]bool)
 				}
 				if kind, ok := sqlConstructionKind(stmt.Rhs[i], vars, fmtPackages, stmt.Rhs[i].Pos()); ok {
 					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Rhs[i].Pos(), construction: kind})
+					continue
+				}
+				// A purely static literal append (e.g. q += " ORDER BY id LIMIT ?")
+				// keeps the query safe, so it must not invalidate the static class.
+				if _, static := staticStringExpr(stmt.Rhs[i]); static {
+					continue
+				}
+				// A tracked static SQL var reassigned or appended (+=) with a
+				// genuinely dynamic RHS (one carrying a variable) becomes dynamic;
+				// record a non-static entry so a later use is not accepted under the
+				// stale static classification.
+				if _, tracked := vars[name.Name]; tracked || stmt.Tok == token.ADD_ASSIGN {
+					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Rhs[i].Pos(), construction: sqlConstruction{kind: "string-concat"}})
 				}
 			}
 		}
