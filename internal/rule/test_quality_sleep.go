@@ -299,15 +299,23 @@ func conditionObservesState(expr ast.Expr) bool {
 	return found
 }
 
-// blockExitsPolling reports whether a success branch exits the loop or test.
+// blockExitsPolling reports whether a success branch leaves the polling loop.
+// A return ends the test and a break (including labeled break) leaves the loop;
+// continue, goto, and fallthrough keep iterating, so accepting them as an exit
+// would suppress the sleep finding for a test that is still spinning rather than
+// synchronizing on the observed condition.
 func blockExitsPolling(block *ast.BlockStmt) bool {
 	if block == nil {
 		return false
 	}
 	for _, stmt := range block.List {
-		switch stmt.(type) {
-		case *ast.ReturnStmt, *ast.BranchStmt:
+		switch current := stmt.(type) {
+		case *ast.ReturnStmt:
 			return true
+		case *ast.BranchStmt:
+			if current.Tok == token.BREAK {
+				return true
+			}
 		}
 	}
 	return false

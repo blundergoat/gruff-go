@@ -50,6 +50,35 @@ func TestAnalyzeExplicitFileUsesSiblingPackageCommentContext(t *testing.T) {
 	}
 }
 
+// TestAnalyzeExplicitFileSurfacesSiblingParseFailure proves a sibling pulled in
+// only for package context still reports its parse failure. Otherwise a project
+// rule can lose context and false-positive on the scanned file with no
+// diagnostic explaining why.
+func TestAnalyzeExplicitFileSurfacesSiblingParseFailure(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "caller.go", "package svc\n\nfunc Run() string {\n\treturn helper()\n}\n")
+	writeFile(t, root, "broken.go", "package svc\n\nfunc helper() string {\n\treturn\n") // unterminated: fails to parse
+	t.Chdir(root)
+
+	report, err := Analyze(Options{
+		Paths:    []string{"caller.go"},
+		Registry: rule.Defaults(),
+		FailOn:   finding.FailThresholdNone,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, diag := range report.Diagnostics {
+		if diag.File == "broken.go" && diag.Stage == "parse" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a parse diagnostic for context-only sibling broken.go, got %#v", report.Diagnostics)
+	}
+}
+
 // TestAnalyzeExplicitFileHidesContextOnlyFindings proves sibling package files
 // are context for project rules, not additional report targets.
 func TestAnalyzeExplicitFileHidesContextOnlyFindings(t *testing.T) {

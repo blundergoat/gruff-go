@@ -16,7 +16,7 @@ import (
 )
 
 // toolVersion is the released gruff-go semantic version printed by --version.
-const toolVersion = "0.3.0"
+const toolVersion = "0.4.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {

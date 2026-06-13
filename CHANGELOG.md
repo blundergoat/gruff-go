@@ -9,6 +9,7 @@
 - **Explicit-file project context** - `analyse path/to/file.go` now loads same-directory Go siblings as bounded project-rule context, preventing cross-file `dead-code.unused-private-function` and `docs.package-comment` false positives while keeping context-only findings out of reports.
 - **SQL construction precision** - `security.sql-string-query` now accepts literal-only query fragment assembly, including parameterized fragments with bind arguments, while continuing to flag `fmt.Sprintf` SQL construction and identifier interpolation into SQL text.
 - **Hook diff resilience** - `hook --diff HEAD` in a no-commit repository now emits the normal `gruff.hook.v1` JSON payload with a stderr diagnostic and falls back to scanning requested paths without diff/new-only filtering. Git-base exports are scoped to requested paths, widening explicit Go files only to their package directory for project-rule context.
+- **PR review precision follow-ups** - `test-quality.sleep-in-test` no longer treats `continue`, `goto`, or `fallthrough` inside a polling loop as a success exit, so a test that keeps spinning instead of synchronizing still flags. The rule-level generated-file skip is now scoped to Go units to match discovery, so a Go-style `DO NOT EDIT` banner in a non-Go text file no longer suppresses text rules. Explicit-file scans now surface parse failures from same-directory siblings pulled in only for project-rule context, so a context-only parse error can no longer silently strip evidence and drive a false positive on the scanned file.
 
 ## v0.3.0 - 2026-06-09
 

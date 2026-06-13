@@ -105,7 +105,14 @@ func Analyze(opts Options) (Report, error) {
 	}
 	projectUnits := units
 	if !sameSourceFileSet(discovery.Files, projectFiles) {
-		projectUnits, _ = parser.Parse(projectFiles)
+		var projectParseDiagnostics []parser.Diagnostic
+		projectUnits, projectParseDiagnostics = parser.Parse(projectFiles)
+		// A sibling pulled in only for package context can strip evidence a
+		// project rule depends on (an unparsed caller makes a used symbol look
+		// dead), so surface its parse/read failures rather than letting them
+		// drive a silent false positive. Primary-file diagnostics are reported
+		// below, so only the context-only entries are added here.
+		parseDiagnostics = append(parseDiagnostics, contextOnlyParseDiagnostics(projectParseDiagnostics, discovery.Files)...)
 	}
 	diagnostics = append(diagnostics, diagnosticsFromDiscovery(discovery.Missing)...)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)

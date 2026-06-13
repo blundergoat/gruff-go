@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/parser"
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
@@ -125,6 +126,29 @@ func sameSourceFileSet(left []source.File, right []source.File) bool {
 		}
 	}
 	return true
+}
+
+// contextOnlyParseDiagnostics keeps the parser diagnostics for sibling files
+// pulled in only for package context. Primary-file diagnostics come from the
+// primary parse, so re-reporting them here would double-count; the remaining
+// entries explain context-only parse failures that would otherwise let a
+// project rule false-positive on a primary file with no visible cause.
+func contextOnlyParseDiagnostics(projectDiagnostics []parser.Diagnostic, primary []source.File) []parser.Diagnostic {
+	if len(projectDiagnostics) == 0 {
+		return nil
+	}
+	primaryPaths := make(map[string]struct{}, len(primary))
+	for _, file := range primary {
+		primaryPaths[file.Path] = struct{}{}
+	}
+	contextOnly := make([]parser.Diagnostic, 0, len(projectDiagnostics))
+	for _, item := range projectDiagnostics {
+		if _, ok := primaryPaths[item.File]; ok {
+			continue
+		}
+		contextOnly = append(contextOnly, item)
+	}
+	return contextOnly
 }
 
 // reportableFileSet builds the allowlist of primary files whose findings should

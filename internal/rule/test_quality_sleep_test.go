@@ -161,6 +161,39 @@ func TestStateComparisonIsNotFiniteBound(t *testing.T) {
 	}
 }
 
+// TestSleepInTestRuleRejectsContinueAsPollingExit confirms a polling loop whose
+// success branch only continues still flags the sleep: continue keeps iterating,
+// so the test is sleeping instead of synchronizing on the observed condition.
+func TestSleepInTestRuleRejectsContinueAsPollingExit(t *testing.T) {
+	unit := parseOne(t, "poll_test.go", `package sample
+
+import (
+	"testing"
+	"time"
+)
+
+type serviceState struct{}
+
+func (serviceState) Ready() bool { return true }
+
+func TestContinuePolling(t *testing.T) {
+	service := serviceState{}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if service.Ready() {
+			continue
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("service never became ready")
+}
+`)
+	findings := SleepInTestRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("findings = %#v, want one sleep finding (continue does not exit the loop)", findings)
+	}
+}
+
 // TestSleepInTestRuleRespectsImportAlias verifies aliased time imports are still detected.
 func TestSleepInTestRuleRespectsImportAlias(t *testing.T) {
 	unit := parseOne(t, "alias_test.go", `package sample
