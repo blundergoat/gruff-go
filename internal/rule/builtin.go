@@ -321,6 +321,9 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		if unit.File.Type == source.FileTypeGo && !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
+		if unit.File.Type != source.FileTypeGo && textLineIsComment(line) {
+			continue
+		}
 		matches := secretPattern.FindStringSubmatch(line)
 		if len(matches) < 2 || matches[1] == "" {
 			continue
@@ -361,14 +364,49 @@ func goSecretAssignmentLooksLiteral(match string) bool {
 	return false
 }
 
+// textLineIsComment reports whether a non-Go config/text line is comment-only.
+// Go comment handling lives in lineIsCodeBearing; this covers the line-comment
+// markers that dominate config formats (#, //, ;) so a secret-shaped example a
+// maintainer commented out (e.g. `# api_key = "your-key"` in a .env or .toml)
+// is not flagged as a live secret assignment.
+func textLineIsComment(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "#") ||
+		strings.HasPrefix(trimmed, "//") ||
+		strings.HasPrefix(trimmed, ";")
+}
+
+// placeholderSecretTokens are documentation-placeholder markers that mark an
+// otherwise secret-shaped value as an example rather than a real credential.
+// Kept narrow so genuine high-entropy secrets still flag.
+var placeholderSecretTokens = []string{
+	"changeme", "change-me", "change_me",
+	"replaceme", "replace-me", "replace_me",
+	"placeholder", "redacted", "dummy", "xxxxxxxx",
+}
+
 // isPlaceholderSecretAssignment reports whether a generic key/value match uses
-// an obvious documentation placeholder rather than a secret-shaped value.
+// an obvious documentation placeholder rather than a secret-shaped value, so
+// example configs (${VAR}, your-api-key, CHANGEME, REDACTED) do not flag while
+// real high-entropy credentials still do.
 func isPlaceholderSecretAssignment(match string) bool {
 	value := secretAssignmentValue(match)
 	if value == "" {
 		return false
 	}
-	return strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") && len(value) > 3
+	if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") && len(value) > 3 {
+		return true
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "your-") || strings.HasPrefix(lower, "your_") {
+		return true
+	}
+	for _, token := range placeholderSecretTokens {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // secretAssignmentValue extracts the right-hand value from a generic secret assignment match.
