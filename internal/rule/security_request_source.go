@@ -34,6 +34,7 @@ type requestTaintScope struct {
 	stringsPkgs  map[string]bool
 	filepathPkgs map[string]bool
 	pathPkgs     map[string]bool
+	netURLPkgs   map[string]bool
 	ioPkgs       map[string]bool
 	ioutilPkgs   map[string]bool
 	// firstTaintPos records, per tainted local, the position of the earliest
@@ -81,6 +82,7 @@ func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.Bloc
 		stringsPkgs:   packageImportNames(file, "strings", "strings"),
 		filepathPkgs:  packageImportNames(file, "path/filepath", "filepath"),
 		pathPkgs:      packageImportNames(file, "path", "path"),
+		netURLPkgs:    packageImportNames(file, "net/url", "url"),
 		ioPkgs:        packageImportNames(file, "io", "io"),
 		ioutilPkgs:    packageImportNames(file, "io/ioutil", "ioutil"),
 		firstTaintPos: map[string]token.Pos{},
@@ -146,10 +148,8 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 	}
 }
 
-// directRequestExpr reports whether expr is request-controlled through the
-// restricted propagation set (request accessors, tainted locals, string-builder
-// calls, conversions, and + concatenation). Arbitrary calls return false so a
-// sanitising helper breaks the chain.
+// directRequestExpr follows request input through known transparent operations.
+// Syntax-only URL/path work stays visible; an arbitrary helper may sanitize it.
 func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 	switch e := expr.(type) {
 	case *ast.ParenExpr:
@@ -169,6 +169,10 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 		}
 		if arg, ok := s.pathCleanArg(e); ok {
 			return s.directRequestExpr(arg)
+		}
+		// Keep a parsed user URL visible until the URL rule finds destination guards.
+		if parsedURLInput, isSyntaxParse := s.urlSyntaxParseArg(e); isSyntaxParse {
+			return s.directRequestExpr(parsedURLInput)
 		}
 		if s.isStringBuilderCall(e) || s.isReaderConsumer(e) {
 			for _, arg := range e.Args {

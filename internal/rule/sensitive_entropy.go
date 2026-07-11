@@ -60,7 +60,8 @@ type HighEntropyStringRule struct {
 	// MinLength is the shortest token the rule will score; shorter runs are skipped.
 	MinLength int
 	// Entropy is the minimum Shannon entropy in bits per character a token must reach to be flagged.
-	Entropy float64
+	Entropy  float64
+	previews sensitivePreviewPolicy
 }
 
 // minLength returns the effective minimum-length threshold, defaulting when unset.
@@ -105,7 +106,7 @@ func (r HighEntropyStringRule) Definition() Definition {
 
 // AnalyzeUnit scans code-bearing lines for high-entropy tokens, skipping shapes a
 // reviewer would never rotate (hex ids, UUIDs, SRI digests, paths/URLs) and tokens
-// a provider-specific rule already owns, then emits a redacted preview for each hit.
+// a provider-specific rule already owns, then emits a policy-masked preview for each hit.
 func (r HighEntropyStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.Source == "" {
 		return nil
@@ -127,7 +128,7 @@ func (r HighEntropyStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []findin
 				File:     unit.File.Path,
 				Location: &finding.Location{Line: lineNumber + 1},
 				Metadata: map[string]any{
-					"preview": redact(token),
+					"preview": r.previews.format(unit.File.Path, previewEntropy, token),
 					"entropy": math.Round(shannonEntropy(token)*100) / 100,
 				},
 			})

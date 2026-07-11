@@ -450,9 +450,13 @@ Flags `log.Fatal`, `log.Fatalf`, `log.Fatalln`, and `os.Exit` calls outside comm
 - **Capability:** parser
 - **Tags:** `loops`
 
-Flags storing, returning, or appending `&v` where `v` is a range value variable. The pointer refers to the range variable copy rather than the backing collection element; `&slice[i]` remains the accepted element-address form.
+Flags storing, returning, sending, or appending the address of a range key/value variable when the loop retains shared-variable semantics. Assignment-form loops (`for key, value = range items`) always reuse preexisting variables, so their escaping addresses flag for every Go version and even without module metadata.
 
-**Remediation.** Take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
+Declaration-form loops (`for key, value := range items`) flag only when the nearest `go.mod` selects a language version before Go 1.22. Go 1.22 introduced a new key/value variable for each declaration-form iteration, so those loops are silent in modules declaring Go 1.22 or newer. A found `go.mod` without a `go` directive has Go's implicit 1.16 semantics and flags; when no `go.mod` is resolvable between the file and scan root, the version-dependent declaration case stays silent rather than guessing. The gate is applied to each range statement, so a modern module can suppress a `:=` loop while still reporting an `=` loop in the same file.
+
+Taking an indexed element address such as `&slice[i]` remains accepted, as does a range-variable address used only within the current iteration without a known escaping store.
+
+**Remediation.** Prefer declaration-form iteration variables in Go 1.22+ modules, take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
 
 ### `maintainability.production-panic`
 
@@ -839,7 +843,7 @@ Each finding's metadata carries the random API and context word.
 - **Capability:** parser
 - **Tags:** `http`, `redirect`, `security`
 
-Flags request-derived values passed to `http.Redirect` or a `Location` response header without a nearby allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. A target that begins with a host-relative `/` literal (but not protocol-relative `//`) is treated as safe, as is a value cleared by a validator/allowlist call. Candidate wording.
+Flags request-derived values passed to `http.Redirect` or a `Location` response header without an affirmative allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. Safe evidence is a literal committed path segment such as `"/account/" + value`, an exiting `HasPrefix(value, "/account/")` guard, a loop that strips every leading protocol-relative `//`, an exact validator/allowlist/local/relative identifier token, or an explicit parsed HTTP scheme-and-host allowlist. A bare `HasPrefix(value, "/")`, `url.Parse`, or a helper whose name merely contains `parse`, `prefix`, `allow`, or `trusted` is not destination validation. Candidate wording.
 
 Each finding's metadata carries the redirect sink and request source label, never a raw value.
 
@@ -897,7 +901,9 @@ Each finding's metadata carries the request parameter name and read call.
 - **Capability:** parser
 - **Tags:** `http`, `security`, `ssrf`
 
-Flags request-derived values passed as the URL of an outbound `net/http` request (`http.Get`/`Head`/`Post`/`PostForm`, `http.NewRequest`/`NewRequestWithContext`, or the same methods on an `http.Client` value) without a nearby allowlist or parse/validate check (possible SSRF). The request value may be inline or a same-function local tainted from a request accessor, including through `io.ReadAll(r.Body)`, string concatenation, and `fmt.Sprintf`. A validator/allowlist call or `url.Parse` referencing the value suppresses the finding. Candidate wording.
+Flags request-derived values passed as the URL of an outbound `net/http` request (`http.Get`/`Head`/`Post`/`PostForm`, `http.NewRequest`/`NewRequestWithContext`, or the same methods on an `http.Client` value) without an affirmative destination constraint (possible SSRF). The request value may be inline or a same-function local tainted from a request accessor, including through `io.ReadAll(r.Body)`, string concatenation, `fmt.Sprintf`, and assigned `url.Parse`/`url.ParseRequestURI` results. Parsing validates syntax only and never suppresses the finding by itself.
+
+Safe evidence is an exact validator/allowlist identifier token that references the sink value, explicit earlier guards that reject every parsed URL outside an allowed HTTP scheme and exact host, or construction from a fixed trusted base. Identifier matching is token-based: `validateURL` and `isAllowedDestination` count, while `parser`, `parseAndReturn`, `allowanceURL`, `untrustedURL`, `notTrustedURL`, and `disallowHost` do not. Candidate wording.
 
 Each finding's metadata carries the HTTP sink and request source label.
 
@@ -1022,6 +1028,16 @@ Each finding's metadata records the `entity-map` evidence.
 
 **Remediation.** Leave `xml.Decoder.Entity` unset so `encoding/xml`'s safe default applies, or validate and constrain any custom entity map fed from untrusted input.
 
+**Sensitive-data preview policy.** Every `sensitive-data.*` detector uses one
+deny-by-default policy. Empty and nonmatching `allowlists.secretPreviews` emit
+only `[redacted]`; matching paths may emit fixed markers such as
+`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:jwt]`,
+`[redacted:email]`, or `[redacted:ssn]`. Connection findings may additionally
+name only the matched scheme (`[redacted:connection-string:postgres]`). Generic
+assignment and entropy findings stay `[redacted]` even when allowlisted. The
+allowlist never suppresses a finding and never authorizes credential or
+identifier payload bytes.
+
 ### `sensitive-data.anthropic-api-key`
 
 - **Pillar:** sensitive-data
@@ -1044,7 +1060,7 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. The finding's `preview` metadata is redacted via the shared `redact()` helper; the raw key never reaches text / JSON / SARIF / GitHub / HTML output (asserted by `internal/report/sensitive_redaction_test.go`).
+Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. Preview metadata follows the shared deny-by-default policy: unauthorized paths receive `[redacted]`, and authorized paths receive `[redacted:aws-access-key]` with zero key characters. Raw and reusable fragments never reach text / JSON / SARIF / GitHub / HTML output.
 
 **Remediation.** Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them.
 
@@ -1057,9 +1073,9 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags database / queue / cache connection URIs that embed a username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
+Flags database / queue / cache connection URIs that embed a non-empty username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Passwords containing raw or percent-encoded reserved bytes such as `/`, `:`, `+`, `=`, and encoded `@` are detected. Preview is `[redacted]` unless the path is authorized; an authorized preview contains only the scheme marker (for example `[redacted:connection-string:postgres]`), never user, password, host, path, or query.
 
-Obvious dev/test placeholders are skipped only when both halves match: the host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the embedded password contains a placeholder token such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. Real-looking credentials at local hosts still fire.
+Obvious dev/test placeholders are skipped only when both halves match: the bare host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the entire case-normalised, path-percent-decoded password equals an approved placeholder such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. A literal `+` stays a plus rather than becoming a space. Mixed values such as `myPassphrase2024` and `not-invalid-prod`, malformed percent encodings, and placeholders on non-local hosts still fire.
 
 **Remediation.** Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.
 
@@ -1074,7 +1090,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the host 
 
 Flags files containing both a `"type": "service_account"` field and a PEM private-key header (`-----BEGIN ... PRIVATE KEY-----`) - the documented shape of a GCP service-account JSON key file. Neither marker alone triggers the rule: `"type": "service_account"` in a doc snippet is harmless, and an isolated PEM key is already covered by `sensitive-data.private-key`. The co-occurrence is the signal.
 
-The finding is located at the line of the `"type"` marker. Both markers are redacted in the preview metadata; the raw private-key body never reaches any output format.
+The finding is located at the line of the `"type"` marker. Empty/nonmatching paths fully mask both preview fields. Matching paths emit only `[redacted:gcp-service-account]` and `[redacted:private-key]`; the type literal, key header/body, and reusable fragments never reach any output format.
 
 **Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `error` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
 
@@ -1144,7 +1160,7 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only controls whether redacted previews may be shown; it does not suppress findings.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only authorizes the marker `[redacted:jwt]`; it exposes no JWT segment bytes and does not suppress findings.
 
 ### `sensitive-data.npm-token`
 
@@ -1168,7 +1184,7 @@ Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes whe
 - **Capability:** parser
 - **Tags:** `secrets`, `phi`
 
-Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries only a redacted preview and a `category` tag.
+Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries a `category` tag and either `[redacted]` or its fixed authorized marker (`[redacted:ssn]`, `[redacted:medicare]`, `[redacted:mrn]`), never identifier characters.
 
 **Overlap with `sensitive-data.pii-pattern`.** Government and health identifiers belong to this rule, not the PII rule, so an SSN is reported once here rather than by both. Enable both rules together for full personal-data coverage without double-counting.
 
@@ -1183,7 +1199,7 @@ Flags protected health information identifiers embedded in source or text: US So
 - **Capability:** parser
 - **Tags:** `secrets`, `pii`
 
-Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries only a redacted preview and a `category` tag.
+Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries a `category` tag and either `[redacted]` or its fixed authorized marker (`[redacted:email]`, `[redacted:phone]`, `[redacted:payment-card]`), never identifier characters.
 
 **Overlap with `sensitive-data.phi-pattern`.** This rule covers contact and payment PII; government/health identifiers (SSN, Medicare, MRN) are owned by `sensitive-data.phi-pattern` so they are never counted twice.
 
@@ -1200,6 +1216,8 @@ Flags personally identifiable information embedded in source or text: email addr
 
 Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", and Go code that only strips or re-wraps PEM header delimiters are skipped; a raw PEM block still fires. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
 
+Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized path. Neither state includes key type, header, or body bytes.
+
 **Remediation.** Remove the key, rotate it, and load it from a secret manager or environment-specific runtime configuration.
 
 ### `sensitive-data.secret-pattern`
@@ -1214,7 +1232,7 @@ Flags high-risk secret-like literal assignments in Go source and text/config fil
 
 All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
 
-Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. `allowlists.secretPreviews` is preview-only: it allows redacted previews in configured paths but does not suppress findings.
+Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret previews remain `[redacted]` for every path; `allowlists.secretPreviews` never suppresses findings.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
 
@@ -1350,7 +1368,7 @@ The rule walks the function body looking for those methods on the test function'
 
 Flags table-driven `t.Run` closures that call `t.Parallel()` and reference a range variable without an explicit shadow copy before the subtest, but only when the nearest `go.mod` declares `go < 1.22`.
 
-Go 1.22 changed range-loop variable semantics so each iteration gets its own variables. For modules declaring `go 1.22` or newer, this rule stays silent. When no `go.mod` can be found between the file and scan root, the default-on rule also stays silent rather than guessing.
+Go 1.22 changed declaration-form range-loop variable semantics so each iteration gets its own variables. For modules declaring `go 1.22` or newer, this rule stays silent. A found `go.mod` without a `go` directive uses Go's implicit 1.16 semantics and remains in scope. When no `go.mod` can be found between the file and scan root, the default-on rule stays silent rather than guessing.
 
 The rule recognises the common `tc := tc` pattern as the local evidence that capture is intentional and stable in legacy modules.
 

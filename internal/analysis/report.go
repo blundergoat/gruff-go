@@ -16,9 +16,10 @@ import (
 // SchemaVersion identifies the stable cross-port analysis report schema.
 const SchemaVersion = "gruff.analysis.v2"
 
-// Diagnostic describes a non-finding problem encountered while building a report.
+// Diagnostic describes an operationally fatal, non-finding failure encountered
+// while building a report.
 type Diagnostic struct {
-	// Stage names the pipeline phase (discovery, parser, scoring) that emitted this diagnostic.
+	// Stage names the pipeline phase (discovery, parse, baseline, diff) that emitted this diagnostic.
 	Stage string `json:"stage"`
 	// Message is the human-readable description of the problem.
 	Message string `json:"message"`
@@ -26,7 +27,8 @@ type Diagnostic struct {
 	File string `json:"file,omitempty"`
 	// Location pinpoints the line and column inside File when known.
 	Location *finding.Location `json:"location,omitempty"`
-	// Severity drives whether the run aborts and which exit code it returns.
+	// Severity is descriptive and currently always error; diagnostic presence,
+	// rather than this value, resolves the run to exit code 2.
 	Severity finding.Severity `json:"severity"`
 }
 
@@ -54,7 +56,8 @@ type Report struct {
 	Rules []rule.Definition `json:"rules"`
 	// Paths lists files scanned, skipped, and missing during discovery.
 	Paths Paths `json:"paths"`
-	// Diagnostics carries non-finding problems (e.g. parse errors) emitted during the run.
+	// Diagnostics carries fatal operational failures (e.g. parse errors); any
+	// entry resolves the run to exit code 2.
 	Diagnostics []Diagnostic `json:"diagnostics"`
 	// Findings is the sorted list of rule findings produced by the run.
 	Findings []finding.Finding `json:"findings"`
@@ -88,7 +91,7 @@ type Summary struct {
 	FilesScanned int `json:"filesScanned"`
 	// FilesSkipped is the number of discovered files that were excluded before scanning.
 	FilesSkipped int `json:"filesSkipped"`
-	// DiagnosticsCount totals the non-finding problems emitted during the run.
+	// DiagnosticsCount totals the fatal operational failures emitted during the run.
 	DiagnosticsCount int `json:"diagnosticsCount"`
 	// FindingsCount totals the rule findings retained after filtering.
 	FindingsCount int `json:"findingsCount"`
@@ -96,7 +99,7 @@ type Summary struct {
 	CountsBySeverity map[string]int `json:"countsBySeverity"`
 	// CountsByPillar buckets the finding count by quality pillar.
 	CountsByPillar map[string]int `json:"countsByPillar"`
-	// ExitCode is the resolved CLI exit code (0 clean, 1 above-threshold, 2 internal diagnostic).
+	// ExitCode is the resolved CLI exit code (0 clean, 1 above-threshold, 2 fatal diagnostic).
 	ExitCode int `json:"exitCode"`
 	// ParserMode names the parser strategy used (currently always parser-only).
 	ParserMode string `json:"parserMode"`
@@ -211,7 +214,7 @@ type ReportInput struct {
 	// Format is the rendered output format requested on the CLI.
 	Format string
 	// FailOn is the resolved threshold that maps to exit code 1. FailThreshold
-	// rather than Severity so None ("never fail") is representable.
+	// rather than Severity so None ("never fail on findings") is representable.
 	FailOn finding.FailThreshold
 	// IncludeIgnored is true when the run intentionally crossed .gitignore boundaries.
 	IncludeIgnored bool
@@ -221,7 +224,8 @@ type ReportInput struct {
 	Skipped []SkippedPath
 	// Missing names user-requested paths that did not exist on disk.
 	Missing []string
-	// Diagnostics is the accumulated set of non-finding problems from discovery and parsing.
+	// Diagnostics is the accumulated set of fatal operational failures from all
+	// analysis stages.
 	Diagnostics []Diagnostic
 	// Findings is the accumulated rule findings before exit-code resolution.
 	Findings []finding.Finding
@@ -329,7 +333,7 @@ func nonNilDefinitions(values []rule.Definition) []rule.Definition {
 }
 
 // ResolveExitCode returns the CLI exit code implied by diagnostics and findings.
-// FailThreshold (not Severity) so the None sentinel disables the gate entirely.
+// The None sentinel disables only the finding gate; any diagnostic still exits 2.
 func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failOn finding.FailThreshold) int {
 	if len(diagnostics) > 0 {
 		return 2

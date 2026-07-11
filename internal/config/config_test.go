@@ -387,8 +387,9 @@ func writeConfig(t *testing.T, root, rel, contents string) {
 	}
 }
 
-// TestParseRejectsInvalidConfig table-tests rejection cases for invalid configurations.
-func TestParseRejectsInvalidConfig(t *testing.T) {
+// TestParseRejectsInvalidConfigAndPathPatterns table-tests rejection cases for
+// invalid configurations, including repository-relative path boundaries.
+func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 	tests := []struct {
 		name string
 		yaml string
@@ -401,6 +402,11 @@ func TestParseRejectsInvalidConfig(t *testing.T) {
 		{name: "invalid threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
 		{name: "combined threshold forms", yaml: "rules:\n  size.file-length:\n    threshold: 100\n    thresholds:\n      maxLines: 120\n", want: "cannot combine threshold and thresholds"},
 		{name: "invalid ignore", yaml: "ignorePaths:\n  - ../outside\n", want: "must stay inside"},
+		{name: "Windows drive ignore", yaml: "paths:\n  ignore:\n    - 'C:/outside/*.go'\n", want: "Windows drive qualifier"},
+		{name: "backslash ignore", yaml: "paths:\n  ignore:\n    - 'pkg\\*.go'\n", want: "slash separators"},
+		{name: "mid-pattern recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/generated.go'\n", want: "one ** as a trailing recursive suffix"},
+		{name: "multiple recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/**'\n", want: "one ** as a trailing recursive suffix"},
+		{name: "invalid preview path", yaml: "allowlists:\n  secretPreviews:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
 		{name: "blank abbreviation", yaml: "acceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
 		{name: "unknown threshold on parameter-count", yaml: "rules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
 		{name: "invalid threshold on nesting-depth", yaml: "rules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},

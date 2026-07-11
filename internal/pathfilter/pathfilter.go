@@ -17,11 +17,18 @@ func Validate(pattern string) error {
 		return fmt.Errorf("path pattern %q must be relative", pattern)
 	}
 	cleaned := path.Clean(pattern)
+	if len(cleaned) >= 2 && ((cleaned[0] >= 'A' && cleaned[0] <= 'Z') || (cleaned[0] >= 'a' && cleaned[0] <= 'z')) && cleaned[1] == ':' {
+		return fmt.Errorf("path pattern %q must not use a Windows drive qualifier", pattern)
+	}
+	if strings.Contains(pattern, `\`) {
+		return fmt.Errorf("path pattern %q must use slash separators", pattern)
+	}
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return fmt.Errorf("path pattern %q must stay inside the repository", pattern)
 	}
-	if strings.Contains(pattern, "**") && !strings.HasSuffix(pattern, "/**") {
-		return fmt.Errorf("path pattern %q may only use ** as a trailing recursive suffix", pattern)
+	recursiveGlobs := strings.Count(pattern, "**")
+	if recursiveGlobs > 1 || (recursiveGlobs == 1 && !strings.HasSuffix(pattern, "/**")) {
+		return fmt.Errorf("path pattern %q may only use one ** as a trailing recursive suffix", pattern)
 	}
 	probe := pattern
 	if strings.HasSuffix(pattern, "/**") {
@@ -57,6 +64,9 @@ func FirstMatch(patterns []string, rel string) (matched bool, pattern string) {
 func Matches(pattern string, rel string) bool {
 	rel = path.Clean(strings.TrimPrefix(rel, "./"))
 	pattern = strings.TrimPrefix(pattern, "./")
+	if strings.HasSuffix(pattern, "/") {
+		pattern += "**"
+	}
 	if strings.HasSuffix(pattern, "/**") {
 		prefix := strings.TrimSuffix(pattern, "/**")
 		return rel == prefix || strings.HasPrefix(rel, prefix+"/")

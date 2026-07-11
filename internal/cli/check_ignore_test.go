@@ -146,3 +146,73 @@ func TestCheckIgnoreSharesEngineWithAnalyse(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckIgnoreDirectoryPatternFormsAgreeWithAnalyse proves the documented
+// trailing-slash shorthand and trailing recursive suffix agree at the CLI
+// boundary for both directory walks and explicit-file analysis.
+func TestCheckIgnoreDirectoryPatternFormsAgreeWithAnalyse(t *testing.T) {
+	for _, pattern := range []string{"ignored/", "ignored/**"} {
+		t.Run(pattern, func(t *testing.T) {
+			root := t.TempDir()
+			config := "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'other/**'\n    - '" + pattern + "'\n    - 'later/*.go'\n"
+			writeFile(t, root, ".gruff-go.yaml", config)
+			writeFile(t, root, "ignored/nested/bad.go", "package ignored\n")
+			writeFile(t, root, "main.go", "package main\n")
+			t.Chdir(root)
+
+			var checkOut, checkErr bytes.Buffer
+			code := Main([]string{"check-ignore", "--format", "json", "ignored/nested/bad.go"}, &checkOut, &checkErr)
+			if code != 0 {
+				t.Fatalf("check-ignore exit = %d, want 0; stderr = %s", code, checkErr.String())
+			}
+			var results []checkIgnoreResult
+			if err := json.Unmarshal(checkOut.Bytes(), &results); err != nil {
+				t.Fatalf("invalid check-ignore JSON: %v\n%s", err, checkOut.String())
+			}
+			if len(results) != 1 || !results[0].Ignored || results[0].Source != "config" || results[0].Pattern != pattern {
+				t.Fatalf("check-ignore pattern %q results = %#v, want one config match naming %q", pattern, results, pattern)
+			}
+
+			assertAnalyseConfigSkip(t, []string{"ignored/nested/bad.go"}, "ignored/nested/bad.go", pattern, 2)
+			assertAnalyseConfigSkip(t, []string{"."}, "ignored", pattern, 0)
+		})
+	}
+}
+
+// assertAnalyseConfigSkip runs an analysis shape and verifies the named path
+// is excluded by the expected verbatim config pattern.
+func assertAnalyseConfigSkip(t *testing.T, inputs []string, skippedPath, pattern string, wantExit int) {
+	t.Helper()
+	args := append([]string{"analyse", "--format", "json", "--fail-on", "none"}, inputs...)
+	var out, errOut bytes.Buffer
+	if code := Main(args, &out, &errOut); code != wantExit {
+		t.Fatalf("analyse %v exit = %d, want %d; stderr = %s", inputs, code, wantExit, errOut.String())
+	}
+	var report struct {
+		Paths struct {
+			Scanned []string `json:"scanned"`
+			Skipped []struct {
+				Path    string `json:"path"`
+				Source  string `json:"source"`
+				Pattern string `json:"pattern"`
+			} `json:"skipped"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("invalid analyse JSON: %v\n%s", err, out.String())
+	}
+	for _, scanned := range report.Paths.Scanned {
+		if scanned == skippedPath {
+			t.Fatalf("analyse %v scanned %q despite pattern %q", inputs, skippedPath, pattern)
+		}
+	}
+	for _, skipped := range report.Paths.Skipped {
+		if skipped.Path == skippedPath {
+			if skipped.Source != "config" || skipped.Pattern != pattern {
+				t.Fatalf("analyse %v skip = %#v, want source=config pattern=%q", inputs, skipped, pattern)
+			}
+			return
+		}
+	}
+	t.Fatalf("analyse %v skips = %#v, want %q from pattern %q", inputs, report.Paths.Skipped, skippedPath, pattern)
+}

@@ -9,9 +9,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// Constants long enough that the redaction helper keeps its
-// "<prefix>...<suffix>" form rather than collapsing the entire match to
-// "[redacted]". The match must be at least 13 characters for that branch.
+// Detector fixtures are long enough to exercise realistic provider shapes.
+// Zero-value rules use the deny-by-default full mask; the focused M11 policy
+// matrix separately covers authorized category markers.
 const (
 	rawAWSKey            = "AKIAIOSFODNN7EXAMPLE"
 	rawJWT               = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"

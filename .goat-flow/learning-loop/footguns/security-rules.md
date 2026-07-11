@@ -39,6 +39,30 @@ How to avoid:
 
 ## Resolved Entries
 
+## Footgun: URL parsing hid request destinations through two independent routes
+
+**Status:** resolved | **Created:** 2026-07-11 | **Resolved:** 2026-07-11 | **Evidence:** OBSERVED
+
+`url.Parse` validates syntax, not destination trust. It previously hid findings
+when its `parse` name matched a sanitizer stem and when an assigned parse result
+was treated as an arbitrary helper output that broke request taint. Removing only
+the word-list entry would have left the stored-result false negative.
+
+M02 makes known `net/url` parsing taint-transparent and uses exact destination
+tokens plus explicit scheme-and-host or same-origin evidence. The first corpus
+candidate then exposed the opposite precision edge in Caddy: a loop safely strips
+every leading `//`. That row was classified `false-positive`, retained as rejected
+evidence, and the final four-repository comparison returned to the unchanged
+`0` request-URL and `1` open-redirect populations.
+
+How to avoid repeating:
+- Test both inline parsing and assigned parse results; syntax wrappers can affect
+  taint separately from sanitizer-name policy.
+- Pair every unsafe parse/prefix fixture with an affirmative host+scheme,
+  trusted-base, committed-segment, or repeated-`//` normalization fixture.
+- Run the M03 comparison before accepting a default security-rule change; unit
+  fixtures did not contain Caddy's robust normalization loop.
+
 ## Footgun: `filepath.Clean` is suppressed by two independent mechanisms in the request-taint engine
 
 **Status:** resolved | **Created:** 2026-06-04 | **Resolved:** 2026-06-05 | **Evidence:** OBSERVED

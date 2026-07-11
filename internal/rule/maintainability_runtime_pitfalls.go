@@ -5,6 +5,7 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -101,7 +102,8 @@ func (LogFatalLibraryRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.
 	return findings
 }
 
-// LoopVariableAddressRule flags addresses of range variable copies that escape the iteration.
+// LoopVariableAddressRule flags escaping addresses of range variables whose
+// syntax and module language version retain shared-variable semantics.
 type LoopVariableAddressRule struct{}
 
 // Definition declares the maintainability.loop-variable-address rule for range-copy pointer hazards.
@@ -124,13 +126,14 @@ func (LoopVariableAddressRule) AnalyzeUnit(unit parser.Unit, ctx Context) []find
 	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
 	}
+	legacyDeclarationSemantics := usesLegacyRangeLoopVariables(unit, ctx)
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Body == nil {
 			continue
 		}
-		findings = append(findings, loopVariableAddressBlock(unit, fn.Body, functionName(fn))...)
+		findings = append(findings, loopVariableAddressBlock(unit, fn.Body, functionName(fn), legacyDeclarationSemantics)...)
 	}
 	return findings
 }
@@ -223,12 +226,17 @@ func fatalLibraryCallName(call *ast.CallExpr, logPackages, osPackages map[string
 	return "", false
 }
 
-// loopVariableAddressBlock walks one function body looking for escaping addresses inside range loops.
-func loopVariableAddressBlock(unit parser.Unit, body *ast.BlockStmt, symbol string) []finding.Finding {
+// loopVariableAddressBlock walks one function body looking for escaping
+// addresses inside range loops, applying the language-version gate only to
+// declaration-form statements.
+func loopVariableAddressBlock(unit parser.Unit, body *ast.BlockStmt, symbol string, legacyDeclarationSemantics bool) []finding.Finding {
 	findings := []finding.Finding{}
 	ast.Inspect(body, func(node ast.Node) bool {
 		rangeStmt, ok := node.(*ast.RangeStmt)
 		if !ok {
+			return true
+		}
+		if rangeStmt.Tok == token.DEFINE && !legacyDeclarationSemantics {
 			return true
 		}
 		rangeVars := rangeVariableNames(rangeStmt)

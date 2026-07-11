@@ -35,7 +35,7 @@ var (
 )
 
 // GitHubTokenRule flags GitHub personal-access, OAuth, user-to-server, server-to-server, and refresh tokens embedded in source.
-type GitHubTokenRule struct{}
+type GitHubTokenRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.github-token rule that flags gh[pousr]_-prefixed GitHub tokens with high severity and high confidence.
 func (GitHubTokenRule) Definition() Definition {
@@ -53,12 +53,12 @@ func (GitHubTokenRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for GitHub token literals.
-func (GitHubTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, githubTokenPattern, "GitHub token literal detected")
+func (r GitHubTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, githubTokenPattern, "GitHub token literal detected", r.previews, previewGitHubToken)
 }
 
 // SlackTokenRule flags Slack bot, user, app, and refresh token literals embedded in source.
-type SlackTokenRule struct{}
+type SlackTokenRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.slack-token rule that flags xox[bpar]--prefixed Slack tokens with high severity and high confidence.
 func (SlackTokenRule) Definition() Definition {
@@ -76,12 +76,12 @@ func (SlackTokenRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for Slack token literals.
-func (SlackTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, slackTokenPattern, "Slack token literal detected")
+func (r SlackTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, slackTokenPattern, "Slack token literal detected", r.previews, previewSlackToken)
 }
 
 // StripeLiveKeyRule flags Stripe secret, publishable, and restricted live-environment keys embedded in source.
-type StripeLiveKeyRule struct{}
+type StripeLiveKeyRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.stripe-key rule that flags (sk|pk|rk)_live_-prefixed Stripe keys with high severity and high confidence.
 func (StripeLiveKeyRule) Definition() Definition {
@@ -99,12 +99,12 @@ func (StripeLiveKeyRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for Stripe live key literals.
-func (StripeLiveKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, stripeLiveKeyPattern, "Stripe live key literal detected")
+func (r StripeLiveKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, stripeLiveKeyPattern, "Stripe live key literal detected", r.previews, previewStripeLiveKey)
 }
 
 // GoogleAPIKeyRule flags Google API key literals embedded in source.
-type GoogleAPIKeyRule struct{}
+type GoogleAPIKeyRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.google-api-key rule that flags AIza-prefixed Google API keys with high severity and high confidence.
 func (GoogleAPIKeyRule) Definition() Definition {
@@ -122,12 +122,12 @@ func (GoogleAPIKeyRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for Google API key literals.
-func (GoogleAPIKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, googleAPIKeyPattern, "Google API key literal detected")
+func (r GoogleAPIKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, googleAPIKeyPattern, "Google API key literal detected", r.previews, previewGoogleAPIKey)
 }
 
 // AnthropicAPIKeyRule flags Anthropic API key literals embedded in source.
-type AnthropicAPIKeyRule struct{}
+type AnthropicAPIKeyRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.anthropic-api-key rule that flags sk-ant--prefixed Anthropic API keys with high severity and high confidence.
 func (AnthropicAPIKeyRule) Definition() Definition {
@@ -145,12 +145,12 @@ func (AnthropicAPIKeyRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for Anthropic API key literals.
-func (AnthropicAPIKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, anthropicAPIKeyPattern, "Anthropic API key literal detected")
+func (r AnthropicAPIKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, anthropicAPIKeyPattern, "Anthropic API key literal detected", r.previews, previewAnthropicAPIKey)
 }
 
 // NPMTokenRule flags npm access token literals embedded in source.
-type NPMTokenRule struct{}
+type NPMTokenRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.npm-token rule that flags npm_-prefixed npm tokens with high severity and high confidence.
 func (NPMTokenRule) Definition() Definition {
@@ -168,12 +168,12 @@ func (NPMTokenRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for npm token literals.
-func (NPMTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, npmTokenPattern, "npm token literal detected")
+func (r NPMTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, npmTokenPattern, "npm token literal detected", r.previews, previewNPMToken)
 }
 
 // GitLabTokenRule flags GitLab access token literals embedded in source.
-type GitLabTokenRule struct{}
+type GitLabTokenRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.gitlab-token rule that flags GitLab provider token prefixes with high severity and high confidence.
 func (GitLabTokenRule) Definition() Definition {
@@ -191,6 +191,6 @@ func (GitLabTokenRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for GitLab token literals.
-func (GitLabTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, gitLabTokenPattern, "GitLab token literal detected")
+func (r GitLabTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, gitLabTokenPattern, "GitLab token literal detected", r.previews, previewGitLabToken)
 }

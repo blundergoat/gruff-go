@@ -24,7 +24,7 @@ gruff-go analyse --no-config .
 minimumSeverity:    # per-command exit-code threshold; see ADR-010
   analyse: advisory # CI gating command - default `advisory` (fail on anything)
   summary: advisory # CI gating command - default `advisory`
-  report: none      # artifact generator - default `none` (never fail)
+  report: none      # artifact generator - default `none` (never fail on findings)
   dashboard: none   # artifact generator - default `none`
 
 paths:
@@ -32,7 +32,7 @@ paths:
 
 allowlists:
   acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
-  secretPreviews: []          # path globs where redacted secret previews may be shown
+  secretPreviews: []          # authorize fixed category/scheme markers; never payload bytes
 
 selection:
   rules: []           # if non-empty, only these rule IDs run (allowlist)
@@ -62,7 +62,7 @@ Per-command exit-code threshold. Each key is a `gruff-go` subcommand that gates 
 minimumSeverity:
   analyse: warning      # default `advisory`: fail on anything
   summary: warning      # default `advisory`
-  report: none          # default `none`: never fail
+  report: none          # default `none`: never fail on findings
   dashboard: advisory   # default `none`: gate this dashboard like CI
 ```
 
@@ -78,7 +78,7 @@ The binary defaults (when neither the CLI flag nor the config block supply a val
 | --------- | ---------- | ------ |
 | `analyse` | `advisory` | CI gating; fail on anything |
 | `summary` | `advisory` | CI gating |
-| `report`  | `none`     | artifact generator; never fail |
+| `report`  | `none`     | artifact generator; finding gate disabled |
 | `dashboard` | `none`   | artifact generator |
 
 The block is additive: omitting any key falls back to the binary default. Omitting the entire block also works.
@@ -94,10 +94,12 @@ paths:
   ignore:
     - "third_party/"
     - "internal/generated/"
-    - "**/*_pb.go"
+    - "api/*_pb.go"
 ```
 
-Patterns are matched against the project-relative path. Trailing slashes mark directory prefixes; glob characters (`*`, `**`, `?`) follow standard `path/filepath.Match` semantics.
+Patterns are repository-relative slash paths; a leading `./` is normalised away. Exact paths and segment globs use Go's `path.Match` semantics, so `*.go` matches a root file but not `pkg/main.go`, and `api/*.go` does not cross another `/`. A single trailing `/**` matches the named directory and every descendant. A trailing slash is exactly equivalent shorthand: `internal/generated/` and `internal/generated/**` make the same decision in directory walks, explicit-file scans, diff modes, `check-ignore`, and secret-preview authorisation.
+
+Config validation rejects empty or escaping patterns, POSIX-absolute paths, Windows drive-qualified or backslash-containing paths, malformed glob classes, and `**` anywhere except one trailing recursive suffix. General recursive-glob forms such as `**/*.go` and `pkg/**/generated.go` are not accepted.
 
 `paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and built-in default skips only; it never overrides config `paths.ignore`.
 
@@ -122,7 +124,25 @@ Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. T
 
 ### `allowlists.secretPreviews`
 
-Path globs where sensitive-data findings may include the matched redacted preview. This is an output-control allowlist only: it does not suppress findings, change scoring, or mark sample secrets as safe. Use `selection.excludeRules`, `paths.ignore`, or an inline suppression when a finding should intentionally be hidden.
+Path globs that authorize additional non-secret structure in sensitive-data
+preview metadata. Authorization is deny-by-default: an empty list and a path
+that does not match both emit the constant `[redacted]`. A matching path may
+emit only a fixed category marker (for example `[redacted:aws-access-key]`,
+`[redacted:private-key]`, `[redacted:email]`, or `[redacted:ssn]`) or a
+connection marker containing only its already-public scheme (for example
+`[redacted:connection-string:postgres]`). Generic and entropy findings stay
+`[redacted]` even on matching paths.
+
+No state exposes provider payload characters, JWT segments, private-key body or
+header bytes, connection user/password/host/path/query, or PII/PHI identifier
+characters. Primary and secondary GCP previews are authorized independently by
+the same path decision and render as `[redacted:gcp-service-account]` plus
+`[redacted:private-key]` only on a match.
+
+This is an output-control allowlist only: it does not suppress findings, change
+scoring, or mark sample secrets as safe. Use `selection.excludeRules`,
+`paths.ignore`, or an inline suppression when a finding should intentionally be
+hidden.
 
 ```yaml
 allowlists:
@@ -218,8 +238,13 @@ If a rule ID doesn't exist, the loader rejects the file with `config: unknown ru
 
 ## Strict validation
 
+The built-in parser accepts the mapping and scalar-list shapes used by the schema above; mapping-valued list items are outside this intentionally small YAML subset. Mapping keys must be unique within their own scope at every nesting depth. The same key may appear in separate mappings, but a repeated key in one mapping fails instead of silently replacing its earlier value.
+
+Duplicate-key diagnostics report only the parsed key and the original 1-based lines of its first and repeated definitions. Blank and comment-only lines still count toward those source line numbers. Neither duplicate diagnostics nor structural indentation/list/key errors echo the YAML value or raw source line, so a malformed secret-bearing configuration does not copy that value into stderr or hook output.
+
 The loader rejects:
 
+- Duplicate mapping keys within the same root or nested mapping.
 - Unknown top-level keys.
 - Unknown nested keys (`rules.<id>.bogus`, `selection.unexpected`).
 - Unknown rule IDs in `selection.rules` or `selection.excludeRules`.

@@ -1,3 +1,6 @@
+// Package cli implements the coding-agent hook command and JSON contract.
+// This file resolves hook flags, runs analysis, applies optional change/base
+// context, and returns findings the user's current edit should address.
 package cli
 
 import (
@@ -12,7 +15,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/report"
 )
 
-// hookFlagValues captures the hook command flags after parser normalization.
+// hookFlagValues captures the normalized choices behind one user hook run.
+// It keeps config, changed-region, baseline, ignore, and path inputs together
+// before analysis builds the gruff.hook.v1 response.
 type hookFlagValues struct {
 	format         string
 	capabilities   bool
@@ -27,72 +32,86 @@ type hookFlagValues struct {
 }
 
 // runHook executes the agent-hook JSON contract with advisory finding exits.
-func runHook(args []string, stdout, stderr io.Writer) int {
-	if hasHookHelpFlag(args) {
+func runHook(commandArguments []string, stdout, stderr io.Writer) int {
+	// A help request returns guidance without scanning the user's project.
+	if hasHookHelpFlag(commandArguments) {
 		writeCommandHelp("hook", commandUsages["hook"], stdout, ansiStyler{})
 		return 0
 	}
-	values, ok := parseHookFlags(args, stderr)
-	if !ok {
+	hookFlags, parsedFlags := parseHookFlags(commandArguments, stderr)
+	// Invalid flags stop before emitting a misleading hook report.
+	if !parsedFlags {
 		return 2
 	}
-	if values.capabilities {
+	// Capability discovery returns the contract options instead of scan findings.
+	if hookFlags.capabilities {
+		// A write failure means the user's agent did not receive valid capability JSON.
 		if err := writeHookCapabilities(stdout); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
 		return 0
 	}
-	if values.format != "json" {
-		fmt.Fprintf(stderr, "unsupported hook format %q (want json)\n", values.format)
+	// Hook consumers require the single stable JSON format.
+	if hookFlags.format != "json" {
+		fmt.Fprintf(stderr, "unsupported hook format %q (want json)\n", hookFlags.format)
 		return 2
 	}
 
-	registry, ignorePaths, _, err := configuredRegistry(values.configPath, values.noConfig)
+	ruleRegistry, ignoredPathPatterns, _, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig)
+	// Invalid project config is returned in-band so the agent can explain it.
 	if err != nil {
+		// A secondary JSON write failure leaves no usable hook contract for the user.
 		if writeErr := report.WriteJSON(stdout, hookConfigErrorReport(err)); writeErr != nil {
 			fmt.Fprintln(stderr, writeErr)
 		}
 		return 2
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          values.paths,
+		Paths:          hookFlags.paths,
 		Format:         "json",
 		FailOn:         finding.FailThresholdNone,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: values.includeIgnored,
+		Registry:       ruleRegistry,
+		IgnorePaths:    ignoredPathPatterns,
+		IncludeIgnored: hookFlags.includeIgnored,
 	})
+	// Pipeline failures mean the user's requested project could not be analyzed.
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	root := analysisReport.Run.WorkingDirectory
-	ctx := context.Background()
+	projectRoot := analysisReport.Run.WorkingDirectory
+	scanContext := context.Background()
 	gitBaseWarningWritten := false
-	changed, changedEnabled, err := resolveHookChanged(ctx, root, analysisReport.Paths.Scanned, values)
+	changedLines, changedScopeEnabled, err := resolveHookChanged(scanContext, projectRoot, analysisReport.Paths.Scanned, hookFlags)
+	// A missing initial git base degrades to a full hook scan; other errors stay fatal.
 	if err != nil {
-		if !isDegradableHookGitBaseError(values.diffMode, err) {
+		// Non-degradable diff errors cannot produce trustworthy changed-region results.
+		if !isDegradableHookGitBaseError(hookFlags.diffMode, err) {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
 		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
-		changedEnabled = false
+		changedScopeEnabled = false
 	}
-	baseSet, err := resolveHookBaseIdentities(ctx, root, values, registry, ignorePaths)
+	findingBaseline, err := resolveHookFindingBaseline(scanContext, projectRoot, hookFlags, ruleRegistry, ignoredPathPatterns)
+	// Genuine baseline failures stay fatal; missing initial git history degrades safely.
 	if err != nil {
-		if !isDegradableHookGitBaseError(values.diffMode, err) {
+		// Non-git baseline failures cannot produce a trustworthy new-only result.
+		if !isDegradableHookGitBaseError(hookFlags.diffMode, err) {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
 		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
-		baseSet = hookIdentitySet{}
+		findingBaseline = hookFindingBaseline{}
 	}
-	payload := buildHookReport(analysisReport, registry.Definitions(), changed, changedEnabled, baseSet)
+	payload := buildHookReport(analysisReport, ruleRegistry.Definitions(), changedLines, changedScopeEnabled, findingBaseline)
+	// The user-facing hook contract must be emitted as valid JSON.
 	if err := report.WriteJSON(stdout, payload); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	// Fatal analysis diagnostics retain exit 2 even though ordinary findings are advisory.
 	if analysisReport.Summary.ExitCode == 2 {
 		return 2
 	}
@@ -100,7 +119,7 @@ func runHook(args []string, stdout, stderr io.Writer) int {
 }
 
 // parseHookFlags parses hook-specific flags while preserving Go's positional parser contract.
-func parseHookFlags(args []string, stderr io.Writer) (hookFlagValues, bool) {
+func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues, bool) {
 	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() { writeCommandHelp("hook", commandUsages["hook"], stderr, ansiStyler{}) }
@@ -112,12 +131,14 @@ func parseHookFlags(args []string, stderr io.Writer) (hookFlagValues, bool) {
 	diffMode := flags.String("diff", "", "changed-region/new-only source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
 	baselinePath := flags.String("baseline", "", "baseline file to apply for stable-identity new-only")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	normalized := normalizeAnalyseDiffArgs(args)
-	if err := flags.Parse(normalized); err != nil {
+	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
+	// Invalid flag syntax is already explained to the user through stderr.
+	if err := flags.Parse(normalizedArguments); err != nil {
 		return hookFlagValues{}, false
 	}
-	diffPatch, ok := readDiffPatchIfRequested(*diffMode, stderr)
-	if !ok {
+	diffPatch, readPatch := readDiffPatchIfRequested(*diffMode, stderr)
+	// A failed stdin patch read leaves no reliable changed-region input.
+	if !readPatch {
 		return hookFlagValues{}, false
 	}
 	return hookFlagValues{
@@ -135,32 +156,38 @@ func parseHookFlags(args []string, stderr io.Writer) (hookFlagValues, bool) {
 }
 
 // hasHookHelpFlag detects help before the first positional path.
-func hasHookHelpFlag(args []string) bool {
-	normalized := normalizeAnalyseDiffArgs(args)
-	for i := 0; i < len(normalized); i++ {
-		arg := normalized[i]
-		if arg == "-h" || arg == "--help" {
+func hasHookHelpFlag(commandArguments []string) bool {
+	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
+	// Inspect flags only until the user's first positional project path.
+	for argumentIndex := 0; argumentIndex < len(normalizedArguments); argumentIndex++ {
+		argument := normalizedArguments[argumentIndex]
+		// Either supported help spelling should display command guidance.
+		if argument == "-h" || argument == "--help" {
 			return true
 		}
-		if arg == "--" {
+		// An explicit separator makes every following token a user path.
+		if argument == "--" {
 			return false
 		}
-		if !strings.HasPrefix(arg, "-") {
+		// The first non-flag token begins positional project input.
+		if !strings.HasPrefix(argument, "-") {
 			return false
 		}
-		if hookFlagConsumesValue(arg) {
-			i++
+		// Skip a value token so a path-like value is not mistaken for position input.
+		if hookFlagConsumesValue(argument) {
+			argumentIndex++
 		}
 	}
 	return false
 }
 
 // hookFlagConsumesValue reports whether the next argv token belongs to a hook flag.
-func hookFlagConsumesValue(arg string) bool {
-	if strings.Contains(arg, "=") {
+func hookFlagConsumesValue(flagArgument string) bool {
+	// An inline `--flag=value` already carries its user-provided value.
+	if strings.Contains(flagArgument, "=") {
 		return false
 	}
-	switch strings.TrimLeft(arg, "-") {
+	switch strings.TrimLeft(flagArgument, "-") {
 	case "format", "config", "changed-ranges", "diff", "baseline":
 		return true
 	default:
@@ -169,8 +196,8 @@ func hookFlagConsumesValue(arg string) bool {
 }
 
 // hookConfigErrorReport builds the in-band config failure payload required by B8.
-func hookConfigErrorReport(err error) hookReport {
-	message := err.Error()
+func hookConfigErrorReport(configError error) hookReport {
+	message := configError.Error()
 	return hookReport{
 		ContractVersion: hookContractVersion,
 		Analyzer:        hookAnalyzer{Name: "gruff-go", Version: toolVersion},
@@ -183,8 +210,9 @@ func hookConfigErrorReport(err error) hookReport {
 
 // isDegradableHookGitBaseError reports no-commit/default-HEAD failures where a
 // hook can still return useful findings by dropping diff/new-only filtering.
-func isDegradableHookGitBaseError(diffMode string, err error) bool {
-	if err == nil {
+func isDegradableHookGitBaseError(diffMode string, hookError error) bool {
+	// A nil error needs no fallback or warning in the user-facing hook run.
+	if hookError == nil {
 		return false
 	}
 	switch diffMode {
@@ -192,7 +220,7 @@ func isDegradableHookGitBaseError(diffMode string, err error) bool {
 	default:
 		return false
 	}
-	message := strings.ToLower(err.Error())
+	message := strings.ToLower(hookError.Error())
 	return strings.Contains(message, "ambiguous argument") ||
 		strings.Contains(message, "unknown revision") ||
 		strings.Contains(message, "bad revision") ||
@@ -203,10 +231,11 @@ func isDegradableHookGitBaseError(diffMode string, err error) bool {
 
 // writeHookGitBaseWarning emits the schema-compatible fallback diagnostic once
 // per hook run.
-func writeHookGitBaseWarning(stderr io.Writer, err error, written *bool) {
-	if *written {
+func writeHookGitBaseWarning(stderr io.Writer, hookError error, warningWritten *bool) {
+	// Multiple git operations may fail from the same missing base; explain it once.
+	if *warningWritten {
 		return
 	}
-	fmt.Fprintf(stderr, "git diff base unavailable: %v; scanning requested paths without diff/new-only filtering\n", err)
-	*written = true
+	fmt.Fprintf(stderr, "git diff base unavailable: %v; scanning requested paths without diff/new-only filtering\n", hookError)
+	*warningWritten = true
 }

@@ -3,7 +3,6 @@
 package source
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -352,99 +351,66 @@ func TestDiscoverRecordsMissingInputs(t *testing.T) {
 	}
 }
 
-// writeFile writes contents to root/rel, creating parent directories as needed.
-func writeFile(t *testing.T, root, rel, contents string) {
-	t.Helper()
-	path := filepath.Join(root, rel)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// paths returns the relative path of each discovered file.
-func paths(files []File) []string {
-	out := make([]string, 0, len(files))
-	for _, file := range files {
-		out = append(out, file.Path)
-	}
-	return out
-}
-
-// skippedReasons formats skipped entries as "path:reason" strings for assertions.
-func skippedReasons(skipped []SkippedPath) []string {
-	out := make([]string, 0, len(skipped))
-	for _, item := range skipped {
-		out = append(out, item.Path+":"+item.Reason)
-	}
-	return out
-}
-
-// equal reports whether two string slices have identical contents in order.
-func equal(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// contains reports whether the slice includes the given value.
-func contains(values []string, value string) bool {
-	for _, current := range values {
-		if current == value {
-			return true
-		}
-	}
-	return false
-}
-
-// TestCheckIgnoreSharesEngineWithDiscover proves check-ignore and discovery use
-// one ignore engine: for the same tree and options, CheckIgnore's verdict
-// matches whether Discover excluded the path, and a config match reports the
-// exact glob.
+// TestCheckIgnoreSharesEngineWithDiscover proves both recursive-directory
+// spellings report the same configured pattern across every discovery shape.
 func TestCheckIgnoreSharesEngineWithDiscover(t *testing.T) {
+	for _, pattern := range []string{"ignored/", "ignored/**"} {
+		t.Run(pattern, func(t *testing.T) {
+			assertConfigIgnoreAgreement(t, pattern)
+		})
+	}
+}
+
+// assertConfigIgnoreAgreement checks a directory walk, an explicit file, and
+// CheckIgnore against one ordered config-pattern list.
+func assertConfigIgnoreAgreement(t *testing.T, pattern string) {
+	t.Helper()
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
-	writeFile(t, root, "ignored/bad.go", "package ignored\n")
+	writeFile(t, root, "ignored/nested/bad.go", "package ignored\n")
+	patterns := []string{"other/**", pattern, "later/*.go"}
+	options := Options{Root: root, IgnorePatterns: patterns}
 
-	options := Options{Root: root, IgnorePatterns: []string{"ignored/**"}}
-
-	// Discover side: the ignored subtree is pruned at the directory level (the
-	// walker hits the `ignored` dir first and SkipDirs it), so the skip entry is
-	// the directory, carrying source+pattern.
-	result, err := Discover(Options{Root: root, Paths: []string{"."}, IgnorePatterns: options.IgnorePatterns})
+	walk, err := Discover(Options{Root: root, Paths: []string{"."}, IgnorePatterns: patterns})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if contains(paths(result.Files), "ignored/bad.go") {
-		t.Fatalf("discover scanned an ignored file: %#v", result.Files)
-	}
-	var discovered SkippedPath
-	for _, item := range result.Skipped {
-		if item.Path == "ignored" {
-			discovered = item
-		}
-	}
-	if discovered.Source != OriginConfig || discovered.Pattern != "ignored/**" {
-		t.Fatalf("discover skip = %#v, want ignored dir source=config pattern=ignored/**", discovered)
+	assertConfigSkip(t, walk, "ignored", pattern)
+	if contains(paths(walk.Files), "ignored/nested/bad.go") {
+		t.Fatalf("directory walk scanned ignored file for pattern %q: %#v", pattern, walk.Files)
 	}
 
-	// check-ignore side: the same engine resolves the file inside that subtree to
-	// the same verdict and pattern.
-	decision := CheckIgnore(root, "ignored/bad.go", false, options)
-	if !decision.Ignored || decision.Source != OriginConfig || decision.Pattern != "ignored/**" {
-		t.Fatalf("CheckIgnore = %#v, want ignored config ignored/**", decision)
+	explicit, err := Discover(Options{Root: root, Paths: []string{"ignored/nested/bad.go"}, IgnorePatterns: patterns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertConfigSkip(t, explicit, "ignored/nested/bad.go", pattern)
+	if len(explicit.Files) != 0 {
+		t.Fatalf("explicit discovery scanned ignored file for pattern %q: %#v", pattern, explicit.Files)
+	}
+
+	decision := CheckIgnore(root, "ignored/nested/bad.go", false, options)
+	if !decision.Ignored || decision.Source != OriginConfig || decision.Pattern != pattern {
+		t.Fatalf("CheckIgnore pattern %q = %#v, want ignored source=config pattern=%q", pattern, decision, pattern)
 	}
 	if clean := CheckIgnore(root, "main.go", false, options); clean.Ignored {
-		t.Fatalf("CheckIgnore(main.go) = %#v, want not ignored", clean)
+		t.Fatalf("CheckIgnore(main.go) with pattern %q = %#v, want not ignored", pattern, clean)
 	}
+}
+
+// assertConfigSkip finds the named discovery skip and verifies its config
+// source and verbatim pattern.
+func assertConfigSkip(t *testing.T, result Result, path, pattern string) {
+	t.Helper()
+	for _, item := range result.Skipped {
+		if item.Path == path {
+			if item.Source != OriginConfig || item.Pattern != pattern {
+				t.Fatalf("skip %q = %#v, want source=config pattern=%q", path, item, pattern)
+			}
+			return
+		}
+	}
+	t.Fatalf("skips = %#v, want config skip for %q with pattern %q", result.Skipped, path, pattern)
 }
 
 // TestCheckIgnoreIncludeIgnoredStillHonorsConfig proves --include-ignored opts

@@ -13,4 +13,6 @@
 
 Milestone files here coordinate the current work - they are not long-term artifacts and are not expected to survive the session.
 
+Durable multi-session release-plan sets also live here (e.g. `0.5.0/`, whose README, milestone files, and evidence-ledger regime span many sessions until release closure). Gitignored means not-committed, not single-session-throwaway: a release plan set persists in this checkout until its release closes and the set is archived under `_archive/`.
+
 See `goat-plan` SKILL.md for milestone file conventions.

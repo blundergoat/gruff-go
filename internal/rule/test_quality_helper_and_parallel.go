@@ -374,16 +374,20 @@ func pathWithinOrEqual(path string, root string) bool {
 	return rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// parseGoDirective returns the major/minor version from the first `go` directive.
+// parseGoDirective returns the major/minor version from the first `go`
+// directive. A module without that directive has implicit Go 1.16 semantics.
 func parseGoDirective(data []byte) (int, int, bool) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != "go" {
+		if len(fields) == 0 || fields[0] != "go" {
 			continue
+		}
+		if len(fields) < 2 {
+			return 0, 0, false
 		}
 		return parseGoMajorMinor(fields[1])
 	}
-	return 0, 0, false
+	return 1, 16, true
 }
 
 // parseGoMajorMinor parses Go directives such as 1.21, 1.22.0, or 1.25rc1.

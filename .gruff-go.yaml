@@ -27,8 +27,9 @@ paths:
     - internal/rule/sensitive_expansion_test.go
 
 # Project-wide allowlists and preview controls.
-# acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path
-# globs where sensitive-data rules may include the matched preview.
+# acceptedAbbreviations relax naming.acronym-case; secretPreviews authorizes
+# fixed category/scheme markers only. Empty/nonmatching paths stay [redacted].
+# This preview control never suppresses sensitive-data findings.
 allowlists:
   acceptedAbbreviations:
     - AST

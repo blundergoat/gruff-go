@@ -80,8 +80,9 @@ Every finding looks like:
 }
 ```
 
-The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same - that's what baselines key on. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
-The 16-character `stableIdentity` is line-insensitive and intended for external diff tooling; baseline matching still uses `fingerprint`. The nested `location` object is retained for one release while consumers move to the top-level `line` / `endLine` / `column` fields.
+The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same. Baselines consume exact rule/file/fingerprint pairs first. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
+
+The finding JSON `stableIdentity` is line-insensitive and intended for external diff tooling. Generated baseline entries also carry an optional `stableIdentity`, but baseline matching compares that stored value with the current finding's recomputed contract identity; metric findings may therefore use a different baseline value from `findings[].stableIdentity`. Remaining modern entries pair one-to-one by that contract identity after exact matching, so line and measured-value shifts stay reviewed without collapsing duplicates. Legacy baseline entries without `stableIdentity` remain exact-only. The hook invokes the same matcher over its complete current slice. The nested `location` object is retained for one release while consumers move to the top-level `line` / `endLine` / `column` fields.
 
 Each rule definition in `rules[]` includes a `capability` field. The closed enum is `parser`, `type`, `ssa`, or `dataflow`; all rules shipped in v0.1 currently report `parser` because they use source text, Go parser units, ASTs, or already-produced findings, not type loading or dataflow analysis.
 
@@ -242,6 +243,16 @@ The chosen format does **not** change the exit code. All formats use:
 | `2` | Diagnostics (path missing, parse error, config error, baseline error, diff error) **or** invalid CLI input. |
 
 Set `--min-severity` to control where the line falls (default: `advisory`).
+The threshold applies only to findings: `--min-severity none` disables exit `1`,
+but it cannot hide a missing path, parse failure, baseline load failure, diff
+failure, invalid configuration, or invalid CLI input. Those failures always exit
+`2`. Analysis diagnostics retain severity `error` as descriptive output; the
+presence of any diagnostic, not a second severity threshold, determines exit `2`.
+Nonfatal limitations are rendered through existing caveat fields instead.
+
+Agent `hook` mode has one intentional advisory exception: ignored or skipped
+explicit paths are reported in-band and exit `0`. Genuine hook configuration,
+analysis, or internal failures remain exit `2`.
 
 ## Schemas
 

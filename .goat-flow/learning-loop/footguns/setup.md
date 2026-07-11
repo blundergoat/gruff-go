@@ -34,11 +34,11 @@ How to avoid:
 hallucination-risk: medium (the field name and sibling configuration invite an incorrect mental model)
 
 Evidence:
-- `internal/rule/builtin.go` (search: `pathfilter.MatchesAny(r.PreviewAllowlist`) - the path match decides whether `preview` is attached to the finding metadata; the `findings = append(findings, finding.Finding{...})` call that follows runs unconditionally, so the finding itself is always emitted.
-- `internal/config/config.go` (search: `SecretPreviews lists path patterns where the sensitive-data rules may emit the matched preview`) - the doc string is technically accurate but easy to misread.
-- `internal/config/config.go` (search: `cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)`) - the user-facing `allowlists.secretPreviews` key folds into the preview-attachment allowlist, not into any finding-suppression list.
+- `internal/rule/sensitive_preview.go` (search: `func (p sensitivePreviewPolicy) format`) - every detector calls one policy. Empty/nonmatching lists return `[redacted]`; matching paths may receive only a fixed category marker or an already-public connection scheme.
+- `internal/rule/defaults.go` (search: `previews := newSensitivePreviewPolicy`) - the same policy is supplied to all 16 sensitive-data rules, including entropy, PII, PHI, GCP primary/secondary, private-key, JWT, and connection-string paths.
+- `internal/config/config.go` (search: `cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)`) - the user-facing `allowlists.secretPreviews` key still folds into preview-detail authorization, not into any finding-suppression list.
 
-The field sits next to `allowlists.acceptedAbbreviations`, which IS a suppression-style allowlist for `naming.acronym-case`. The visual parallel plus the name `secretPreviews` (plural noun, "the previews we accept") makes adopters reach for it to silence noisy sensitive-data findings in test fixtures or documented dummies. It does not do that. A file matching `secretPreviews` still produces a sensitive-data finding at the same severity; only the redacted `preview: AKIAIO...MPLE` metadata field appears (when matched) or is omitted (when not).
+The field sits next to `allowlists.acceptedAbbreviations`, which IS a suppression-style allowlist for `naming.acronym-case`. The visual parallel plus the name `secretPreviews` (plural noun, "the previews we accept") makes adopters reach for it to silence noisy sensitive-data findings in test fixtures or documented dummies. It does not do that. A matching file still produces the same finding and may show only a marker such as `[redacted:aws-access-key]`; empty/nonmatching policy shows `[redacted]`. No state reveals payload characters.
 
 To actually suppress sensitive-data findings on a path the available levers are:
 - `paths.ignore` glob, which skips discovery entirely (loses all rule coverage on that path).

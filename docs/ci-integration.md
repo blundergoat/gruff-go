@@ -24,6 +24,12 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    gruff-go analyse --baseline gruff-baseline.json .
    ```
 
+   Gruff pairs exact fingerprints first, then remaining line-insensitive contract
+   identities, consuming one current and one prior occurrence per match. Harmless
+   line or measured-value shifts therefore stay reviewed, while a single baseline
+   row cannot hide several duplicate findings. Older rows without
+   `stableIdentity` continue to match exact fingerprints only.
+
 3. **Drift-down** - periodically regenerate the baseline as the team fixes findings.
 
    ```bash
@@ -208,7 +214,7 @@ Pair `--diff-base HEAD` with `--min-severity error` so the hook stays fast and o
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the gate entirely (report findings, always exit 0). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
+- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the finding gate (report findings and exit 0 when the scan otherwise succeeds). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
 - `--fail-on` is an alias for `--min-severity`.
 
 For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:
@@ -225,7 +231,11 @@ The CLI flag still wins when set; the config block supplies the per-command defa
 
 If CI needs to **scan and report** without **failing**, two equally valid options:
 - Run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and upload the report artefact separately.
-- Pass `--min-severity none` (or set `minimumSeverity.analyse: none` in the project config). The exit code is forced to 0 regardless of findings.
+- Pass `--min-severity none` (or set `minimumSeverity.analyse: none` in the project config). Findings cannot produce exit `1`, but diagnostics and invalid input still produce exit `2`.
+
+Thresholds never downgrade operational failures. Missing paths, parse errors,
+baseline or diff failures, and invalid configuration/CLI input exit `2` at every
+threshold, including `none`.
 
 ## Common pitfalls
 

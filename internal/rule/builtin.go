@@ -11,7 +11,6 @@ import (
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
-	"github.com/blundergoat/gruff-go/internal/pathfilter"
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
@@ -306,8 +305,7 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []fin
 
 // SensitiveDataRule flags secret-like key/value assignments in Go and text/config files.
 type SensitiveDataRule struct {
-	// PreviewAllowlist lists file path globs whose findings may include a redacted preview of the matched literal.
-	PreviewAllowlist []string
+	previews sensitivePreviewPolicy
 }
 
 // Definition declares the sensitive-data.secret-pattern rule that flags secret-like key/value assignments with high severity.
@@ -346,9 +344,8 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		if isPlaceholderSecretAssignment(match) {
 			continue
 		}
-		metadata := map[string]any{}
-		if len(r.PreviewAllowlist) == 0 || pathfilter.MatchesAny(r.PreviewAllowlist, unit.File.Path) {
-			metadata["preview"] = redact(match)
+		metadata := map[string]any{
+			"preview": r.previews.format(unit.File.Path, previewGeneric, match),
 		}
 		findings = append(findings, finding.Finding{
 			Message:  "secret-like assignment detected",
@@ -479,12 +476,4 @@ func functionName(fn *ast.FuncDecl) string {
 // isGoTestFile reports whether the file path is a Go test file (_test.go suffix).
 func isGoTestFile(path string) bool {
 	return strings.HasSuffix(path, "_test.go")
-}
-
-// redact masks a secret-like value, keeping only enough characters for triage.
-func redact(value string) string {
-	if len(value) <= 12 {
-		return "[redacted]"
-	}
-	return value[:6] + "..." + value[len(value)-4:]
 }

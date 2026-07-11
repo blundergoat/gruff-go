@@ -162,7 +162,7 @@ paths:
 
 allowlists:
   acceptedAbbreviations: ["ID", "HTTP", "JSON", "AST"]
-  secretPreviews: [] # path globs where redacted secret previews may be shown
+  secretPreviews: [] # authorize fixed category/scheme markers; payload stays hidden
 
 selection:
   excludeRules: []
@@ -202,12 +202,19 @@ See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and r
 
 ## Baselines And Changed-Code Scans
 
-Baselines suppress reviewed findings by fingerprint without disabling rules:
+Baselines suppress reviewed findings without disabling rules:
 
 ```bash
 go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
+
+Matching is one-to-one. Gruff consumes exact rule/file/fingerprint pairs first,
+then pairs remaining modern entries by their line-insensitive contract identity.
+This keeps reviewed findings unchanged after line or measured-value shifts without
+letting one baseline row hide multiple duplicate findings. Older entries without
+`stableIdentity` remain compatible and use exact fingerprint matching only. The
+agent hook uses the same matcher for baseline and git-base new-only filtering.
 
 Changed-region scans use Git only when requested:
 
@@ -234,7 +241,7 @@ In polyglot repositories, remember that `gruff-go`, `gruff-php`, and `gruff-py` 
 
 ## Trust Boundary
 
-Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data previews are redacted before they reach terminal, JSON, SARIF, GitHub, or HTML output.
+Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data previews are deny-by-default: empty or nonmatching preview allowlists emit `[redacted]`, while matching paths may emit only fixed category or connection-scheme markers—never reusable payload bytes.
 
 ## Stability Contract
 

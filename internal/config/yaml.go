@@ -11,8 +11,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// yamlLine is one normalised input line with its indentation depth and trimmed text.
+// yamlLine is one normalised input line with its original 1-based source line,
+// indentation depth, and trimmed text.
 type yamlLine struct {
+	number int
 	indent int
 	text   string
 }
@@ -58,7 +60,7 @@ func encodeYAMLAsJSON(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	if index != len(lines) {
-		return nil, fmt.Errorf("invalid YAML indentation near %q", lines[index].text)
+		return nil, fmt.Errorf("invalid YAML indentation at line %d", lines[index].number)
 	}
 	payload, ok := value.(map[string]any)
 	if !ok {
@@ -70,7 +72,7 @@ func encodeYAMLAsJSON(data []byte) ([]byte, error) {
 // yamlLines splits the input into trimmed, non-blank lines with indentation.
 func yamlLines(input string) []yamlLine {
 	out := []yamlLine{}
-	for _, raw := range strings.Split(input, "\n") {
+	for index, raw := range strings.Split(input, "\n") {
 		line := strings.TrimRight(raw, " \t\r")
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -80,7 +82,7 @@ func yamlLines(input string) []yamlLine {
 			continue
 		}
 		indent := len(stripped) - len(strings.TrimLeft(stripped, " "))
-		out = append(out, yamlLine{indent: indent, text: strings.TrimSpace(stripped)})
+		out = append(out, yamlLine{number: index + 1, indent: indent, text: strings.TrimSpace(stripped)})
 	}
 	return out
 }
@@ -99,23 +101,28 @@ func parseYAMLBlock(lines []yamlLine, index int, indent int) (any, int, error) {
 // parseYAMLMap parses a mapping block at the given indent and returns the cursor.
 func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int, error) {
 	out := map[string]any{}
+	firstLines := map[string]int{}
 	for index < len(lines) {
 		line := lines[index]
 		if line.indent < indent {
 			break
 		}
 		if line.indent > indent {
-			return nil, index, fmt.Errorf("unexpected YAML indentation near %q", line.text)
+			return nil, index, fmt.Errorf("unexpected YAML indentation at line %d", line.number)
 		}
 		key, valueText, ok := strings.Cut(line.text, ":")
 		if !ok {
-			return nil, index, fmt.Errorf("expected YAML key/value near %q", line.text)
+			return nil, index, fmt.Errorf("expected YAML key/value at line %d", line.number)
 		}
 		key = strings.TrimSpace(key)
 		valueText = strings.TrimSpace(valueText)
 		if key == "" {
-			return nil, index, fmt.Errorf("empty YAML key")
+			return nil, index, fmt.Errorf("empty YAML key at line %d", line.number)
 		}
+		if firstLine, exists := firstLines[key]; exists {
+			return nil, index, fmt.Errorf("duplicate YAML key %q: first defined at line %d, duplicated at line %d", key, firstLine, line.number)
+		}
+		firstLines[key] = line.number
 		if valueText != "" {
 			out[key] = parseYAMLScalar(valueText)
 			index++
@@ -146,7 +153,7 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 			break
 		}
 		if line.indent > indent || !strings.HasPrefix(line.text, "- ") {
-			return nil, index, fmt.Errorf("unexpected YAML list item near %q", line.text)
+			return nil, index, fmt.Errorf("unexpected YAML list item at line %d", line.number)
 		}
 		valueText := strings.TrimSpace(strings.TrimPrefix(line.text, "- "))
 		out = append(out, parseYAMLScalar(valueText))

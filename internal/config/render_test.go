@@ -100,6 +100,22 @@ func TestRenderPreservesExistingScaffoldTuning(t *testing.T) {
 	}
 }
 
+// TestRenderExplainsDenyByDefaultSecretPreviews keeps generated configuration
+// from implying that allowlisted paths may reveal matched credential bytes.
+func TestRenderExplainsDenyByDefaultSecretPreviews(t *testing.T) {
+	body := string(Render(defaultDefinitions(), RenderOptions{}))
+	for _, want := range []string{
+		"fixed category/scheme markers only",
+		"Empty/nonmatching paths stay [redacted]",
+		"never suppresses sensitive-data findings",
+		"secretPreviews: []",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rendered config missing secret-preview guidance %q", want)
+		}
+	}
+}
+
 // TestRenderPreservesPerRuleOverrides confirms that per-rule severity,
 // threshold, and options overrides from an existing config carry into the
 // regenerated output. Rules without overrides still emit registry defaults.

@@ -1379,7 +1379,7 @@
                 "text": "Request-controlled request URL"
               },
               "fullDescription": {
-                "text": "Flags request-derived values passed as the URL of an outbound net/http request without a nearby allowlist or parse/validate check (possible SSRF). Uses bounded same-function evidence and candidate wording."
+                "text": "Flags request-derived values passed as the URL of an outbound net/http request without an affirmative destination allowlist or validation check (possible SSRF). Uses bounded same-function evidence and candidate wording."
               },
               "help": {
                 "text": "Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching."

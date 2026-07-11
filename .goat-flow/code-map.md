@@ -82,13 +82,13 @@
 ## Go Application Surface
 
 - `cmd/gruff-go/main.go` = Thin executable entrypoint that exits with the CLI package's Main function.
-- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Holds the `toolVersion` constant and the golden test fixtures under `internal/cli/testdata/golden/`.
+- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `check-ignore`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Holds the `toolVersion` constant and the golden test fixtures under `internal/cli/testdata/golden/`.
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, gitignore-respecting filter (ADR-004/ADR-005), and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
 - `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 83-rule catalogue (70 default-enabled, 13 opt-in).
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
-- `internal/baseline/` = JSON baseline serialization plus exact rule/file/fingerprint suppression and stale-entry reporting.
+- `internal/baseline/` = JSON baseline serialization plus shared one-to-one classification: exact rule/file/fingerprint pairs first, then remaining contract-stable identities, with legacy exact-only fallback and resolved-entry reporting for analyse and hook consumers.
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.
 - `internal/pathfilter/` = Shared relative path glob validation and matching.
 - `internal/analysis/` = End-to-end analysis runner, report schema, summary counts, baseline/diff summaries, diagnostics, rule metadata, exit semantics, and the `Tool.Version` literal that flows into JSON/SARIF reports.

@@ -3,6 +3,7 @@
 package rule
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -18,21 +19,43 @@ var (
 	// JWT: three base64url segments separated by dots; first starts with `eyJ`
 	// (the literal base64 prefix for `{"`).
 	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}`)
-	// Database URLs with embedded passwords: scheme://user:password@host
-	connectionPattern = regexp.MustCompile(`(?i)\b(postgres|postgresql|mysql|mongodb|mongodb\+srv|redis|amqp|amqps)://[^:\s/@]+:[^@\s/]+@[^\s]+`)
+	// Database URLs with a raw credential separator. The credential candidate is
+	// bounded by the first raw @ so reserved password bytes such as / remain in
+	// the candidate without allowing a second raw @ to be reinterpreted.
+	connectionPattern = regexp.MustCompile(`(?i)\b(postgres|postgresql|mysql|mongodb|mongodb\+srv|redis|amqp|amqps)://[^\s@"'\x60]+@[^\s"'\x60]+`)
 )
 
 // connectionPlaceholderPasswords are common dev/test password tokens we treat as
 // non-secrets when the connection's host is a local-development hostname.
-// Match is case-insensitive substring of the password component. Including
-// short tokens like "pass" / "invalid" is intentional: localhost-targeted
-// passwords containing these substrings are nearly always fixtures, and the
-// host co-condition limits the false-positive surface.
+// Match is case-insensitive equality against the path-unescaped whole password;
+// mixed credentials that merely contain one of these words remain findings.
 var connectionPlaceholderPasswords = []string{
 	"change_me", "changeme", "your_password", "your-password", "your-secret",
 	"placeholder", "example", "dummy", "fake", "invalid", "pass",
 	"dev_password", "test_password", "dev-password", "test-password",
-	"localpass", "localpassword",
+	"dev_password_change_me", "localpass", "localpassword",
+}
+
+// connectionPasswordState distinguishes malformed or absent credentials from
+// an explicitly empty password and a non-empty embedded password.
+type connectionPasswordState uint8
+
+const (
+	// connectionPasswordMissing means the candidate has no valid credential tuple.
+	connectionPasswordMissing connectionPasswordState = iota
+	// connectionPasswordEmpty means the candidate has a username and an explicit empty password.
+	connectionPasswordEmpty
+	// connectionPasswordPresent means the candidate has a username and a non-empty password.
+	connectionPasswordPresent
+)
+
+// connectionURLParts is the bounded credential/authority result used by the
+// connection-string detector. host is canonical: lowercase, without brackets,
+// port, or a trailing DNS root dot.
+type connectionURLParts struct {
+	password      string
+	host          string
+	passwordState connectionPasswordState
 }
 
 // connectionLocalHosts are hostnames we consider "obviously local development"
@@ -42,7 +65,7 @@ var connectionLocalHosts = []string{
 }
 
 // PrivateKeyRule flags PEM-encoded private keys embedded in source or text files.
-type PrivateKeyRule struct{}
+type PrivateKeyRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.private-key rule that flags PEM-formatted private key headers as critical sensitive-data findings.
 func (PrivateKeyRule) Definition() Definition {
@@ -60,12 +83,12 @@ func (PrivateKeyRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for PEM private-key headers.
-func (PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, privateKeyPattern, "private key literal detected")
+func (r PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, privateKeyPattern, "private key literal detected", r.previews, previewPrivateKey)
 }
 
 // AWSAccessKeyRule flags AWS access key identifiers (AKIA...) embedded in source.
-type AWSAccessKeyRule struct{}
+type AWSAccessKeyRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.aws-access-key rule that flags AKIA-prefixed access key identifiers with high severity and high confidence.
 func (AWSAccessKeyRule) Definition() Definition {
@@ -83,12 +106,12 @@ func (AWSAccessKeyRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for AWS access key identifiers.
-func (AWSAccessKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, awsAccessPattern, "AWS access key id detected")
+func (r AWSAccessKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, awsAccessPattern, "AWS access key id detected", r.previews, previewAWSAccessKey)
 }
 
 // JWTTokenRule flags JWT-shaped literals embedded in source files.
-type JWTTokenRule struct{}
+type JWTTokenRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.jwt-token rule that flags base64url three-segment JWT literals with high severity and medium confidence.
 func (JWTTokenRule) Definition() Definition {
@@ -106,12 +129,12 @@ func (JWTTokenRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans the unit's source for JWT-like token literals.
-func (JWTTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanLinesForSecret(unit, jwtPattern, "JWT-like token literal detected")
+func (r JWTTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	return scanLinesForSecret(unit, jwtPattern, "JWT-like token literal detected", r.previews, previewJWT)
 }
 
 // ConnectionStringRule flags database or queue connection URIs that embed credentials.
-type ConnectionStringRule struct{}
+type ConnectionStringRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.connection-string rule that flags database/queue URIs whose user:password credentials are embedded in the URL.
 func (ConnectionStringRule) Definition() Definition {
@@ -130,8 +153,8 @@ func (ConnectionStringRule) Definition() Definition {
 
 // AnalyzeUnit scans the unit's source for connection URIs containing embedded passwords.
 // Skips obvious dev/test placeholder credentials targeting localhost-like hosts.
-func (ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	raw := scanLinesForSecret(unit, connectionPattern, "connection string with embedded password detected")
+func (r ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	raw := scanLinesForSecret(unit, connectionPattern, "connection string with embedded password detected", r.previews, previewConnectionString)
 	if len(raw) == 0 {
 		return raw
 	}
@@ -143,7 +166,11 @@ func (ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 			continue
 		}
 		match := connectionPattern.FindString(lines[item.Location.Line-1])
-		if match != "" && isPlaceholderConnectionString(match) {
+		parts := splitConnectionURL(match)
+		if parts.passwordState != connectionPasswordPresent {
+			continue
+		}
+		if isPlaceholderConnection(parts) {
 			continue
 		}
 		out = append(out, item)
@@ -151,11 +178,12 @@ func (ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 	return out
 }
 
-// scanLinesForSecret walks the unit source line by line, emitting a finding for each pattern match.
+// scanLinesForSecret walks the unit source line by line, emitting a finding for
+// each pattern match with preview metadata supplied by the shared policy.
 // Lines that are entirely Go comments, or that carry a suppression annotation
 // (`#nosec`, `//nolint:gosec`, `//nolint:all`), are skipped to keep noise down
 // in dev/test fixtures and inline documentation.
-func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string) []finding.Finding {
+func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string, previews sensitivePreviewPolicy, category sensitivePreviewCategory) []finding.Finding {
 	if unit.Source == "" {
 		return nil
 	}
@@ -176,7 +204,7 @@ func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string
 			Message:  message,
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: lineNumber + 1},
-			Metadata: map[string]any{"preview": redact(match)},
+			Metadata: map[string]any{"preview": previews.format(unit.File.Path, category, match)},
 		})
 	}
 	return findings
@@ -241,30 +269,39 @@ func isGoPrivateKeyDelimiterUse(line string, match string) bool {
 	return strings.Contains(line, match+`\\n" +`) || strings.Contains(line, match+`\n" +`)
 }
 
-// scanUnitForCoOccurrence emits one finding per file when both primary and secondary patterns each match on a code-bearing line.
+// coOccurrenceSecretSpec groups a two-pattern detector and its preview categories.
+type coOccurrenceSecretSpec struct {
+	primary           *regexp.Regexp
+	secondary         *regexp.Regexp
+	message           string
+	primaryCategory   sensitivePreviewCategory
+	secondaryCategory sensitivePreviewCategory
+}
+
+// scanUnitForCoOccurrence emits one finding per file when both configured patterns match on code-bearing lines.
 // The finding is located at the primary marker's line. Both matches are
-// redacted into the preview metadata so the underlying secret never reaches
-// any output format.
-func scanUnitForCoOccurrence(unit parser.Unit, primary, secondary *regexp.Regexp, message string) []finding.Finding {
+// formatted independently by the shared preview policy so neither matched value
+// reaches any output format.
+func scanUnitForCoOccurrence(unit parser.Unit, spec coOccurrenceSecretSpec, previews sensitivePreviewPolicy) []finding.Finding {
 	if unit.Source == "" {
 		return nil
 	}
-	primaryLine, primaryMatch := firstCodeMatch(unit.Source, primary)
+	primaryLine, primaryMatch := firstCodeMatch(unit.Source, spec.primary)
 	if primaryLine == 0 {
 		return nil
 	}
-	secondaryLine, secondaryMatch := firstCodeMatch(unit.Source, secondary)
+	secondaryLine, secondaryMatch := firstCodeMatch(unit.Source, spec.secondary)
 	if secondaryLine == 0 {
 		return nil
 	}
 	return []finding.Finding{{
-		Message:  message,
+		Message:  spec.message,
 		File:     unit.File.Path,
 		Location: &finding.Location{Line: primaryLine},
 		Metadata: map[string]any{
-			"preview":          redact(primaryMatch),
+			"preview":          previews.format(unit.File.Path, spec.primaryCategory, primaryMatch),
 			"secondaryLine":    secondaryLine,
-			"secondaryPreview": redact(secondaryMatch),
+			"secondaryPreview": previews.format(unit.File.Path, spec.secondaryCategory, secondaryMatch),
 		},
 	}}
 }
@@ -350,55 +387,70 @@ func hasSecretSuppressionAnnotation(line string) bool {
 	return false
 }
 
-// isPlaceholderConnectionString returns true when the URL embeds an obvious
+// isPlaceholderConnection returns true when the URL embeds an obvious
 // dev/test placeholder password AND points at a localhost-style host. Both
 // halves are required so we don't silently swallow a real production secret
 // that happens to mention a placeholder word.
-func isPlaceholderConnectionString(connStr string) bool {
-	password, host, ok := splitConnectionURL(connStr)
-	if !ok {
+func isPlaceholderConnection(parts connectionURLParts) bool {
+	if parts.passwordState != connectionPasswordPresent {
 		return false
 	}
-	if !stringEqualsAny(host, connectionLocalHosts) {
+	if !stringEqualsAny(parts.host, connectionLocalHosts) {
 		return false
 	}
-	lowerPass := strings.ToLower(password)
-	for _, marker := range connectionPlaceholderPasswords {
-		if strings.Contains(lowerPass, marker) {
-			return true
-		}
+	password, err := url.PathUnescape(parts.password)
+	if err != nil {
+		return false
 	}
-	return false
+	return stringEqualsAny(strings.ToLower(password), connectionPlaceholderPasswords)
 }
 
-// splitConnectionURL extracts the password and bare host out of
-// scheme://user:password@host[:port][/path][?query], returning ok=false when
-// the URL is malformed.
-func splitConnectionURL(connStr string) (password, host string, ok bool) {
+// splitConnectionURL extracts a password state and canonical bare host from
+// scheme://user:password@host[:port][/path][?query]. It deliberately splits at
+// the first raw @ and first credential colon instead of asking net/url to
+// reinterpret reserved bytes in the raw password.
+func splitConnectionURL(connStr string) connectionURLParts {
 	schemeEnd := strings.Index(connStr, "://")
 	if schemeEnd < 0 {
-		return "", "", false
+		return connectionURLParts{}
 	}
 	rest := connStr[schemeEnd+3:]
-	atIdx := strings.LastIndex(rest, "@")
+	atIdx := strings.Index(rest, "@")
 	if atIdx < 0 {
-		return "", "", false
+		return connectionURLParts{}
 	}
-	userPass := rest[:atIdx]
-	hostPart := rest[atIdx+1:]
-	colonIdx := strings.LastIndex(userPass, ":")
+	credentials := rest[:atIdx]
+	hostSuffix := rest[atIdx+1:]
+	colonIdx := strings.Index(credentials, ":")
 	if colonIdx < 0 {
-		return "", "", false
+		return connectionURLParts{}
 	}
-	password = userPass[colonIdx+1:]
-	host = hostPart
-	for _, sep := range []string{":", "/", "?"} {
-		if idx := strings.Index(host, sep); idx >= 0 {
-			host = host[:idx]
-			break
-		}
+	if credentials[:colonIdx] == "" {
+		return connectionURLParts{}
 	}
-	return password, host, true
+
+	password := credentials[colonIdx+1:]
+	state := connectionPasswordEmpty
+	if password != "" {
+		state = connectionPasswordPresent
+	}
+
+	authority := hostSuffix
+	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+		authority = authority[:end]
+	}
+	if authority == "" || strings.Contains(authority, "@") {
+		return connectionURLParts{}
+	}
+	parsed, err := url.Parse("//" + authority)
+	if err != nil || parsed.User != nil || parsed.Host == "" {
+		return connectionURLParts{}
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	if host == "" {
+		return connectionURLParts{}
+	}
+	return connectionURLParts{password: password, host: host, passwordState: state}
 }
 
 // stringEqualsAny reports whether value matches any element of options.
