@@ -26,7 +26,7 @@ The analyzer runtime is local CLI plus an optional local dashboard. `cmd/gruff-g
 
 ## Auth / Trust Boundaries
 
-No project authentication or authorization layer exists yet. The relevant trust boundary is local-agent safety: `.claude/settings.json` and `.codex/config.toml` define agent permissions, while the shared `.goat-flow/hooks/deny-dangerous.sh` (registered by every agent) enforces Bash command safety checks before tool use.
+No project authentication or authorization layer exists yet. The relevant trust boundary is local-agent safety: `.claude/settings.json` and `.codex/config.toml` define agent permissions, while the shared `.goat-flow/hooks/deny-dangerous.sh` enforces Bash command safety checks before tool use. Codex registers that guard through `.codex/hooks.json`; the optional shared code-quality and post-turn hooks remain installed for agents whose lifecycle contracts support them.
 
 Secrets should not be added to this repository. `.env.example` is allowed by Claude settings for documentation, but `.env*`, key files, credentials, and common cloud config paths are denied.
 

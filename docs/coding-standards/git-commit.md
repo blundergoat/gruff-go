@@ -15,6 +15,7 @@ Use conventional commits because at least 70% of sampled subjects matched that s
 - Use `type(scope): subject` or `type: subject`.
 - Observed types: feat, chore, docs, refactor, fix.
 - Keep the subject concrete: name the behavior, file family, or command that changed.
+- Avoid weak subjects such as `update things`, `misc changes`, or `fix stuff`.
 - Add a body when the subject names more than one axis or the motivation is not obvious.
 
 ## Evidence

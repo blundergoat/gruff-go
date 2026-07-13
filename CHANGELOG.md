@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- **GOAT Flow 1.13.1** - Refreshed the Codex skills, shared safety hooks, setup references, and project-specific agent guidance. Codex hook registration now keeps only the supported Bash `PreToolUse` deny guard.
 - **Path-filter contract** - `paths.ignore` and secret-preview patterns now reject Windows drive-qualified/backslash paths and multiple or mid-pattern `**`; documented trailing-slash directory patterns such as `generated/` now behave exactly like `generated/**` across discovery, explicit files, and `check-ignore`.
 - **Connection-string credential boundaries** - `sensitive-data.connection-string` now detects passwords containing raw or encoded reserved delimiters, including raw `/`, while requiring non-empty user/password fields. Local-host fixture suppression now requires an exact case/percent-normalised placeholder password, so mixed credentials such as `myPassphrase2024` and `not-invalid-prod` remain findings.
 - **Range-address language semantics** - `maintainability.loop-variable-address` now suppresses declaration-form (`:=`) range-variable address findings when the nearest module selects Go 1.22 or newer, while assignment-form (`=`) reuse remains visible for every version and without module metadata. The shared module resolver treats a found `go.mod` without a `go` directive as implicit Go 1.16 for this rule and `test-quality.parallel-range-capture`.

@@ -42,7 +42,7 @@
 ## Codex-Owned Surfaces
 
 - `.codex/config.toml` = Codex permission profile and hooks feature flag.
-- `.codex/hooks.json` = Codex hook registration for GOAT Flow.
+- `.codex/hooks.json` = Codex hook registration for the supported Bash `PreToolUse` deny guard.
 - `.agents/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.agents/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.agents/skills/goat-debug/SKILL.md` = Debugging workflow skill.
@@ -53,12 +53,12 @@
 
 ## GOAT Flow Shared Context
 
-- `.goat-flow/config.yaml` = GOAT Flow version, agent list, and skill install mode.
+- `.goat-flow/config.yaml` = GOAT Flow version, skill install mode, and shared hook toggles.
 - `.goat-flow/architecture.md` = Current system architecture and boundaries.
 - `.goat-flow/code-map.md` = This repository map.
 - `.goat-flow/glossary.md` = Project terminology for future agents.
 - `.goat-flow/security-policy.md` = Installed security policy reference.
-- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; pattern/policy logic under `deny-dangerous/`) and `gruff-code-quality.sh` (post-edit gruff scan). Registered per agent via each agent's settings/hooks config.
+- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; policy under `deny-dangerous/`), `gruff-code-quality.sh` (optional post-edit gruff scan), and `post-turn-safety.sh` (optional stop-event changed-content guard). Registration is agent-specific; Codex currently registers only `deny-dangerous.sh`.
 - `.goat-flow/dashboard-state.json` = GOAT Flow dashboard state.
 - `.goat-flow/learning-loop/footguns/` = Evidence-backed architectural traps.
 - `.goat-flow/learning-loop/lessons/` = Durable behavioral lessons from incidents or git history.

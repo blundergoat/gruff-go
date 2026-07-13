@@ -1,6 +1,6 @@
 ---
 category: security-rules
-last_reviewed: 2026-06-14
+last_reviewed: 2026-07-13
 ---
 
 # Security-Rule Footguns
