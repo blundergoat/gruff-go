@@ -15,6 +15,18 @@ scripts/preflight-checks.sh
 The checks should cover formatting, `go vet`, tests, shell syntax, and dogfood
 analysis.
 
+Before changing a source version, exercise the read-only ownership guard:
+
+```sh
+scripts/bump-version_test.sh
+scripts/bump-version.sh --check-references --root . --source-version "$(go run ./cmd/gruff-go --version | awk '{ print $2 }')"
+```
+
+`source-current` rows must match the source version. `published-install` and
+`security-support` rows are review prompts because public releases may
+intentionally trail the source tree; `unclassified` rows must gain an owner or
+be removed before the bump.
+
 ## CLI Contract
 
 Before release, verify the common CLI surface:

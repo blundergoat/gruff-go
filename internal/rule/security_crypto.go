@@ -106,6 +106,9 @@ func (InsecureRandomSecretRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !ok {
 				return true
 			}
+			if randomCallSelectsExistingValue(call, parents) {
+				return true
+			}
 			contextWord, ok := randomCallSecurityContext(call, fn, parents)
 			if !ok {
 				return true
@@ -168,6 +171,66 @@ func mathRandCallName(call *ast.CallExpr, randPackages map[string]bool) (string,
 		return "", false
 	}
 	return receiver.Name + "." + selector.Sel.Name, true
+}
+
+// randomCallSelectsExistingValue reports the narrow sampling role where Intn
+// directly indexes the same identifier or selector chain used by len.
+func randomCallSelectsExistingValue(call *ast.CallExpr, parents map[ast.Node]ast.Node) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Intn" || len(call.Args) != 1 {
+		return false
+	}
+	parent := parents[call]
+	for {
+		paren, ok := parent.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		parent = parents[paren]
+	}
+	index, ok := parent.(*ast.IndexExpr)
+	if !ok || unwrapRandomSelectionParens(index.Index) != call {
+		return false
+	}
+	lengthCall, ok := unwrapRandomSelectionParens(call.Args[0]).(*ast.CallExpr)
+	if !ok || len(lengthCall.Args) != 1 {
+		return false
+	}
+	lengthName, ok := unwrapRandomSelectionParens(lengthCall.Fun).(*ast.Ident)
+	if !ok || lengthName.Name != "len" {
+		return false
+	}
+	return sameRandomSelectionCollection(index.X, lengthCall.Args[0])
+}
+
+// unwrapRandomSelectionParens removes syntax-only parentheses before the
+// selection predicate compares a call, collection, or length expression.
+func unwrapRandomSelectionParens(expr ast.Expr) ast.Expr {
+	for {
+		paren, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			return expr
+		}
+		expr = paren.X
+	}
+}
+
+// sameRandomSelectionCollection compares supported collection paths without
+// admitting calls, computed indexes, or other expressions that need type flow.
+func sameRandomSelectionCollection(left, right ast.Expr) bool {
+	left = unwrapRandomSelectionParens(left)
+	right = unwrapRandomSelectionParens(right)
+	switch leftValue := left.(type) {
+	case *ast.Ident:
+		rightValue, ok := right.(*ast.Ident)
+		return ok && leftValue.Name == rightValue.Name
+	case *ast.SelectorExpr:
+		rightValue, ok := right.(*ast.SelectorExpr)
+		return ok && leftValue.Sel.Name == rightValue.Sel.Name &&
+			sameRandomSelectionCollection(leftValue.X, rightValue.X)
+	default:
+		return false
+	}
 }
 
 // randomCallSecurityContext finds the security word that makes a math/rand call actionable.

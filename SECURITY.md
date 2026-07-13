@@ -8,7 +8,7 @@
 
 | Version | Supported |
 |---------|-----------|
-| `0.3.x` (current public line) | ✅ |
+| `0.4.x` (current public line) | ✅ |
 | anything else | ❌ |
 
 ## Reporting a vulnerability

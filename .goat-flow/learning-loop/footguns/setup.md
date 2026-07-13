@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-06-14
+last_reviewed: 2026-07-13
 ---
 
 # Setup Footguns
@@ -101,12 +101,13 @@ The CLI now supports strict gruff config discovery, baselines, diff filtering, s
 
 **Status:** active | **Created:** 2026-06-14 | **Evidence:** OBSERVED
 
-`scripts/bump-version.sh` updates the four in-tree version literals plus `package.json`/lock and the CLI goldens, but deliberately leaves `CHANGELOG.md`, `README.md`, and `docs/` (search the script header: "Does NOT touch CHANGELOG.md, README.md"). Two release traps follow:
+`scripts/bump-version.sh` updates the four in-tree version literals plus `package.json`/lock and the CLI goldens, but deliberately leaves `CHANGELOG.md`, `README.md`, and `docs/` (search the script header: "Does NOT touch CHANGELOG.md, README.md"). Its `--check-references` path classifies current references without writing. Three release traps follow:
 
 - **Install pins reflect the latest *published* tag, not the in-tree literal.** README's `go get ...@vX` and "Published `X` package line", plus `docs/ci-integration.md`'s `go install ...@vX`, point at a version a user can actually fetch. Bumping them the instant you bump the literals documents an uninstallable version until `vX` is tagged and pushed to the proxy. Bump install pins (and promote `CHANGELOG.md [Unreleased]` to a dated section, keeping `[Unreleased]` empty per the changelog playbook) at tag time, or only when intentionally shipping the docs ahead of the tag.
 - **Committed docs linking into `.goat-flow/scratchpad/` break for cloners.** `CHANGELOG.md` once linked `[release.md](.goat-flow/scratchpad/release.md)`, but `.goat-flow/scratchpad/` is gitignored, so the target is absent in every clone, and the scratchpad is overwritten each release (the v0.2.0 entry pointed at v0.3.0 content). Keep release-narrative cross-references inside committed files; the scratchpad `release.md` is a working draft for the GitHub Release body only.
+- **A literal-based exemption can hide a future product version.** The first M16 golden scanner skipped every `"version": "2.1.0"` line to exclude SARIF's document version. That also skipped the gruff-go tool version when a fixture made the product version `2.1.0`. `scripts/bump-version.sh` (search: `scan_golden_versions`) now associates ordinary JSON versions with a preceding `"name": "gruff-go"`, while `semanticVersion` and text mastheads remain direct owners. `scripts/bump-version_test.sh` (search: `test_clean_review_rows`) pins the same-valued SARIF/tool case.
 
-How to avoid: after `bump-version.sh`, review its "remaining references to <old>" list and decide per file - code/test literals bump now; published-install pins and the changelog date bump at tag time (unless deliberately leading the tag). Never link a committed doc to a path under `.goat-flow/scratchpad/`.
+How to avoid: run `scripts/bump-version.sh --check-references --root . --source-version <X.Y.Z>` before the bump. Every `source-current` row must equal the source version; independently resolve every `published-install` row and review `security-support` against that public line. Classify by owner/context, never by exempting a numeric value. Published pins and the changelog date move at tag time unless the release deliberately leads with docs. Never link a committed doc to `.goat-flow/scratchpad/`.
 
 ## Resolved Entries
 

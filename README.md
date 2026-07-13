@@ -96,6 +96,7 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | Command | Purpose |
 | --- | --- |
 | `analyse` | Run rules over the supplied paths and emit a report. |
+| `hook` | Emit the `gruff.hook.v1` JSON contract for coding-agent changes. |
 | `summary` | Print a compact score, per-pillar counts, top rules, and top files. |
 | `report` | Render static HTML or JSON to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a baseline file. |
@@ -105,6 +106,8 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | `dashboard` | Serve the local browser dashboard. |
 | `list`, `help` | Show command lists and command-specific help. |
 | `completion` | Print a shell completion script. |
+
+`analyze` is accepted as an alias for `analyse`.
 
 Run `go tool gruff-go help <command>` for command-specific flags.
 

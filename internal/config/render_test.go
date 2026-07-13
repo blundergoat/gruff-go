@@ -6,6 +6,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -97,6 +98,22 @@ func TestRenderPreservesExistingScaffoldTuning(t *testing.T) {
 	}
 	if strings.Contains(body, "ignore: []") {
 		t.Fatalf("paths.ignore should not be empty when preserved values were supplied:\n%s", body)
+	}
+}
+
+// TestInitAcceptedAbbreviationsFamilySeed pins the fresh-init output to the
+// ratified 16-word family list while leaving existing-config preservation to
+// TestRenderPreservesExistingScaffoldTuning.
+func TestInitAcceptedAbbreviationsFamilySeed(t *testing.T) {
+	definitions := defaultDefinitions()
+	configBody := Render(definitions, RenderOptions{})
+	parsed, err := Parse(configBody, definitions)
+	if err != nil {
+		t.Fatalf("fresh init config did not parse: %v", err)
+	}
+	want := []string{"age", "app", "db", "fs", "id", "io", "key", "log", "max", "min", "now", "raw", "rx", "tx", "ui", "url"}
+	if got := parsed.AcceptedAbbreviations; !reflect.DeepEqual(got, want) {
+		t.Fatalf("fresh init acceptedAbbreviations = %q, want family seed %q", got, want)
 	}
 }
 

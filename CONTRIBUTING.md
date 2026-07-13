@@ -1,6 +1,6 @@
 # Contributing to gruff-go
 
-Thanks for considering a contribution. `gruff-go` is pre-1.0 (currently on the `0.3.x` line) and the surface is small enough that focused PRs land quickly. This page covers the dev loop, the test gates the project expects to stay green, and a few conventions worth knowing before you open a change.
+Thanks for considering a contribution. `gruff-go` is pre-1.0; this source tree currently reports gruff-go version `0.5.0`. The surface is small enough that focused PRs land quickly. This page covers the dev loop, the test gates the project expects to stay green, and a few conventions worth knowing before you open a change.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ make check
 | Directory | Purpose |
 |-----------|---------|
 | `cmd/gruff-go/` | Thin executable entrypoint; the meat lives under `internal/`. |
-| `internal/cli/` | CLI parser; subcommand dispatch for `analyse`, `baseline`, `check-ignore`, `completion`, `dashboard`, `help`, `init`, `list`, `list-rules`, `report`, `summary`. |
+| `internal/cli/` | CLI parser; subcommand dispatch for `analyse`, `baseline`, `check-ignore`, `completion`, `dashboard`, `help`, `hook`, `init`, `list`, `list-rules`, `report`, `summary`; `analyze` aliases `analyse`. |
 | `internal/source/` | File discovery; skips VCS, dependency caches, generated files. |
 | `internal/parser/` | Standard-library `go/parser` wrapper plus parse diagnostics. |
 | `internal/rule/` | Rule metadata, registry, dispatch, builtin rule pack. |

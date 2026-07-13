@@ -1,6 +1,6 @@
 # Glossary - gruff-go
 
-Last reviewed 2026-06-06.
+Last reviewed 2026-07-13.
 
 This glossary defines terms used by `gruff-go`, its public reports, and local project memory. Keep shared gruff-family terms aligned with the sibling implementations; keep Go-specific differences explicit rather than making them look identical.
 
@@ -88,7 +88,9 @@ A redacted representation of sensitive-data matches. Raw secret values must not 
 
 ### Severity And Failure Threshold
 
-`gruff-go` uses `info`, `low`, `medium`, `high`, and `critical`. `--min-severity` drives exit code `1`; `--fail-on` is accepted as a CLI alias for parity with other gruff tools.
+`gruff-go` uses exactly three severities: `advisory`, `warning`, and `error`. `--min-severity` drives exit code `1`; `--fail-on` is accepted as a CLI alias for parity with other gruff tools.
+
+Confidence is a separate scale with `low`, `medium`, and `high`.
 
 ### Source Discovery
 

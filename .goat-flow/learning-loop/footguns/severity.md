@@ -1,6 +1,6 @@
 ---
 category: severity
-last_reviewed: 2026-05-26
+last_reviewed: 2026-07-13
 ---
 
 # Severity Footguns
@@ -9,17 +9,17 @@ last_reviewed: 2026-05-26
 
 **Status:** active | **Created:** 2026-05-25 | **Evidence:** OBSERVED
 
-hallucination-risk: high (an agent sweeping for "stale severity names" after ADR-009 will see `"high"`, `"medium"`, `"low"`, `"info"` in many golden files and source files, and may try to "fix" them — but a chunk of those strings are valid current values for the `Confidence` field, which is a separate enum)
+hallucination-risk: high (an agent sweeping for "stale severity names" after ADR-009 will see `"high"`, `"medium"`, and `"low"` in many golden files and source files, and may try to "fix" them — but a chunk of those strings are valid current values for the `Confidence` field, which is a separate enum)
 
 Evidence:
-- `internal/finding/types.go` (search: `Confidence`) — `Confidence` is still a 4-bucket enum (`ConfidenceInfo`, `ConfidenceLow`, `ConfidenceMedium`, `ConfidenceHigh`). It was *not* touched by ADR-009.
+- `internal/finding/types.go` (search: `Confidence`) — `Confidence` is a separate 3-bucket enum (`ConfidenceLow`, `ConfidenceMedium`, `ConfidenceHigh`). `ConfidenceInfo` no longer exists, and `Valid()` accepts exactly those three current values.
 - `internal/cli/testdata/golden/analyse-composite-sarif.golden` (search: `"confidence":`) — JSON entries throughout this file legitimately carry `"confidence": "high"`, `"confidence": "medium"`, `"confidence": "low"` under the new severity model. These are correct, not stale.
 - `internal/rule/calibration_test.go` (search: `ConfidenceHigh`, `ConfidenceMedium`) — calibration assertions deliberately combine the new severity vocabulary with the unchanged confidence vocabulary, e.g. `findings[0].Severity == finding.SeverityError && findings[0].Confidence == finding.ConfidenceHigh`.
 - `internal/finding/finding_test.go` — the type's own tests pin both vocabularies side by side.
 
 What this means in practice:
-- After ADR-009, the strings `"critical"` and `"notice"` and `"warn"` are unambiguously stale wherever they appear — those values aren't in either enum's vocabulary anymore.
-- The strings `"low"`, `"medium"`, `"high"`, `"info"` are *only* stale when attached to severity. As confidence values they remain canonical.
+- In severity contexts after ADR-009, `"critical"`, `"notice"`, exact `"warn"`, and `"info"` are stale; none belongs to the current severity or confidence enum.
+- The strings `"low"`, `"medium"`, and `"high"` are stale only when attached to severity. As confidence values they remain canonical.
 - A naive `rg "\"(critical|high|medium|low|info|notice|warn)\""` flushes out both categories together. The fixer must look at the surrounding key, struct tag, or column header before deciding to migrate.
 
 How to avoid:

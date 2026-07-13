@@ -11,7 +11,8 @@
 - `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 83-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
-- `scripts/bump-version.sh` = Updates every in-tree version literal and regenerates CLI golden snapshots; sanity-sweeps for stale references.
+- `scripts/bump-version.sh` = Updates every in-tree version literal, regenerates CLI golden snapshots, and exposes the non-mutating source/published/security reference scanner used by the bump path.
+- `scripts/bump-version_test.sh` = Disposable non-Git fixture suite for reference ownership, failure rows, stable ordering, and no-write/no-op guarantees.
 - `scripts/test-performance.sh` = Smoke / matrix / sweep / regression-gate performance harness over synthetic corpora.
 - `docs/` = Long-form user docs (rules, configuration, output formats, dashboard, CI integration).
 - `package.json` = npm package metadata; declares `@blundergoat/goat-flow` for agent tooling. The `npm test` script is a placeholder; the project's real gates are `make check` and the dogfood scan.
@@ -82,7 +83,7 @@
 ## Go Application Surface
 
 - `cmd/gruff-go/main.go` = Thin executable entrypoint that exits with the CLI package's Main function.
-- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `check-ignore`, `dashboard`, `help`, `list`, `list-rules`, `report`, and `summary`. Holds the `toolVersion` constant and the golden test fixtures under `internal/cli/testdata/golden/`.
+- `internal/cli/` = CLI command parsing and exit-code mapping for `analyse`, `baseline`, `check-ignore`, `completion`, `dashboard`, `help`, `hook`, `init`, `list`, `list-rules`, `report`, and `summary`; `analyze` aliases `analyse`. Holds the `toolVersion` constant and the golden test fixtures under `internal/cli/testdata/golden/`.
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, gitignore-respecting filter (ADR-004/ADR-005), and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and sensitive-data preview allowlists.
@@ -96,4 +97,4 @@
 - `internal/report/` = Text, full JSON, summary JSON, SARIF, GitHub annotation, Markdown, standalone HTML, dashboard shell, interactive finding filters, and rule-list rendering.
 - `internal/scoring/` = Severity/confidence-weighted per-pillar and composite scoring with score-neutral `design.*` annotations and per-pillar coverage labelling.
 - `.github/workflows/gruff-go.yml` = GitHub Actions gate that runs `scripts/preflight-checks.sh` (gofmt, go vet, go test, govulncheck, shellcheck, and the `go run ./cmd/gruff-go summary .` dogfood self-scan) on PRs and pushes to `main`.
-- Release distribution is the tagged Go module plus GoReleaser GitHub Release archives: `.goreleaser.yaml` and `.github/workflows/release.yml` build and publish per-OS/arch binaries on a `v*` tag push, and `scripts/publish-go-pkg.sh` drives the tag push plus proxy/install verification. No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package-manager (brew/apt/scoop) distribution exists yet. The public install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.3.0`.
+- Release distribution is the tagged Go module plus GoReleaser GitHub Release archives: `.goreleaser.yaml` and `.github/workflows/release.yml` build and publish per-OS/arch binaries on a `v*` tag push, and `scripts/publish-go-pkg.sh` drives the tag push plus proxy/install verification. No deployment config, database assets, trend storage, external linter ingestion, hosted dashboard, or package-manager (brew/apt/scoop) distribution exists yet. The public install path is the tagged Go module command `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0`.

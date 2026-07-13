@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.4.0",
+          "semanticVersion": "0.5.0",
           "rules": [
             {
               "id": "complexity.cognitive",

@@ -134,6 +134,129 @@ func TestProductionTokenFixture(t *testing.T) {
 	}
 }
 
+// TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration pins the
+// narrow boundary between choosing an existing key and generating key material.
+func TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+		want int
+	}{
+		{
+			name: "corpus-shaped existing key selection",
+			code: `package sample
+
+import "math/rand"
+
+func randomKey(keys []string, enabledIdx []int) (string, int) {
+	selectedIdx := enabledIdx[rand.Intn(len(enabledIdx))]
+	return keys[selectedIdx], selectedIdx
+}
+`,
+			want: 0,
+		},
+		{
+			name: "aliased selector selection with parentheses",
+			code: `package sample
+
+import mathrand "math/rand"
+
+type keyPool struct {
+	Keys []string
+}
+
+func chooseKey(pool keyPool) string {
+	return (pool.Keys)[mathrand.Intn(len((pool.Keys)))]
+}
+`,
+			want: 0,
+		},
+		{
+			name: "key assignment remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func issueValue() int {
+	key := rand.Intn(100)
+	return key
+}
+`,
+			want: 1,
+		},
+		{
+			name: "key-named function remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateKey() int {
+	return rand.Intn(100)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "mismatched collection length remains suspicious",
+			code: `package sample
+
+import "math/rand"
+
+func chooseKey(values, other []string) string {
+	return values[rand.Intn(len(other))]
+}
+`,
+			want: 1,
+		},
+		{
+			name: "arithmetic bound remains suspicious",
+			code: `package sample
+
+import "math/rand"
+
+func chooseKey(values []string) string {
+	return values[rand.Intn(len(values)-1)]
+}
+`,
+			want: 1,
+		},
+		{
+			name: "stored index remains suspicious",
+			code: `package sample
+
+import "math/rand"
+
+func chooseKey(values []string) string {
+	keyIndex := rand.Intn(len(values))
+	return values[keyIndex]
+}
+`,
+			want: 1,
+		},
+		{
+			name: "non-Intn index remains suspicious",
+			code: `package sample
+
+import "math/rand"
+
+func chooseKey(values []string) string {
+	return values[int(rand.Int31n(int32(len(values))))]
+}
+`,
+			want: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			unit := parseOne(t, "selection.go", test.code)
+			findings := InsecureRandomSecretRule{}.AnalyzeUnit(unit, Context{})
+			if len(findings) != test.want {
+				t.Fatalf("findings = %#v, want %d", findings, test.want)
+			}
+		})
+	}
+}
+
 // TestWeakCryptoRule covers weak digest contexts, obsolete ciphers, and small RSA keys.
 func TestWeakCryptoRule(t *testing.T) {
 	tests := []struct {
@@ -260,6 +383,62 @@ func buildKey() {
 			findings := WeakCryptoRule{}.AnalyzeUnit(unit, Context{})
 			if len(findings) != tt.want {
 				t.Fatalf("findings = %#v, want %d", findings, tt.want)
+			}
+		})
+	}
+}
+
+// TestWeakCryptoRulePreservesKeyContext keeps key-only weak-digest derivation
+// visible while a neutral checksum remains outside the contextual rule.
+func TestWeakCryptoRulePreservesKeyContext(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+		want int
+	}{
+		{
+			name: "md5 key derivation",
+			code: `package sample
+
+import "crypto/md5"
+
+func deriveKey(input []byte) [16]byte {
+	return md5.Sum(input)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "sha1 key digest",
+			code: `package sample
+
+import "crypto/sha1"
+
+func keyDigest(input []byte) [20]byte {
+	return sha1.Sum(input)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "neutral checksum",
+			code: `package sample
+
+import "crypto/md5"
+
+func checksum(input []byte) [16]byte {
+	return md5.Sum(input)
+}
+`,
+			want: 0,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			unit := parseOne(t, "crypto.go", test.code)
+			findings := WeakCryptoRule{}.AnalyzeUnit(unit, Context{})
+			if len(findings) != test.want {
+				t.Fatalf("findings = %#v, want %d", findings, test.want)
 			}
 		})
 	}

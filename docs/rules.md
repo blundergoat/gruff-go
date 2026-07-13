@@ -6,6 +6,8 @@ Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`,
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
+The first summary sentence, the `Opt-in rules:` line, catalog rows, `### <rule-id>` headings, and exact `Pillar`, `Default severity`, `Default-enabled`, `Threshold`, `Confidence`, `Capability`, and `Tags` bullets form a narrow structured authoring contract. Tests compare those markers with the built-in no-config registry, including counts and the exact opt-in set. Keep both the catalog row and per-rule bullets in the same change as intentional registry metadata updates. Descriptions, remediation, examples, options, secondary pillars, and other explanatory prose remain free-form and are not parsed by this contract.
+
 ## Rule reference
 
 Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
@@ -21,7 +23,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 25` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
-| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
+| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | advisory | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
 | [`dead-code.unused-private-const`](#dead-codeunused-private-const) | dead-code | advisory | parser | - | Opt-in candidate for package-private constants that are not referenced in their parsed package. |
 | [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
@@ -30,8 +32,8 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
 | [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
 | [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Score-neutral composite triage for files with findings across multiple quality pillars. |
-| [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
-| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | warning | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
+| [`docs.comment-rubric`](#docscomment-rubric) | documentation | advisory | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | advisory | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | advisory | parser | - | Packages with no package-level comment in any file. |
 | [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | advisory | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
@@ -66,7 +68,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
 | [`security.sensitive-data-logging`](#securitysensitive-data-logging) | security | advisory | parser | - | Logging calls whose arguments carry secret-named values, secret env reads, or request auth headers/cookies. |
-| [`security.shell-command`](#securityshell-command) | security | error | parser | - | `exec.Command` invocations that route through a shell interpreter. |
+| [`security.shell-command`](#securityshell-command) | security | warning | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
@@ -92,7 +94,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`size.file-length`](#sizefile-length) | size | advisory | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | warning | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | advisory | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
@@ -165,7 +167,7 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 ### `dead-code.empty-block`
 
 - **Pillar:** dead-code
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -286,7 +288,7 @@ Emits score-neutral composite triage for files with at least `minFindings` findi
 ### `docs.comment-rubric`
 
 - **Pillar:** documentation
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Threshold:** `minPackageCommentLines` (default `1`)
 - **Confidence:** medium
@@ -325,7 +327,7 @@ rules:
 ### `docs.config-field-comment`
 
 - **Pillar:** documentation
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -828,7 +830,7 @@ Flags production `http.Server` composite literals that omit all explicit timeout
 - **Capability:** parser
 - **Tags:** `random`, `security`
 
-Flags Go files that import `math/rand` and use package-level random APIs in secret-looking contexts such as token, nonce, session, password, key, CSRF, salt, OTP, or OAuth state generation. The parser-only check looks at the enclosing function name, assignment target, and call arguments, so ordinary sampling, shuffling, simulation, benchmark, and test-randomness names are ignored unless the surrounding symbol clearly carries a production-secret term. `crypto/rand` is not flagged.
+Flags Go files that import `math/rand` and use package-level random APIs in secret-looking contexts such as token, nonce, session, password, key, CSRF, salt, OTP, or OAuth state generation. The parser-only check looks at the enclosing function name, assignment target, and call arguments, so ordinary sampling, shuffling, simulation, benchmark, and test-randomness names are ignored unless the surrounding symbol clearly carries a production-secret term. A direct same-collection selection such as `keys[rand.Intn(len(keys))]` is treated as choosing an existing value rather than generating secret material; mismatched or transformed bounds and stored indexes remain in scope. `crypto/rand` is not flagged.
 
 Each finding's metadata carries the random API and context word.
 
@@ -928,7 +930,7 @@ Each finding's metadata carries only the logging sink and a classification reaso
 ### `security.shell-command`
 
 - **Pillar:** security
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1306,7 +1308,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 ### `test-quality.empty-test`
 
 - **Pillar:** test-quality
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1353,6 +1355,8 @@ Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`,
 
 Flags `Test…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. Benchmarks are excluded because many legitimate benchmarks measure setup or throughput without assertions. A test that cannot fail is asserting nothing and provides false confidence.
 
+When a runnable test or fuzz target's body consists solely of a direct call to `Skip`, `Skipf`, or `SkipNow` on its entrypoint testing receiver, `test-quality.skipped-test` owns that exact signal and this rule does not emit a duplicate. Comments do not add a statement; conditionals, nested callbacks, explicit empty statements, setup, and any other second statement remain outside this exception.
+
 The rule walks the function body looking for those methods on the test function's `*testing.T` or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`, and same-file helpers that accept the active testing receiver and contain a parser-visible failure path. Captured helper objects are recognised only when they were initialized with the active testing receiver before the assertion call and the called method has an assertion-like name. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
@@ -1384,6 +1388,8 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 - **Tags:** `tests`
 
 Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
+
+Receiver-aware skip detection retains its broader ownership in helpers, benchmarks, wrong-signature test-like functions, nested callbacks, and fuzz targets. Only the duplicate `no-failure-path` finding is removed for a runnable Test/Fuzz entrypoint whose entire body is the direct skip call.
 
 **Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
 
