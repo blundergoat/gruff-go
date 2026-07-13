@@ -26,7 +26,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Skills in `.agents/skills/` are installed verbatim; project-specific knowledge belongs in `.goat-flow/`.
 - Keep `AGENTS.md` concise; move domain and architecture detail to cold-path docs.
 - Use `rg`/`rg --files` for search. Open matching learning-loop entries before acting.
-- When a goat-* skill is active, its Step 0 satisfies READ/SCOPE; resume this loop at ACT.
+- When a goat-* skill is active, its Step 0 satisfies READ and selects the mode; SCOPE still applies before writes, then resume at ACT.
 - Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--min-severity` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
 
@@ -40,7 +40,8 @@ Use conventional commits (`type(scope): subject` or `type: subject`); no ticket 
 - Tool playbooks: `.goat-flow/skill-docs/playbooks/README.md` is the CLI/MCP availability index (examples: `browser-use.md`, `page-capture.md`, skill-quality-testing); read before declaring tool unavailability.
 
 ## Essential Commands
-- `make check` — gofmt + go vet + go test ./... (primary quality gate).
+- `bash scripts/preflight-checks.sh` — primary completion gate: metadata, dependency/vulnerability audits, shell checks, formatting, vet, tests, and dogfood scan.
+- `make check` — gofmt + go vet + go test ./... (Go edit-time floor).
 - `go run ./cmd/gruff-go analyse .` — dogfood scan; must return grade A with zero findings on `main`.
 - `UPDATE_GOLDEN=1 go test ./internal/cli/...` — regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
 - `scripts/bump-version.sh <new-version>` — update every in-tree version literal in one shot and regenerate goldens.
@@ -50,7 +51,7 @@ Use conventional commits (`type(scope): subject` or `type: subject`); no ticket 
 ## Execution Loop: READ → SCOPE → ACT → VERIFY
 
 ### READ
-MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go` and any fixture under `internal/rule/testdata/`. For policy decisions, grep `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, and `.goat-flow/learning-loop/decisions/` first. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-docs/playbooks/` (e.g. `browser-use.md`, `page-capture.md`) and run that doc's "Availability Check" section verbatim — project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
+MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go` and any fixture under `internal/rule/testdata/`. For policy decisions, derive 2-4 search terms, read matching rows in each learning-loop `INDEX.md`, then open candidate entries; grep an individual bucket only after an index miss, and reword once before recording no hit. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-docs/playbooks/` (e.g. `browser-use.md`, `page-capture.md`) and run that doc's "Availability Check" section verbatim — project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
 
 ### SCOPE
 Declare mode, files allowed to change, non-goals, and max blast radius before writes. Stop and re-scope before crossing into schema versions, the rule registry's default policy, CLI flag surface, or vendored dependencies.
@@ -71,7 +72,7 @@ On completion or "passing" claims, comply with the **Rationalisations to reject*
 
 ## Definition of Done
 - Changed files are listed in the final response.
-- `make check` and (if rule/scoring/report changed) the dogfood scan are run, or an explicit blocker/gap is recorded.
+- `bash scripts/preflight-checks.sh` passes, or its exact blocker is recorded; `make check` remains the floor after Go source changes.
 - `CHANGELOG.md` carries an entry under `[Unreleased]` for any user-visible change.
 - Router Table paths resolve on disk.
 - New footgun, lesson, decision, or pattern entries include evidence.
@@ -100,7 +101,7 @@ Every line in this hot-path file must be a behavioral rule, scope boundary, comm
 | Application packages | `internal/{cli,source,parser,rule,config,baseline,diff,finding,scoring,analysis,report,dashboard,pathfilter}/` |
 | Dogfood scanner config | `.gruff-go.yaml` |
 | User-facing docs | `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/{rules,configuration,output-formats,dashboard,ci-integration}.md` |
-| Release tooling | `scripts/bump-version.sh`, `scripts/test-performance.sh`, `Makefile` |
+| Release tooling | `scripts/preflight-checks.sh`, `scripts/bump-version.sh`, `scripts/test-performance.sh`, `Makefile` |
 | Project package metadata | `package.json`, `package-lock.json`, `go.mod` |
 | Commit guidance | `docs/coding-standards/git-commit.md` |
 | Peer instructions | `CLAUDE.md`, `.github/copilot-instructions.md` |

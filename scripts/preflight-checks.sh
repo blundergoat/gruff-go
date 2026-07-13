@@ -49,6 +49,25 @@ now_ns() {
 
 START_TIME=$(now_ns)
 
+# Select the repository's preferred Go release so preflight evaluates the same toolchain everywhere.
+configure_go_toolchain() {
+    local preferred_toolchain
+
+    # An explicit override is a deliberate compatibility check, so preserve the caller's choice.
+    if [[ -n "${GOTOOLCHAIN:-}" ]]; then
+        return
+    fi
+
+    preferred_toolchain=$(awk '$1 == "toolchain" { print $2; exit }' "$REPO_ROOT/go.mod")
+
+    # A module without a preferred release keeps the Go command's normal automatic selection.
+    if [[ -z "$preferred_toolchain" ]]; then
+        return
+    fi
+
+    export GOTOOLCHAIN="$preferred_toolchain"
+}
+
 rule() {
     printf '  %s\n' "${DIM}────────────────────────────────────────────${RESET}"
 }
@@ -82,6 +101,7 @@ header() {
     printf '\n'
     printf '  %sPreflight Check%s\n' "$BOLD" "$RESET"
     printf '  %s%s - %s%s\n' "$DIM" "$(date '+%Y-%m-%d %H:%M:%S')" "$REPO_ROOT" "$RESET"
+    printf '  %sGo toolchain: %s%s\n' "$DIM" "${GOTOOLCHAIN:-auto}" "$RESET"
     rule
     printf '\n'
 }
@@ -531,6 +551,7 @@ Options:
   -h, --help    Show this help.
 
 Environment:
+  GOTOOLCHAIN   Override the preferred Go release declared in go.mod.
   NO_COLOR      Disable ANSI colour output.
 USAGE
 }
@@ -555,6 +576,8 @@ main() {
     done
 
     cd "$REPO_ROOT" || return 1
+
+    configure_go_toolchain
 
     header
 

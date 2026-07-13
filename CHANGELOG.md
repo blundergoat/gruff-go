@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- **Verification contract hardening** - Preflight now defaults to the preferred Go toolchain in `go.mod` while respecting explicit `GOTOOLCHAIN` compatibility checks; the pin advances to Go 1.25.12 to clear GO-2026-5856. Codex instructions and project memory now identify preflight as the completion gate, preserve SCOPE after goat skill Step 0, use INDEX-first learning retrieval, and accurately record the installed v1.13.1 hook's deletion-only coverage gap and the existing automated release path.
 - **GOAT Flow 1.13.1** - Refreshed the Codex skills, shared safety hooks, setup references, and project-specific agent guidance. Codex hook registration now keeps only the supported Bash `PreToolUse` deny guard.
 - **Path-filter contract** - `paths.ignore` and secret-preview patterns now reject Windows drive-qualified/backslash paths and multiple or mid-pattern `**`; documented trailing-slash directory patterns such as `generated/` now behave exactly like `generated/**` across discovery, explicit files, and `check-ignore`.
 - **Connection-string credential boundaries** - `sensitive-data.connection-string` now detects passwords containing raw or encoded reserved delimiters, including raw `/`, while requiring non-empty user/password fields. Local-host fixture suppression now requires an exact case/percent-normalised placeholder password, so mixed credentials such as `myPassphrase2024` and `not-invalid-prod` remain findings.

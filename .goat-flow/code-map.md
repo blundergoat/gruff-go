@@ -7,15 +7,16 @@
 - `CONTRIBUTING.md` = Dev loop, project layout, test gates, rule-addition / output-format-addition workflow, milestone discipline.
 - `SECURITY.md` = Vulnerability reporting channel, supported versions, in-scope/out-of-scope items.
 - `LICENSE` = MIT license text.
-- `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0`.
+- `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0` and prefers toolchain `go1.25.12`.
 - `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 83-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
+- `scripts/preflight-checks.sh` = Primary completion gate across metadata, dependency and vulnerability audits, shell checks, Go formatting/vet/tests, and dogfood; defaults to the `go.mod` toolchain unless `GOTOOLCHAIN` is explicit.
 - `scripts/bump-version.sh` = Updates every in-tree version literal, regenerates CLI golden snapshots, and exposes the non-mutating source/published/security reference scanner used by the bump path.
 - `scripts/bump-version_test.sh` = Disposable non-Git fixture suite for reference ownership, failure rows, stable ordering, and no-write/no-op guarantees.
 - `scripts/test-performance.sh` = Smoke / matrix / sweep / regression-gate performance harness over synthetic corpora.
 - `docs/` = Long-form user docs (rules, configuration, output formats, dashboard, CI integration).
-- `package.json` = npm package metadata; declares `@blundergoat/goat-flow` for agent tooling. The `npm test` script is a placeholder; the project's real gates are `make check` and the dogfood scan.
+- `package.json` = npm package metadata; declares `@blundergoat/goat-flow` for agent tooling. The `npm test` script is a placeholder; the project's real completion gate is `scripts/preflight-checks.sh` and `make check` is the Go edit-time floor.
 - `package-lock.json` = npm lockfile for GOAT Flow and transitive dependencies.
 - `CLAUDE.md` = Claude Code hot-path instructions for this target project.
 - `AGENTS.md` = Codex hot-path instructions for this target project.
@@ -71,7 +72,8 @@
 - `.goat-flow/logs/critiques/` = Local critique outputs.
 - `.goat-flow/logs/security/` = Local security review outputs.
 - `.goat-flow/skill-docs/` = Meta guidance for GOAT Flow skill behavior.
-- `.goat-flow/skill-docs/playbooks/` = CLI/MCP availability playbooks.
+- `.goat-flow/skill-docs/playbooks/` = CLI/MCP availability and workflow playbooks: `browser-use.md`, `changelog.md`, `code-comments.md`, `gruff-code-quality.md`, `observability.md`, `page-capture.md`, and `release-notes.md`.
+- `.goat-flow/skill-docs/skill-quality-testing/` = Skill-authoring methodology index plus `tdd-iteration.md`, `adversarial-framing.md`, and `deployment.md` topical references.
 
 ## Copilot-Owned Surfaces
 
