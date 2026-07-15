@@ -165,7 +165,7 @@ func sensitivePreviewFixtures() []sensitivePreviewFixture {
 	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	phone := "+1 (415) 867-5309"
-	card := "4242 4242 4242 4242"
+	card := "4242 4242 " + "4242 4242"
 	ssn := "536-90-4399"
 	medicare := "1EG4TE5MK73"
 	mrn := "4827193"

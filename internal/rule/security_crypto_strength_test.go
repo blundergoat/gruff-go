@@ -172,6 +172,23 @@ func chooseKey(pool keyPool) string {
 			want: 0,
 		},
 		{
+			name: "alphabet selection into token buffer remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	token := make([]byte, size)
+	for index := range token {
+		token[index] = alphabet[rand.Intn(len(alphabet))]
+	}
+	return string(token)
+}
+`,
+			want: 1,
+		},
+		{
 			name: "key assignment remains generation",
 			code: `package sample
 

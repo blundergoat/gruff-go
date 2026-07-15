@@ -44,6 +44,10 @@ var randomSafeContextWords = []string{
 	"test",
 }
 
+// randomAlphabetContextWords identify collections used to assemble generated
+// secret material one element at a time rather than select an existing value.
+var randomAlphabetContextWords = []string{"alphabet", "charset", "characters", "digits", "letters"}
+
 // mathRandAPIs are package-level math/rand calls that produce pseudo-random values.
 var mathRandAPIs = map[string]bool{
 	"Float32":   true,
@@ -106,7 +110,7 @@ func (InsecureRandomSecretRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !ok {
 				return true
 			}
-			if randomCallSelectsExistingValue(call, parents) {
+			if randomCallSelectsExistingValue(call, parents) && !randomSelectionBuildsSecretBuffer(call, parents) {
 				return true
 			}
 			contextWord, ok := randomCallSecurityContext(call, fn, parents)
@@ -201,6 +205,53 @@ func randomCallSelectsExistingValue(call *ast.CallExpr, parents map[ast.Node]ast
 		return false
 	}
 	return sameRandomSelectionCollection(index.X, lengthCall.Args[0])
+}
+
+// randomSelectionBuildsSecretBuffer distinguishes token generation such as
+// `token[i] = alphabet[rand.Intn(len(alphabet))]` from choosing one existing
+// key or sample. Only an alphabet-like source written into a security-named
+// indexed target defeats the normal selection exemption.
+func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]ast.Node) bool {
+	parent := parents[call]
+	for {
+		paren, ok := parent.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		parent = parents[paren]
+	}
+	selection, ok := parent.(*ast.IndexExpr)
+	if !ok {
+		return false
+	}
+	if _, alphabetLike := exprTextContext(selection.X, randomAlphabetContextWord); !alphabetLike {
+		return false
+	}
+	for ancestor := parents[selection]; ancestor != nil; ancestor = parents[ancestor] {
+		switch statement := ancestor.(type) {
+		case *ast.AssignStmt:
+			for valueIndex, value := range statement.Rhs {
+				if !exprContainsNode(value, call) || valueIndex >= len(statement.Lhs) {
+					continue
+				}
+				target := unwrapRandomSelectionParens(statement.Lhs[valueIndex])
+				if _, indexedTarget := target.(*ast.IndexExpr); !indexedTarget {
+					return false
+				}
+				_, securityContext := exprTextContext(target, randomSecurityContextWord)
+				return securityContext
+			}
+			return false
+		case *ast.ReturnStmt, *ast.ValueSpec, *ast.FuncLit:
+			return false
+		}
+	}
+	return false
+}
+
+// randomAlphabetContextWord classifies names used as character pools.
+func randomAlphabetContextWord(text string) (string, bool) {
+	return firstContextWord(text, randomAlphabetContextWords)
 }
 
 // unwrapRandomSelectionParens removes syntax-only parentheses before the

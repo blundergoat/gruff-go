@@ -120,6 +120,33 @@ func TestBaselineSuppressesSensitiveFindingAcrossPreviewChanges(t *testing.T) {
 	}
 }
 
+// TestApplyKeepsRelocatedSensitiveFindingNew prevents a reviewed secret at one
+// location from hiding a different sensitive occurrence elsewhere in the file.
+// Non-sensitive contract findings still retain their line-shift behavior.
+func TestApplyKeepsRelocatedSensitiveFindingNew(t *testing.T) {
+	reviewedSecret := finding.Finding{
+		RuleID:   "sensitive-data.secret-pattern",
+		Message:  "secret-like assignment detected",
+		File:     "secrets.env",
+		Location: &finding.Location{Line: 1},
+	}.WithFingerprint()
+	relocatedSecret := reviewedSecret
+	relocatedSecret.Location = &finding.Location{Line: 7}
+	relocatedSecret = relocatedSecret.WithFingerprint()
+
+	secretResult := Apply([]finding.Finding{relocatedSecret}, FromFindings([]finding.Finding{reviewedSecret}))
+	if secretResult.NewCount() != 1 || secretResult.UnchangedCount() != 0 || secretResult.ResolvedCount() != 1 {
+		t.Fatalf("relocated sensitive result = %#v, want new/unchanged/resolved 1/0/1", secretResult)
+	}
+
+	reviewedContract := duplicateBaselineTestFinding("Run", "duplicate finding", 10)
+	shiftedContract := duplicateBaselineTestFinding("Run", "duplicate finding", 20)
+	contractResult := Apply([]finding.Finding{shiftedContract}, FromFindings([]finding.Finding{reviewedContract}))
+	if contractResult.NewCount() != 0 || contractResult.UnchangedCount() != 1 || contractResult.ResolvedCount() != 0 {
+		t.Fatalf("shifted contract result = %#v, want new/unchanged/resolved 0/1/0", contractResult)
+	}
+}
+
 // TestApplyThreeStateClassification is M24's mid-implementation proof: it
 // exercises new / unchanged / resolved across empty, fully-matched, and mixed
 // baselines, asserting both the collected slices and the legacy counts agree.

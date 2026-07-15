@@ -83,6 +83,22 @@ func TestConnectionStringCredentialMatrix(t *testing.T) {
 	}
 }
 
+// TestConnectionStringRuleChecksEveryCandidateOnLine ensures a username-only
+// URI cannot hide a later password-bearing connection string on the same line.
+func TestConnectionStringRuleChecksEveryCandidateOnLine(t *testing.T) {
+	usernameOnly := "postgres" + "://" + "app@localhost"
+	passwordBearing := connectionURL("svc", "prodsecret", "db.internal", "/orders")
+	unit := parser.Unit{
+		File:   source.File{Path: "fixture.go", Type: source.FileTypeGo},
+		Source: "package fixture\nconst endpoints = " + strconv.Quote(usernameOnly+" "+passwordBearing) + "\n",
+	}
+	findings := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("finding count = %d, want 1; findings = %#v", len(findings), findings)
+	}
+	assertConnectionFindingRedacted(t, findings[0], passwordBearing, "prodsecret")
+}
+
 // assertConnectionFindingRedacted proves neither the complete URI nor its raw
 // password is carried by the current finding payload.
 func assertConnectionFindingRedacted(t *testing.T, finding any, rawURL, rawPassword string) {

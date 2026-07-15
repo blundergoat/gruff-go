@@ -8,6 +8,49 @@ import (
 	"strings"
 )
 
+// isParsedURLExpr reports whether expr is a net/url parse call whose result is
+// tracked separately from arbitrary tainted values for transparent String use.
+func (s *requestTaintScope) isParsedURLExpr(expr ast.Expr) bool {
+	expr = unwrapRequestExprParens(expr)
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	_, isSyntaxParse := s.urlSyntaxParseArg(call)
+	return isSyntaxParse
+}
+
+// parsedURLStringReceiver returns the parsed local converted by url.URL.String.
+// Restricting this transparency to known parse results avoids treating every
+// unknown String method as a taint-preserving operation.
+func (s *requestTaintScope) parsedURLStringReceiver(call *ast.CallExpr) (ast.Expr, bool) {
+	if len(call.Args) != 0 {
+		return nil, false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "String" {
+		return nil, false
+	}
+	receiver := unwrapRequestExprParens(selector.X)
+	identifier, ok := receiver.(*ast.Ident)
+	if !ok || !s.parsedURLs[identifier.Name] {
+		return nil, false
+	}
+	return receiver, true
+}
+
+// unwrapRequestExprParens removes syntax-only parentheses from request-flow
+// expressions shared by taint and destination-constraint analysis.
+func unwrapRequestExprParens(expr ast.Expr) ast.Expr {
+	for {
+		paren, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			return expr
+		}
+		expr = paren.X
+	}
+}
+
 // urlSyntaxParseArg returns the request-controlled input to the two net/url
 // parsers that produce a URL. Successful parsing proves syntax only; the result
 // remains attacker-controlled until a destination constraint is established.

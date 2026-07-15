@@ -69,9 +69,17 @@ func parsedURLNamesForValue(requestScope *requestTaintScope, functionBody *ast.B
 			return true
 		}
 		parsedInput, isSyntaxParse := requestScope.urlSyntaxParseArg(syntaxParseCall)
-		usesSinkValue := nodeUsesAnyIdent(parsedInput, sinkValueNames) || lhsUsesAnyName(parseAssignment.Lhs, sinkValueNames)
+		if !isSyntaxParse {
+			return true
+		}
+		linkedValueNames := parsedValueLinkNames(parsedInput, parseAssignment.Lhs, sinkValueNames)
 		// Unrelated parse calls cannot validate the URL shown in the user's finding.
-		if !isSyntaxParse || !usesSinkValue {
+		if len(linkedValueNames) == 0 {
+			return true
+		}
+		// Reassigning the linked local after parsing means the guards describe an
+		// older value, not the request destination that reaches this sink.
+		if anyNameAssignedBetween(functionBody, linkedValueNames, parseAssignment.End(), sinkPosition) {
 			return true
 		}
 		parsedURLName, hasNamedResult := parseAssignment.Lhs[0].(*ast.Ident)
@@ -82,6 +90,56 @@ func parsedURLNamesForValue(requestScope *requestTaintScope, functionBody *ast.B
 		return true
 	})
 	return parsedURLNames
+}
+
+// parsedValueLinkNames returns the sink locals that connect one parse result or
+// parse input to the destination value used later.
+func parsedValueLinkNames(parsedInput ast.Expr, leftHandValues []ast.Expr, sinkValueNames map[string]bool) map[string]bool {
+	linkedNames := map[string]bool{}
+	ast.Inspect(parsedInput, func(node ast.Node) bool {
+		identifier, ok := node.(*ast.Ident)
+		if ok && sinkValueNames[identifier.Name] {
+			linkedNames[identifier.Name] = true
+		}
+		return true
+	})
+	for _, leftHandValue := range leftHandValues {
+		identifier, ok := leftHandValue.(*ast.Ident)
+		if ok && sinkValueNames[identifier.Name] {
+			linkedNames[identifier.Name] = true
+		}
+	}
+	return linkedNames
+}
+
+// anyNameAssignedBetween reports whether a linked value is overwritten after
+// its evidence was established and before the destination sink executes.
+func anyNameAssignedBetween(functionBody *ast.BlockStmt, names map[string]bool, afterPosition, beforePosition token.Pos) bool {
+	found := false
+	ast.Inspect(functionBody, func(node ast.Node) bool {
+		if found {
+			return false
+		}
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		if node == nil || node.Pos() <= afterPosition || node.Pos() >= beforePosition {
+			return true
+		}
+		switch statement := node.(type) {
+		case *ast.AssignStmt:
+			found = lhsUsesAnyName(statement.Lhs, names)
+		case *ast.ValueSpec:
+			for _, name := range statement.Names {
+				if names[name.Name] {
+					found = true
+					break
+				}
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // lhsUsesAnyName reports whether an assignment writes the value shown at the
@@ -101,33 +159,43 @@ func lhsUsesAnyName(leftHandValues []ast.Expr, sinkValueNames map[string]bool) b
 // collectParsedDestinationEvidence extracts rejecting scheme and host checks
 // that explain why a URL is absent from the user's findings list.
 func collectParsedDestinationEvidence(condition ast.Expr, parsedURLNames map[string]bool, evidenceByName map[string]parsedDestinationEvidence) {
-	ast.Inspect(condition, func(syntaxNode ast.Node) bool {
-		comparison, isComparison := syntaxNode.(*ast.BinaryExpr)
-		// Only `!=` checks inside an exiting guard form a positive allowlist.
-		if !isComparison || comparison.Op != token.NEQ {
-			return true
-		}
-		parsedURLName, fieldName, allowedLiteral, isURLComparison := parsedURLLiteralComparison(comparison.X, comparison.Y, parsedURLNames)
-		// Users may write the literal on the left, so inspect the reverse order too.
-		if !isURLComparison {
-			parsedURLName, fieldName, allowedLiteral, isURLComparison = parsedURLLiteralComparison(comparison.Y, comparison.X, parsedURLNames)
-		}
-		// Other comparisons do not constrain the destination represented at the sink.
-		if !isURLComparison {
-			return true
-		}
-		destinationEvidence := evidenceByName[parsedURLName]
-		// The report accepts only HTTP schemes, not arbitrary parsed schemes.
-		if fieldName == "scheme" && (allowedLiteral == "http" || allowedLiteral == "https") {
-			destinationEvidence.hasAllowedScheme = true
-		}
-		// A non-empty literal is an exact host allowlist entry from the user's code.
-		if fieldName == "host" && allowedLiteral != "" {
-			destinationEvidence.hasAllowedHost = true
-		}
-		evidenceByName[parsedURLName] = destinationEvidence
-		return true
-	})
+	condition = unwrapRequestExprParens(condition)
+	binaryCondition, isBinary := condition.(*ast.BinaryExpr)
+	if !isBinary {
+		return
+	}
+	// In a rejecting guard, each side of OR independently rejects an invalid
+	// dimension. Under AND, either invalid dimension can pass on its own, so no
+	// comparison in that subtree is affirmative allowlist evidence.
+	if binaryCondition.Op == token.LOR {
+		collectParsedDestinationEvidence(binaryCondition.X, parsedURLNames, evidenceByName)
+		collectParsedDestinationEvidence(binaryCondition.Y, parsedURLNames, evidenceByName)
+		return
+	}
+	if binaryCondition.Op != token.NEQ {
+		return
+	}
+	recordParsedDestinationComparison(binaryCondition, parsedURLNames, evidenceByName)
+}
+
+// recordParsedDestinationComparison stores one rejection-safe field check.
+func recordParsedDestinationComparison(comparison *ast.BinaryExpr, parsedURLNames map[string]bool, evidenceByName map[string]parsedDestinationEvidence) {
+	parsedURLName, fieldName, allowedLiteral, isURLComparison := parsedURLLiteralComparison(comparison.X, comparison.Y, parsedURLNames)
+	// Users may write the literal on the left, so inspect the reverse order too.
+	if !isURLComparison {
+		parsedURLName, fieldName, allowedLiteral, isURLComparison = parsedURLLiteralComparison(comparison.Y, comparison.X, parsedURLNames)
+	}
+	if !isURLComparison {
+		return
+	}
+	destinationEvidence := evidenceByName[parsedURLName]
+	if fieldName == "scheme" && (allowedLiteral == "http" || allowedLiteral == "https") {
+		destinationEvidence.hasAllowedScheme = true
+	}
+	if fieldName == "host" && allowedLiteral != "" {
+		destinationEvidence.hasAllowedHost = true
+	}
+	evidenceByName[parsedURLName] = destinationEvidence
 }
 
 // parsedURLLiteralComparison returns one parsed field and its literal when the
@@ -262,6 +330,27 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 // loopTrimsOneLeadingSlash verifies that each loop pass updates the checked
 // redirect value with strings.TrimPrefix(value, "/").
 func loopTrimsOneLeadingSlash(loopBody *ast.BlockStmt, redirectVariableName string, stringPackageAliases map[string]bool) bool {
+	// A break or goto can reach the sink while the value still begins with `//`.
+	// Reject the whole normalization proof instead of trying to approximate
+	// branch reachability in this parser-only rule.
+	hasEarlyExit := false
+	ast.Inspect(loopBody, func(node ast.Node) bool {
+		if hasEarlyExit {
+			return false
+		}
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		branch, ok := node.(*ast.BranchStmt)
+		if ok && (branch.Tok == token.BREAK || branch.Tok == token.GOTO) {
+			hasEarlyExit = true
+			return false
+		}
+		return true
+	})
+	if hasEarlyExit {
+		return false
+	}
 	// Inspect every statement because users may log or count normalization work.
 	for _, loopStatement := range loopBody.List {
 		trimAssignment, isAssignment := loopStatement.(*ast.AssignStmt)

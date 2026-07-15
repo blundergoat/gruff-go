@@ -81,7 +81,7 @@ func TestAnalyseDiffAndBaselineSuppressShiftedFinding(t *testing.T) {
 	shiftedSource := strings.Replace(complexFixture(), "package sample\n", "package sample\n\n// A user added context before the existing function.\n", 1)
 	writeFile(t, projectRoot, "complex.go", shiftedSource)
 
-	report, exitCode := runBaselineGateAnalyse(t, "analyse", "--format", "json", "--baseline", "baseline.json", "--changed-ranges", "1-200", "complex.go")
+	report, exitCode := runBaselineGateAnalyse(t, "analyse", "--format", "json", "--baseline", "baseline.json", "--changed-ranges", "2-3", "complex.go")
 	// A harmless line shift should remain reviewed and keep the diff scan green.
 	if exitCode != 0 || len(report.Findings) != 0 {
 		t.Fatalf("exit = %d, findings = %#v; want shifted finding suppressed", exitCode, report.Findings)

@@ -259,7 +259,7 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 	// Only unmatched modern entries can participate in line-insensitive pairing.
 	for entryIndex, baselineEntry := range baselineEntries {
 		// Exact matches cannot be reused, and empty identities are legacy exact-only rows.
-		if pairing.baselineMatched[entryIndex] || baselineEntry.StableIdentity == "" {
+		if pairing.baselineMatched[entryIndex] || baselineEntry.StableIdentity == "" || !allowsContractStableMatch(baselineEntry.RuleID) {
 			continue
 		}
 		identity := stableMatchKey{ruleID: baselineEntry.RuleID, file: baselineEntry.File, stableIdentity: baselineEntry.StableIdentity}
@@ -269,7 +269,7 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 	// Match each still-new current occurrence against one remaining prior row.
 	for findingIndex, currentFinding := range currentFindings {
 		// A current finding already paired exactly must not consume a second entry.
-		if pairing.currentMatched[findingIndex] {
+		if pairing.currentMatched[findingIndex] || !allowsContractStableMatch(currentFinding.RuleID) {
 			continue
 		}
 		identity := stableMatchKey{
@@ -288,6 +288,14 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 		pairing.currentMatched[findingIndex] = true
 		pairing.baselineMatched[matchedEntryIndex] = true
 	}
+}
+
+// allowsContractStableMatch keeps line-insensitive matching for structural
+// debt while requiring sensitive findings to match their exact occurrence.
+// Otherwise one reviewed secret can hide a different secret elsewhere in the
+// same file because sensitive messages deliberately contain no secret bytes.
+func allowsContractStableMatch(ruleID string) bool {
+	return !strings.HasPrefix(ruleID, "sensitive-data.")
 }
 
 // exactMatchKey returns the persisted fingerprint identity for one prior row.

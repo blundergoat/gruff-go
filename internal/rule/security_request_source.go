@@ -35,6 +35,7 @@ type requestTaintScope struct {
 	filepathPkgs map[string]bool
 	pathPkgs     map[string]bool
 	netURLPkgs   map[string]bool
+	parsedURLs   map[string]bool
 	ioPkgs       map[string]bool
 	ioutilPkgs   map[string]bool
 	// firstTaintPos records, per tainted local, the position of the earliest
@@ -83,6 +84,7 @@ func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.Bloc
 		filepathPkgs:  packageImportNames(file, "path/filepath", "filepath"),
 		pathPkgs:      packageImportNames(file, "path", "path"),
 		netURLPkgs:    packageImportNames(file, "net/url", "url"),
+		parsedURLs:    map[string]bool{},
 		ioPkgs:        packageImportNames(file, "io", "io"),
 		ioutilPkgs:    packageImportNames(file, "io/ioutil", "ioutil"),
 		firstTaintPos: map[string]token.Pos{},
@@ -131,6 +133,9 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 					}
 					if s.directRequestExpr(stmt.Rhs[i]) {
 						s.markTaintedAt(ident.Name, s.taintIntroPos(stmt.Rhs[i], ident.Pos()))
+						if s.isParsedURLExpr(stmt.Rhs[i]) {
+							s.parsedURLs[ident.Name] = true
+						}
 					}
 				}
 			case *ast.ValueSpec:
@@ -140,6 +145,9 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 					}
 					if s.directRequestExpr(stmt.Values[i]) {
 						s.markTaintedAt(name.Name, s.taintIntroPos(stmt.Values[i], name.Pos()))
+						if s.isParsedURLExpr(stmt.Values[i]) {
+							s.parsedURLs[name.Name] = true
+						}
 					}
 				}
 			}
@@ -173,6 +181,10 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 		// Keep a parsed user URL visible until the URL rule finds destination guards.
 		if parsedURLInput, isSyntaxParse := s.urlSyntaxParseArg(e); isSyntaxParse {
 			return s.directRequestExpr(parsedURLInput)
+		}
+		// Converting a parsed request URL back to text preserves its destination.
+		if _, isParsedString := s.parsedURLStringReceiver(e); isParsedString {
+			return true
 		}
 		if s.isStringBuilderCall(e) || s.isReaderConsumer(e) {
 			for _, arg := range e.Args {

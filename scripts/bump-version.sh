@@ -238,8 +238,9 @@ scan_owned_prose_file() {
     fi
 
     unclassified_candidate=0
-    # The authoritative instruction header must not carry a decorative release pin.
-    if [[ "$relative_path" == "AGENTS.md" && "$line_number" -eq 1 ]]; then
+    # A product-labelled instruction header needs ownership, while an AGENTS or
+    # GOAT Flow instruction-file version is not a gruff-go release reference.
+    if [[ "$relative_path" == "AGENTS.md" && "$line_number" -eq 1 && "$line_text" == *'gruff-go'* ]]; then
       unclassified_candidate=1
     fi
     # Generic explicit version prose needs an owner before users can trust it.

@@ -41,10 +41,9 @@ var connectionPlaceholderPasswords = []string{
 type connectionPasswordState uint8
 
 const (
-	// connectionPasswordMissing means the candidate has no valid credential tuple.
-	connectionPasswordMissing connectionPasswordState = iota
 	// connectionPasswordEmpty means the candidate has a username and an explicit empty password.
-	connectionPasswordEmpty
+	// The zero value intentionally represents a missing or malformed tuple.
+	connectionPasswordEmpty connectionPasswordState = iota + 1
 	// connectionPasswordPresent means the candidate has a username and a non-empty password.
 	connectionPasswordPresent
 )
@@ -154,26 +153,22 @@ func (ConnectionStringRule) Definition() Definition {
 // AnalyzeUnit scans the unit's source for connection URIs containing embedded passwords.
 // Skips obvious dev/test placeholder credentials targeting localhost-like hosts.
 func (r ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	raw := scanLinesForSecret(unit, connectionPattern, "connection string with embedded password detected", r.previews, previewConnectionString)
-	if len(raw) == 0 {
-		return raw
-	}
-	lines := strings.Split(unit.Source, "\n")
-	out := make([]finding.Finding, 0, len(raw))
-	for _, item := range raw {
-		if item.Location == nil || item.Location.Line < 1 || item.Location.Line > len(lines) {
-			out = append(out, item)
-			continue
-		}
-		match := connectionPattern.FindString(lines[item.Location.Line-1])
-		parts := splitConnectionURL(match)
+	matches := secretMatchesOnCodeLines(unit, connectionPattern)
+	out := make([]finding.Finding, 0, len(matches))
+	for _, candidate := range matches {
+		parts := splitConnectionURL(candidate.value)
 		if parts.passwordState != connectionPasswordPresent {
 			continue
 		}
 		if isPlaceholderConnection(parts) {
 			continue
 		}
-		out = append(out, item)
+		out = append(out, finding.Finding{
+			Message:  "connection string with embedded password detected",
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: candidate.line},
+			Metadata: map[string]any{"preview": r.previews.format(unit.File.Path, previewConnectionString, candidate.value)},
+		})
 	}
 	return out
 }
@@ -184,30 +179,47 @@ func (r ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding
 // (`#nosec`, `//nolint:gosec`, `//nolint:all`), are skipped to keep noise down
 // in dev/test fixtures and inline documentation.
 func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string, previews sensitivePreviewPolicy, category sensitivePreviewCategory) []finding.Finding {
+	matches := secretMatchesOnCodeLines(unit, pattern)
+	findings := make([]finding.Finding, 0, len(matches))
+	for _, candidate := range matches {
+		findings = append(findings, finding.Finding{
+			Message:  message,
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: candidate.line},
+			Metadata: map[string]any{"preview": previews.format(unit.File.Path, category, candidate.value)},
+		})
+	}
+	return findings
+}
+
+// secretLineMatch keeps the raw candidate in-memory only while a rule decides
+// whether to emit a redacted finding. It is never copied into finding metadata.
+type secretLineMatch struct {
+	line  int
+	value string
+}
+
+// secretMatchesOnCodeLines returns every pattern candidate on eligible lines.
+// Multiple credentials commonly share one config line, so first-match-only
+// scanning can let an innocuous candidate hide a later real secret.
+func secretMatchesOnCodeLines(unit parser.Unit, pattern *regexp.Regexp) []secretLineMatch {
 	if unit.Source == "" {
 		return nil
 	}
-	findings := []finding.Finding{}
+	matches := []secretLineMatch{}
 	inBlockComment := false
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
 		if !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
-		match := pattern.FindString(line)
-		if match == "" {
-			continue
+		for _, match := range pattern.FindAllString(line, -1) {
+			if isNonSecretPrivateKeyMention(unit, line, match) {
+				continue
+			}
+			matches = append(matches, secretLineMatch{line: lineNumber + 1, value: match})
 		}
-		if isNonSecretPrivateKeyMention(unit, line, match) {
-			continue
-		}
-		findings = append(findings, finding.Finding{
-			Message:  message,
-			File:     unit.File.Path,
-			Location: &finding.Location{Line: lineNumber + 1},
-			Metadata: map[string]any{"preview": previews.format(unit.File.Path, category, match)},
-		})
 	}
-	return findings
+	return matches
 }
 
 // isNonSecretPrivateKeyMention accepts narrow documentation prose and delimiter

@@ -75,8 +75,10 @@ func collectHTTPClientVars(functionBody *ast.BlockStmt, httpPackageAliases map[s
 		case *ast.ValueSpec:
 			// Track declared client values for the same user-visible method sinks.
 			for valueIndex, clientName := range statement.Names {
-				// Empty or non-client declarations never become outbound URL sinks.
-				if clientName.Name == "_" || valueIndex >= len(statement.Values) || !isHTTPClientExpr(statement.Values[valueIndex], httpPackageAliases) {
+				// A zero-value http.Client is usable even without an initializer.
+				isTypedClient := isHTTPClientValueType(statement.Type, httpPackageAliases)
+				isInitializedClient := valueIndex < len(statement.Values) && isHTTPClientExpr(statement.Values[valueIndex], httpPackageAliases)
+				if clientName.Name == "_" || (!isTypedClient && !isInitializedClient) {
 					continue
 				}
 				httpClientVariables[clientName.Name] = true
@@ -85,6 +87,18 @@ func collectHTTPClientVars(functionBody *ast.BlockStmt, httpPackageAliases map[s
 		return true
 	})
 	return httpClientVariables
+}
+
+// isHTTPClientValueType recognises the usable zero-value `http.Client` type.
+// An uninitialized *http.Client remains nil and cannot send a request, so it is
+// intentionally not classified without a concrete initializer.
+func isHTTPClientValueType(clientType ast.Expr, httpPackageAliases map[string]bool) bool {
+	selector, ok := clientType.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Client" {
+		return false
+	}
+	packageIdentifier, ok := selector.X.(*ast.Ident)
+	return ok && httpPackageAliases[packageIdentifier.Name]
 }
 
 // isHTTPClientExpr recognises an http.Client construction or reference.

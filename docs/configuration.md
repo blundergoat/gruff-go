@@ -32,7 +32,7 @@ paths:
 
 allowlists:
   acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
-  secretPreviews: []          # authorize fixed category/scheme markers; never payload bytes
+  secretPreviews: []          # authorise fixed category/scheme markers; never payload bytes
 
 selection:
   rules: []           # if non-empty, only these rule IDs run (allowlist)
@@ -124,8 +124,8 @@ Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. T
 
 ### `allowlists.secretPreviews`
 
-Path globs that authorize additional non-secret structure in sensitive-data
-preview metadata. Authorization is deny-by-default: an empty list and a path
+Path globs that authorise additional non-secret structure in sensitive-data
+preview metadata. Authorisation is deny-by-default: an empty list and a path
 that does not match both emit the constant `[redacted]`. A matching path may
 emit only a fixed category marker (for example `[redacted:aws-access-key]`,
 `[redacted:private-key]`, `[redacted:email]`, or `[redacted:ssn]`) or a
@@ -135,7 +135,7 @@ connection marker containing only its already-public scheme (for example
 
 No state exposes provider payload characters, JWT segments, private-key body or
 header bytes, connection user/password/host/path/query, or PII/PHI identifier
-characters. Primary and secondary GCP previews are authorized independently by
+characters. Primary and secondary GCP previews are authorised independently by
 the same path decision and render as `[redacted:gcp-service-account]` plus
 `[redacted:private-key]` only on a match.
 

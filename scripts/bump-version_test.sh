@@ -12,6 +12,12 @@ TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gruff-go-bump-version-test.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 TESTS_RUN=0
+REAL_SED=$(command -v sed)
+export REAL_SED
+[[ -n "$REAL_SED" && -x "$REAL_SED" ]] || {
+    printf 'FAIL sed is required for guard fixtures\n' >&2
+    exit 1
+}
 
 # fail stops the suite with one grep-friendly diagnostic.
 fail() {
@@ -103,7 +109,7 @@ for arg in "$@"; do
         exit 99
     fi
 done
-exec /usr/bin/sed "$@"
+exec "$REAL_SED" "$@"
 EOF
     chmod +x "$bin/node" "$bin/go" "$bin/sed"
 }
@@ -185,6 +191,7 @@ EOF
     printf '%s\n' 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.9.0' >"$root/README.md"
     printf '%s\n' "| \`0.9.x\` (current public line) | yes |" >"$root/SECURITY.md"
     printf '%s\n' "This source tree currently reports gruff-go version \`2.1.0\`." >"$root/CONTRIBUTING.md"
+    printf '%s\n' '# AGENTS.md - v1.13.1 (2026-07-13)' >"$root/AGENTS.md"
     run_checker "$root" "2.1.0" "$TMP_DIR/clean.out" "$TMP_DIR/clean.err" "$TMP_DIR/clean.status" "$guard_bin"
     status=$(<"$TMP_DIR/clean.status")
     output=$(<"$TMP_DIR/clean.out")

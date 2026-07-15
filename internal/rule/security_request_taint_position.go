@@ -47,6 +47,9 @@ func (s *requestTaintScope) taintIntroPos(rhs ast.Expr, fallback token.Pos) toke
 		if arg, ok := s.pathCleanArg(e); ok {
 			return s.taintIntroPos(arg, fallback)
 		}
+		if receiver, ok := s.parsedURLStringReceiver(e); ok {
+			return s.taintIntroPos(receiver, fallback)
+		}
 		if s.isStringBuilderCall(e) || s.isReaderConsumer(e) {
 			return s.earliestOperandTaintPos(e.Args, fallback)
 		}

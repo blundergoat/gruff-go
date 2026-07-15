@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -170,15 +171,31 @@ def parse_args(repo_root: Path) -> argparse.Namespace:
     )
     parser.add_argument(
         "--bin",
-        default=os.environ.get("GRUFF_GO_CALIBRATION_BIN", "/tmp/gruff-go-calibration"),
+        default=os.environ.get("GRUFF_GO_CALIBRATION_BIN"),
     )
     args = parser.parse_args()
     args.corpus_root = resolve_path(repo_root, args.corpus_root)
     args.spec = resolve_path(repo_root, args.spec)
     args.classifications = resolve_path(repo_root, args.classifications)
     args.output_root = resolve_path(repo_root, args.output_root)
-    args.bin = resolve_path(repo_root, args.bin) if not Path(args.bin).is_absolute() else Path(args.bin)
+    if args.bin:
+        args.bin = resolve_path(repo_root, args.bin) if not Path(args.bin).is_absolute() else Path(args.bin)
     return args
+
+
+def recorded_calibration_command() -> str:
+    """Return the wrapper command or the complete direct Python invocation."""
+    wrapper_command = os.environ.get("GRUFF_GO_CALIBRATION_COMMAND")
+    if wrapper_command:
+        return wrapper_command
+    return shlex.join([sys.executable, *sys.argv])
+
+
+def calibration_binary(explicit_binary: Path | None, stage: Path) -> tuple[Path, bool]:
+    """Choose an explicit binary or a run-private path owned by the stage."""
+    if explicit_binary is not None:
+        return explicit_binary, False
+    return stage / "gruff-go-calibration", True
 
 
 def load_json(path: Path, label: str) -> dict[str, Any]:
@@ -758,16 +775,17 @@ def main() -> int:
     stage = Path(tempfile.mkdtemp(prefix=f".tmp-{run_id}-", dir=args.output_root))
     accepted = False
     try:
-        print(f"building calibration binary: {args.bin}", file=sys.stderr)
-        run(["go", "build", "-o", str(args.bin), "./cmd/gruff-go"], cwd=repo_root)
+        binary, stage_owns_binary = calibration_binary(args.bin, stage)
+        print(f"building calibration binary: {binary}", file=sys.stderr)
+        run(["go", "build", "-o", str(binary), "./cmd/gruff-go"], cwd=repo_root)
         scanner = scanner_snapshot(repo_root, stage)
-        corpus, findings = scan_corpus(args.bin, stage, entries)
+        corpus, findings = scan_corpus(binary, stage, entries)
         samples = expected_sample(findings)
         classifications = load_classifications(args.classifications, samples)
         write_classifications(stage / "classifications.tsv", classifications)
-        oracles = build_oracles(args.bin, stage, args.corpus_root, entries, manual, findings)
+        oracles = build_oracles(binary, stage, args.corpus_root, entries, manual, findings)
         rules = build_rule_summary(findings, samples, oracles)
-        command = os.environ.get("GRUFF_GO_CALIBRATION_COMMAND", "scripts/calibrate-scratchpad-corpus.sh")
+        command = recorded_calibration_command()
         manifest = {
             "schemaVersion": "gruff-go.calibration-manifest.v1",
             "runId": run_id,
@@ -779,6 +797,8 @@ def main() -> int:
         }
         (stage / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         write_comparison_template(stage, created_at, scanner, corpus, rules)
+        if stage_owns_binary:
+            binary.unlink()
         validate_artifacts(stage, samples)
         stage.rename(final)
         accepted = True

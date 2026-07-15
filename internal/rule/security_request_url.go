@@ -149,7 +149,7 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			if !isCall {
 				return true
 			}
-			redirectTarget, sinkLabel, isRedirectSink := redirectTargetArg(candidateCall, httpPackageAliases)
+			redirectTarget, sinkLabel, isRedirectSink := redirectTargetArg(candidateCall, httpPackageAliases, functionBody)
 			// Ignore calls that do not control an HTTP redirect destination.
 			if !isRedirectSink {
 				return true
@@ -184,7 +184,7 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 
 // redirectTargetArg returns the destination and UI sink label for a redirect call.
 // Use it to keep http.Redirect and Location-header findings consistent.
-func redirectTargetArg(candidateCall *ast.CallExpr, httpPackageAliases map[string]bool) (ast.Expr, string, bool) {
+func redirectTargetArg(candidateCall *ast.CallExpr, httpPackageAliases map[string]bool, functionBody *ast.BlockStmt) (ast.Expr, string, bool) {
 	// A standard redirect exposes its destination as the third argument in reports.
 	if selectorCallMatches(candidateCall, httpPackageAliases, "Redirect") && len(candidateCall.Args) >= 4 {
 		return candidateCall.Args[2], "http.Redirect", true
@@ -201,6 +201,11 @@ func redirectTargetArg(candidateCall *ast.CallExpr, httpPackageAliases map[strin
 	headerName, hasLiteralHeader := stringLiteral(candidateCall.Args[0])
 	// A dynamic or non-Location header is not an open-redirect sink.
 	if !hasLiteralHeader || !isLocationHeader(headerName) {
+		return nil, "", false
+	}
+	// Location is also valid metadata on non-redirect responses (for example
+	// 201 Created). Only a matching later redirect status makes it a browser sink.
+	if !locationHeaderHasRedirectStatus(functionBody, candidateCall, httpPackageAliases) {
 		return nil, "", false
 	}
 	return candidateCall.Args[1], "Header.Set(Location)", true
@@ -355,13 +360,95 @@ func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, ad
 		if !isCall || candidateCall.Pos() >= sinkPosition || !callHasDestinationToken(candidateCall, additionalValidatorTokens) {
 			return true
 		}
-		// The validator must reference the exact value used by the outbound action.
-		if nodeUsesAnyIdent(candidateCall, sinkValueNames) {
+		// The validator must reference the exact value used by the outbound action,
+		// control whether the sink is reachable, and remain valid for that value.
+		if nodeUsesAnyIdent(candidateCall, sinkValueNames) &&
+			!anyNameAssignedBetween(functionBody, sinkValueNames, candidateCall.End(), sinkPosition) &&
+			validatorCallProtectsSink(functionBody, candidateCall, sinkPosition) {
 			foundBodySanitizer = true
 		}
 		return !foundBodySanitizer
 	})
 	return foundBodySanitizer
+}
+
+// validatorCallProtectsSink recognises the two affirmative control-flow forms:
+// a rejecting guard whose false path reaches a later sink, or a positive guard
+// whose true body contains the sink.
+func validatorCallProtectsSink(functionBody *ast.BlockStmt, validatorCall *ast.CallExpr, sinkPosition token.Pos) bool {
+	protected := false
+	ast.Inspect(functionBody, func(node ast.Node) bool {
+		if protected {
+			return false
+		}
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		guard, ok := node.(*ast.IfStmt)
+		if !ok || !exprContainsExactCall(guard.Cond, validatorCall) {
+			return true
+		}
+		if guard.Body.Pos() < sinkPosition && sinkPosition < guard.Body.End() &&
+			conditionOutcomeImpliesValidator(guard.Cond, validatorCall, true) {
+			protected = true
+			return false
+		}
+		if guard.End() < sinkPosition && blockEndsWithReturn(guard.Body) &&
+			conditionOutcomeImpliesValidator(guard.Cond, validatorCall, false) {
+			protected = true
+			return false
+		}
+		return true
+	})
+	return protected
+}
+
+// conditionOutcomeImpliesValidator reports whether observing one boolean result
+// proves that validatorCall itself returned true. It preserves AND/OR semantics
+// instead of counting a call merely because it appears somewhere in a condition.
+func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.CallExpr, outcome bool) bool {
+	condition = unwrapRequestExprParens(condition)
+	if condition == validatorCall {
+		return outcome
+	}
+	switch expression := condition.(type) {
+	case *ast.UnaryExpr:
+		if expression.Op == token.NOT {
+			return conditionOutcomeImpliesValidator(expression.X, validatorCall, !outcome)
+		}
+	case *ast.BinaryExpr:
+		switch expression.Op {
+		case token.LAND:
+			if outcome {
+				return conditionOutcomeImpliesValidator(expression.X, validatorCall, true) ||
+					conditionOutcomeImpliesValidator(expression.Y, validatorCall, true)
+			}
+			return conditionOutcomeImpliesValidator(expression.X, validatorCall, false) &&
+				conditionOutcomeImpliesValidator(expression.Y, validatorCall, false)
+		case token.LOR:
+			if outcome {
+				return conditionOutcomeImpliesValidator(expression.X, validatorCall, true) &&
+					conditionOutcomeImpliesValidator(expression.Y, validatorCall, true)
+			}
+			return conditionOutcomeImpliesValidator(expression.X, validatorCall, false) ||
+				conditionOutcomeImpliesValidator(expression.Y, validatorCall, false)
+		}
+	}
+	return false
+}
+
+// exprContainsExactCall reports whether the condition contains this AST call,
+// not merely another call with the same text or name.
+func exprContainsExactCall(expression ast.Expr, targetCall *ast.CallExpr) bool {
+	found := false
+	ast.Inspect(expression, func(node ast.Node) bool {
+		if node == targetCall {
+			found = true
+			return false
+		}
+		return !found
+	})
+	return found
 }
 
 // callHasDestinationToken uses complete camel/snake-case tokens so names such
