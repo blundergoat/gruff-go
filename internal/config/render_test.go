@@ -184,7 +184,7 @@ func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 // dogfood .gruff-go.yaml and in adopters' configs.
 func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
-	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: advisory\n    threshold: 500\n") {
+	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: error\n    threshold: 1000\n") {
 		t.Fatalf("expected singular threshold form for size.file-length; got:\n%s", body)
 	}
 	if !strings.Contains(body, "design.hotspot-file:\n    enabled: true\n    severity: advisory\n    thresholds:\n      minFindings: 3\n      minPillars: 2\n") {

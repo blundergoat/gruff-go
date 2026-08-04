@@ -277,7 +277,7 @@ func NewReport(input ReportInput) Report {
 		Baseline:        input.Baseline,
 		Diff:            input.Diff,
 		SuppressedCount: input.SuppressedCount,
-		Score:           scoring.Calculate(findings),
+		Score:           scoring.Calculate(findings, ruleBackedPillars(definitions)...),
 		Rules:           definitions,
 		Paths: Paths{
 			Scanned:      scanned,
@@ -290,6 +290,23 @@ func NewReport(input ReportInput) Report {
 	}
 	SortReport(&report)
 	return report
+}
+
+// ruleBackedPillars returns each primary area represented in the rule catalogue.
+// Reports use the set so clean areas still count toward the user's headline score.
+func ruleBackedPillars(definitions []rule.Definition) []finding.Pillar {
+	uniquePillars := map[finding.Pillar]struct{}{}
+	// A configured-off rule still represents a product area in the published catalogue.
+	for _, definition := range definitions {
+		uniquePillars[definition.Pillar] = struct{}{}
+	}
+	pillars := make([]finding.Pillar, 0, len(uniquePillars))
+	// Convert the set to a stable value list for deterministic report construction.
+	for pillar := range uniquePillars {
+		pillars = append(pillars, pillar)
+	}
+	slices.Sort(pillars)
+	return pillars
 }
 
 // nonNilStrings returns an empty string slice when values is nil.

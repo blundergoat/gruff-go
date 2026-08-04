@@ -683,7 +683,7 @@
                 "text": "Flags identifiers that spell configured Go initialisms with mixed casing."
               },
               "help": {
-                "text": "Use all-caps initialisms in exported names and consistently cased initialisms in unexported names."
+                "text": "Use Go's canonical all-caps initialism spelling within identifiers, such as userID and parseURL."
               },
               "properties": {
                 "pillar": "naming",
@@ -2050,23 +2050,23 @@
                 "text": "File length"
               },
               "fullDescription": {
-                "text": "Flags Go files that exceed the default line-count threshold."
+                "text": "Flags Go files whose substantive line count (blank and comment-only lines are free) exceeds the threshold."
               },
               "help": {
                 "text": "Split the file by responsibility or move focused behavior into smaller files."
               },
               "properties": {
                 "pillar": "size",
-                "defaultSeverity": "advisory",
+                "defaultSeverity": "error",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "thresholds": {
-                  "maxLines": 500
+                  "maxLines": 1000
                 }
               },
               "defaultConfiguration": {
-                "level": "note"
+                "level": "error"
               }
             },
             {
@@ -2520,7 +2520,7 @@
       ],
       "properties": {
         "gruffSchemaVersion": "gruff.analysis.v2",
-        "score": 97,
+        "score": 99,
         "grade": "A"
       }
     }

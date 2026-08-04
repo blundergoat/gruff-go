@@ -4,7 +4,7 @@
 
 Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
 
-Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
+Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
 The first summary sentence, the `Opt-in rules:` line, catalog rows, `### <rule-id>` headings, and exact `Pillar`, `Default severity`, `Default-enabled`, `Threshold`, `Confidence`, `Capability`, and `Tags` bullets form a narrow structured authoring contract. Tests compare those markers with the built-in no-config registry, including counts and the exact opt-in set. Keep both the catalog row and per-rule bullets in the same change as intentional registry metadata updates. Descriptions, remediation, examples, options, secondary pillars, and other explanatory prose remain free-form and are not parsed by this contract.
 
@@ -91,7 +91,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
 | [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
-| [`size.file-length`](#sizefile-length) | size | advisory | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
+| [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
@@ -497,7 +497,7 @@ Each finding's metadata carries the deprecated API and replacement API.
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
 
-Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Correct all-caps forms such as `HTTPClient`, `URLParser`, `JSONReport`, and `IDGenerator` pass; lowercase initialisms in unexported names such as `urlParser` also pass.
+Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Canonical forms such as `HTTPClient`, `parseURL`, `JSONReport`, and `userID` pass; a lowercase initialism at the start of an unexported name, such as `urlParser`, also passes. Generated files are skipped, and C selector names reached through cgo are not Go declarations owned by this rule.
 
 `allowlists.acceptedAbbreviations` suppresses findings for matching tokens project-wide. Use the rule-local `allow` list only for exact third-party or generated API names that must stay as-is.
 
@@ -514,7 +514,9 @@ rules:
       allow: ["ThirdPartyHttpName"]
 ```
 
-**Remediation.** Use all-caps initialisms in exported names and consistently cased initialisms in unexported names.
+**Known precision limit.** A hand-written binding, framework hook, or external API may require non-Go initialism casing. Add the exact declaration to `rules.naming.acronym-case.options.allow`, or keep generated bindings marked as generated code. The same guidance is available from `list-rules --format json`.
+
+**Remediation.** Use Go's canonical all-caps initialism spelling within identifiers, such as `userID` and `parseURL`.
 
 ### `naming.contextual-generic`
 
@@ -936,9 +938,11 @@ Each finding's metadata carries only the logging sink and a classification reaso
 - **Capability:** parser
 - **Tags:** `security`
 
-Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe` without flagging direct executable calls such as `exec.Command("git", "status")`. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
+Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe`. Direct execution stays quiet whether an argument varies (`exec.Command("gofmt", "-l", dir)`) or the executable name varies (`exec.Command(userInput)`); explicit shell execution such as `exec.Command("sh", "-c", command)` remains a warning because shell interpretation is present.
 
-**Remediation.** Call the target executable directly with `exec.Command("ls", args...)` and pass arguments as separate parameters rather than interpolating them into a shell string.
+**Known precision limit.** Intentional shell orchestration with a fixed, reviewed command still reports because parser-only evidence cannot prove runtime input safety. Call the target executable directly where possible, or disable the rule for the reviewed path when shell syntax is required. The same guidance is available from `list-rules --format json`.
+
+**Remediation.** Call the target executable directly and pass arguments without shell interpretation.
 
 ### `security.sql-string-query`
 
@@ -1267,13 +1271,13 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 ### `size.file-length`
 
 - **Pillar:** size
-- **Default severity:** advisory
+- **Default severity:** error
 - **Default-enabled:** yes
-- **Threshold:** `maxLines` (default `500`)
+- **Threshold:** `maxLines` (default `1000`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. Raw file length is advisory by default; `design.hotspot-file` provides stronger signal when size combines with findings from other pillars.
+Flags Go files whose substantive line count exceeds the configured threshold. Blank lines and comment-only lines are free (family ratification, 2026-08-05), so required documentation can never push a file over the size bar; strings containing comment markers still count because comment spans come from the parsed AST. Long files frequently mix unrelated responsibilities. In `_test.go` files the default severity is calibrated down to advisory, matching the existing size-rule test calibration; an explicitly configured severity is applied as configured.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 
@@ -1301,7 +1305,9 @@ Flags Go functions that exceed the configured code-line threshold. Blank lines, 
 - **Confidence:** high
 - **Capability:** parser
 
-Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count).
+Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count). The rule reads Go AST parameter fields, so generic functions, nested function types, and grouped names such as `y, z string` are counted without text-signature truncation.
+
+**Known precision limit.** A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature that cannot be reshaped. Keep the required signature, then raise `maxParameters` or disable the rule in project configuration after review. The same guidance is available from `list-rules --format json`.
 
 **Remediation.** Group related parameters into a struct, accept an options type, or split the function.
 
@@ -1387,9 +1393,11 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
+Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless a physical line of a string-literal message is introduced by a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). The marker may follow an optional list bullet and must be bare or followed by `:`, `(`, whitespace, or a delimiter hyphen. Conventional forms such as `TODO(username): restore coverage` remain findings; quoted, backticked, mid-sentence, plural (`TODOs`), and hyphenated-name (`todo-without-tracking`) mentions stay quiet. Ordinary Go comments are not scanned by this rule. Skipped tests are easy to forget and often hide real regressions.
 
 Receiver-aware skip detection retains its broader ownership in helpers, benchmarks, wrong-signature test-like functions, nested callbacks, and fuzz targets. Only the duplicate `no-failure-path` finding is removed for a runnable Test/Fuzz entrypoint whose entire body is the direct skip call.
+
+**Known precision limit.** A legitimate conditional skip reason whose first physical line must begin with TODO/FIXME-style product terminology is indistinguishable from debt. Put explanatory words before the quoted token, or disable the rule for that path when the external wording must remain first. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 **Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
 

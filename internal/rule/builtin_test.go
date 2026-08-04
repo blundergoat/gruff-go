@@ -1,11 +1,13 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the builtin rule pack and shared helpers.
+// Package rule tests the core findings users receive from gruff-go.
+// Fixtures cover size, complexity, documentation, and sensitive-data checks.
+// They keep each rule's detection and remediation behavior reviewable.
 package rule
 
 import (
 	"go/ast"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -44,6 +46,7 @@ func TestSizeRules(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long.go", Type: source.FileTypeGo},
 		LineCount: fileLengthThreshold + 1,
+		Source:    strings.Repeat("line\n", fileLengthThreshold+1),
 		Functions: []parser.Function{{
 			Name:    "Long",
 			Line:    1,

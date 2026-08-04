@@ -183,6 +183,12 @@ func (r *Registry) applyEnablement(enabled map[string]bool) {
 	}
 }
 
+// isSeverityConfigured reports whether config overrode this rule's severity.
+func (r *Registry) isSeverityConfigured(ruleID string) bool {
+	_, severityConfigured := r.severities[ruleID]
+	return severityConfigured
+}
+
 // applySeverities overlays configured severity values onto definitions.
 func (r *Registry) applySeverities(severities map[string]finding.Severity) {
 	if len(severities) == 0 {
@@ -241,21 +247,21 @@ func (r *Registry) AnalyzeWithProjectContext(units []parser.Unit, projectUnits [
 		for _, entry := range r.activeUnitRules {
 			definition := entry.definition
 			for _, item := range entry.rule.AnalyzeUnit(unit, context) {
-				findings = append(findings, applyDefinition(item, definition))
+				findings = append(findings, applyDefinition(item, definition, r.isSeverityConfigured(definition.ID)))
 			}
 		}
 	}
 	for _, entry := range r.activeProjectRules {
 		definition := entry.definition
 		for _, item := range entry.rule.AnalyzeProject(projectUnits, context) {
-			findings = append(findings, applyDefinition(item, definition))
+			findings = append(findings, applyDefinition(item, definition, r.isSeverityConfigured(definition.ID)))
 		}
 	}
 	baseFindings := append([]finding.Finding(nil), findings...)
 	for _, entry := range r.activeCompositeRules {
 		definition := entry.definition
 		for _, item := range entry.rule.AnalyzeFindings(baseFindings, context) {
-			findings = append(findings, applyDefinition(item, definition))
+			findings = append(findings, applyDefinition(item, definition, r.isSeverityConfigured(definition.ID)))
 		}
 	}
 	slices.SortFunc(findings, CompareFindings)
@@ -314,9 +320,10 @@ func addDefinition(definition Definition, seen map[string]struct{}, definitions 
 	return definition, nil
 }
 
-// applyDefinition fills rule metadata, calibrations, and fingerprints.
-func applyDefinition(item finding.Finding, definition Definition) finding.Finding {
-	hadSeverity := item.Severity != ""
+// applyDefinition fills rule metadata, calibrations, and fingerprints. severityConfigured marks a
+// config-overridden severity, which bypasses test-file calibration just like an explicit finding severity.
+func applyDefinition(item finding.Finding, definition Definition, severityConfigured bool) finding.Finding {
+	findingHasSeverity := item.Severity != ""
 	if item.RuleID == "" {
 		item.RuleID = definition.ID
 	}
@@ -335,7 +342,8 @@ func applyDefinition(item finding.Finding, definition Definition) finding.Findin
 	if item.Remediation == "" {
 		item.Remediation = definition.Remediation
 	}
-	if !hadSeverity && shouldCalibrateTestSizeFinding(item, definition) {
+	// Only scanner defaults are softened; explicit rule or project choices stay visible to users.
+	if !findingHasSeverity && !severityConfigured && shouldCalibrateTestSizeFinding(item, definition) {
 		item.Severity = finding.SeverityAdvisory
 		item.Confidence = finding.ConfidenceMedium
 	}

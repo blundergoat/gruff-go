@@ -1,3 +1,6 @@
+// Package cli tests hook responses returned to coding-agent users.
+// Fixtures cover argument validation, diff scoping, and machine-readable output.
+// They protect the feedback loop shown after an agent edits a file.
 package cli
 
 import (
@@ -45,7 +48,7 @@ func TestHookCapabilitiesAdvertiseContract(t *testing.T) {
 // TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual covers B1 and B2.
 func TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "long.go", hookLongFixture(510))
+	writeFile(t, root, "long.go", hookLongFixture(1010))
 	t.Chdir(root)
 
 	full, code := runHookReport(t, "hook", "--format", "json", "--no-config", "long.go")
@@ -68,20 +71,20 @@ func TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual(t *testing.T) {
 		t.Fatalf("suppressed.count = 0, want file-scope drop counted")
 	}
 
-	line, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--changed-ranges", "7-7", "long.go")
+	line, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--changed-ranges", "5-5", "long.go")
 	if code != 0 {
 		t.Fatalf("line hook exit = %d", code)
 	}
 	shell := requireHookFinding(t, line, "security.shell-command")
-	if shell.Scope != "line" || shell.Line == nil || *shell.Line != 7 {
-		t.Fatalf("shell finding = %#v, want line-scope at line 7", shell)
+	if shell.Scope != "line" || shell.Line == nil || *shell.Line != 5 {
+		t.Fatalf("shell finding = %#v, want line-scope at line 5", shell)
 	}
 }
 
 // TestHookFindingFieldsMetadataEnumsAndAdvisoryExit covers B4, B5, B6, and B10.
 func TestHookFindingFieldsMetadataEnumsAndAdvisoryExit(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "long.go", hookLongFixture(510))
+	writeFile(t, root, "long.go", hookLongFixture(1010))
 	t.Chdir(root)
 
 	payload, code := runHookReport(t, "hook", "--format", "json", "--no-config", "long.go")
@@ -103,7 +106,7 @@ func TestHookFindingFieldsMetadataEnumsAndAdvisoryExit(t *testing.T) {
 		}
 	}
 	size := requireHookFinding(t, payload, "size.file-length")
-	if size.Metadata["measured"] != float64(510) || size.Metadata["threshold"] != float64(500) ||
+	if size.Metadata["measured"] != float64(1010) || size.Metadata["threshold"] != float64(1000) ||
 		size.Metadata["unit"] != "lines" || size.Metadata["direction"] != "above" {
 		t.Fatalf("size metadata = %#v, want measured/threshold/unit/direction", size.Metadata)
 	}
@@ -114,10 +117,10 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 
-	writeFile(t, root, "long.go", hookLongFixture(510))
+	writeFile(t, root, "long.go", hookLongFixture(1010))
 	first, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "long.go")
 	firstSize := requireHookFinding(t, first, "size.file-length")
-	writeFile(t, root, "long.go", hookLongFixture(511))
+	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "long.go")
 	grownSize := requireHookFinding(t, grown, "size.file-length")
 	if firstSize.StableIdentity != grownSize.StableIdentity {
@@ -131,18 +134,18 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	if code := Main([]string{"baseline", "--no-config", "--out", "baseline.json", "long.go"}, &baselineOut, &baselineErr); code != 0 {
 		t.Fatalf("baseline exit = %d, stderr = %s", code, baselineErr.String())
 	}
-	writeFile(t, root, "long.go", hookLongFixture(512))
+	writeFile(t, root, "long.go", hookLongFixture(1012))
 	baselined, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "--baseline", "baseline.json", "long.go")
 	if findHookFinding(baselined, "size.file-length") != nil {
 		t.Fatalf("baseline new-only re-surfaced grown file-length finding: %#v", baselined.Findings)
 	}
 
-	writeFile(t, root, "short.go", hookLongFixture(500))
+	writeFile(t, root, "short.go", hookLongFixture(1000))
 	var shortBaseOut, shortBaseErr bytes.Buffer
 	if code := Main([]string{"baseline", "--no-config", "--out", "short-baseline.json", "short.go"}, &shortBaseOut, &shortBaseErr); code != 0 {
 		t.Fatalf("short baseline exit = %d, stderr = %s", code, shortBaseErr.String())
 	}
-	writeFile(t, root, "short.go", hookLongFixture(501))
+	writeFile(t, root, "short.go", hookLongFixture(1001))
 	newOnly, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "--baseline", "short-baseline.json", "short.go")
 	if findHookFinding(newOnly, "size.file-length") == nil {
 		t.Fatalf("newly crossing file-length finding not returned: %#v", newOnly.Findings)
@@ -157,10 +160,10 @@ func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 	hookRunGit(t, root, "config", "user.email", "test@example.test")
 	hookRunGit(t, root, "config", "user.name", "test")
 
-	writeFile(t, root, "long.go", hookLongFixture(510))
+	writeFile(t, root, "long.go", hookLongFixture(1010))
 	hookRunGit(t, root, "add", "long.go")
 	hookRunGit(t, root, "commit", "-q", "-m", "long baseline")
-	writeFile(t, root, "long.go", hookLongFixture(511))
+	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "long.go")
 	if code != 0 {
 		t.Fatalf("grown diff hook exit = %d", code)
@@ -169,10 +172,10 @@ func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 		t.Fatalf("diff new-only re-surfaced existing file-length finding: %#v", grown.Findings)
 	}
 
-	writeFile(t, root, "short.go", hookLongFixture(500))
+	writeFile(t, root, "short.go", hookLongFixture(1000))
 	hookRunGit(t, root, "add", "short.go")
 	hookRunGit(t, root, "commit", "-q", "-m", "short baseline")
-	writeFile(t, root, "short.go", hookLongFixture(501))
+	writeFile(t, root, "short.go", hookLongFixture(1001))
 	newlyCrossed, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "short.go")
 	if code != 0 {
 		t.Fatalf("new diff hook exit = %d", code)
@@ -273,15 +276,17 @@ func validHookScope(scope string) bool {
 
 // hookLongFixture builds a file with both line-scope and file-scope findings.
 func hookLongFixture(lines int) string {
+	// Emits exactly `lines` substantive lines: file-length counts non-blank, non-comment lines,
+	// so the filler must be code and the doc comment on top rides for free.
 	var builder strings.Builder
 	builder.WriteString("// Package sample is a test package.\n")
-	builder.WriteString("package sample\n\n")
-	builder.WriteString("import \"os/exec\"\n\n")
+	builder.WriteString("package sample\n")
+	builder.WriteString("import \"os/exec\"\n")
 	builder.WriteString("func Risky() {\n")
 	builder.WriteString("    exec.Command(\"sh\", \"-c\", \"echo hi\").Run()\n")
 	builder.WriteString("}\n")
-	for line := 9; line <= lines; line++ {
-		fmt.Fprintf(&builder, "// filler %03d\n", line)
+	for line := 6; line <= lines; line++ {
+		fmt.Fprintf(&builder, "var _ = \"filler %03d\"\n", line)
 	}
 	return builder.String()
 }
@@ -296,16 +301,17 @@ func hookRunGit(t *testing.T, root string, args ...string) {
 	}
 }
 
-// TestHookFixtureLineCount verifies generated source keeps the exact requested physical length.
+// TestHookFixtureLineCount verifies generated source keeps the requested substantive length: the
+// fixture emits exactly N substantive lines plus one free doc-comment line on top.
 func TestHookFixtureLineCount(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "long.go", hookLongFixture(510))
+	writeFile(t, root, "long.go", hookLongFixture(1010))
 	data, err := os.ReadFile(filepath.Join(root, "long.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(data), "\n"); got != 510 {
-		t.Fatalf("hookLongFixture lines = %d, want 510", got)
+	if got := strings.Count(string(data), "\n"); got != 1011 {
+		t.Fatalf("hookLongFixture lines = %d, want 1011 (1010 substantive plus the doc comment)", got)
 	}
 }
 
@@ -313,9 +319,9 @@ func TestHookFixtureLineCount(t *testing.T) {
 // the floor rule (comment-rubric package summary) reports "below". A wrong
 // direction inverts the remediation signal for any metadata consumer.
 func TestHookMetadataDirection(t *testing.T) {
-	above := hookMetadata("size.file-length", map[string]any{"lines": 510, "threshold": 500})
-	if above["direction"] != "above" || above["measured"] != 510 || above["threshold"] != 500 || above["unit"] != "lines" {
-		t.Fatalf("ceiling metadata = %#v, want measured 510 above threshold 500 lines", above)
+	above := hookMetadata("size.file-length", map[string]any{"lines": 1010, "threshold": 1000})
+	if above["direction"] != "above" || above["measured"] != 1010 || above["threshold"] != 1000 || above["unit"] != "lines" {
+		t.Fatalf("ceiling metadata = %#v, want measured 1010 above threshold 1000 lines", above)
 	}
 	below := hookMetadata("docs.comment-rubric", map[string]any{"kind": "package", "lines": 1, "threshold": 2})
 	if below["direction"] != "below" {
@@ -358,12 +364,12 @@ func TestHookDiffUnstagedBaseIsIndexNotHead(t *testing.T) {
 	hookRunGit(t, root, "config", "user.email", "test@example.test")
 	hookRunGit(t, root, "config", "user.name", "test")
 
-	writeFile(t, root, "f.go", hookLongFixture(500))
+	writeFile(t, root, "f.go", hookLongFixture(1000))
 	hookRunGit(t, root, "add", "f.go")
 	hookRunGit(t, root, "commit", "-q", "-m", "short baseline")
 
 	// An unstaged edit crosses the threshold: new vs the index, so it surfaces.
-	writeFile(t, root, "f.go", hookLongFixture(510))
+	writeFile(t, root, "f.go", hookLongFixture(1010))
 	surfaced, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "unstaged", "f.go")
 	if code != 0 {
 		t.Fatalf("unstaged surface hook exit = %d", code)
@@ -376,7 +382,7 @@ func TestHookDiffUnstagedBaseIsIndexNotHead(t *testing.T) {
 	// the index, so an unstaged-scoped run must NOT resurface it (a HEAD base would,
 	// since HEAD is still the short version).
 	hookRunGit(t, root, "add", "f.go")
-	writeFile(t, root, "f.go", hookLongFixture(511))
+	writeFile(t, root, "f.go", hookLongFixture(1011))
 	staged, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "unstaged", "f.go")
 	if code != 0 {
 		t.Fatalf("unstaged staged-base hook exit = %d", code)
@@ -394,7 +400,7 @@ func TestHookDiffNoHeadDegradesToJSON(t *testing.T) {
 	t.Chdir(root)
 	hookRunGit(t, root, "init", "-q")
 
-	writeFile(t, root, "long.go", hookLongFixture(510))
+	writeFile(t, root, "long.go", hookLongFixture(1010))
 	payload, code, stderr := runHookReportWithStderr(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "long.go")
 	if code != 0 {
 		t.Fatalf("no-HEAD hook exit = %d, stderr = %s", code, stderr)

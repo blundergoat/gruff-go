@@ -1,6 +1,6 @@
 ---
 category: workflow
-last_reviewed: 2026-06-06
+last_reviewed: 2026-08-05
 ---
 
 # Workflow Lessons
@@ -104,7 +104,9 @@ CodeRabbit flagged two of the seven stale strings; codex and CodeRabbit missed t
 
 **Incident:** While fixing false positives in `internal/rule/builtin.go`, the agent added helper code directly to the already-large builtin rule file. Focused tests passed, but the required dogfood scan reported `size.file-length` and `docs.comment-rubric` findings against the new helpers before the code was split into `internal/rule/function_length_tables.go` with attached comments.
 
-**Do differently:** For rule-calibration changes, check the target file's current line count and configured comment rubric before adding helper blocks. If a file is near the 500-line project threshold, create a focused helper file up front and give every new helper/type an attached comment before running the first dogfood scan.
+The same trap applies to test matrices. On 2026-08-05, marker-boundary rows appended to `internal/rule/test_quality_scope_test.go` (search: `TestSkipOnlyDeduplicationMatrix`) pushed that file to 559 lines and made dogfood emit `size.file-length`. Moving the focused matrix to `internal/rule/skipped_test_marker_test.go` (search: `TestSkippedTestRuleRequiresIntroducedDebtMarkers`) restored grade A with zero findings without weakening the rule or raising its threshold.
+
+**Do differently:** For rule-calibration changes, check the target file's current line count and configured comment rubric before adding helper blocks or fixture rows. If a file is near the 500-line project threshold, create a focused helper/test file up front and give every new helper/type an attached comment before running the first dogfood scan.
 
 ## Lesson: Temporary in-tree verification harnesses still participate in dogfood
 

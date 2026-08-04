@@ -1,6 +1,6 @@
 ---
 category: calibration
-last_reviewed: 2026-06-14
+last_reviewed: 2026-08-05
 ---
 
 # Calibration Footguns
@@ -32,3 +32,13 @@ How to avoid:
 - Scan each corpus repo as its own root: `( cd .goat-flow/scratchpad/scan-test-repos/<repo> && gruff-go analyse --format json --no-config . )`. Each vendored repo carries its own `.git`, so from inside it the gruff-go `.gitignore` no longer applies. This is what `scripts/calibrate-scratchpad-corpus.sh` does (search: `scan_module`, `cd "$module_root"`).
 - Enumerate by `go.mod`, not top-level directory: StackChan's module root is `StackChan/server`, and `cli-printing-press` carries ~20 generated fixture submodules you usually want to ignore.
 - `--include-ignored` also bypasses the prune, but pulls in each repo's own ignored build/vendor noise; prefer cd-per-repo.
+
+## Footgun: finding filters do not isolate rule execution or scoring
+
+**Status:** active | **Created:** 2026-08-05 | **Evidence:** OBSERVED
+
+**Symptoms:** A probe run with `--include-rules naming.acronym-case` can render an empty `findings` array while the summary, composite, and exit code still reflect a hidden finding from another rule. This makes a matcher audit look internally inconsistent and can misclassify a clean fixture as failing.
+
+**Why it happens:** `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` are presentation filters. `internal/cli/cli.go` (search: `analysis.ApplyDisplayFilter`) runs the full configured registry first, then filters the finished report. `internal/analysis/display_filter.go` (search: `display filters do not change summary counts, score, or exit code`) deliberately preserves the original totals.
+
+**Prevention:** Use a temporary config with `selection.rules` or `selection.pillars` when a calibration probe must execute only the target rules. Use the CLI include/exclude flags only when the full scan should still determine score and exit behavior. Put all `analyse` options before positional paths so the Go flag parser does not treat later options as input paths.

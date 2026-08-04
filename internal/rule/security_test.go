@@ -1,4 +1,6 @@
-// Package rule tests parser-only security rules.
+// Package rule tests security evidence surfaced in CLI findings.
+// Fixtures separate direct library use from paths that invoke an interpreter.
+// This keeps warning-level guidance focused on commands users can remediate.
 package rule
 
 import "testing"
@@ -116,6 +118,53 @@ func sample() {
 				t.Fatalf("findings = %#v, want %d", findings, tt.want)
 			}
 		})
+	}
+}
+
+// TestShellCommandRuleGradesGoExecutionEvidence pins the three process shapes
+// users see: direct argv stays quiet while an explicit shell remains a warning.
+func TestShellCommandRuleGradesGoExecutionEvidence(t *testing.T) {
+	unit := parseOne(t, "process.go", `// Package sample contains command examples.
+package sample
+
+import "os/exec"
+
+func run(dir, userInput, command string) {
+	exec.Command("gofmt", "-l", dir)
+	exec.Command(userInput)
+	exec.Command("sh", "-c", command)
+}
+`)
+	ruleUnderTest := ShellCommandRule{}
+	findings := ruleUnderTest.AnalyzeUnit(unit, Context{})
+	// One warning tells the user only the explicit interpreter path is actionable here.
+	if len(findings) != 1 || findings[0].Location.Line != 9 {
+		t.Fatalf("findings = %#v, want only dynamic explicit-shell call on line 9", findings)
+	}
+	// The message names the evidence that made this path louder than direct argv execution.
+	if findings[0].Message != "exec.Command invokes a shell interpreter" {
+		t.Fatalf("message = %q, want explicit shell evidence", findings[0].Message)
+	}
+	definition := ruleUnderTest.Definition()
+	// Warning is the built-in ceiling shown when users run without project overrides.
+	if definition.Severity != "warning" {
+		t.Fatalf("severity = %q, want warning", definition.Severity)
+	}
+	// Following the named remediation must clear the only finding in this fixture.
+	if definition.Remediation != "Call the target executable directly and pass arguments without shell interpretation." {
+		t.Fatalf("remediation = %q, want direct executable guidance", definition.Remediation)
+	}
+	remediatedUnit := parseOne(t, "remediated.go", `package sample
+import "os/exec"
+func run(dir string) { exec.Command("gofmt", "-l", dir) }
+`)
+	// Calling the executable directly must clear the finding exactly as the catalogue promises.
+	if remediatedFindings := ruleUnderTest.AnalyzeUnit(remediatedUnit, Context{}); len(remediatedFindings) != 0 {
+		t.Fatalf("direct executable remediation produced findings: %#v", remediatedFindings)
+	}
+	// Catalogue users need an escape hatch for intentional, reviewed shell orchestration.
+	if len(definition.FalsePositiveShapes) == 0 || definition.FalsePositiveShapes[0].Mitigation == "" {
+		t.Fatalf("shell-command false-positive guidance = %#v", definition.FalsePositiveShapes)
 	}
 }
 
