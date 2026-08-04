@@ -175,7 +175,7 @@ Per-rule overrides. Every field is optional:
 - `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.2.0 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
 - `options` - opaque per-rule map for rules with bespoke options.
 
-Default size rules have one built-in calibration: when a size rule uses warning severity, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. Advisory defaults such as `size.file-length` are already softened, and a non-warning configured `severity` applies to test files too and disables warning downranking for the overridden rule.
+Default size rules have one built-in calibration: when a size rule's default severity is warning or error, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. Advisory defaults are already softened, and any configured `severity` applies to test files as configured and disables the downranking for the overridden rule.
 
 Examples:
 

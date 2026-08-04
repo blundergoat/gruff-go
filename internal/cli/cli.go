@@ -1,5 +1,6 @@
 // Package cli implements the gruff-go command-line interface.
-// It wires command-line flags and dispatches subcommands to the analysis pipeline.
+// It wires flags and dispatches user commands to the analysis pipeline.
+// Output adapters turn internal results into terminal and automation responses.
 package cli
 
 import (
@@ -291,11 +292,11 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	definitions := registry.Definitions()
 	if *format == "json" {
 		payload := struct {
-			SchemaVersion string            `json:"schemaVersion"`
-			Rules         []rule.Definition `json:"rules"`
+			SchemaVersion string               `json:"schemaVersion"`
+			Rules         []ruleListDefinition `json:"rules"`
 		}{
 			SchemaVersion: analysis.SchemaVersion,
-			Rules:         definitions,
+			Rules:         ruleListDefinitions(definitions),
 		}
 		if err := report.WriteJSON(stdout, payload); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -308,4 +309,26 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return 0
+}
+
+// ruleListDefinition adds precision guidance to catalogue JSON.
+// Embedding keeps the existing metadata while analysis reports omit this field.
+// Users receive it only when they explicitly inspect the rule catalogue.
+type ruleListDefinition struct {
+	rule.Definition
+	FalsePositiveShapes []rule.FalsePositiveShape `json:"falsePositiveShapes,omitempty"`
+}
+
+// ruleListDefinitions prepares registered rules for users inspecting catalogue JSON.
+// The adapter prevents catalogue guidance from changing analysis-report schemas.
+func ruleListDefinitions(definitions []rule.Definition) []ruleListDefinition {
+	listedDefinitions := make([]ruleListDefinition, 0, len(definitions))
+	// Preserve registry order so text and JSON catalogue users see the same sequence.
+	for _, definition := range definitions {
+		listedDefinitions = append(listedDefinitions, ruleListDefinition{
+			Definition:          definition,
+			FalsePositiveShapes: definition.FalsePositiveShapes,
+		})
+	}
+	return listedDefinitions
 }

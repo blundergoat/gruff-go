@@ -1,11 +1,13 @@
 // Package rule defines scanner rule contracts, registries, and built-in rules.
-// This file declares the Definition value type and rule capability enum.
+// This file declares metadata that powers configuration and rule catalogues.
+// Users see these values when deciding how to resolve or tune a finding.
 package rule
 
 import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
@@ -24,7 +26,19 @@ const (
 	CapabilityDataflow Capability = "dataflow"
 )
 
-// Definition is the static description of a rule registered with the scanner.
+// FalsePositiveShape documents a known case where a rule can lack context.
+// Shape tells users what can be mistaken for a defect.
+// Mitigation gives a practical way to keep the scan actionable.
+type FalsePositiveShape struct {
+	// Shape describes the source pattern that can be misclassified.
+	Shape string `json:"shape"`
+	// Mitigation explains how a user can avoid or scope the finding.
+	Mitigation string `json:"mitigation"`
+}
+
+// Definition is the static description of a registered scanner rule.
+// Config validation and report findings share this source of truth.
+// Catalogue-only guidance is excluded from analysis-report JSON.
 type Definition struct {
 	// ID is the kebab-case dotted rule identifier validated against ruleIDPattern (e.g. "naming.acronym-case").
 	ID string `json:"id"`
@@ -52,6 +66,8 @@ type Definition struct {
 	Tags []string `json:"tags,omitempty"`
 	// Remediation is the actionable guidance copied onto each finding to tell users how to fix it.
 	Remediation string `json:"remediation,omitempty"`
+	// FalsePositiveShapes lists known precision limits shown only by the rule catalogue.
+	FalsePositiveShapes []FalsePositiveShape `json:"-"`
 }
 
 // Validate checks the definition fields are consistent and applies defaults.
@@ -90,6 +106,17 @@ func (d *Definition) Validate() error {
 	for name := range d.Options {
 		if name == "" {
 			return fmt.Errorf("rule %q has empty option name", d.ID)
+		}
+	}
+	// Blank catalogue guidance would leave users unable to recognise or mitigate the limitation.
+	for shapeIndex, knownShape := range d.FalsePositiveShapes {
+		// A missing shape gives the user no way to recognise the documented limitation.
+		if strings.TrimSpace(knownShape.Shape) == "" {
+			return fmt.Errorf("rule %q has empty false-positive shape at index %d", d.ID, shapeIndex)
+		}
+		// A missing mitigation leaves the user with no practical next action.
+		if strings.TrimSpace(knownShape.Mitigation) == "" {
+			return fmt.Errorf("rule %q has empty false-positive mitigation at index %d", d.ID, shapeIndex)
 		}
 	}
 	slices.Sort(d.Tags)

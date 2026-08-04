@@ -1,5 +1,6 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the structural-metric rules and shared findings helper.
+// Package rule tests structural metrics shown in gruff-go scan results.
+// These fixtures connect parameter, nesting, and documentation findings to fixes.
+// Nested Go syntax stays parser-owned so users do not see truncated signatures.
 package rule
 
 import (
@@ -37,6 +38,45 @@ func (Builder) Many(a, b, c, d, e int) {}
 	defaults := Defaults()
 	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); !containsRuleID(findings, "size.parameter-count") {
 		t.Fatalf("default scan = %#v, want size.parameter-count enabled", findings)
+	}
+}
+
+// TestParameterCountHandlesNestedSignatureSyntax proves generic, function-typed,
+// and grouped parameters stay balanced and that an options type clears the result.
+func TestParameterCountHandlesNestedSignatureSyntax(t *testing.T) {
+	driftUnit := parseOne(t, "signature.go", `package sample
+
+func Transform[T ~int](x func(int) error, y, z string, value T) error {
+	return x(int(value))
+}
+`)
+	findings := (ParameterCountRule{MaxParameters: 3}).AnalyzeUnit(driftUnit, Context{})
+	// The nested function type counts once while grouped y and z count separately.
+	if len(findings) != 1 || findings[0].Symbol != "Transform" || findings[0].Metadata["parameters"] != 4 {
+		t.Fatalf("nested-signature findings = %#v, want Transform with four parameters", findings)
+	}
+
+	fixedUnit := parseOne(t, "signature.go", `package sample
+
+type TransformOptions[T ~int] struct {
+	Y, Z  string
+	Value T
+}
+
+func Transform[T ~int](x func(int) error, options TransformOptions[T]) error {
+	return x(int(options.Value))
+}
+`)
+	fixedFindings := (ParameterCountRule{MaxParameters: 3}).AnalyzeUnit(fixedUnit, Context{})
+	// Grouping related values into options clears the finding as the UI instructs.
+	if len(fixedFindings) != 0 {
+		t.Fatalf("options remediation findings = %#v, want none", fixedFindings)
+	}
+
+	definition := (ParameterCountRule{}).Definition()
+	// Catalogue guidance must explain fixed API signatures that users cannot reshape.
+	if len(definition.FalsePositiveShapes) == 0 || definition.FalsePositiveShapes[0].Mitigation == "" {
+		t.Fatalf("parameter-count false-positive guidance = %#v", definition.FalsePositiveShapes)
 	}
 }
 

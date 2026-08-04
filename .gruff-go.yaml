@@ -420,8 +420,8 @@ rules:
   # Flags Go files that exceed the default line-count threshold.
   size.file-length:
     enabled: true
-    severity: advisory
-    threshold: 500
+    severity: error
+    threshold: 1000
 
   # Flags Go functions that exceed the default line-count threshold.
   size.function-length:

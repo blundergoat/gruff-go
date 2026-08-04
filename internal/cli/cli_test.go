@@ -1,5 +1,6 @@
 // Package cli implements the gruff-go command-line interface.
-// This file exercises the analyse subcommand and related helpers.
+// This file exercises analyse, rule-catalogue, and diagnostic responses.
+// The tests protect what terminal users and JSON consumers receive.
 package cli
 
 import (
@@ -173,6 +174,40 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	if !strings.Contains(listOut.String(), `"capability": "parser"`) {
 		t.Fatalf("list-rules output missing capability = %s", listOut.String())
 	}
+	var catalogue struct {
+		Rules []struct {
+			ID                  string `json:"id"`
+			FalsePositiveShapes []struct {
+				Shape      string `json:"shape"`
+				Mitigation string `json:"mitigation"`
+			} `json:"falsePositiveShapes"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(listOut.Bytes(), &catalogue); err != nil {
+		t.Fatalf("invalid list-rules json: %v", err)
+	}
+	rulesMissingPrecisionGuidance := map[string]bool{
+		"naming.acronym-case":       true,
+		"security.shell-command":    true,
+		"size.parameter-count":      true,
+		"test-quality.skipped-test": true,
+	}
+	// Check each touched rule exactly as a catalogue user would find it by stable ID.
+	for _, listedRule := range catalogue.Rules {
+		// Unrelated catalogue rows are outside this cross-port precision pass.
+		if !rulesMissingPrecisionGuidance[listedRule.ID] {
+			continue
+		}
+		// Empty guidance would not help a user decide whether to edit or scope the rule.
+		if len(listedRule.FalsePositiveShapes) == 0 || listedRule.FalsePositiveShapes[0].Shape == "" || listedRule.FalsePositiveShapes[0].Mitigation == "" {
+			t.Fatalf("%s false-positive guidance = %#v", listedRule.ID, listedRule.FalsePositiveShapes)
+		}
+		delete(rulesMissingPrecisionGuidance, listedRule.ID)
+	}
+	// Any remaining ID means users cannot discover that rule's precision boundary.
+	if len(rulesMissingPrecisionGuidance) != 0 {
+		t.Fatalf("list-rules omitted false-positive guidance for %#v", rulesMissingPrecisionGuidance)
+	}
 
 	var missingOut, missingErr bytes.Buffer
 	if code := Main([]string{"analyse", "missing.go"}, &missingOut, &missingErr); code != 2 {
@@ -195,6 +230,10 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := Main([]string{"analyse", "--format", "json", "."}, &out, &errOut); code != 1 {
 		t.Fatalf("exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
+	}
+	// Catalogue guidance must not add fields to the stable analysis-report rule objects.
+	if strings.Contains(out.String(), `"falsePositiveShapes"`) {
+		t.Fatalf("analysis JSON unexpectedly contains catalogue-only guidance: %s", out.String())
 	}
 	var parsed analysis.Report
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
