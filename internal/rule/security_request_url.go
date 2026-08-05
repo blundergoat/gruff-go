@@ -314,28 +314,16 @@ func destinationHasConstraint(requestScope *requestTaintScope, functionBody *ast
 	return false
 }
 
-// argHasDestinationSanitizer recognises an exact validator token wrapping the
-// request-controlled value inline.
+// argHasDestinationSanitizer recognises an exact validator token whose complete
+// result is passed to the sink. A sanitizer nested beside raw request input does
+// not constrain the final destination expression.
 func argHasDestinationSanitizer(requestScope *requestTaintScope, sinkArgument ast.Expr, additionalValidatorTokens map[string]bool) bool {
-	foundInlineSanitizer := false
-	ast.Inspect(sinkArgument, func(syntaxNode ast.Node) bool {
-		// Stop after finding one user-facing reason to omit the warning.
-		if foundInlineSanitizer {
-			return false
-		}
-		candidateCall, isCall := syntaxNode.(*ast.CallExpr)
-		// Only exact validator calls can protect an inline request value.
-		if !isCall || !callHasDestinationToken(candidateCall, additionalValidatorTokens) {
-			return true
-		}
-		_, containsRequestInput := requestScope.exprHasRequest(candidateCall, token.NoPos)
-		// The validator must wrap the same user input that reaches the sink.
-		if containsRequestInput {
-			foundInlineSanitizer = true
-		}
-		return !foundInlineSanitizer
-	})
-	return foundInlineSanitizer
+	candidateCall, isCall := unwrapRequestExprParens(sinkArgument).(*ast.CallExpr)
+	if !isCall || !callHasDestinationToken(candidateCall, additionalValidatorTokens) {
+		return false
+	}
+	_, containsRequestInput := requestScope.exprHasRequest(candidateCall, token.NoPos)
+	return containsRequestInput
 }
 
 // bodyHasDestinationSanitizer recognises a validator call before the sink only

@@ -419,6 +419,34 @@ config_binary_override() {
   return 0
 }
 
+# Resolve an existing path physically, following a final symlink without
+# depending on platform-specific realpath flags.
+canonical_existing_path() {
+  local candidate="$1"
+  local directory basename link_target
+  local symlink_hops=0
+  while :; do
+    directory="${candidate%/*}"
+    basename="${candidate##*/}"
+    [[ -n "$directory" && "$directory" != "$candidate" ]] || return 1
+    directory="$(CDPATH='' cd -- "$directory" 2>/dev/null && pwd -P)" || return 1
+    candidate="$directory/$basename"
+    if [[ ! -L "$candidate" ]]; then
+      [[ -e "$candidate" ]] || return 1
+      printf '%s' "$candidate"
+      return 0
+    fi
+    symlink_hops=$((symlink_hops + 1))
+    ((symlink_hops <= 40)) || return 1
+    link_target="$(readlink "$candidate" 2>/dev/null)" || return 1
+    if [[ "$link_target" == /* ]]; then
+      candidate="$link_target"
+    else
+      candidate="$directory/$link_target"
+    fi
+  done
+}
+
 # Resolve a repo-owned config override to an absolute path, or print nothing
 # when the value is not acceptable. Only repo-relative values that stay inside
 # the repo are accepted: machine-specific absolute, home, or drive-letter paths
@@ -428,6 +456,7 @@ config_binary_override() {
 resolve_config_binary() {
   local root="$1"
   local value="${2//\\//}"
+  local candidate root_resolved candidate_resolved
   value="${value#./}"
   case "$value" in
     ''|/*|~*|[A-Za-z]:*) return 0 ;;
@@ -435,7 +464,17 @@ resolve_config_binary() {
   case "/$value/" in
     */../*|*/./*) return 0 ;;
   esac
-  printf '%s/%s' "$root" "$value"
+  candidate="$root/$value"
+  # Preserve the existing missing-path diagnostic for a lexical path that has
+  # not been created. Existing files must resolve inside the physical repo.
+  if [[ ! -e "$candidate" && ! -L "$candidate" ]]; then
+    printf '%s' "$candidate"
+    return 0
+  fi
+  root_resolved="$(CDPATH='' cd -- "$root" 2>/dev/null && pwd -P)" || return 0
+  candidate_resolved="$(canonical_existing_path "$candidate")" || return 0
+  [[ "$candidate_resolved" == "$root_resolved"/* ]] || return 0
+  printf '%s' "$candidate"
 }
 
 # Discovery covers each ecosystem's standard install location - package-manager
@@ -610,6 +649,7 @@ self_test() {
   local help_full help_missing counts
   local tmp output override_path config_error
   local sample_payload discovered config_path winner
+  local outside_binary_dir symlink_config_path
   if ! command -v jq >/dev/null 2>&1; then
     printf 'gruff-code-quality self-test: jq unavailable\n' >&2
     return 1
@@ -719,6 +759,21 @@ self_test() {
     printf 'gruff-code-quality self-test: config binary override failed: %s\n' "$config_path" >&2
     return 1
   }
+  outside_binary_dir="$(mktemp -d)"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$outside_binary_dir/gruff-py"
+  chmod +x "$outside_binary_dir/gruff-py"
+  rm "$tmp/strands_agents/.venv/bin/gruff-py"
+  ln -s "$outside_binary_dir/gruff-py" "$tmp/strands_agents/.venv/bin/gruff-py"
+  symlink_config_path="$(PATH="$tmp/empty-bin:$PATH" discover_binary "$tmp" gruff-py)"
+  [[ -z "$symlink_config_path" ]] || {
+    rm -rf "$tmp" "$outside_binary_dir"
+    printf 'gruff-code-quality self-test: config binary symlink escaped repo: %s\n' "$symlink_config_path" >&2
+    return 1
+  }
+  rm "$tmp/strands_agents/.venv/bin/gruff-py"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/strands_agents/.venv/bin/gruff-py"
+  chmod +x "$tmp/strands_agents/.venv/bin/gruff-py"
+  rm -rf "$outside_binary_dir"
   printf 'hooks:\n  gruff-code-quality:\n    enabled: true\n    binaries: { py: strands_agents/.venv/bin/gruff-py }\n' > "$tmp/.goat-flow/config.yaml"
   inline_config_path="$(PATH="$tmp/empty-bin:$PATH" discover_binary "$tmp" gruff-py)"
   # The compact dashboard-friendly YAML form must run the same analyzer.

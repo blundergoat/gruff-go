@@ -189,6 +189,37 @@ func generateToken(size int) string {
 			want: 1,
 		},
 		{
+			name: "alphabet selection appended into token remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	token := make([]byte, 0, size)
+	for range size {
+		token = append(token, alphabet[rand.Intn(len(alphabet))])
+	}
+	return string(token)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "alphabet selection appended into sample stays safe",
+			code: `package sample
+
+import "math/rand"
+
+func buildSample(alphabet string) []byte {
+	sample := make([]byte, 0, 1)
+	sample = append(sample, alphabet[rand.Intn(len(alphabet))])
+	return sample
+}
+`,
+			want: 0,
+		},
+		{
 			name: "key assignment remains generation",
 			code: `package sample
 

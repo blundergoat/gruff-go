@@ -208,9 +208,10 @@ func randomCallSelectsExistingValue(call *ast.CallExpr, parents map[ast.Node]ast
 }
 
 // randomSelectionBuildsSecretBuffer distinguishes token generation such as
-// `token[i] = alphabet[rand.Intn(len(alphabet))]` from choosing one existing
-// key or sample. Only an alphabet-like source written into a security-named
-// indexed target defeats the normal selection exemption.
+// `token[i] = alphabet[rand.Intn(len(alphabet))]` and
+// `token = append(token, alphabet[rand.Intn(len(alphabet))])` from choosing one
+// existing key or sample. The caller separately requires security-sensitive
+// assignment or argument context before reporting the random call.
 func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]ast.Node) bool {
 	parent := parents[call]
 	for {
@@ -229,6 +230,10 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 	}
 	for ancestor := parents[selection]; ancestor != nil; ancestor = parents[ancestor] {
 		switch statement := ancestor.(type) {
+		case *ast.CallExpr:
+			if appendCallAddsSelection(statement, selection) {
+				return true
+			}
 		case *ast.AssignStmt:
 			for valueIndex, value := range statement.Rhs {
 				if !exprContainsNode(value, call) || valueIndex >= len(statement.Lhs) {
@@ -244,6 +249,21 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 			return false
 		case *ast.ReturnStmt, *ast.ValueSpec, *ast.FuncLit:
 			return false
+		}
+	}
+	return false
+}
+
+// appendCallAddsSelection reports when the selected alphabet element is one of
+// append's added values rather than its destination slice.
+func appendCallAddsSelection(call *ast.CallExpr, selection *ast.IndexExpr) bool {
+	functionName, isIdentifier := unwrapRandomSelectionParens(call.Fun).(*ast.Ident)
+	if !isIdentifier || functionName.Name != "append" || len(call.Args) < 2 {
+		return false
+	}
+	for _, appendedValue := range call.Args[1:] {
+		if exprContainsNode(appendedValue, selection) {
+			return true
 		}
 	}
 	return false

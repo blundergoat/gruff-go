@@ -160,6 +160,32 @@ expect_allow() {
   fi
 }
 
+expect_symlinked_recursive_target_block() {
+  selected_hook shell || {
+    record_skip
+    return
+  }
+  local inside outside relative status
+  inside="$(mktemp -d "$GOAT_FLOW_ROOT/.deny-dangerous-self-test.XXXXXX")"
+  outside="$(mktemp -d)"
+  mkdir -p "$outside/subdir"
+  if ! ln -s "$outside" "$inside/safe-link"; then
+    rm -rf "$inside" "$outside"
+    record_skip
+    return
+  fi
+  executed=$((executed + 1))
+  relative="${inside#"$GOAT_FLOW_ROOT"/}/safe-link/subdir"
+  set +e
+  bash "$(hook_path shell)" --check="rm -rf $relative" >/dev/null 2>&1
+  status=$?
+  set -e
+  rm -rf "$inside" "$outside"
+  if [[ "$status" -ne 2 ]]; then
+    record_fail "shell should block recursive deletion through a repo-local symlink (exit=$status)"
+  fi
+}
+
 expect_copilot_block() {
   local hook="$1"
   local command="$2"
@@ -639,6 +665,7 @@ run_full() {
   expect_block shell "rm -rf \$'/etc'" "ansi-c-quoted rm absolute path"
   expect_block shell 'rm -rf $HOME/.cache' "variable-rooted home subpath rm"
   expect_block shell 'rm -rf ${HOME}/.cache' "braced-variable home subpath rm"
+  expect_block shell 'rm -rf cache/$TARGET' "embedded variable recursive rm target"
   expect_block shell 'rm -rf $(echo /etc)' "command-substitution rm target"
   expect_allow shell 'rm -rf "node_modules"' "quoted safe node_modules removal"
   expect_allow shell 'rm -rf "./dist"' "quoted safe scoped dist removal"
@@ -674,6 +701,7 @@ run_full() {
   expect_allow shell "echo ok # rm -rf /" "destructive text in shell comment"
   expect_allow shell "rm -r node_modules" "scoped recursive node_modules"
   expect_allow shell "rm -rf src/old-module" "scoped recursive subdirectory"
+  expect_symlinked_recursive_target_block
   expect_allow shell 'bash -c "echo hello"' "safe bash -c"
   expect_allow shell "python -c 'print(1)'" "safe python -c"
   expect_allow shell 'printf "%s\n" "rm -rf /"' "quoted rm literal"

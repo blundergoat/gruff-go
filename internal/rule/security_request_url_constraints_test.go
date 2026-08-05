@@ -288,6 +288,8 @@ import (
 func parser(string) bool { return true }
 // parseAndReturn models syntax work that returns the submitted destination.
 func parseAndReturn(value string) string { return value }
+// sanitizedURL models a destination sanitizer that returns the trusted value.
+func sanitizedURL(value string) string { return value }
 // allowanceURL models a colliding helper name that must not hide a finding.
 func allowanceURL(string) bool { return true }
 // trustednessURL models a colliding helper name that does not prove trust.

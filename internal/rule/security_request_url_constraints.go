@@ -283,8 +283,10 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 			return true
 		}
 		committedPrefix, hasLiteral := stringLiteral(prefixCall.Args[1])
-		// A user-visible safe guard needs both a path segment and this sink value.
-		if hasLiteral && isSafeRelativePrefix(committedPrefix) && nodeUsesAnyIdent(prefixCall.Args[0], sinkValueNames) {
+		// A user-visible safe guard needs a path segment, this sink value, and no
+		// later overwrite that invalidates the checked value before the redirect.
+		if hasLiteral && isSafeRelativePrefix(committedPrefix) && nodeUsesAnyIdent(prefixCall.Args[0], sinkValueNames) &&
+			!anyNameAssignedBetween(functionBody, sinkValueNames, returnGuard.End(), sinkPosition) {
 			foundCommittedPrefix = true
 		}
 		return !foundCommittedPrefix
@@ -321,7 +323,8 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 		if !hasLiteral || protocolRelativePrefix != "//" || !isIdentifier || !sinkValueNames[redirectIdentifier.Name] {
 			return true
 		}
-		foundSafeLoop = loopTrimsOneLeadingSlash(prefixLoop.Body, redirectIdentifier.Name, stringPackageAliases)
+		foundSafeLoop = loopTrimsOneLeadingSlash(prefixLoop.Body, redirectIdentifier.Name, stringPackageAliases) &&
+			!anyNameAssignedBetween(functionBody, sinkValueNames, prefixLoop.End(), sinkPosition)
 		return !foundSafeLoop
 	})
 	return foundSafeLoop
