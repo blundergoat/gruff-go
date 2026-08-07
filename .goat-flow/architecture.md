@@ -16,7 +16,7 @@ This mission is the tie-breaker for default, threshold, and rule decisions: judg
 
 `gruff-go` is a Go CLI code-quality scanner plus GOAT Flow project memory and agent guardrails. `go.mod` declares module `github.com/blundergoat/gruff-go`; `.gruff-go.yaml` pins the repository's dogfood scanner config; `cmd/gruff-go` contains the executable entrypoint; `internal/` contains the parser-only analysis pipeline, the 83-rule registry (70 default-enabled, 13 opt-in), scoring, report rendering, and the local dashboard.
 
-`package.json` and `package-lock.json` pin `@blundergoat/goat-flow` as the only declared npm dependency; the Go binary itself has no runtime dependencies outside the standard library. `.claude/` contains Claude-owned settings, `.codex/` contains Codex-owned settings and hook registration, the shared safety/quality hook scripts live in `.goat-flow/hooks/`, `.agents/skills/` contains Codex/Gemini shared skills, and `.goat-flow/` contains shared project context for future agents. The top-level skill playbooks are `browser-use.md`, `changelog.md`, `code-comments.md`, `gruff-code-quality.md`, `observability.md`, `page-capture.md`, and `release-notes.md`; skill-authoring methodology is indexed separately under `.goat-flow/skill-docs/skill-quality-testing/` and split into TDD iteration, adversarial framing, and deployment references.
+`package.json` and `package-lock.json` pin `@blundergoat/goat-flow` as the only declared npm dependency; the Go binary itself has no runtime dependencies outside the standard library. `.claude/` contains Claude-owned settings, `.codex/` contains Codex-owned settings and hook registration, the shared safety/quality hook scripts live in `.goat-flow/hooks/`, `.agents/skills/` contains Codex/Gemini shared skills, and `.goat-flow/` contains shared project context for future agents. The top-level skill playbooks are `browser-use.md`, `changelog.md`, `code-comments.md`, `gruff-code-quality.md`, `hook-policy-testing.md`, `observability.md`, `page-capture.md`, `release-notes.md`, `skill-playbook-authoring-sync.md`, and `writing-style.md`; skill-authoring methodology is indexed separately under `.goat-flow/skill-docs/skill-quality-testing/` and split into TDD iteration, adversarial framing, and deployment references.
 
 ## Request Flow
 
@@ -49,6 +49,16 @@ Analyzer data flow:
 9. `internal/report` renders the report as compact text, full JSON, summary JSON, SARIF 2.1.0, GitHub annotations, standalone HTML, dashboard shell HTML, and optional interactive finding filters.
 
 npm dependency state flows from `package.json` through `package-lock.json` into `node_modules/`. `node_modules/` is a dependency cache and should not be edited directly.
+
+## Local Data and Evidence Budget
+
+`.goat-flow/logs/` (`calibration/`, `critiques/`, `dogfood/`, `events/`, `quality/`, `releases/`, `review/`, `security/`, `sessions/`), `.goat-flow/plans/`, and `.goat-flow/scratchpad/` hold checkout-local state. They can orient a reader on what a past session was doing, but they are not evidence: they cannot prove current behaviour, and they cannot authorize an external action such as a push, a tag, a release, or a schema-version change.
+
+Evidence budget: a claim that a check passed is discharged only by the literal pass/fail line from a command run in the current session - `make check`, `shellcheck`, `go run ./cmd/gruff-go analyse .`, `scripts/preflight-checks.sh`, or the goat-flow audit. Output quoted from a local log, a prior session, or a plan file does not count, however recent. `CLAUDE.md` -> VERIFY and the Proof Gate in `.goat-flow/skill-docs/skill-preamble.md` carry the enforcing wording.
+
+Promotion: move only a verified durable conclusion out of local state into `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/decisions/`, or `.goat-flow/learning-loop/patterns/`, and carry its evidence across. Never cite the local artifact itself as committed truth.
+
+Retention: goat-flow does not purge these artifacts automatically; removal is the user's call.
 
 ## Deployment / Operations
 

@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-07-13
+last_reviewed: 2026-08-08
 ---
 
 # Setup Footguns
@@ -108,6 +108,28 @@ The CLI now supports strict gruff config discovery, baselines, diff filtering, s
 - **A literal-based exemption can hide a future product version.** The first M16 golden scanner skipped every `"version": "2.1.0"` line to exclude SARIF's document version. That also skipped the gruff-go tool version when a fixture made the product version `2.1.0`. `scripts/bump-version.sh` (search: `scan_golden_versions`) now associates ordinary JSON versions with a preceding `"name": "gruff-go"`, while `semanticVersion` and text mastheads remain direct owners. `scripts/bump-version_test.sh` (search: `test_clean_review_rows`) pins the same-valued SARIF/tool case.
 
 How to avoid: run `scripts/bump-version.sh --check-references --root . --source-version <X.Y.Z>` before the bump. Every `source-current` row must equal the source version; independently resolve every `published-install` row and review `security-support` against that public line. Classify by owner/context, never by exempting a numeric value. Published pins and the changelog date move at tag time unless the release deliberately leads with docs. Never link a committed doc to `.goat-flow/scratchpad/`.
+
+## Footgun: `goat-flow audit --check-content` reports framework dashboard views as project drift; the fix it suggests is a false claim
+
+**Status:** active | **Created:** 2026-08-08 | **Evidence:** OBSERVED
+**Decision changed:** Do not satisfy the `code-map-dashboard-view-drift` warning by editing `.goat-flow/code-map.md`; treat it as a permanent unsatisfiable warning of the framework's own layout.
+**Trigger phase:** VERIFY
+
+hallucination-risk: high (the warning names `.goat-flow/code-map.md` as the path and supplies a concrete, confident-sounding list of view names to paste in, so an agent chasing a green audit will write framework internals into project docs and believe it fixed real drift)
+
+`node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent claude --check-content` exits 1 on gruff-go with a single warning that cannot be cleared:
+
+> Code map lists dashboard views as none, but src/dashboard/views has about, home, hooks, plans, projects, prompts, quality, settings, setup, skills, workspace.
+
+Evidence:
+- `node_modules/@blundergoat/goat-flow/dist/cli/audit/check-factual-semantic-drift.js` (search: `Read live dashboard view files with a stable manifest fallback for filesystem stubs`) — the reader globs `src/dashboard/views/*.html` against the target root, and on zero matches falls back to the framework's own bundled manifest view names instead of concluding the target has no such surface. `driftCodeMapDashboardViews` then diffs gruff-go's code map against that fallback.
+- gruff-go has no `src/` directory at any depth (`find . -maxdepth 2 -type d -name src -not -path './node_modules/*'` returns nothing), so the glob is always empty and the fallback always fires.
+- The 11 reported names are exactly `node_modules/@blundergoat/goat-flow/dist/dashboard/views/*.html` — the GOAT Flow dashboard's views, not this project's.
+- gruff-go's dashboard is `internal/dashboard/` (a Go `net/http` server) rendering HTML from `internal/report/`; it has no per-view `.html` files to enumerate. `.goat-flow/code-map.md` already describes both accurately.
+
+Following the suggestion would document vendored framework internals as gruff-go surfaces, which `CLAUDE.md` → Workspace Boundary forbids and which is simply untrue of this repo.
+
+How to avoid: when `--check-content` fails, split findings by rule before fixing any of them. Confirm a drift warning names a surface that exists in this checkout — resolve the cited path on disk first. If it does not resolve, it is framework self-audit leakage: report it, leave the docs correct, and do not count the audit's exit 1 as a project defect. The other content rules (`stale-semantic-anchor`, `skill-playbook-inventory-drift`) do describe real target-project drift and should be fixed normally.
 
 ## Resolved Entries
 

@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- **Claude harness repair** - Refreshes the Claude goat skills to the GOAT Flow 1.15.0 templates, migrates Claude settings off stale unmatched permission rules onto the managed hook launcher with the post-turn safety guard registered, and fixes the code-map commit-guidance path.
 - **Review security hardening** - Fixes six URL, random-token, recursive-delete, and analyzer-binary validation gaps.
 - **GOAT Flow 1.15.0** - Updates Codex skills, safety hooks, permission profiles, setup references, and managed-install drift protection.
 

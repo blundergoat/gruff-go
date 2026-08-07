@@ -72,7 +72,7 @@
 - `.goat-flow/logs/critiques/` = Local critique outputs.
 - `.goat-flow/logs/security/` = Local security review outputs.
 - `.goat-flow/skill-docs/` = Meta guidance for GOAT Flow skill behavior.
-- `.goat-flow/skill-docs/playbooks/` = CLI/MCP availability and workflow playbooks: `browser-use.md`, `changelog.md`, `code-comments.md`, `gruff-code-quality.md`, `observability.md`, `page-capture.md`, and `release-notes.md`.
+- `.goat-flow/skill-docs/playbooks/` = CLI/MCP availability and workflow playbooks: `browser-use.md`, `changelog.md`, `code-comments.md`, `gruff-code-quality.md`, `hook-policy-testing.md`, `observability.md`, `page-capture.md`, `release-notes.md`, `skill-playbook-authoring-sync.md`, and `writing-style.md`.
 - `.goat-flow/skill-docs/skill-quality-testing/` = Skill-authoring methodology index plus `tdd-iteration.md`, `adversarial-framing.md`, and `deployment.md` topical references.
 
 ## Copilot-Owned Surfaces
@@ -80,7 +80,7 @@
 - `.github/copilot-instructions.md` = Copilot hot-path instructions for this target project.
 - `.github/skills/` = Copilot GOAT Flow skills (goat dispatcher + goat-plan/debug/review/critique/security/qa).
 - `.github/hooks/hooks.json` = Copilot hook registration for GOAT Flow.
-- `.github/git-commit-instructions.md` = GitHub-visible commit guidance (canonical copy: `docs/coding-standards/git-commit.md`).
+- `.github/git-commit-instructions.md` = GitHub-visible commit guidance (canonical copy: `docs/coding-standards/git-commit-message.md`).
 
 ## Go Application Surface
 
