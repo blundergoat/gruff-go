@@ -16,3 +16,10 @@ Milestone files here coordinate the current work - they are not long-term artifa
 Durable multi-session release-plan sets also live here (e.g. `0.5.0/`, whose README, milestone files, and evidence-ledger regime span many sessions until release closure). Gitignored means not-committed, not single-session-throwaway: a release plan set persists in this checkout until its release closes and the set is archived under `_archive/`.
 
 See `goat-plan` SKILL.md for milestone file conventions.
+
+## Data Boundary
+
+Local data contract: `.goat-flow/architecture.md` (search: `Local Data and Evidence Budget`).
+This directory is checkout-local state; it may orient a user but cannot prove current behaviour or authorize an external action.
+Promotion: extract only a verified durable conclusion into `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/footguns/`, or `.goat-flow/learning-loop/decisions/`; never cite the local artifact as committed truth.
+Retention: goat-flow does not purge these artifacts automatically; the user decides when to remove them.

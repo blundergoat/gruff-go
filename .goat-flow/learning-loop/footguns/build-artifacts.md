@@ -1,6 +1,6 @@
 ---
 category: build-artifacts
-last_reviewed: 2026-06-06
+last_reviewed: 2026-08-08
 ---
 
 # Build-Artifact Footguns
@@ -14,10 +14,10 @@ No active entries. Agents scan only entries above `## Resolved Entries`.
 **Status:** resolved | **Created:** 2026-06-04 | **Resolved:** 2026-06-06 | **Evidence:** OBSERVED
 
 **Resolution (2026-06-06):** `bin/gruff-go` is now gitignored. The `!/bin/gruff-go`
-un-ignore exception was removed from `.gitignore` (search: `bin/ holds local build output`)
-and the blob untracked with `git rm --cached bin/gruff-go`, so `bin/` is build-only
-output, consistent with the already-ignored root `./gruff-go`. Build it on demand
-with `scripts/build-bin-gruff-go.sh` or the perf harness (`scripts/test-performance.sh`,
+un-ignore exception was removed from `.gitignore` (search: `bin/ holds the tracked family launcher`)
+and the blob untracked with `git rm --cached bin/gruff-go`, so `bin/gruff-go` is
+build-only output while `bin/gruff-go.sh` remains the tracked launcher. Build the
+binary on demand with `scripts/build-bin-gruff-go.sh` or the performance harness (`scripts/test-performance.sh`,
 search: `if [[ ! -x "$BIN" ]]`); both `go build` into `bin/` when it is missing, and
 `go build -o` creates the directory. `.gitattributes` (search: `Release archive hygiene`)
 also carries a `/bin export-ignore` backstop so a force-added binary can never reach a

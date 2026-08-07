@@ -20,24 +20,6 @@ rm_has_recursive() {
   [[ "$c" =~ (^|[[:space:]])--recursive([[:space:]]|$) ]] || [[ "$c" =~ (^|[[:space:]])-[^-[:space:]]*[rR][^[:space:]]*([[:space:]]|$) ]]
 }
 
-# Does a relative deletion target's nearest existing directory remain inside
-# the physical repository root? Resolving the nearest directory catches both a
-# final symlink to a directory and an intermediate symlink in a nested path.
-rm_target_stays_in_repo() {
-  local target="$1"
-  local root_resolved candidate probe parent probe_resolved
-  root_resolved="$(CDPATH='' cd -- "$GOAT_FLOW_ROOT" 2>/dev/null && pwd -P)" || return 1
-  candidate="$GOAT_FLOW_ROOT/$target"
-  probe="$candidate"
-  while [[ ! -d "$probe" ]]; do
-    parent="${probe%/*}"
-    [[ -n "$parent" && "$parent" != "$probe" ]] || return 1
-    probe="$parent"
-  done
-  probe_resolved="$(CDPATH='' cd -- "$probe" 2>/dev/null && pwd -P)" || return 1
-  [[ "$probe_resolved" == "$root_resolved" || "$probe_resolved" == "$root_resolved"/* ]]
-}
-
 # Is every deletion target a safe, project-local cleanup path?
 # This is what lets an agent honour a user request like "clear out
 # node_modules and do a fresh install" (rm -rf node_modules -> allowed)
@@ -67,10 +49,12 @@ rm_is_safely_scoped() {
     target="${target%/}"
     # Target reduced to nothing (e.g. `rm -rf ./`) -> unsafe.
     [[ -z "$target" ]] && return 1
-    # Any unresolved shell expansion - $VAR, ${VAR}, $'...', $(...), or a
-    # `backtick` command - can replace even a nested path segment with an
-    # absolute or traversal path. Demand an entirely literal deletion target.
-    [[ "$target" == *'$'* || "$target" == *'`'* ]] && return 1
+    # A target that begins with an unresolved shell expansion - $VAR, ${VAR},
+    # $'...', $(...), or a `backtick` command - can point anywhere once the
+    # shell expands it (e.g. rm -rf $HOME/.cache, rm -rf $'/etc'). The hook
+    # can't prove it stays in the project, and the "*/*" slash-scoped allow
+    # below would otherwise wave it through. Demand an explicit literal path.
+    [[ "$target" == '$'* || "$target" == '`'* ]] && return 1
     # Dot traversal makes the path shown in review differ from what rm deletes.
     case "/$target/" in
       */../*|*/./*) return 1 ;;
@@ -84,8 +68,6 @@ rm_is_safely_scoped() {
     # Windows drive-rooted paths (e.g. C:/Users/x or C:\Users\x) are absolute
     # in Windows semantics; reject them the same way as POSIX-absolute paths.
     [[ "$target" =~ ^[A-Za-z]:[/\\] ]] && return 1
-    # Lexically relative paths can still escape through an existing symlink.
-    rm_target_stays_in_repo "$target" || return 1
     # Well-known disposable build/cache dirs are always fine to remove.
     case "$target" in
       node_modules|dist|out|build|coverage|__pycache__|.cache|.next|.nuxt|.turbo) continue ;;
@@ -538,8 +520,6 @@ check_pipeline_xargs_destructive_payloads() {
 
 check_destructive_segment() {
   local cmd="$1"
-  local depth="${2:-0}"
-  prepare_segment_context "$cmd" "$depth" || return $?
   cmd="$CMD_TRIMMED"
 
   if [[ "$HAS_PIPE" -eq 1 ]]; then

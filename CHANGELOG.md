@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - **Review security hardening** - Fixes six URL, random-token, recursive-delete, and analyzer-binary validation gaps.
+- **GOAT Flow 1.15.0** - Updates Codex skills, safety hooks, permission profiles, setup references, and managed-install drift protection.
 
 ## v0.5.0 - 2026-08-06
 
