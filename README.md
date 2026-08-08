@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
 [![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
 
-`gruff-go` is an opinionated code-quality scanner for Go, built to govern AI-generated code. Its primary use is as a **coding-agent hook**: it forces an agent to produce code a human who didn't write it can read, review, and trust. It reads Go packages, scores findings across quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
+`gruff-go` is an opinionated, parser-only code-quality scanner for Go, built to govern AI-generated code. It reads Go packages without executing them, scores findings across 11 quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
 
 ## Mission
 
@@ -41,7 +41,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 - Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
 - No runtime dependencies outside the Go standard library.
 
-The project-pinned install flow uses Go's `tool` support, introduced before this module's current Go requirement. The binary itself still requires Go `1.25+`.
+The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24` or newer. The binary itself requires Go `1.25+`, so that is the effective floor.
 
 ## Install
 
@@ -240,7 +240,7 @@ go tool gruff-go dashboard --project .
 
 The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
 
-In polyglot repositories, remember that `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
+In polyglot repositories, `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
 
 ## Trust Boundary
 
@@ -272,12 +272,16 @@ make check
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md)
+[`docs/`](docs/README.md) indexes the full set. The most-used entries:
+
+- [Agent guardrail](docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
 - [Configuration](docs/configuration.md)
 - [Output formats](docs/output-formats.md)
 - [Rules](docs/rules.md)
 - [Dashboard](docs/dashboard.md)
 - [CI integration](docs/ci-integration.md)
+- [Releasing](docs/releasing.md)
+- [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 

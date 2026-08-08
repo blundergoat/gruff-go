@@ -2,14 +2,17 @@
 
 ## [Unreleased]
 
-- **Owned agent instruction headers** - `scripts/bump-version.sh` now classifies the `CLAUDE.md` and `.github/copilot-instructions.md` product headers as `source-current`, so a stale instruction-file version fails `--check-references` instead of going unscanned. Both headers were three releases behind at `v0.2.0`.
-- **Claude harness repair** - Refreshes the Claude goat skills to the GOAT Flow 1.15.0 templates, migrates Claude settings off stale unmatched permission rules onto the managed hook launcher with the post-turn safety guard registered, and fixes the code-map commit-guidance path.
+- **`size.file-length` line anchor** - The finding now points at the physical line crossing the substantive budget, so changed-region scans keep it.
+- **CI recipes use `--since`** - `docs/ci-integration.md` leads with `--since <ref>`; `--diff-base` still works, as the older name.
+- **Instruction-header version gate** - `bump-version.sh --check-references` now scans the `CLAUDE.md` and Copilot headers, stale since `v0.2.0`.
+- **Changelog schema names** - v0.2.0 entries named a `summary --format=json` schema that never shipped; the real name is `gruff.summary.v2`.
+- **Claude agent harness** - Refreshes Claude skills to GOAT Flow 1.15.0 and registers the managed hook launcher with the post-turn safety guard.
 - **Review security hardening** - Fixes six URL, random-token, recursive-delete, and analyzer-binary validation gaps.
 - **GOAT Flow 1.15.0** - Updates Codex skills, safety hooks, permission profiles, setup references, and managed-install drift protection.
 
 ## v0.5.0 - 2026-08-06
 
-Version 0.5.0 strengthens security detection and secret redaction, makes scoring and baselines more trustworthy, tightens configuration and path handling, and improves rule precision, agent hooks, verification, and release tooling.
+Secret previews are now redacted by default, the composite scores every rule-backed pillar rather than only those carrying findings, and baseline entries match one-to-one so one reviewed secret cannot hide another. Fatal diagnostics always exit `2`.
 
 - **Review-driven security correctness** - Tightens URL, redirect, random-token, HTTP-client, and connection-string detection.
 - **Deny-by-default secret previews** - Emits redacted or fixed markers across all sensitive-data rules and output surfaces.
@@ -68,12 +71,12 @@ Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that ma
 
 ## v0.2.0 - 2026-05-28
 
-Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration notes are in the per-change entries below.
+Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff.summary.v2` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration notes are in the per-change entries below.
 
 - **Severity vocabulary** - 5→3 buckets (`advisory / warning / error`) matching gruff-rs / gruff-ts / gruff-py / gruff-php. The old names (`critical / high / medium / low / info / notice / warn`) are rejected at config and CLI load with `unknown severity "<name>"`. Mapping: `critical / high → error`; `medium / warn → warning`; `low / info / notice → advisory`; `info` dropped (no rule emitted it). See [ADR-009](.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md).
 - **Per-command `minimumSeverity:` block** - New top-level `.gruff-go.yaml` key with sub-keys `analyse / summary / report / dashboard` and values `advisory | warning | error | none`. Precedence: CLI flag > config block > binary default. Additive and optional - configs without the block load unchanged; no config schema bump. Default thresholds split per command: `analyse / summary: medium → advisory` (gating commands fail loudly on any finding), `report / dashboard: medium → none` (inspection commands never exit 1). Set `minimumSeverity.analyse: warning` to retain the prior `medium`-equivalent gate. See [ADR-010](.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
 - **Analysis output schema** - `gruff-go.analysis.v0.1 → v0.2`. Keys in `Report.Summary.CountsBySeverity` and `PillarDetail.{Critical, High, Medium, Low, Info}` change shape to `{Advisory, Warning, Error}`. SARIF readers see the same output `level` mapping (`error / warning / note`) - the simplification is internal. Per-severity penalty weights also collapse `1 / 3 / 8 / 15 / 30 → 1 / 8 / 30`; pillar scores shift at the margin and consumers tracking trends should re-baseline against `v0.2.0` snapshots.
-- **`summary --format=json` digest** - Returns the new `gruff-go.summary.v0.1` schema instead of the analysis schema: `schemaVersion` plus a `pillars` array with `grade`, `score`, `applicable`, and per-severity counts. Consumers that parsed the full analysis payload from `summary --format=json` should switch to `analyse --format=summary-json` (continues at `gruff-go.analysis.v0.2`).
+- **`summary --format=json` digest** - Returns the new `gruff.summary.v2` schema instead of the analysis schema: `schemaVersion` plus a `pillars` array with `grade`, `score`, `applicable`, and per-severity counts. Consumers that parsed the full analysis payload from `summary --format=json` should switch to `analyse --format=summary-json` (continues at `gruff-go.analysis.v0.2`).
 - **Markdown output** - `analyse --format=markdown` (alias `md`) renders a CommonMark digest tuned for CI logs and GitHub PR comments: short header, severity totals, the canonical 7-column Pillars table, top-rules block when findings exist.
 - **Canonical Pillars table** - 7-column block (pillar, grade, score, findings, advisory, warning, error - sorted by findings descending then pillar ascending) now shared across `summary` text output, `analyse --format=html` (replaces the previous card grid; scores render with two decimal places), and the new markdown format. Always covers all ten gruff-go pillars; clean scans surface as grade A rows with zero counts.
 - **`penalty` field on pillars** - New field on `PillarDetail` JSON and `gruff.summary.v2` pillar objects. Raw, unclamped score deduction (score is still `max(0, 100 - penalty)`) preserves worst-pillar ranking when scores floor at zero: a pillar with 200 advisory findings reports `penalty=200, score=0`, distinct from one error finding at `penalty=30, score=70`.

@@ -37,11 +37,13 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    gruff-go analyse --generate-baseline gruff-baseline.json .
    ```
 
-Inside a PR, prefer `--diff-base origin/main` to scope findings to changed lines only:
+Inside a PR, prefer `--since origin/main` to scope findings to the changed region only:
 
 ```bash
-gruff-go analyse --diff-base origin/main .
+gruff-go analyse --since origin/main .
 ```
+
+`--diff-base <ref>` is the older name for the same base-ref scoping and still works, so existing pipelines need no change. New recipes should use `--since`, which sits alongside `--diff`, `--changed-ranges`, and `--changed-scope symbol|hunk`.
 
 Diff mode records a `"diff mode is changed-line scoped"` caveat in the report so consumers know the scan wasn't full-project.
 
@@ -64,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # required for --diff-base
+          fetch-depth: 0  # required for --since
 
       - uses: actions/setup-go@v5
         with:
@@ -76,7 +78,7 @@ jobs:
       - name: Scan (diff-mode for PRs, full for push)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gruff-go analyse --baseline gruff-baseline.json --diff-base origin/${{ github.base_ref }} --format github .
+            gruff-go analyse --baseline gruff-baseline.json --since origin/${{ github.base_ref }} --format github .
           else
             gruff-go analyse --baseline gruff-baseline.json --format github .
           fi
@@ -138,7 +140,7 @@ gruff-go:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-GitLab's SAST report consumer picks up SARIF directly. To scope MR pipelines to changed lines, add `--diff-base $CI_MERGE_REQUEST_DIFF_BASE_SHA`.
+GitLab's SAST report consumer picks up SARIF directly. To scope MR pipelines to changed lines, add `--since $CI_MERGE_REQUEST_DIFF_BASE_SHA`.
 
 ## CircleCI
 
@@ -202,13 +204,13 @@ repos:
     hooks:
       - id: gruff-go
         name: gruff-go
-        entry: gruff-go analyse --diff-base HEAD --min-severity error .
+        entry: gruff-go analyse --since HEAD --min-severity error .
         language: system
         pass_filenames: false
         types: [go]
 ```
 
-Pair `--diff-base HEAD` with `--min-severity error` so the hook stays fast and only blocks on serious regressions in the working tree.
+Pair `--since HEAD` with `--min-severity error` so the hook stays fast and only blocks on serious regressions in the working tree.
 
 ## Threshold knobs
 
@@ -239,6 +241,6 @@ threshold, including `none`.
 
 ## Common pitfalls
 
-- **Shallow clones** break `--diff-base`. Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
+- **Shallow clones** break base-ref scoping (`--since`, `--diff-base`). Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
 - **First run on a busy codebase** with thousands of findings is a waste of CI cycles. Generate a baseline locally first, commit it, and let CI scan against it.
 - **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff-go.yaml`.

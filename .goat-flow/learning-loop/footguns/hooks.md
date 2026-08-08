@@ -5,6 +5,30 @@ last_reviewed: 2026-08-08
 
 # Hook Footguns
 
+## Footgun: `deny-dangerous` rejects a leading `$VAR` in a delete target but allows one mid-path
+
+**Status:** active | **Created:** 2026-08-08 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** Do not treat a passing `deny-dangerous` check as proof a recursive delete stays inside the project when the target contains a variable anywhere after the first character.
+**Trigger phase:** ACT
+
+hallucination-risk: medium (the guard's own comment says an unresolved expansion "can point anywhere once the shell expands it", which reads as full coverage, but the test it describes is a prefix test)
+
+`.goat-flow/hooks/deny-dangerous/patterns-shell.sh` (search: `Demand an explicit literal path`) rejects a target that *begins* with `$` or a backtick. A target that merely *contains* one passes, and the neighbouring `..` traversal check runs against the pre-expansion string, so it sees nothing. Raised by coderabbit on PR #6.
+
+Measured 2026-08-08 with `bash .goat-flow/hooks/deny-dangerous.sh --check="<command>"`, one run each:
+
+| Delete target shape | Result |
+|---|---|
+| known-blocked control (`git push origin main`) | rc=2, so the probe reaches the policy |
+| scoped literal (`cache/build`) | rc=0, allowed by design |
+| leading variable (`$HOME/.cache`) | rc=2 |
+| mid-path backtick (``cache/`echo x` ``) | rc=2 |
+| **mid-path variable (`cache/$TARGET`, `./cache/${TARGET}`)** | **rc=0, allowed** |
+
+With `TARGET=../../outside` the last shape deletes outside the project after expansion.
+
+How to avoid: when a delete target is not a literal path, do not rely on the hook - resolve the variable and pass the expanded literal, or refuse the command. Probe with `--check=` before assuming a shape is covered, and always include a known-blocked control in the same run: an incorrectly invoked probe returns rc=0 for everything, including targets the live hook blocks. This file is goat-flow-managed, so fix it upstream rather than patching in tree, where the next `goat-flow install` would revert it.
+
 ## Footgun: the agent hook re-implements `internal/diff` changed-region logic in bash — the two drift
 
 **Status:** active | **Created:** 2026-06-04 | **Evidence:** OBSERVED

@@ -65,7 +65,8 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	if unit.File.Type != source.FileTypeGo {
 		return nil
 	}
-	substantiveLines := substantiveLineCount(unit)
+	codeLines := substantiveLineNumbers(unit)
+	substantiveLines := len(codeLines)
 	// Files within the configured limit stay out of the user's findings list.
 	if substantiveLines <= maxLines {
 		return nil
@@ -79,29 +80,35 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 		Message: fmt.Sprintf("file has %d substantive lines, above threshold %d", substantiveLines, maxLines),
 		File:    unit.File.Path,
 		Location: &finding.Location{
-			Line: maxLines + 1,
+			// Anchor to where the threshold is actually crossed. The count skips
+			// blanks and comments, so the physical line of the (maxLines+1)th code
+			// line is what a reviewer opens and what changed-region filtering matches.
+			Line: codeLines[maxLines],
 		},
 		Metadata: metadata,
 	}}
 }
 
-// substantiveLineCount counts lines carrying code: blank lines and comment-only lines are free.
+// substantiveLineNumbers returns the 1-based physical line number of every line
+// carrying code, in source order. Blank and comment-only lines are omitted, so the
+// caller gets both the count (via len) and where each counted line actually sits -
+// the two differ whenever a file carries documentation or spacing.
 // Comment ranges come from the parsed AST, so strings containing comment markers stay substantive;
 // parse-failed files fall back to counting non-blank raw lines.
-func substantiveLineCount(unit parser.Unit) int {
+func substantiveLineNumbers(unit parser.Unit) []int {
 	sourceWithoutComments := []byte(unit.Source)
 	// Parsed comment positions keep quoted comment markers visible as user code.
 	if unit.AST != nil && unit.FileSet != nil {
 		maskParsedComments(sourceWithoutComments, unit)
 	}
-	substantiveLines := 0
+	lineNumbers := []int{}
 	// Every remaining non-empty line represents code the user must review.
-	for _, line := range strings.Split(string(sourceWithoutComments), "\n") {
+	for index, line := range strings.Split(string(sourceWithoutComments), "\n") {
 		if strings.TrimSpace(line) != "" {
-			substantiveLines++
+			lineNumbers = append(lineNumbers, index+1)
 		}
 	}
-	return substantiveLines
+	return lineNumbers
 }
 
 // maskParsedComments replaces parsed comment text with spaces while preserving lines.

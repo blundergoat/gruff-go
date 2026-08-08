@@ -480,3 +480,30 @@ func parseOne(t *testing.T, rel string, contents string) parser.Unit {
 	}
 	return units[0]
 }
+
+// TestFileLengthAnchorsToSubstantiveThresholdLine pins the finding to the physical
+// line where the substantive-line budget is actually spent. Counting skips blanks
+// and comments, so a documented file crosses the threshold far below its physical
+// line number; anchoring to the raw count would drop the finding outside a
+// changed-region scan of the code that caused it.
+func TestFileLengthAnchorsToSubstantiveThresholdLine(t *testing.T) {
+	var builder strings.Builder
+	builder.WriteString("// Package sample is a test package.\npackage sample\n")
+	for index := 0; index < 20; index++ {
+		builder.WriteString("// filler comment\n")
+	}
+	for index := 0; index < 8; index++ {
+		builder.WriteString("var V" + string(rune('a'+index)) + " = 1\n")
+	}
+	unit := parseOne(t, "long.go", builder.String())
+
+	findings := FileLengthRule{MaxLines: 5}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("findings = %d, want 1", len(findings))
+	}
+	// package + 5 vars = 6 substantive lines; the 6th sits after the comment block.
+	const wantLine = 27
+	if got := findings[0].Location.Line; got != wantLine {
+		t.Fatalf("finding line = %d, want %d (physical line of the 6th substantive line)", got, wantLine)
+	}
+}
