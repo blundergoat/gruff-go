@@ -202,6 +202,37 @@ EOF
     TESTS_RUN=$((TESTS_RUN + 1))
 }
 
+# test_instruction_header_ownership proves the Claude and Copilot product headers
+# are owned source references, so a stale instruction title cannot ship unnoticed.
+test_instruction_header_ownership() {
+    local root="$TMP_DIR/instruction" guard_bin="$TMP_DIR/instruction-guard" status output
+    write_source_tree "$root" "2.1.0" "2.1.0" "2.1.0"
+    write_guard_tools "$guard_bin"
+    mkdir -p "$root/.github"
+    printf '%s\n' '# gruff-go - Go code-quality scanner (v2.1.0)' >"$root/CLAUDE.md"
+    printf '%s\n' '# gruff-go - Go code-quality scanner (v2.1.0)' >"$root/.github/copilot-instructions.md"
+    # AGENTS.md keeps a GOAT Flow header, which stays outside gruff-go ownership.
+    printf '%s\n' '# AGENTS.md - v1.13.1 (2026-07-13)' >"$root/AGENTS.md"
+    run_checker "$root" "2.1.0" "$TMP_DIR/instruction.out" "$TMP_DIR/instruction.err" \
+        "$TMP_DIR/instruction.status" "$guard_bin"
+    status=$(<"$TMP_DIR/instruction.status")
+    output=$(<"$TMP_DIR/instruction.out")
+    assert_equal "0" "$status" "current instruction headers exit"
+    assert_contains "$output" $'source-current\tCLAUDE.md\t1\tv2.1.0' "Claude header owned row"
+    assert_contains "$output" $'source-current\t.github/copilot-instructions.md\t1\tv2.1.0' "Copilot header owned row"
+    [[ "$output" != *"AGENTS.md"* ]] || fail "GOAT Flow AGENTS header claimed gruff-go ownership"
+
+    # A stale header is the drift this ownership exists to catch.
+    printf '%s\n' '# gruff-go - Go code-quality scanner (v0.2.0)' >"$root/CLAUDE.md"
+    run_checker "$root" "2.1.0" "$TMP_DIR/instruction-stale.out" "$TMP_DIR/instruction-stale.err" \
+        "$TMP_DIR/instruction-stale.status" "$guard_bin"
+    status=$(<"$TMP_DIR/instruction-stale.status")
+    output=$(<"$TMP_DIR/instruction-stale.out")
+    assert_equal "1" "$status" "stale instruction header exit"
+    assert_contains "$output" $'source-current\tCLAUDE.md\t1\tv0.2.0' "stale Claude header row"
+    TESTS_RUN=$((TESTS_RUN + 1))
+}
+
 # test_invalid_arguments pins input validation without needing repository state.
 test_invalid_arguments() {
     local root="$TMP_DIR/invalid" status args
@@ -254,6 +285,7 @@ test_already_current_noop() {
 
 test_classification_and_order
 test_clean_review_rows
+test_instruction_header_ownership
 test_invalid_arguments
 test_already_current_noop
 

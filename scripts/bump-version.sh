@@ -237,6 +237,15 @@ scan_owned_prose_file() {
       continue
     fi
 
+    # Product-labelled agent instruction headers state the version this checkout
+    # reports, so they are owned source references rather than published pins.
+    # AGENTS.md is excluded on purpose: its header carries a GOAT Flow version.
+    if [[ ( "$relative_path" == "CLAUDE.md" || "$relative_path" == ".github/copilot-instructions.md" ) \
+      && "$line_number" -eq 1 && "$line_text" == *'gruff-go'* ]]; then
+      record_semver_from_line "source-current" "$relative_path" "$line_number" "$line_text"
+      continue
+    fi
+
     unclassified_candidate=0
     # A product-labelled instruction header needs ownership, while an AGENTS or
     # GOAT Flow instruction-file version is not a gruff-go release reference.
@@ -259,6 +268,8 @@ scan_owned_prose() {
   local root=$1 documentation_path
   local -a owned_paths=(
     "AGENTS.md"
+    "CLAUDE.md"
+    ".github/copilot-instructions.md"
     "README.md"
     "SECURITY.md"
     "CONTRIBUTING.md"

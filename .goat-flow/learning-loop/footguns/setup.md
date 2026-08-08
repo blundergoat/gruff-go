@@ -109,6 +109,33 @@ The CLI now supports strict gruff config discovery, baselines, diff filtering, s
 
 How to avoid: run `scripts/bump-version.sh --check-references --root . --source-version <X.Y.Z>` before the bump. Every `source-current` row must equal the source version; independently resolve every `published-install` row and review `security-support` against that public line. Classify by owner/context, never by exempting a numeric value. Published pins and the changelog date move at tag time unless the release deliberately leads with docs. Never link a committed doc to `.goat-flow/scratchpad/`.
 
+## Footgun: `stats --check` only greps a semantic anchor when the path sits immediately before `(search: ...)`
+
+**Status:** active | **Created:** 2026-08-08 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** Write every learning-loop anchor as a backticked path immediately followed by `(search: ...)`. Any other phrasing still reads like evidence to a human but is never checked, so a green `stats --check` is not proof that the entry's anchors resolve.
+**Trigger phase:** VERIFY
+
+hallucination-risk: high (`.goat-flow/skill-docs/skill-preamble.md` states that `stats --check` fails on stale refs, and it does - but only for the canonical citation form, so an agent that runs the gate and sees `status: pass` will report anchor health the gate never measured)
+
+The `stale-ref` rule does open cited files and grep the anchor. Its recogniser is form-sensitive: it matches only `` `path` (search: `anchor`) `` with the path adjacent to the search clause. Prose variants are parsed as ordinary text and silently skipped.
+
+Measured 2026-08-08 on a throwaway fixture, one bucket, four entries, one run each:
+
+Each fixture entry cited a real file with an anchor string that appears nowhere in it. Citation forms are described rather than reproduced here, because a literal canonical citation in this entry would itself be parsed as a live claim - see the `Do not backtick nonexistent illustrative paths` lesson.
+
+| Citation form | Result |
+|---|---|
+| Backticked path, then immediately the search clause in parens | **caught** - `stale-ref` raised |
+| Path moved inside the parens, before the colon and anchor | not caught |
+| Backticked path, prose words, then the search clause | not caught |
+| Path and search clause together in one paren group, comma-separated | not caught |
+
+Two live entries had drifted through exactly this hole before it was found: `.goat-flow/learning-loop/footguns/severity.md` used the parens form to cite an `ADR-009: default is` anchor that no longer existed anywhere in `internal/cli/cli.go` after the flag defaults moved to `internal/cli/analyse_flags.go`, and `.goat-flow/learning-loop/footguns/calibration.md` used the prose form to attribute `scan_module` and `cd "$module_root"` to `scripts/calibrate-scratchpad-corpus.sh`, which had since become a 14-line shim. Both files existed, both anchors returned zero lines, and the gate reported `{"status": "pass", "findings": [], "warnings": []}`.
+
+The gate is not inert - it caught a real regression in this same session when a `.goat-flow/code-map.md` rewrite deleted the `Local build output directory` phrase that `.goat-flow/learning-loop/footguns/build-artifacts.md` cites in canonical form.
+
+How to avoid: use the canonical form so the gate covers you, and repeat the path when one entry cites two anchors in the same file rather than chaining them into one clause. After moving a symbol between files or replacing a script with a shim, grep the learning loop for the old anchor directly - `rg -F '<old-anchor>' .goat-flow/learning-loop/` - because the gate will not do it for non-canonical citations. Re-point a dead anchor at the live symbol rather than deleting it; the recorded claim usually survives the refactor that broke its navigation.
+
 ## Footgun: `goat-flow audit --check-content` reports framework dashboard views as project drift; the fix it suggests is a false claim
 
 **Status:** active | **Created:** 2026-08-08 | **Evidence:** OBSERVED

@@ -10,7 +10,7 @@
 - `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0` and prefers toolchain `go1.25.12`.
 - `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 83-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
-- `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts).
+- `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts), plus one tracked file: `bin/gruff-go.sh`, the committed family launcher mirroring the sibling ports' `bin/gruff-<lang>` entrypoints, which rebuilds and execs the gitignored `bin/gruff-go` binary.
 - `scripts/preflight-checks.sh` = Primary completion gate across metadata, dependency and vulnerability audits, shell checks, Go formatting/vet/tests, and dogfood; defaults to the `go.mod` toolchain unless `GOTOOLCHAIN` is explicit.
 - `scripts/bump-version.sh` = Updates every in-tree version literal, regenerates CLI golden snapshots, and exposes the non-mutating source/published/security reference scanner used by the bump path.
 - `scripts/bump-version_test.sh` = Disposable non-Git fixture suite for reference ownership, failure rows, stable ordering, and no-write/no-op guarantees.

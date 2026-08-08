@@ -1,6 +1,6 @@
 ---
 category: severity
-last_reviewed: 2026-07-13
+last_reviewed: 2026-08-08
 ---
 
 # Severity Footguns
@@ -34,7 +34,7 @@ How to avoid:
 hallucination-risk: medium (the migration touched the *parser* and the *CLI default* but not the dashboard fallback; the dashboard's fallback constant looks correct in isolation and only diverges when compared to `internal/cli/cli.go`'s default)
 
 Evidence:
-- `internal/dashboard/handler.go` (search: `failOn = finding.DefaultFailThresholdFor`) — when `state.FailOn` is invalid and `opts.FailOn` doesn't parse, the dashboard falls back through the shared `DefaultFailThresholdFor("dashboard")` helper (ADR-010). Pre-ADR-009 that fallback was `SeverityMedium` (the old CLI default). After ADR-009 the CLI default became `SeverityAdvisory` (search `cli.go`: `ADR-009: default is`), but the dashboard fallback was first migrated to `SeverityWarning` (the *renamed* old default), not `SeverityAdvisory`. That made the dashboard quietly stricter than the CLI by one bucket.
+- `internal/dashboard/handler.go` (search: `failOn = finding.DefaultFailThresholdFor`) — when `state.FailOn` is invalid and `opts.FailOn` doesn't parse, the dashboard falls back through the shared `DefaultFailThresholdFor("dashboard")` helper (ADR-010). Pre-ADR-009 that fallback was `SeverityMedium` (the old CLI default). After ADR-009 the CLI default became `SeverityAdvisory` — see `internal/cli/analyse_flags.go` (search: `ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor`), since the flag defaults were extracted out of `cli.go`, which no longer mentions ADR-009. The dashboard fallback was first migrated to `SeverityWarning` (the *renamed* old default), not `SeverityAdvisory`. That made the dashboard quietly stricter than the CLI by one bucket.
 - The codex-connector bot reviewing PR #3 flagged this line as a "preserve legacy fail-on" concern; the actual bug it surfaces is a different one — the fallback target drifted from the CLI default during the rename.
 
 What this means in practice: any time the CLI's default `--min-severity` (or any other per-command threshold default) changes, five places need to move in lockstep:
