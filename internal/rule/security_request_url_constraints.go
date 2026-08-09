@@ -20,9 +20,9 @@ type parsedDestinationEvidence struct {
 // bodyHasParsedDestinationAllowlist accepts a parsed URL only when earlier
 // return guards constrain both its HTTP scheme and exact host.
 func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkValueNames map[string]bool, sinkPosition token.Pos) bool {
-	parsedURLNames := parsedURLNamesForValue(requestScope, functionBody, sinkValueNames, sinkPosition)
+	parsedURLAssignments := parsedURLNamesForValue(requestScope, functionBody, sinkValueNames, sinkPosition)
 	// Keep the finding when the scanned sink is not linked to a parsed URL local.
-	if len(parsedURLNames) == 0 {
+	if len(parsedURLAssignments) == 0 {
 		return false
 	}
 	constraintEvidence := map[string]parsedDestinationEvidence{}
@@ -36,6 +36,7 @@ func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, function
 		if !isReturnGuard || returnGuard.Pos() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
 			return true
 		}
+		parsedURLNames := parsedURLNamesValidAt(functionBody, parsedURLAssignments, returnGuard.Pos())
 		collectParsedDestinationEvidence(returnGuard.Cond, parsedURLNames, constraintEvidence)
 		return true
 	})
@@ -51,8 +52,8 @@ func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, function
 
 // parsedURLNamesForValue links a report sink to locals created by net/url
 // parsing before that sink, including `parsed.String()` request arguments.
-func parsedURLNamesForValue(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkValueNames map[string]bool, sinkPosition token.Pos) map[string]bool {
-	parsedURLNames := map[string]bool{}
+func parsedURLNamesForValue(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkValueNames map[string]bool, sinkPosition token.Pos) map[string][]token.Pos {
+	parsedURLAssignments := map[string][]token.Pos{}
 	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
 		// Nested handlers have separate user input and do not validate this sink.
 		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
@@ -85,11 +86,31 @@ func parsedURLNamesForValue(requestScope *requestTaintScope, functionBody *ast.B
 		parsedURLName, hasNamedResult := parseAssignment.Lhs[0].(*ast.Ident)
 		// Blank results cannot be referenced by a later scheme or host guard.
 		if hasNamedResult && parsedURLName.Name != "_" {
-			parsedURLNames[parsedURLName.Name] = true
+			parsedURLAssignments[parsedURLName.Name] = append(parsedURLAssignments[parsedURLName.Name], parseAssignment.End())
 		}
 		return true
 	})
-	return parsedURLNames
+	return parsedURLAssignments
+}
+
+// parsedURLNamesValidAt returns parsed results still bound to a linked parse
+// when one guard evaluates. Later reuse cannot erase earlier valid evidence,
+// while an overwrite before the guard prevents stale checks from counting.
+func parsedURLNamesValidAt(functionBody *ast.BlockStmt, assignmentsByName map[string][]token.Pos, guardPosition token.Pos) map[string]bool {
+	validNames := map[string]bool{}
+	for parsedURLName, assignmentPositions := range assignmentsByName {
+		for assignmentIndex := len(assignmentPositions) - 1; assignmentIndex >= 0; assignmentIndex-- {
+			assignmentPosition := assignmentPositions[assignmentIndex]
+			if assignmentPosition >= guardPosition {
+				continue
+			}
+			if !anyNameAssignedBetween(functionBody, map[string]bool{parsedURLName: true}, assignmentPosition, guardPosition) {
+				validNames[parsedURLName] = true
+				break
+			}
+		}
+	}
+	return validNames
 }
 
 // parsedValueLinkNames returns the sink locals that connect one parse result or

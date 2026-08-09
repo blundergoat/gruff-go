@@ -8,6 +8,7 @@
 - **Changelog schema names** - v0.2.0 entries named a `summary --format=json` schema that never shipped; the real name is `gruff.summary.v2`.
 - **Claude agent harness** - Refreshes Claude skills to GOAT Flow 1.15.0 and registers the managed hook launcher with the post-turn safety guard.
 - **Review security hardening** - Fixes six URL, random-token, recursive-delete, and analyzer-binary validation gaps.
+- **Review precision follow-ups** - Keeps stale or optional URL guards visible, respects redirect branches and HTTP-client shadowing, recognises pool-independent token assembly, and keeps replacement symbol-less security findings new against baselines.
 - **GOAT Flow 1.15.0** - Updates Codex skills, safety hooks, permission profiles, setup references, and managed-install drift protection.
 
 ## v0.5.0 - 2026-08-06

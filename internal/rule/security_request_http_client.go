@@ -8,9 +8,13 @@ import (
 	"go/token"
 )
 
+// httpClientVariables identifies lexical bindings, not identifier text, so a
+// custom client that shadows an http.Client does not inherit its sink status.
+type httpClientVariables map[*ast.Object]bool
+
 // httpClientURLArg reports the URL argument index and a sink label for net/http
 // client calls, including package helpers and known http.Client values.
-func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases, httpClientVariables map[string]bool) (int, string, bool) {
+func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases map[string]bool, clientVariables httpClientVariables) (int, string, bool) {
 	methodSelector, isSelector := candidateCall.Fun.(*ast.SelectorExpr)
 	// A plain function call is not one of the net/http sinks shown to users.
 	if !isSelector {
@@ -30,7 +34,7 @@ func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases, httpClien
 		return 0, "", false
 	}
 	// Known client values use the first argument as their destination URL.
-	if isHTTPClientReceiver(methodSelector.X, httpPackageAliases, httpClientVariables) {
+	if isHTTPClientReceiver(methodSelector.X, httpPackageAliases, clientVariables) {
 		switch methodSelector.Sel.Name {
 		case "Get", "Head", "Post", "PostForm":
 			return 0, "client." + methodSelector.Sel.Name, true
@@ -41,10 +45,10 @@ func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases, httpClien
 
 // isHTTPClientReceiver recognises a collected http.Client or DefaultClient.
 // Use it so method-based fetches appear beside package-helper findings in the UI.
-func isHTTPClientReceiver(receiverExpression ast.Expr, httpPackageAliases, httpClientVariables map[string]bool) bool {
+func isHTTPClientReceiver(receiverExpression ast.Expr, httpPackageAliases map[string]bool, clientVariables httpClientVariables) bool {
 	switch receiverValue := receiverExpression.(type) {
 	case *ast.Ident:
-		return httpClientVariables[receiverValue.Name]
+		return receiverValue.Obj != nil && clientVariables[receiverValue.Obj]
 	case *ast.SelectorExpr:
 		packageIdentifier, isIdentifier := receiverValue.X.(*ast.Ident)
 		return isIdentifier && httpPackageAliases[packageIdentifier.Name] && receiverValue.Sel.Name == "DefaultClient"
@@ -54,8 +58,8 @@ func isHTTPClientReceiver(receiverExpression ast.Expr, httpPackageAliases, httpC
 
 // collectHTTPClientVars records locals bound to an http.Client value.
 // The URL scan uses them to show method-based outbound requests to the user.
-func collectHTTPClientVars(functionBody *ast.BlockStmt, httpPackageAliases map[string]bool) map[string]bool {
-	httpClientVariables := map[string]bool{}
+func collectHTTPClientVars(functionBody *ast.BlockStmt, httpPackageAliases map[string]bool) httpClientVariables {
+	clientVariables := httpClientVariables{}
 	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
 		// A nested callback gets its own scan context and client-variable list.
 		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
@@ -70,7 +74,9 @@ func collectHTTPClientVars(functionBody *ast.BlockStmt, httpPackageAliases map[s
 				if !isIdentifier || clientName.Name == "_" || valueIndex >= len(statement.Rhs) || !isHTTPClientExpr(statement.Rhs[valueIndex], httpPackageAliases) {
 					continue
 				}
-				httpClientVariables[clientName.Name] = true
+				if clientName.Obj != nil {
+					clientVariables[clientName.Obj] = true
+				}
 			}
 		case *ast.ValueSpec:
 			// Track declared client values for the same user-visible method sinks.
@@ -81,12 +87,14 @@ func collectHTTPClientVars(functionBody *ast.BlockStmt, httpPackageAliases map[s
 				if clientName.Name == "_" || (!isTypedClient && !isInitializedClient) {
 					continue
 				}
-				httpClientVariables[clientName.Name] = true
+				if clientName.Obj != nil {
+					clientVariables[clientName.Obj] = true
+				}
 			}
 		}
 		return true
 	})
-	return httpClientVariables
+	return clientVariables
 }
 
 // isHTTPClientValueType recognises the usable zero-value `http.Client` type.

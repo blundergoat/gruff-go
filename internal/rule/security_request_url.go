@@ -376,6 +376,11 @@ func validatorCallProtectsSink(functionBody *ast.BlockStmt, validatorCall *ast.C
 		if !ok || !exprContainsExactCall(guard.Cond, validatorCall) {
 			return true
 		}
+		// A guard inside an optional outer branch does not dominate a sink after
+		// that branch; every enclosing control region must also contain the sink.
+		if !enclosingControlRegionsContainPosition(functionBody, guard, sinkPosition) {
+			return true
+		}
 		if guard.Body.Pos() < sinkPosition && sinkPosition < guard.Body.End() &&
 			conditionOutcomeImpliesValidator(guard.Cond, validatorCall, true) {
 			protected = true

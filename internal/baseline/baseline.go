@@ -259,7 +259,7 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 	// Only unmatched modern entries can participate in line-insensitive pairing.
 	for entryIndex, baselineEntry := range baselineEntries {
 		// Exact matches cannot be reused, and empty identities are legacy exact-only rows.
-		if pairing.baselineMatched[entryIndex] || baselineEntry.StableIdentity == "" || !allowsContractStableMatch(baselineEntry.RuleID) {
+		if pairing.baselineMatched[entryIndex] || baselineEntry.StableIdentity == "" || !ruleAllowsContractStableMatch(baselineEntry.RuleID) {
 			continue
 		}
 		identity := stableMatchKey{ruleID: baselineEntry.RuleID, file: baselineEntry.File, stableIdentity: baselineEntry.StableIdentity}
@@ -269,7 +269,7 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 	// Match each still-new current occurrence against one remaining prior row.
 	for findingIndex, currentFinding := range currentFindings {
 		// A current finding already paired exactly must not consume a second entry.
-		if pairing.currentMatched[findingIndex] || !allowsContractStableMatch(currentFinding.RuleID) {
+		if pairing.currentMatched[findingIndex] || !findingAllowsContractStableMatch(currentFinding) {
 			continue
 		}
 		identity := stableMatchKey{
@@ -290,12 +290,20 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 	}
 }
 
-// allowsContractStableMatch keeps line-insensitive matching for structural
-// debt while requiring sensitive findings to match their exact occurrence.
-// Otherwise one reviewed secret can hide a different secret elsewhere in the
-// same file because sensitive messages deliberately contain no secret bytes.
-func allowsContractStableMatch(ruleID string) bool {
+// ruleAllowsContractStableMatch keeps sensitive findings exact-only. Baseline
+// entries do not persist symbols, so generic security filtering happens when
+// the current finding supplies its semantic subject below.
+func ruleAllowsContractStableMatch(ruleID string) bool {
 	return !strings.HasPrefix(ruleID, "sensitive-data.")
+}
+
+// findingAllowsContractStableMatch requires generic security findings to match
+// exact locations while preserving line shifts for a named security subject.
+func findingAllowsContractStableMatch(currentFinding finding.Finding) bool {
+	if !ruleAllowsContractStableMatch(currentFinding.RuleID) {
+		return false
+	}
+	return !strings.HasPrefix(currentFinding.RuleID, "security.") || currentFinding.Symbol != ""
 }
 
 // exactMatchKey returns the persisted fingerprint identity for one prior row.

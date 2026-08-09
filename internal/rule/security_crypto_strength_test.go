@@ -206,6 +206,40 @@ func generateToken(size int) string {
 			want: 1,
 		},
 		{
+			name: "chars selection appended into token remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	chars := "abcdefghijklmnopqrstuvwxyz0123456789"
+	token := make([]byte, 0, size)
+	for range size {
+		token = append(token, chars[rand.Intn(len(chars))])
+	}
+	return string(token)
+}
+`,
+			want: 1,
+		},
+		{
+			name: "generic pool selection into token buffer remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	pool := "abcdefghijklmnopqrstuvwxyz0123456789"
+	token := make([]byte, size)
+	for index := range token {
+		token[index] = pool[rand.Intn(len(pool))]
+	}
+	return string(token)
+}
+`,
+			want: 1,
+		},
+		{
 			name: "alphabet selection appended into sample stays safe",
 			code: `package sample
 

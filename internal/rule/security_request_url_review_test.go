@@ -50,6 +50,26 @@ func TestRequestURLReviewRegressions(t *testing.T) {
 	_, _ = http.Get(target)`,
 		},
 		{
+			name: "parsed allowlist becomes stale after parsed result reassignment",
+			body: `target := r.FormValue("url")
+	parsed, _ := url.Parse(target)
+	parsed, _ = url.Parse("https://api.internal")
+	if parsed.Scheme != "https" || parsed.Hostname() != "api.internal" {
+		return
+	}
+	_, _ = http.Get(target)`,
+		},
+		{
+			name: "validator inside optional branch does not protect later sink",
+			body: `target := r.FormValue("url")
+	if r.Method == "POST" {
+		if !validatedDestination(target) {
+			return
+		}
+	}
+	_, _ = http.Get(target)`,
+		},
+		{
 			name: "mixed sanitizer result and raw value still flags",
 			body: `target := r.FormValue("url")
 	_, _ = http.Get(sanitizedURL(target) + target)`,
@@ -64,6 +84,41 @@ func TestRequestURLReviewRegressions(t *testing.T) {
 				t.Fatalf("findings = %#v, want one SSRF finding", findings)
 			}
 		})
+	}
+}
+
+// TestRequestURLNestedValidatorProtectsSinkInSameBranch preserves the safe
+// nested form where every path to the sink passes through the validator.
+func TestRequestURLNestedValidatorProtectsSinkInSameBranch(t *testing.T) {
+	body := `target := r.FormValue("url")
+	if r.Method == "POST" {
+		if !validatedDestination(target) {
+			return
+		}
+		_, _ = http.Get(target)
+	}`
+	unit := parseOne(t, "handler.go", requestURLConstraintSource("fetch", body))
+	findings := (RequestControlledURLRule{}).AnalyzeUnit(unit, Context{})
+	if len(findings) != 0 {
+		t.Fatalf("findings = %#v, want no SSRF finding", findings)
+	}
+}
+
+// TestRequestURLParsedAllowlistSurvivesLaterHelperReuse keeps valid evidence
+// when only the parsed helper local changes after it has constrained the sink value.
+func TestRequestURLParsedAllowlistSurvivesLaterHelperReuse(t *testing.T) {
+	body := `target := r.FormValue("url")
+	parsed, _ := url.Parse(target)
+	if parsed.Scheme != "https" || parsed.Hostname() != "api.internal" {
+		return
+	}
+	parsed, _ = url.Parse("https://audit.internal")
+	_ = parsed
+	_, _ = http.Get(target)`
+	unit := parseOne(t, "handler.go", requestURLConstraintSource("fetch", body))
+	findings := (RequestControlledURLRule{}).AnalyzeUnit(unit, Context{})
+	if len(findings) != 0 {
+		t.Fatalf("findings = %#v, want no SSRF finding", findings)
 	}
 }
 
@@ -121,6 +176,32 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 				t.Fatalf("findings = %#v, want %d SSRF findings", findings, testCase.want)
 			}
 		})
+	}
+}
+
+// TestRequestURLHTTPClientBindingRespectsLexicalScope keeps an inner custom
+// client out of the net/http sink set without losing the outer HTTP client.
+func TestRequestURLHTTPClientBindingRespectsLexicalScope(t *testing.T) {
+	unit := parseOne(t, "handler.go", `package handler
+
+import "net/http"
+
+type localClient struct{}
+
+func (localClient) Get(string) (*http.Response, error) { return nil, nil }
+
+func fetch(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{}
+	if r.Method == "POST" {
+		client := localClient{}
+		_, _ = client.Get(r.FormValue("inner"))
+	}
+	_, _ = client.Get(r.FormValue("outer"))
+}
+`)
+	findings := (RequestControlledURLRule{}).AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("findings = %#v, want only the outer HTTP-client finding", findings)
 	}
 }
 
@@ -184,6 +265,43 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
 		if len(findings) != 0 {
 			t.Fatalf("findings = %#v, want no open-redirect finding", findings)
+		}
+	})
+
+	t.Run("Location header and redirect status in exclusive branches", func(t *testing.T) {
+		unit := parseOne(t, "handler.go", `package handler
+
+import "net/http"
+
+func handle(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		w.Header().Set("Location", r.FormValue("next"))
+	} else {
+		w.WriteHeader(http.StatusFound)
+	}
+}
+`)
+		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+		if len(findings) != 0 {
+			t.Fatalf("findings = %#v, want no open-redirect finding", findings)
+		}
+	})
+
+	t.Run("Location header and redirect status in same branch", func(t *testing.T) {
+		unit := parseOne(t, "handler.go", `package handler
+
+import "net/http"
+
+func handle(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		w.Header().Set("Location", r.FormValue("next"))
+		w.WriteHeader(http.StatusFound)
+	}
+}
+`)
+		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+		if len(findings) != 1 {
+			t.Fatalf("findings = %#v, want one open-redirect finding", findings)
 		}
 	})
 }

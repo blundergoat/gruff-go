@@ -147,6 +147,45 @@ func TestApplyKeepsRelocatedSensitiveFindingNew(t *testing.T) {
 	}
 }
 
+// TestApplyKeepsRelocatedSecurityFindingNew prevents one reviewed security
+// occurrence from hiding a replacement occurrence elsewhere in the same file.
+func TestApplyKeepsRelocatedSecurityFindingNew(t *testing.T) {
+	reviewedFinding := finding.Finding{
+		RuleID:   "security.request-controlled-url",
+		Message:  "request-controlled value used as HTTP request URL without allowlist or validation (possible SSRF)",
+		File:     "handler.go",
+		Location: &finding.Location{Line: 10},
+	}.WithFingerprint()
+	replacementFinding := reviewedFinding
+	replacementFinding.Location = &finding.Location{Line: 40}
+	replacementFinding = replacementFinding.WithFingerprint()
+
+	matchResult := Apply([]finding.Finding{replacementFinding}, FromFindings([]finding.Finding{reviewedFinding}))
+	if matchResult.NewCount() != 1 || matchResult.UnchangedCount() != 0 || matchResult.ResolvedCount() != 1 {
+		t.Fatalf("relocated security result = %#v, want new/unchanged/resolved 1/0/1", matchResult)
+	}
+}
+
+// TestApplyKeepsSymbolAnchoredSecurityFindingUnchanged preserves line-insensitive
+// matching when a security finding names the same concrete symbol after a shift.
+func TestApplyKeepsSymbolAnchoredSecurityFindingUnchanged(t *testing.T) {
+	reviewedFinding := finding.Finding{
+		RuleID:   "security.request-controlled-url",
+		Message:  "request-controlled value used as HTTP request URL without allowlist or validation (possible SSRF)",
+		File:     "handler.go",
+		Symbol:   "FetchAvatar",
+		Location: &finding.Location{Line: 10},
+	}.WithFingerprint()
+	shiftedFinding := reviewedFinding
+	shiftedFinding.Location = &finding.Location{Line: 40}
+	shiftedFinding = shiftedFinding.WithFingerprint()
+
+	matchResult := Apply([]finding.Finding{shiftedFinding}, FromFindings([]finding.Finding{reviewedFinding}))
+	if matchResult.NewCount() != 0 || matchResult.UnchangedCount() != 1 || matchResult.ResolvedCount() != 0 {
+		t.Fatalf("symbol-anchored security result = %#v, want new/unchanged/resolved 0/1/0", matchResult)
+	}
+}
+
 // TestApplyThreeStateClassification is M24's mid-implementation proof: it
 // exercises new / unchanged / resolved across empty, fully-matched, and mixed
 // baselines, asserting both the collected slices and the legacy counts agree.

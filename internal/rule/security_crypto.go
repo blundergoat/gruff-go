@@ -44,10 +44,6 @@ var randomSafeContextWords = []string{
 	"test",
 }
 
-// randomAlphabetContextWords identify collections used to assemble generated
-// secret material one element at a time rather than select an existing value.
-var randomAlphabetContextWords = []string{"alphabet", "charset", "characters", "digits", "letters"}
-
 // mathRandAPIs are package-level math/rand calls that produce pseudo-random values.
 var mathRandAPIs = map[string]bool{
 	"Float32":   true,
@@ -225,13 +221,10 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 	if !ok {
 		return false
 	}
-	if _, alphabetLike := exprTextContext(selection.X, randomAlphabetContextWord); !alphabetLike {
-		return false
-	}
 	for ancestor := parents[selection]; ancestor != nil; ancestor = parents[ancestor] {
 		switch statement := ancestor.(type) {
 		case *ast.CallExpr:
-			if appendCallAddsSelection(statement, selection) {
+			if appendCallBuildsSecretBuffer(statement, selection, parents) {
 				return true
 			}
 		case *ast.AssignStmt:
@@ -254,6 +247,20 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 	return false
 }
 
+// appendCallBuildsSecretBuffer reports when a selected element is appended to
+// a security-named destination. The destination proves generation without
+// relying on conventional pool names such as alphabet, chars, or charset.
+func appendCallBuildsSecretBuffer(call *ast.CallExpr, selection *ast.IndexExpr, parents map[ast.Node]ast.Node) bool {
+	if !appendCallAddsSelection(call, selection) {
+		return false
+	}
+	if _, securityContext := exprTextContext(call.Args[0], randomSecurityContextWord); securityContext {
+		return true
+	}
+	_, securityContext := enclosingAssignmentContext(call, parents, randomSecurityContextWord)
+	return securityContext
+}
+
 // appendCallAddsSelection reports when the selected alphabet element is one of
 // append's added values rather than its destination slice.
 func appendCallAddsSelection(call *ast.CallExpr, selection *ast.IndexExpr) bool {
@@ -267,11 +274,6 @@ func appendCallAddsSelection(call *ast.CallExpr, selection *ast.IndexExpr) bool 
 		}
 	}
 	return false
-}
-
-// randomAlphabetContextWord classifies names used as character pools.
-func randomAlphabetContextWord(text string) (string, bool) {
-	return firstContextWord(text, randomAlphabetContextWords)
 }
 
 // unwrapRandomSelectionParens removes syntax-only parentheses before the

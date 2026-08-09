@@ -33,6 +33,11 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 		if !isSelector || !isIdentifier || selector.Sel.Name != "WriteHeader" || writer.Name != responseWriter {
 			return true
 		}
+		// Mutually exclusive branches cannot combine a Location value with a
+		// redirect status on any execution path.
+		if !nodesCanShareControlPath(functionBody, locationCall, statusCall) {
+			return true
+		}
 		found = isRedirectHTTPStatus(statusCall.Args[0], httpPackageAliases)
 		return !found
 	})
