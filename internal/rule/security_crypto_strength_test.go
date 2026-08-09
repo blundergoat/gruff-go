@@ -206,6 +206,40 @@ func generateToken(size int) string {
 			want: 1,
 		},
 		{
+			name: "alphabet selection concatenated into token remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	token := ""
+	for range size {
+		token += string(alphabet[rand.Intn(len(alphabet))])
+	}
+	return token
+}
+`,
+			want: 1,
+		},
+		{
+			name: "self-referential concatenation into token remains generation",
+			code: `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	token := ""
+	for range size {
+		token = token + string(alphabet[rand.Intn(len(alphabet))])
+	}
+	return token
+}
+`,
+			want: 1,
+		},
+		{
 			name: "chars selection appended into token remains generation",
 			code: `package sample
 

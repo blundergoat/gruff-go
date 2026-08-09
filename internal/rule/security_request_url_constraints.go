@@ -17,8 +17,9 @@ type parsedDestinationEvidence struct {
 	hasAllowedHost   bool
 }
 
-// bodyHasParsedDestinationAllowlist accepts a parsed URL only when earlier
-// return guards constrain both its HTTP scheme and exact host.
+// bodyHasParsedDestinationAllowlist accepts a parsed URL only when guards the
+// sink cannot skip constrain both its HTTP scheme and exact host. Parsing
+// establishes syntax, not destination trust, so nothing weaker clears the sink.
 func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkValueNames map[string]bool, sinkPosition token.Pos) bool {
 	parsedURLAssignments := parsedURLNamesForValue(requestScope, functionBody, sinkValueNames, sinkPosition)
 	// Keep the finding when the scanned sink is not linked to a parsed URL local.
@@ -27,7 +28,8 @@ func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, function
 	}
 	constraintEvidence := map[string]parsedDestinationEvidence{}
 	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
-		// Ignore nested callbacks because their checks do not protect the user's sink.
+		// A nested callback runs against its own arguments, so a guard inside it
+		// says nothing about the value reaching this sink.
 		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 			return false
 		}
@@ -36,13 +38,19 @@ func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, function
 		if !isReturnGuard || returnGuard.Pos() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
 			return true
 		}
+		// Scheme and host evidence accumulates per parsed value, so a guard the
+		// sink can skip would pair with a guard on the opposite branch and read
+		// as a complete allowlist that no single execution path performs.
+		if !enclosingControlRegionsContainPosition(functionBody, returnGuard, sinkPosition) {
+			return true
+		}
 		parsedURLNames := parsedURLNamesValidAt(functionBody, parsedURLAssignments, returnGuard.Pos())
 		collectParsedDestinationEvidence(returnGuard.Cond, parsedURLNames, constraintEvidence)
 		return true
 	})
-	// A user needs both checks on the same parsed value to remove the finding.
+	// Scheme alone permits an arbitrary host and host alone permits an arbitrary
+	// scheme, so only both checks on one parsed value describe a fixed destination.
 	for _, parsedURLConstraint := range constraintEvidence {
-		// A partial scheme-only or host-only check remains visible in the report.
 		if parsedURLConstraint.hasAllowedScheme && parsedURLConstraint.hasAllowedHost {
 			return true
 		}

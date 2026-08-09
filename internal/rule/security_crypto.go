@@ -204,8 +204,9 @@ func randomCallSelectsExistingValue(call *ast.CallExpr, parents map[ast.Node]ast
 }
 
 // randomSelectionBuildsSecretBuffer distinguishes token generation such as
-// `token[i] = alphabet[rand.Intn(len(alphabet))]` and
-// `token = append(token, alphabet[rand.Intn(len(alphabet))])` from choosing one
+// `token[i] = alphabet[rand.Intn(len(alphabet))]`,
+// `token = append(token, alphabet[rand.Intn(len(alphabet))])`, and
+// `token += string(alphabet[rand.Intn(len(alphabet))])` from choosing one
 // existing key or sample. The caller separately requires security-sensitive
 // assignment or argument context before reporting the random call.
 func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]ast.Node) bool {
@@ -228,23 +229,82 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 				return true
 			}
 		case *ast.AssignStmt:
-			for valueIndex, value := range statement.Rhs {
-				if !exprContainsNode(value, call) || valueIndex >= len(statement.Lhs) {
-					continue
-				}
-				target := unwrapRandomSelectionParens(statement.Lhs[valueIndex])
-				if _, indexedTarget := target.(*ast.IndexExpr); !indexedTarget {
-					return false
-				}
-				_, securityContext := exprTextContext(target, randomSecurityContextWord)
-				return securityContext
-			}
-			return false
+			return assignmentBuildsSecretBuffer(statement, call)
 		case *ast.ReturnStmt, *ast.ValueSpec, *ast.FuncLit:
 			return false
 		}
 	}
 	return false
+}
+
+// assignmentBuildsSecretBuffer decides whether the assignment carrying the
+// random selection grows a secret. A plain binding such as
+// `chosen := keys[rand.Intn(len(keys))]` picks one existing value instead.
+func assignmentBuildsSecretBuffer(assignment *ast.AssignStmt, call *ast.CallExpr) bool {
+	for valueIndex, assignedValue := range assignment.Rhs {
+		if !exprContainsNode(assignedValue, call) || valueIndex >= len(assignment.Lhs) {
+			continue
+		}
+		target := unwrapRandomSelectionParens(assignment.Lhs[valueIndex])
+		// An accumulating assignment extends a value it already holds, so it
+		// generates one element per pass whatever the destination is called.
+		// randomCallSecurityContext still decides whether that value matters.
+		if randomSelectionAccumulates(assignment, target) {
+			return true
+		}
+		if _, indexedTarget := target.(*ast.IndexExpr); !indexedTarget {
+			return false
+		}
+		_, securityContext := exprTextContext(target, randomSecurityContextWord)
+		return securityContext
+	}
+	return false
+}
+
+// randomSelectionAccumulates reports whether an assignment extends its own
+// target rather than binding a fresh sample: `token += pool[i]` or the
+// equivalent `token = token + pool[i]`. Both grow a secret one element per
+// pass, so treating either as plain selection hid the common string-concat
+// token generator behind the existing-value exemption.
+func randomSelectionAccumulates(assignment *ast.AssignStmt, target ast.Expr) bool {
+	if assignment.Tok == token.ADD_ASSIGN {
+		return true
+	}
+	// A `:=` or a `=` that does not read its target binds a new value instead.
+	if assignment.Tok != token.ASSIGN {
+		return false
+	}
+	targetName, isIdentifier := target.(*ast.Ident)
+	if !isIdentifier {
+		return false
+	}
+	for _, value := range assignment.Rhs {
+		if concatExtendsIdent(value, targetName.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// concatExtendsIdent reports whether a `+` expression reads the name it is
+// assigned back to, which separates extending a buffer from replacing it.
+func concatExtendsIdent(value ast.Expr, targetName string) bool {
+	concatenation, isConcatenation := unwrapRandomSelectionParens(value).(*ast.BinaryExpr)
+	if !isConcatenation || concatenation.Op != token.ADD {
+		return false
+	}
+	extendsTarget := false
+	ast.Inspect(concatenation, func(node ast.Node) bool {
+		if extendsTarget {
+			return false
+		}
+		identifier, isIdentifier := node.(*ast.Ident)
+		if isIdentifier && identifier.Name == targetName {
+			extendsTarget = true
+		}
+		return !extendsTarget
+	})
+	return extendsTarget
 }
 
 // appendCallBuildsSecretBuffer reports when a selected element is appended to

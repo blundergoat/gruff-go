@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **Concatenated token generation flags again** - `security.insecure-random-secret` treats `token += string(pool[rand.Intn(len(pool))])` and its `token = token + ...` form as generation. The existing-value exemption previously read them as sampling, so a `math/rand` token builder that v0.4.0 reported passed clean.
+- **Destination guards must reach the request** - `security.request-controlled-url` no longer combines a scheme check and a host check taken from mutually exclusive branches. A handler where neither path constrains both is reported again.
 - **`size.file-length` line anchor** - The finding now points at the physical line crossing the substantive budget, so changed-region scans keep it.
 - **CI recipes use `--since`** - `docs/ci-integration.md` leads with `--since <ref>`; `--diff-base` still works, as the older name.
 - **Instruction-header version gate** - `bump-version.sh --check-references` now scans the `CLAUDE.md` and Copilot headers, stale since `v0.2.0`.

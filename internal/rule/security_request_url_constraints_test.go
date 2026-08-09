@@ -119,6 +119,26 @@ func TestRequestControlledURLRequiresAffirmativeConstraint(t *testing.T) {
 			expectedFindings: 1,
 		},
 		{
+			journeyName: "scheme and host guards on exclusive branches still flag",
+			handlerBody: `target := r.FormValue("url")
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return
+	}
+	// Each branch constrains one dimension, so no execution path checks both.
+	if r.FormValue("mode") == "strict" {
+		if parsed.Scheme != "https" {
+			return
+		}
+	} else {
+		if parsed.Hostname() != "api.internal" {
+			return
+		}
+	}
+	_, _ = http.Get(parsed.String())`,
+			expectedFindings: 1,
+		},
+		{
 			journeyName: "constraints after fetch do not cleanse",
 			handlerBody: `target := r.FormValue("url")
 	_, _ = http.Get(target)
