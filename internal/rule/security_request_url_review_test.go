@@ -1,7 +1,10 @@
 // Package rule pins request-URL regressions reproduced from PR review feedback.
 package rule
 
-import "testing"
+import (
+	goparser "go/parser"
+	"testing"
+)
 
 // TestRequestURLReviewRegressions keeps unsafe values visible until validation
 // is tied to the value and control-flow path that actually reaches the sink.
@@ -205,6 +208,42 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// TestAssignedRootNameFindsTheWrittenValue pins which identifier a guard-
+// invalidating write is attributed to. The discriminating case is the index
+// expression: `cache[target] = value` writes cache and leaves target's guard
+// evidence intact, so rooting at the subscript instead would invalidate guards
+// that nothing overwrote.
+func TestAssignedRootNameFindsTheWrittenValue(t *testing.T) {
+	tests := []struct {
+		target string
+		want   string
+	}{
+		{target: "parsed", want: "parsed"},
+		{target: "parsed.Host", want: "parsed"},
+		{target: "parsed.URL.Host", want: "parsed"},
+		{target: "targets[0]", want: "targets"},
+		{target: "cache[target]", want: "cache"},
+		{target: "*parsed", want: "parsed"},
+		{target: "(parsed).Host", want: "parsed"},
+		{target: "url.Parse(x).Host", want: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.target, func(t *testing.T) {
+			expression, err := goparser.ParseExpr(test.target)
+			if err != nil {
+				t.Fatalf("parse %q: %v", test.target, err)
+			}
+			rootName, hasRoot := assignedRootName(expression)
+			if !hasRoot {
+				rootName = ""
+			}
+			if rootName != test.want {
+				t.Fatalf("assignedRootName(%q) = %q, want %q", test.target, rootName, test.want)
+			}
+		})
+	}
+}
+
 // TestOpenRedirectReviewRegressions rejects incomplete slash normalization and
 // requires a redirect status before treating a Location header as a browser sink.
 func TestOpenRedirectReviewRegressions(t *testing.T) {
@@ -221,6 +260,41 @@ func TestOpenRedirectReviewRegressions(t *testing.T) {
 		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
 		if len(findings) != 1 {
 			t.Fatalf("findings = %#v, want one open-redirect finding", findings)
+		}
+	})
+
+	t.Run("normalization loop can skip the trim with a labelled continue", func(t *testing.T) {
+		body := `target := r.FormValue("next")
+outer:
+	for attempt := 0; attempt < 2; attempt++ {
+		for strings.HasPrefix(target, "//") {
+			if r.Method == "GET" {
+				continue outer
+			}
+			target = strings.TrimPrefix(target, "/")
+		}
+	}
+	http.Redirect(w, r, target, http.StatusFound)`
+		unit := parseOne(t, "handler.go", requestURLConstraintSource("redirect", body))
+		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+		if len(findings) != 1 {
+			t.Fatalf("findings = %#v, want one open-redirect finding", findings)
+		}
+	})
+
+	t.Run("normalization loop with an unlabelled continue stays affirmative", func(t *testing.T) {
+		body := `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		if r.Method == "GET" {
+			continue
+		}
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, http.StatusFound)`
+		unit := parseOne(t, "handler.go", requestURLConstraintSource("redirect", body))
+		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+		if len(findings) != 0 {
+			t.Fatalf("findings = %#v, want no open-redirect finding; an unlabelled continue re-tests the loop condition", findings)
 		}
 	})
 

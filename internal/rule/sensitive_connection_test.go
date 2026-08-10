@@ -56,6 +56,31 @@ func connectionCredentialCases() []connectionCredentialCase {
 		{name: "empty username", url: connectionURL("", "nonempty-value", "localhost", "/orders"), wantFinding: false},
 		{name: "empty host", url: connectionURL("app", "nonempty-value", "", "/orders"), wantFinding: false},
 		{name: "raw embedded at is ambiguous", url: connectionURL("app", "part@rest", "localhost", "/orders"), wantFinding: false},
+		{name: "replica set placeholder is not exempt", url: connectionURL("app", "placeholder", "localhost:27017,localhost:27018", "/orders"), password: "placeholder", wantFinding: true},
+		// A replica-set member without its own port leaves text after the last
+		// colon that is not a valid port, so the authority does not parse at all
+		// and the credential is not extracted. This is a known gap, not a
+		// decision: widening which URIs are reported is deferred out of M22.
+		{name: "multi host with unparseable member stays unreported", url: connectionURL("app", "realSecretValue42", "db1:5432,db2", "/orders"), wantFinding: false},
+	}
+}
+
+// TestSplitConnectionURLDeclinesMultiHostAuthority pins that a replica-set
+// authority yields no canonical host. net/url folds `h1:27017,h2:27017` into
+// the hostname `h1:27017,h2`, which names no real host, so treating it as one
+// would let the local-development exemption reason about a value that is not
+// a host at all.
+func TestSplitConnectionURLDeclinesMultiHostAuthority(t *testing.T) {
+	multiHost := splitConnectionURL(connectionURL("app", "placeholder", "localhost:27017,localhost:27018", "/orders"))
+	if multiHost.host != "" {
+		t.Errorf("multi-host authority host = %q, want empty", multiHost.host)
+	}
+	if multiHost.passwordState != connectionPasswordPresent {
+		t.Errorf("multi-host authority passwordState = %v, want connectionPasswordPresent; the credential must still be reported", multiHost.passwordState)
+	}
+	singleHost := splitConnectionURL(connectionURL("app", "placeholder", "localhost:27017", "/orders"))
+	if singleHost.host != "localhost" {
+		t.Errorf("single-host authority host = %q, want %q", singleHost.host, "localhost")
 	}
 }
 

@@ -97,6 +97,17 @@ func TestRequestControlledURLRequiresAffirmativeConstraint(t *testing.T) {
 			expectedFindings: 0,
 		},
 		{
+			journeyName: "field write after the guard still flags",
+			handlerBody: `parsed, err := url.Parse(r.FormValue("url"))
+	// Both dimensions are checked, then the submitted host replaces the one that passed.
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "api.internal" {
+		return
+	}
+	parsed.Host = r.FormValue("host")
+	_, _ = http.Get(parsed.String())`,
+			expectedFindings: 1,
+		},
+		{
 			journeyName: "scheme check without host still flags",
 			handlerBody: `target := r.FormValue("url")
 	parsed, err := url.Parse(target)

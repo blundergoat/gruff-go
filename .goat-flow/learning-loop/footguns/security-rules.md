@@ -1,6 +1,6 @@
 ---
 category: security-rules
-last_reviewed: 2026-07-13
+last_reviewed: 2026-08-11
 ---
 
 # Security-Rule Footguns
@@ -36,6 +36,35 @@ How to avoid:
 - When changing secret detection, exercise BOTH file types: Go (`builtin_test.go`) and non-Go config (`internal/rule/secret_pattern_config_test.go`, search: `TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders`), with negative cases (comments, placeholders) and positive cases (real credentials still flag).
 - `internal/rule/builtin_test.go` sits near the 500-line `size.file-length` cap; add new secret-pattern fixtures to a focused sibling test file, not to `builtin_test.go`, or the dogfood gains a `size.file-length` advisory.
 - After any change, run `go run ./cmd/gruff-go analyse .` and confirm grade A, then re-scan the corpus to confirm the false-positive count dropped without zeroing real-credential detection.
+
+## Footgun: an early return added before `url.Parse` silently widens which credentials are reported
+
+**Status:** active | **Created:** 2026-08-11 | **Evidence:** OBSERVED
+
+`splitConnectionURL` (`internal/rule/sensitive.go`, search: `func splitConnectionURL`) returns a
+single struct that carries three independent decisions: whether a credential was extracted at all
+(`passwordState`), what the password was, and what the canonical host is. `AnalyzeUnit`
+(search: `parts.passwordState != connectionPasswordPresent`) drops the candidate entirely when
+`passwordState` is unset, so **any** early return of the zero value is also a decision not to report.
+
+That makes ordering load-bearing in a way the code does not advertise. M22 G3 needed comma-separated
+(replica-set) authorities to yield no canonical host. Placing that check *before*
+`url.Parse("//" + authority)` looked equivalent and was not: at the previous revision, an authority
+whose last member lacks a port (`db1:5432,db2`, `localhost:27017,localhost`, `[::1]:5432,[::1]`)
+failed `url.Parse` with `invalid port`, returned the zero value, and was never reported. The early
+return preserved `passwordState`, so 387 of 1024 probed URIs moved from silent to reported - a change
+to *which URIs are reported* on an Error-severity rule, which M22 listed as a kill criterion. The
+whole `internal/rule` suite, `make check`, and the dogfood scan were all green with the breach in
+place; only an old-vs-new differential caught it.
+
+How to avoid:
+- When changing `splitConnectionURL`, ask which of the three decisions each return path is making.
+  Only return `connectionURLParts{}` to mean "this is not a credential-bearing URI at all".
+- A change intended to affect *exemption* must leave `passwordState` alone and must sit **after**
+  every parse/validation gate that already decides extraction.
+- Prove reporting parity with a differential, not with a passing suite. Enumerate authority shapes
+  against both revisions and compare counts; `internal/rule/sensitive_connection_test.go`
+  (search: `multi host with unparseable member stays unreported`) pins the shape that regressed.
 
 ## Resolved Entries
 

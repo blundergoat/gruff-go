@@ -59,7 +59,7 @@
 - `.goat-flow/code-map.md` = This repository map.
 - `.goat-flow/glossary.md` = Project terminology for future agents.
 - `.goat-flow/security-policy.md` = Installed security policy reference.
-- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; policy under `deny-dangerous/`), `gruff-code-quality.sh` (optional post-edit gruff scan), and `post-turn-safety.sh` (optional stop-event changed-content guard). Registration is agent-specific; Codex currently registers only `deny-dangerous.sh`.
+- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; policy under `deny-dangerous/`), `gruff-code-quality.sh` (optional post-edit gruff scan), and `post-turn-safety.sh` (optional stop-event changed-content guard). Registration is agent-specific and follows what `goat-flow hooks list --json` reports as supported, so an unregistered hook is a recorded upstream limit rather than a gap. `deny-dangerous.sh` is registered for all four agents (claude, codex, antigravity, copilot). `gruff-code-quality.sh` is registered for claude, antigravity, and copilot; Codex is PreToolUse-only until a supported post-tool lifecycle path is verified. `post-turn-safety.sh` is registered for claude alone: Codex and antigravity Stop-hook delivery is unverified (no Stop payload was captured firing), and Copilot has no project-local post-turn hook event.
 - `.goat-flow/dashboard-state.json` = GOAT Flow dashboard state.
 - `.goat-flow/learning-loop/footguns/` = Evidence-backed architectural traps.
 - `.goat-flow/learning-loop/lessons/` = Durable behavioral lessons from incidents or git history.

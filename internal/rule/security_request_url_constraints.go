@@ -1,6 +1,16 @@
 // Package rule recognises affirmative destination guards for URL scan results.
-// It keeps syntax-only parsing visible while allowing explicit scheme, host,
-// and same-origin redirect checks that users can rely on in the scan report.
+//
+// When a handler sends a browser or an outbound request somewhere the visitor
+// chose, this file decides whether the author proved the destination is safe.
+// Only affirmative evidence clears a finding: an explicit scheme *and* host
+// check on the same parsed URL, a committed path prefix, or a loop that strips
+// every leading slash so `//evil.example` cannot survive as a redirect target.
+//
+// Parsing is not proof. `url.Parse` establishes syntax, not trust, so a handler
+// that merely parses the value keeps its finding. Evidence also expires: a guard
+// stops counting once anything can change the value between the check and the
+// request, which is why the staleness helpers here look at what a write really
+// touches rather than only at whole-variable reassignment.
 package rule
 
 import (
@@ -171,18 +181,79 @@ func anyNameAssignedBetween(functionBody *ast.BlockStmt, names map[string]bool, 
 	return found
 }
 
+// branchLeavesTrimLoop reports whether a branch statement can reach code after
+// the loop, or skip a pass of it, without the loop condition being re-tested.
+// An unlabelled continue re-tests the condition and so cannot escape the trim.
+// True here voids the whole normalisation proof and the redirect stays in the
+// user's report, which is the safe direction for an escape we cannot rule out.
+func branchLeavesTrimLoop(branch *ast.BranchStmt) bool {
+	switch branch.Tok {
+	case token.BREAK, token.GOTO:
+		// Both jump past the loop condition, so the redirect can still start
+		// `//evil.example` when it reaches the response.
+		return true
+	case token.CONTINUE:
+		// A bare `continue` re-tests `HasPrefix(target, "//")` and is safe. A
+		// labelled one targets an outer loop and abandons the trim entirely.
+		return branch.Label != nil
+	default:
+		return false
+	}
+}
+
 // lhsUsesAnyName reports whether an assignment writes the value shown at the
-// user's request or redirect sink.
+// user's request or redirect sink. A true answer expires the guard that came
+// before it, so the destination appears in the report again.
 func lhsUsesAnyName(leftHandValues []ast.Expr, sinkValueNames map[string]bool) bool {
 	// Check each result because net/url parsing commonly assigns both URL and error.
 	for _, leftHandValue := range leftHandValues {
-		identifier, isIdentifier := leftHandValue.(*ast.Ident)
-		// A matching named result links the parsed value to the sink.
-		if isIdentifier && sinkValueNames[identifier.Name] {
+		// A matching named result links the parsed value to the sink. Writing a
+		// field, element, or pointee of that name changes the same value the
+		// guard checked, so `parsed.Host = ...` invalidates the guard exactly as
+		// reassigning `parsed` does.
+		if rootName, hasRoot := assignedRootName(leftHandValue); hasRoot && sinkValueNames[rootName] {
 			return true
 		}
 	}
 	return false
+}
+
+// assignedRootName returns the identifier an assignment target ultimately
+// writes through, stepping past selectors, indexes, and pointer dereferences.
+// An index expression roots at the collection, so `cache[target] = value`
+// reports cache rather than the target used to address it.
+//
+// The empty, false result means the write goes through something this
+// parser-only rule cannot follow, such as `pick().Host = ...`. That answer
+// invalidates nothing, so an earlier guard keeps standing and the finding stays
+// hidden - the losing direction for a security rule, and a residual blind spot
+// rather than a deliberate exemption. It is bounded: it applies only where the
+// write does not root at a plain name, and it is strictly narrower than the
+// identifier-only check it replaced.
+func assignedRootName(target ast.Expr) (string, bool) {
+	for {
+		switch value := target.(type) {
+		case *ast.Ident:
+			// Reached the variable itself - this is the name being written.
+			return value.Name, true
+		case *ast.ParenExpr:
+			target = value.X
+		case *ast.SelectorExpr:
+			// `parsed.Host = ...` - the user replaced one field of the URL they
+			// had already checked, which changes where the request goes.
+			target = value.X
+		case *ast.IndexExpr:
+			// `targets[0] = ...` - an element changed, so the collection the
+			// guard reasoned about no longer holds the value it approved.
+			target = value.X
+		case *ast.StarExpr:
+			// `*parsed = ...` - written through a pointer, replacing the whole
+			// value the earlier scheme and host checks were about.
+			target = value.X
+		default:
+			return "", false
+		}
+	}
 }
 
 // collectParsedDestinationEvidence extracts rejecting scheme and host checks
@@ -362,9 +433,12 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 // loopTrimsOneLeadingSlash verifies that each loop pass updates the checked
 // redirect value with strings.TrimPrefix(value, "/").
 func loopTrimsOneLeadingSlash(loopBody *ast.BlockStmt, redirectVariableName string, stringPackageAliases map[string]bool) bool {
-	// A break or goto can reach the sink while the value still begins with `//`.
-	// Reject the whole normalization proof instead of trying to approximate
-	// branch reachability in this parser-only rule.
+	// A break, goto, or labelled continue can reach the sink while the value
+	// still begins with `//`, because each one leaves this loop rather than
+	// re-testing its condition. Reject the whole normalization proof instead of
+	// trying to approximate branch reachability in this parser-only rule. A
+	// label naming this same loop would in fact be safe, but the label is not
+	// in scope here and over-rejecting only costs a visible finding.
 	hasEarlyExit := false
 	ast.Inspect(loopBody, func(node ast.Node) bool {
 		if hasEarlyExit {
@@ -374,7 +448,7 @@ func loopTrimsOneLeadingSlash(loopBody *ast.BlockStmt, redirectVariableName stri
 			return false
 		}
 		branch, ok := node.(*ast.BranchStmt)
-		if ok && (branch.Tok == token.BREAK || branch.Tok == token.GOTO) {
+		if ok && branchLeavesTrimLoop(branch) {
 			hasEarlyExit = true
 			return false
 		}

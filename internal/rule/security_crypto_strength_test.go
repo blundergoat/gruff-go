@@ -1,7 +1,10 @@
 // Package rule tests crypto and random security rules.
 package rule
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // TestInsecureRandomSecretRule covers math/rand in secret contexts and safe random lookalikes.
 func TestInsecureRandomSecretRule(t *testing.T) {
@@ -368,6 +371,57 @@ func chooseKey(values []string) string {
 			findings := InsecureRandomSecretRule{}.AnalyzeUnit(unit, Context{})
 			if len(findings) != test.want {
 				t.Fatalf("findings = %#v, want %d", findings, test.want)
+			}
+		})
+	}
+}
+
+// TestInsecureRandomSecretRuleIgnoresDestinationBufferName pins that a
+// generator named for its secret still reports when the buffer it fills is
+// named neutrally, and that the indexed and append spellings of the same
+// generator never disagree.
+func TestInsecureRandomSecretRuleIgnoresDestinationBufferName(t *testing.T) {
+	indexedGenerator := `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	%[1]s := make([]byte, size)
+	for index := range %[1]s {
+		%[1]s[index] = alphabet[rand.Intn(len(alphabet))]
+	}
+	return string(%[1]s)
+}
+`
+	appendGenerator := `package sample
+
+import "math/rand"
+
+func generateToken(size int) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	%[1]s := make([]byte, 0, size)
+	for range size {
+		%[1]s = append(%[1]s, alphabet[rand.Intn(len(alphabet))])
+	}
+	return string(%[1]s)
+}
+`
+	for _, bufferName := range []string{"token", "buf", "out", "result"} {
+		t.Run(bufferName, func(t *testing.T) {
+			indexed := InsecureRandomSecretRule{}.AnalyzeUnit(
+				parseOne(t, "indexed.go", fmt.Sprintf(indexedGenerator, bufferName)), Context{})
+			appended := InsecureRandomSecretRule{}.AnalyzeUnit(
+				parseOne(t, "append.go", fmt.Sprintf(appendGenerator, bufferName)), Context{})
+			if len(indexed) != 1 {
+				t.Errorf("indexed %q findings = %#v, want 1", bufferName, indexed)
+			}
+			if len(appended) != 1 {
+				t.Errorf("append %q findings = %#v, want 1", bufferName, appended)
+			}
+			if len(indexed) != len(appended) {
+				t.Errorf("indexed %q reported %d findings but append reported %d; both spell the same generator",
+					bufferName, len(indexed), len(appended))
 			}
 		})
 	}

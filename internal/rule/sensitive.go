@@ -1,5 +1,16 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the sensitive-data.* rules that scan for embedded secrets.
+//
+// This file implements the `sensitive-data.*` rules: the ones that tell a user
+// a real credential is sitting in a file they are about to commit. They ship at
+// error severity, so a false positive fails the grade and blocks the user's CI
+// or agent gate - precision matters more here than anywhere else in the scanner.
+//
+// Two judgements do most of the work. A finding is redacted before it is shown,
+// so no report, dashboard, or JSON payload ever echoes the secret back. And an
+// obvious local-development placeholder on an obviously local host is exempted,
+// because `postgres://app:placeholder@localhost/dev` in a sample config is not
+// a leak. Both halves are required: a placeholder word pointed at a production
+// host is still reported.
 package rule
 
 import (
@@ -455,8 +466,22 @@ func splitConnectionURL(connStr string) connectionURLParts {
 		return connectionURLParts{}
 	}
 	parsed, err := url.Parse("//" + authority)
+	// An authority that does not parse yields no credential at all. Some
+	// replica-set URIs land here, because a member written without its own port
+	// leaves text after the final colon that is not a valid port. Widening this
+	// is deliberately out of scope: which URIs get reported is a calibration
+	// decision for an error-severity rule, not a side effect of the host fix.
 	if err != nil || parsed.User != nil || parsed.Host == "" {
 		return connectionURLParts{}
+	}
+	// The user pasted a MongoDB replica-set URI, whose authority lists several
+	// hosts separated by commas. net/url folds that into a hostname that is not
+	// any of them ("h1:27017,h2:27017" becomes "h1:27017,h2"). No host is
+	// canonical, so the local-development exemption must decline rather than
+	// reason about a value that names nothing. Password and state are kept, so
+	// this withholds the exemption without changing whether the URI is reported.
+	if strings.Contains(authority, ",") {
+		return connectionURLParts{password: password, passwordState: state}
 	}
 	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
 	if host == "" {
