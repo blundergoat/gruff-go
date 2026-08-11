@@ -63,7 +63,7 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	scanFindings := []finding.Finding{}
 	// Review each handler separately so the report cites the user's exact sink.
 	forEachRequestFunc(unit.AST, httpPackageAliases, func(requestScope *requestTaintScope, functionBody *ast.BlockStmt) {
-		httpClientVariables := collectHTTPClientVars(functionBody, httpPackageAliases)
+		httpClientBindings := collectHTTPClientBindings(requestScope.functionType, functionBody, httpPackageAliases)
 		ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
 			// Nested callbacks are analysed as their own request handlers.
 			if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
@@ -74,7 +74,7 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !isCall {
 				return true
 			}
-			urlArgumentIndex, sinkLabel, isHTTPSink := httpClientURLArg(candidateCall, httpPackageAliases, httpClientVariables)
+			urlArgumentIndex, sinkLabel, isHTTPSink := httpClientURLArg(candidateCall, httpPackageAliases, httpClientBindings)
 			// Ignore calls that do not expose a valid net/http URL argument.
 			if !isHTTPSink || urlArgumentIndex >= len(candidateCall.Args) {
 				return true

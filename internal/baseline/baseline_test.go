@@ -186,6 +186,25 @@ func TestApplyKeepsSymbolAnchoredSecurityFindingUnchanged(t *testing.T) {
 	}
 }
 
+// TestApplyKeepsRelocatedLocationOnlyFindingNew prevents a reviewed occurrence
+// from hiding a different symbol-less issue introduced elsewhere in the file.
+func TestApplyKeepsRelocatedLocationOnlyFindingNew(t *testing.T) {
+	reviewedFinding := finding.Finding{
+		RuleID:   "docs.suppression-without-rationale",
+		Message:  "suppression directive requires a rationale",
+		File:     "handler.go",
+		Location: &finding.Location{Line: 10},
+	}.WithFingerprint()
+	replacementFinding := reviewedFinding
+	replacementFinding.Location = &finding.Location{Line: 40}
+	replacementFinding = replacementFinding.WithFingerprint()
+
+	matchResult := Apply([]finding.Finding{replacementFinding}, FromFindings([]finding.Finding{reviewedFinding}))
+	if matchResult.NewCount() != 1 || matchResult.UnchangedCount() != 0 || matchResult.ResolvedCount() != 1 {
+		t.Fatalf("relocated location-only result = %#v, want new/unchanged/resolved 1/0/1", matchResult)
+	}
+}
+
 // TestApplyThreeStateClassification is M24's mid-implementation proof: it
 // exercises new / unchanged / resolved across empty, fully-matched, and mixed
 // baselines, asserting both the collected slices and the legacy counts agree.

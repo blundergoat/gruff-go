@@ -20,6 +20,16 @@ func (s *requestTaintScope) isParsedURLExpr(expr ast.Expr) bool {
 	return isSyntaxParse
 }
 
+// markParsedURLBinding records the lexical local that holds a parsed request URL.
+// Shadowed locals stay independent, so only the parsed value preserves request taint.
+func (s *requestTaintScope) markParsedURLBinding(identifier *ast.Ident) {
+	// Unresolved or blank syntax cannot identify a local the user later calls String on.
+	if identifier == nil || identifier.Name == "_" || identifier.Obj == nil {
+		return
+	}
+	s.parsedURLBindings[identifier.Obj] = true
+}
+
 // parsedURLStringReceiver returns the parsed local converted by url.URL.String.
 // Restricting this transparency to known parse results avoids treating every
 // unknown String method as a taint-preserving operation.
@@ -33,7 +43,8 @@ func (s *requestTaintScope) parsedURLStringReceiver(call *ast.CallExpr) (ast.Exp
 	}
 	receiver := unwrapRequestExprParens(selector.X)
 	identifier, ok := receiver.(*ast.Ident)
-	if !ok || !s.parsedURLs[identifier.Name] {
+	// A same-named local is unrelated unless it resolves to the parsed binding.
+	if !ok || identifier.Obj == nil || !s.parsedURLBindings[identifier.Obj] {
 		return nil, false
 	}
 	return receiver, true

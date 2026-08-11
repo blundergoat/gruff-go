@@ -9,13 +9,17 @@ import (
 	"go/token"
 )
 
-// markTaintedAt records name as carrying request-controlled data and remembers
-// the earliest position at which that taint became available, so taintedBefore
-// can keep the taint from leaking backwards to sinks that run before it.
-func (s *requestTaintScope) markTaintedAt(name string, pos token.Pos) {
-	s.tainted[name] = true
-	if prev, ok := s.firstTaintPos[name]; !ok || pos < prev {
-		s.firstTaintPos[name] = pos
+// markTaintedAt records one lexical binding as request-controlled and remembers
+// when that taint first became available. Unresolved names are not conflated
+// with same-spelled variables in another scope.
+func (s *requestTaintScope) markTaintedAt(identifier *ast.Ident, pos token.Pos) {
+	// Blank or unresolved syntax cannot anchor a binding-safe taint fact.
+	if identifier == nil || identifier.Name == "_" || identifier.Obj == nil {
+		return
+	}
+	s.taintedBindings[identifier.Obj] = true
+	if previousPosition, exists := s.firstTaintPos[identifier.Obj]; !exists || pos < previousPosition {
+		s.firstTaintPos[identifier.Obj] = pos
 	}
 }
 
@@ -33,8 +37,10 @@ func (s *requestTaintScope) taintIntroPos(rhs ast.Expr, fallback token.Pos) toke
 	case *ast.StarExpr:
 		return s.taintIntroPos(e.X, fallback)
 	case *ast.Ident:
-		if pos, ok := s.firstTaintPos[e.Name]; ok {
-			return pos
+		if e.Obj != nil {
+			if pos, ok := s.firstTaintPos[e.Obj]; ok {
+				return pos
+			}
 		}
 	case *ast.BinaryExpr:
 		if e.Op == token.ADD {
@@ -78,16 +84,16 @@ func (s *requestTaintScope) earliestOperandTaintPos(args []ast.Expr, fallback to
 	return fallback
 }
 
-// taintedBefore reports whether name carries request data introduced at or before
-// sinkPos. An invalid sinkPos disables the ordering check (treating any taint as
-// in scope) so callers without a position still get the previous behaviour.
-func (s *requestTaintScope) taintedBefore(name string, sinkPos token.Pos) bool {
-	if !s.tainted[name] {
+// taintedBefore reports whether a binding carries request data introduced before
+// sinkPos. An invalid sinkPos disables ordering so inline checks retain taint.
+func (s *requestTaintScope) taintedBefore(identifier *ast.Ident, sinkPos token.Pos) bool {
+	// A use must resolve to the same declaration that introduced the taint.
+	if identifier == nil || identifier.Obj == nil || !s.taintedBindings[identifier.Obj] {
 		return false
 	}
 	if !sinkPos.IsValid() {
 		return true
 	}
-	pos, ok := s.firstTaintPos[name]
+	pos, ok := s.firstTaintPos[identifier.Obj]
 	return ok && pos < sinkPos
 }

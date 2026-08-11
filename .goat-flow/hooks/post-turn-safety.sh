@@ -1286,6 +1286,29 @@ post_turn_self_test() (
       return 2
     fi
 
+    GOAT_FLOW_POST_TURN_SAFETY_FORCE_BASH3_FALLBACK="$scanner_setting" \
+      GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES=invalid \
+      GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS=invalid \
+      bash "$self_test_script" </dev/null >/dev/null 2>&1
+    hook_result=$?
+    # Invalid optional limits must fall back to defaults on both scanner paths.
+    if [ "$hook_result" -ne 0 ]; then
+      printf 'post-turn-safety self-test: numeric-limit case failed on scanner %s\n' "$scanner_setting" >&2
+      return 2
+    fi
+
+    GOAT_FLOW_POST_TURN_SAFETY_FORCE_BASH3_FALLBACK="$scanner_setting" \
+      GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES=01048576 \
+      GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS=020 \
+      GOAT_FLOW_POST_TURN_SAFETY_MAX_SECONDS=060 \
+      bash "$self_test_script" </dev/null >/dev/null 2>&1
+    hook_result=$?
+    # Decimal limits with leading zeroes must not become invalid octal arithmetic.
+    if [ "$hook_result" -ne 0 ]; then
+      printf 'post-turn-safety self-test: decimal-limit case failed on scanner %s\n' "$scanner_setting" >&2
+      return 2
+    fi
+
     printf 'AWS_ACCESS_KEY_ID=%s\n' "$synthetic_aws_token" >"$self_test_root/settings.env"
     GOAT_FLOW_POST_TURN_SAFETY_FORCE_BASH3_FALLBACK="$scanner_setting" \
       bash "$self_test_script" </dev/null >/dev/null 2>&1
@@ -1322,6 +1345,9 @@ fallback_main() {
   case "$fallback_max_seconds" in '' | *[!0-9]*) fallback_max_seconds=60 ;; esac
   case "$fallback_max_bytes" in '' | *[!0-9]*) fallback_max_bytes=1048576 ;; esac
   case "$fallback_max_findings" in '' | *[!0-9]*) fallback_max_findings=20 ;; esac
+  fallback_max_seconds=$((10#$fallback_max_seconds))
+  fallback_max_bytes=$((10#$fallback_max_bytes))
+  fallback_max_findings=$((10#$fallback_max_findings))
 
   # Without a Git root, the hook cannot identify the project changes for this turn.
   if ! root=$(git rev-parse --show-toplevel 2>/dev/null) || [ -z "$root" ]; then
@@ -1461,6 +1487,12 @@ shopt -s extglob
 
 MAX_FILE_BYTES="${GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES:-1048576}"
 MAX_FINDINGS="${GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS:-20}"
+case "$MAX_FILE_BYTES" in
+  '' | *[!0-9]*) MAX_FILE_BYTES=1048576 ;;
+esac
+case "$MAX_FINDINGS" in
+  '' | *[!0-9]*) MAX_FINDINGS=20 ;;
+esac
 # Wall-clock budget for the whole scan. The registered agent-side hook timeout
 # must stay above this so the incomplete-scan diagnostic below prints before
 # the runner kills the process (same layering as gruff-code-quality.sh).
@@ -1468,6 +1500,9 @@ MAX_SECONDS="${GOAT_FLOW_POST_TURN_SAFETY_MAX_SECONDS:-60}"
 case "$MAX_SECONDS" in
   '' | *[!0-9]*) MAX_SECONDS=60 ;;
 esac
+MAX_FILE_BYTES=$((10#$MAX_FILE_BYTES))
+MAX_FINDINGS=$((10#$MAX_FINDINGS))
+MAX_SECONDS=$((10#$MAX_SECONDS))
 
 # External commands receive at most this many path arguments per invocation so
 # batched calls stay far below the ~32k character Windows command-line limit.

@@ -372,6 +372,10 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 		if !isReturnGuard || returnGuard.Pos() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
 			return true
 		}
+		// An optional outer branch lets the sink bypass this prefix requirement.
+		if !enclosingControlRegionsContainPosition(functionBody, returnGuard, sinkPosition) {
+			return true
+		}
 		negatedCondition, isNegated := returnGuard.Cond.(*ast.UnaryExpr)
 		// The safe form rejects values that do not start with the committed segment.
 		if !isNegated || negatedCondition.Op != token.NOT {
@@ -410,6 +414,10 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 		prefixLoop, isForLoop := syntaxNode.(*ast.ForStmt)
 		// Only a loop before the redirect can remove every repeated leading slash.
 		if !isForLoop || prefixLoop.Pos() >= sinkPosition {
+			return true
+		}
+		// Normalization must run on every path that can reach the later redirect.
+		if !enclosingControlRegionsContainPosition(functionBody, prefixLoop, sinkPosition) {
 			return true
 		}
 		prefixCheck, isCall := prefixLoop.Cond.(*ast.CallExpr)

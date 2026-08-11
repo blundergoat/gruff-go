@@ -23,7 +23,11 @@
 - **Changelog schema names** - v0.2.0 entries named a `summary --format=json` schema that never shipped; the real name is `gruff.summary.v2`.
 - **Claude agent harness** - Refreshes Claude skills to GOAT Flow 1.15.0 and registers the managed hook launcher with the post-turn safety guard.
 - **Review security hardening** - Fixes six URL, random-token, recursive-delete, and analyzer-binary validation gaps.
-- **Review precision follow-ups** - Keeps stale or optional URL guards visible, respects redirect branches and HTTP-client shadowing, recognises pool-independent token assembly, and keeps replacement symbol-less security findings new against baselines.
+- **Review precision follow-ups** - Keeps stale or optional URL guards visible, respects redirect branches and lexical bindings, classifies injected HTTP clients and receiver assignments at each request, and recognises pool-independent token assembly.
+- **Location-only baseline findings stay occurrence-specific** - Contract-stable matching now requires a named symbol or threshold metric, so a reviewed symbol-less documentation or security occurrence cannot hide a replacement elsewhere in the file.
+- **Context parse failures count in summaries** - Text summaries include failed supporting Go files even when an explicit-file scan used them only for package context.
+- **Post-turn limits reject invalid input safely** - Both scanner paths fall back to defaults when byte or finding limits are nonnumeric and normalize decimal limits before arithmetic; the self-test exercises both cases.
+- **Codex denies `.env.backup` reads directly** - The filesystem permission profile covers the reproduced nonstandard environment-file variant instead of relying on Bash-only hook coverage.
 - **GOAT Flow 1.15.0** - Updates Codex skills, safety hooks, permission profiles, setup references, and managed-install drift protection.
 - **GOAT Flow 1.15.1** - Refreshes Claude, Codex, and Copilot skills, safety hooks, and playbooks onto one Node hook launcher (`.goat-flow/hooks/hook-launch-runtime.mjs`, `hook-provider-adapters.mjs`) and moves `.goat-flow/config.yaml` to `1.15.1`.
 - **Recursive deletes with a mid-path variable now block** - The `deny-dangerous` guard tests for an unresolved `$` or backtick expansion anywhere in a delete target, not only at the front. `rm -rf cache/$TARGET` and `./cache/${TARGET}` return `rc=2` where 1.15.0 allowed them, closing the path that deleted outside the project once the shell expanded the variable.

@@ -27,6 +27,14 @@ func (f Finding) ComputeContractStableIdentity() string {
 	return hex.EncodeToString(hasher.Sum(nil))[:16]
 }
 
+// HasContractStableAnchor reports whether line-insensitive matching has a
+// semantic subject stronger than a repeated message. Named symbols identify a
+// declaration; metric metadata identifies the one measured subject per rule and
+// file. A symbol-less, non-metric occurrence remains location-specific.
+func (f Finding) HasContractStableAnchor() bool {
+	return f.Symbol != "" || hasContractMetricMetadata(f.Metadata)
+}
+
 // hasContractMetricMetadata reports whether metadata carries a threshold metric.
 func hasContractMetricMetadata(metadata map[string]any) bool {
 	if len(metadata) == 0 {

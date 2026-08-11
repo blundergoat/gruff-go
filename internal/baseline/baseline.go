@@ -290,20 +290,20 @@ func pairStableOccurrences(currentFindings []finding.Finding, baselineEntries []
 	}
 }
 
-// ruleAllowsContractStableMatch keeps sensitive findings exact-only. Baseline
-// entries do not persist symbols, so generic security filtering happens when
-// the current finding supplies its semantic subject below.
+// ruleAllowsContractStableMatch keeps sensitive findings exact-only because a
+// reviewed credential must never hide a replacement secret elsewhere.
 func ruleAllowsContractStableMatch(ruleID string) bool {
 	return !strings.HasPrefix(ruleID, "sensitive-data.")
 }
 
-// findingAllowsContractStableMatch requires generic security findings to match
-// exact locations while preserving line shifts for a named security subject.
+// findingAllowsContractStableMatch requires a semantic anchor before ignoring
+// locations. Repeated symbol-less messages describe a class of occurrences, not
+// the specific finding the user reviewed.
 func findingAllowsContractStableMatch(currentFinding finding.Finding) bool {
 	if !ruleAllowsContractStableMatch(currentFinding.RuleID) {
 		return false
 	}
-	return !strings.HasPrefix(currentFinding.RuleID, "security.") || currentFinding.Symbol != ""
+	return currentFinding.HasContractStableAnchor()
 }
 
 // exactMatchKey returns the persisted fingerprint identity for one prior row.

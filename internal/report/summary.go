@@ -142,21 +142,23 @@ type summaryFileCounts struct {
 // countSummaryFiles classifies each discovered input for the text summary.
 // It explains which files reached Go parsing, raw-text rules, or neither while JSON stays unchanged.
 func countSummaryFiles(analysisReport analysis.Report) summaryFileCounts {
-	failedFilePaths := map[string]struct{}{}
+	parseFailedPaths := map[string]struct{}{}
 	// One file may emit several diagnostics, so path identity keeps the failure count file-based.
 	for _, diagnostic := range analysisReport.Diagnostics {
 		// Parser-stage diagnostics cover both read failures and Go syntax errors before rule analysis.
 		if diagnostic.Stage == "parse" && diagnostic.File != "" {
-			failedFilePaths[diagnostic.File] = struct{}{}
+			parseFailedPaths[diagnostic.File] = struct{}{}
 		}
 	}
 
-	fileCounts := summaryFileCounts{}
+	// Explicit-file scans can diagnose a supporting Go sibling without listing
+	// it in Paths.Scanned. Count every diagnosed file once before classifying the
+	// successfully scanned paths.
+	fileCounts := summaryFileCounts{failedFiles: len(parseFailedPaths)}
 	// Every discovered path contributes to exactly one user-visible summary category.
 	for _, scannedPath := range analysisReport.Paths.Scanned {
 		// A failed read or parse never reached rule analysis.
-		if _, failed := failedFilePaths[scannedPath]; failed {
-			fileCounts.failedFiles++
+		if _, failed := parseFailedPaths[scannedPath]; failed {
 			continue
 		}
 		// A successful Go input reached AST parsing rather than only raw-text rules.

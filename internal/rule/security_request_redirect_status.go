@@ -30,7 +30,8 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 		}
 		selector, isSelector := statusCall.Fun.(*ast.SelectorExpr)
 		writer, isIdentifier := selectorReceiverIdent(selector)
-		if !isSelector || !isIdentifier || selector.Sel.Name != "WriteHeader" || writer.Name != responseWriter {
+		// Only a redirect status on the same response binding activates Location.
+		if !isSelector || !isIdentifier || selector.Sel.Name != "WriteHeader" || !identifiersShareBinding(writer, responseWriter) {
 			return true
 		}
 		// Mutually exclusive branches cannot combine a Location value with a
@@ -44,25 +45,40 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 	return found
 }
 
-// locationHeaderResponseWriter returns the `w` from w.Header().Set(...).
-func locationHeaderResponseWriter(locationCall *ast.CallExpr) (string, bool) {
+// locationHeaderResponseWriter returns the lexical `w` from w.Header().Set(...).
+// The caller uses its object identity so a shadowed writer cannot activate Location.
+func locationHeaderResponseWriter(locationCall *ast.CallExpr) (*ast.Ident, bool) {
 	setSelector, ok := locationCall.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return "", false
+		return nil, false
 	}
 	headerCall, ok := setSelector.X.(*ast.CallExpr)
 	if !ok || len(headerCall.Args) != 0 {
-		return "", false
+		return nil, false
 	}
 	headerSelector, ok := headerCall.Fun.(*ast.SelectorExpr)
 	if !ok || headerSelector.Sel.Name != "Header" {
-		return "", false
+		return nil, false
 	}
 	writer, ok := headerSelector.X.(*ast.Ident)
 	if !ok {
-		return "", false
+		return nil, false
 	}
-	return writer.Name, true
+	return writer, true
+}
+
+// identifiersShareBinding reports whether two receiver names resolve to the
+// same lexical object. Name fallback preserves scans of unresolved partial code.
+func identifiersShareBinding(leftIdentifier, rightIdentifier *ast.Ident) bool {
+	// Missing receiver syntax cannot describe one response writer.
+	if leftIdentifier == nil || rightIdentifier == nil {
+		return false
+	}
+	// When either side resolves, both must resolve to the exact same declaration.
+	if leftIdentifier.Obj != nil || rightIdentifier.Obj != nil {
+		return leftIdentifier.Obj != nil && leftIdentifier.Obj == rightIdentifier.Obj
+	}
+	return leftIdentifier.Name == rightIdentifier.Name
 }
 
 // selectorReceiverIdent safely returns an identifier receiver for method calls.
