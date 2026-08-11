@@ -39,7 +39,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - `go run ./cmd/gruff-go analyse .` - dogfood scan; must return grade A with zero findings on `main`.
 - `UPDATE_GOLDEN=1 go test ./internal/cli/...` - regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
 - `scripts/bump-version.sh <new-version>` - update every in-tree version literal in one shot and regenerate goldens.
-- `bash .goat-flow/hooks/deny-dangerous.sh --self-test && bash .goat-flow/hooks/gruff-code-quality.sh --self-test=smoke` - verify installed safety and code-quality hooks.
+- `bash .goat-flow/hooks/deny-dangerous.sh --self-test && bash .goat-flow/hooks/gruff-code-quality.sh --self-test=smoke && bash .goat-flow/hooks/post-turn-safety.sh --self-test` - verify all three hooks `.goat-flow/config.yaml` enables. `post-turn-safety.sh` accepts bare `--self-test` only; `--self-test=smoke` prints usage and exits 0 without running.
 - `node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent claude` - GOAT Flow setup audit.
 
 ## Execution Loop: READ → SCOPE → ACT → VERIFY

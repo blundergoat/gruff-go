@@ -22,9 +22,9 @@
 - `AGENTS.md` = Codex hot-path instructions for this target project.
 - `.gitignore` = Ignores dependency cache and agent local settings.
 - `.goat-flow/` = Shared GOAT Flow project memory, setup docs, and local continuity files.
-- `.claude/` = Claude-owned skills, settings, and safety hooks.
-- `.agents/` = Shared skill directory used by Codex and Gemini GOAT Flow installs.
-- `.codex/` = Codex-owned config, hook registration, and safety hooks.
+- `.claude/` = Claude-owned skills, settings, and hook registration. The hook scripts themselves are shared and live in `.goat-flow/hooks/`; nothing under `.claude/` is executable.
+- `.agents/` = Shared skill directory read by Codex, plus `hooks.json`, which is antigravity's hook registration.
+- `.codex/` = Codex-owned config and hook registration; like `.claude/`, it points at the shared scripts rather than holding copies.
 - `.github/` = GitHub-facing guidance, CI workflows, and Copilot agent surfaces (instructions, skills, hooks).
 - `node_modules/` = Installed dependency cache; generated/vendor content, never edit directly.
 - `.idea/` = Local IDE metadata; not part of project behavior.
@@ -43,7 +43,7 @@
 ## Codex-Owned Surfaces
 
 - `.codex/config.toml` = Codex permission profile and hooks feature flag.
-- `.codex/hooks.json` = Codex hook registration for the supported Bash `PreToolUse` deny guard.
+- `.codex/hooks.json` = Codex hook registration: `deny-dangerous` on `PreToolUse`, `gruff-code-quality` on `PostToolUse`, and `post-turn-safety` on `Stop`.
 - `.agents/skills/goat/SKILL.md` = GOAT Flow dispatcher skill.
 - `.agents/skills/goat-plan/SKILL.md` = Planning and milestone skill.
 - `.agents/skills/goat-debug/SKILL.md` = Debugging workflow skill.
@@ -59,7 +59,7 @@
 - `.goat-flow/code-map.md` = This repository map.
 - `.goat-flow/glossary.md` = Project terminology for future agents.
 - `.goat-flow/security-policy.md` = Installed security policy reference.
-- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; policy under `deny-dangerous/`), `gruff-code-quality.sh` (optional post-edit gruff scan), and `post-turn-safety.sh` (optional stop-event changed-content guard). Registration is agent-specific and follows what `goat-flow hooks list --json` reports as supported, so an unregistered hook is a recorded upstream limit rather than a gap. `deny-dangerous.sh` is registered for all four agents (claude, codex, antigravity, copilot). `gruff-code-quality.sh` is registered for claude, antigravity, and copilot; Codex is PreToolUse-only until a supported post-tool lifecycle path is verified. `post-turn-safety.sh` is registered for claude alone: Codex and antigravity Stop-hook delivery is unverified (no Stop payload was captured firing), and Copilot has no project-local post-turn hook event.
+- `.goat-flow/hooks/` = Shared agent hook scripts: `deny-dangerous.sh` (Bash pre-tool safety; self-test via `--self-test`; policy under `deny-dangerous/`), `gruff-code-quality.sh` (optional post-edit gruff scan), and `post-turn-safety.sh` (optional stop-event changed-content guard; self-test via bare `--self-test`, which is the one script that rejects `--self-test=smoke`). Registration is agent-specific and follows what `goat-flow hooks list --json` reports as supported, so an unregistered hook is a recorded upstream limit rather than a gap. `deny-dangerous.sh` is registered for all four agents (claude, codex, antigravity, copilot). `gruff-code-quality.sh` is registered for claude, codex, and copilot; antigravity is unregistered because its `PostToolUse` can run a command but cannot deliver the scan feedback back to the model. `post-turn-safety.sh` is registered for claude and codex; antigravity is unregistered because no Stop payload has been captured firing, and copilot because its `agentStop` channel has no registration adapter. Derive this matrix from `goat-flow hooks list --json` before citing it rather than trusting the sentence above - it shifts whenever an upstream provider adapter gains verified delivery, and a stale copy reads as a verified limit.
 - `.goat-flow/dashboard-state.json` = GOAT Flow dashboard state.
 - `.goat-flow/learning-loop/footguns/` = Evidence-backed architectural traps.
 - `.goat-flow/learning-loop/lessons/` = Durable behavioral lessons from incidents or git history.

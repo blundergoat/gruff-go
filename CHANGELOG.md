@@ -11,7 +11,8 @@
 - **One commit-guidance document** - `CLAUDE.md` now cites `docs/coding-standards/git-commit-message.md`, the same standard `AGENTS.md` names, and `.github/git-commit-instructions.md` points at it instead of stating a second, thinner convention.
 - **Instruction files agree on the completion gate** - `CLAUDE.md` states the same Definition of Done as `AGENTS.md` (`preflight-checks.sh` as the gate, `make check` as the Go floor) and lists the hook self-test command, so a change cannot satisfy one agent's stated gate while failing the other's.
 - **Instruction-file paths resolve** - Both instruction files cited `internal/rule/testdata/`, which does not exist; rule fixtures are inline Go sources and golden snapshots live under `internal/cli/testdata/`.
-- **Hook coverage is documented per agent** - `.goat-flow/code-map.md` described hook registration as a Codex-only exception. It now states the registration state for all four agents and names each recorded upstream reason, so an unregistered hook reads as a verified limit rather than a gap.
+- **Hook coverage is documented per agent** - `.goat-flow/code-map.md` names each hook's real per-agent registration state, no longer describes `.claude/` and `.codex/` as holding hook scripts, and directs readers to re-derive the matrix from `goat-flow hooks list --json` so a stale copy cannot read as a verified limit.
+- **Hook self-test covers every enabled hook** - `CLAUDE.md` chains `post-turn-safety.sh --self-test` alongside the deny and code-quality self-tests, and records that it rejects `--self-test=smoke`.
 - **`size.file-length` line anchor** - The finding now points at the physical line crossing the substantive budget, so changed-region scans keep it.
 - **CI recipes use `--since`** - `docs/ci-integration.md` leads with `--since <ref>`; `--diff-base` still works, as the older name.
 - **Instruction-header version gate** - `bump-version.sh --check-references` now scans the `CLAUDE.md` and Copilot headers, stale since `v0.2.0`.
@@ -20,6 +21,9 @@
 - **Review security hardening** - Fixes six URL, random-token, recursive-delete, and analyzer-binary validation gaps.
 - **Review precision follow-ups** - Keeps stale or optional URL guards visible, respects redirect branches and HTTP-client shadowing, recognises pool-independent token assembly, and keeps replacement symbol-less security findings new against baselines.
 - **GOAT Flow 1.15.0** - Updates Codex skills, safety hooks, permission profiles, setup references, and managed-install drift protection.
+- **GOAT Flow 1.15.1** - Refreshes Claude, Codex, and Copilot skills, safety hooks, and playbooks onto one Node hook launcher (`.goat-flow/hooks/hook-launch-runtime.mjs`, `hook-provider-adapters.mjs`) and moves `.goat-flow/config.yaml` to `1.15.1`.
+- **Recursive deletes with a mid-path variable now block** - The `deny-dangerous` guard tests for an unresolved `$` or backtick expansion anywhere in a delete target, not only at the front. `rm -rf cache/$TARGET` and `./cache/${TARGET}` return `rc=2` where 1.15.0 allowed them, closing the path that deleted outside the project once the shell expanded the variable.
+- **Hook effectiveness needs dated proof** - Support claims expire, so `audit` reports a registered hook as `scenario unverified` until `goat-flow hooks verify . --agent <id> --scenario <deny-hook|gruff-hook|post-turn-hook>` runs. Every supported scenario passes for the three installed agents; Copilot's `post-turn-hook` reports `unsupported` because its agentStop channel has no upstream registration adapter.
 
 ## v0.5.0 - 2026-08-06
 
