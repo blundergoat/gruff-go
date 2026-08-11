@@ -31,7 +31,7 @@ var completionCommands = []string{
 func runCompletion(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("completion", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	shell := "bash"

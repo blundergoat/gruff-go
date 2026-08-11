@@ -93,21 +93,30 @@ func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
 	}
 }
 
-// TestAnalyseHelpAfterPositionalStaysPath checks that the help pre-scan does
-// not turn a positional --help token into command help after path parsing has
-// already stopped.
-func TestAnalyseHelpAfterPositionalStaysPath(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
-	writeFile(t, root, "--help", "not a go source file\n")
-	t.Chdir(root)
+// TestAnalyseTreatsHelpAfterTerminatorAsPath verifies `--` protects a help-shaped filename.
+func TestAnalyseTreatsHelpAfterTerminatorAsPath(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeFile(t, projectRoot, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, projectRoot, "--help", "not a go source file\n")
+	t.Chdir(projectRoot)
 
 	var out, errOut bytes.Buffer
-	if code := Main([]string{"analyse", "--fail-on", "none", "main.go", "--help"}, &out, &errOut); code != 0 {
+	if code := Main([]string{"analyse", "--fail-on", "none", "main.go", "--", "--help"}, &out, &errOut); code != 0 {
 		t.Fatalf("analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
 	if strings.Contains(out.String(), "gruff-go analyse [") {
-		t.Fatalf("positional --help should not render command help: %s", out.String())
+		t.Fatalf("-- --help should not render command help: %s", out.String())
+	}
+}
+
+// TestAnalyseRecognisesHelpAfterPath verifies a trailing help flag does not become another scan path.
+func TestAnalyseRecognisesHelpAfterPath(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := Main([]string{"analyse", "main.go", "--help"}, &out, &errOut); code != 0 {
+		t.Fatalf("analyse help exit = %d, stderr = %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "gruff-go analyse [") {
+		t.Fatalf("help output missing command usage: %s", out.String())
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
@@ -86,37 +85,52 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// extractQuiet removes -q / --quiet from args and returns the result plus a
-// boolean indicating whether quiet mode was requested. The flag can appear at
-// any position.
-func extractQuiet(args []string) ([]string, bool) {
-	out := make([]string, 0, len(args))
-	quiet := false
-	for _, arg := range args {
-		switch arg {
+// extractQuiet removes global quiet flags before command dispatch.
+// Flags may follow paths, but a bare dash or `--` protects every later token as positional input.
+func extractQuiet(commandArguments []string) ([]string, bool) {
+	remainingArguments := make([]string, 0, len(commandArguments))
+	quietRequested := false
+	// Quiet flags remain global until the caller explicitly ends flag parsing.
+	for argumentIndex, argument := range commandArguments {
+		// The command parser must receive the terminator and every protected operand unchanged.
+		if argument == "--" || argument == "-" {
+			remainingArguments = append(remainingArguments, commandArguments[argumentIndex:]...)
+			break
+		}
+		switch argument {
 		case "-q", "--quiet", "--silent":
-			quiet = true
+			// Quiet mode discards command stdout regardless of where the flag appears.
+			quietRequested = true
 		default:
-			out = append(out, arg)
+			// All other tokens continue to command-specific parsing.
+			remainingArguments = append(remainingArguments, argument)
 		}
 	}
-	return out, quiet
+	return remainingArguments, quietRequested
 }
 
 // extractVerbose accepts common Symfony-style verbosity flags. gruff-go does
 // not currently vary output by verbosity, but accepting these flags keeps the
 // global surface consistent across gruff implementations.
-func extractVerbose(args []string) []string {
-	out := make([]string, 0, len(args))
-	for _, arg := range args {
-		switch arg {
+func extractVerbose(commandArguments []string) []string {
+	remainingArguments := make([]string, 0, len(commandArguments))
+	// Compatibility verbosity flags are accepted anywhere before a parsing terminator.
+	for argumentIndex, argument := range commandArguments {
+		// Later flag-shaped tokens are paths or stdin operands, not global verbosity requests.
+		if argument == "--" || argument == "-" {
+			remainingArguments = append(remainingArguments, commandArguments[argumentIndex:]...)
+			break
+		}
+		switch argument {
 		case "-v", "-vv", "-vvv", "--verbose":
+			// Gruff accepts family-wide verbosity spellings but does not vary its output yet.
 			continue
 		default:
-			out = append(out, arg)
+			// Command-specific tokens pass through unchanged.
+			remainingArguments = append(remainingArguments, argument)
 		}
 	}
-	return out
+	return remainingArguments
 }
 
 // isVersionFlag reports whether the argument requests version output.
@@ -124,32 +138,16 @@ func isVersionFlag(arg string) bool {
 	return arg == "-V" || arg == "--version"
 }
 
-// hasHelpFlag reports whether a subcommand argument list requests help before
-// the first positional path. Handling it before FlagSet.Parse lets command help
-// print to stdout and exit 0 without turning a positional "--help" into help.
-func hasHelpFlag(args []string) bool {
-	args = normalizeAnalyseDiffArgs(args)
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "-h" || arg == "--help" {
-			return true
-		}
-		if arg == "--" {
-			return false
-		}
-		if !strings.HasPrefix(arg, "-") {
-			return false
-		}
-		if analyseFlagConsumesValue(arg) {
-			i++
-		}
-	}
-	return false
+// analyseHelpRequested recognises help anywhere before an explicit parsing terminator.
+// Run it before FlagSet parsing so help writes usage to stdout and exits successfully.
+func analyseHelpRequested(commandArguments []string) bool {
+	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
+	return helpRequested(normalizedArguments, analyseFlagHasSeparateValue)
 }
 
 // runAnalyse executes the analyse subcommand and renders the scan report.
 func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
-	if hasHelpFlag(args) {
+	if analyseHelpRequested(args) {
 		writeCommandHelp("analyse", commandUsages["analyse"], stdout, ansiStyler{})
 		return 0
 	}
@@ -277,7 +275,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	format := flags.String("format", "text", "output format: text or json")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	if *format != "text" && *format != "json" {

@@ -24,6 +24,18 @@ exit: 1
 
 The text format is intentionally terse. For human review of a full run, prefer `--format html` and open it in a browser.
 
+### Summary scan surface
+
+`gruff-go summary --format text` separates the files that reached Go parsing from files read for raw-text rules:
+
+```text
+files: 61 Go parsed, 4 text scanned, 0 failed, 6 skipped
+```
+
+`Go parsed` excludes Go files with parse or read diagnostics. `text scanned` counts successfully read configuration, workflow, module, and plain-text inputs used by sensitive-data, workflow-security, and dependency-posture rules. `failed` counts discovered inputs that could not be read or parsed.
+
+Full analysis JSON keeps `summary.filesScanned` as the combined discovered Go-and-text count. Use `paths.scanned` when a machine consumer needs the exact file set; adding serialized per-type counts is deferred to a coordinated schema change.
+
 ## `json`
 
 Full structured report. Schema: `gruff.analysis.v2`.

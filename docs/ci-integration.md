@@ -4,7 +4,7 @@
 
 This page is a copy-paste cheat sheet for common runners and the recommended rollout pattern for existing codebases.
 
-> **Flag ordering.** Every `--flag` must appear before the path arguments - `gruff-go` uses the Go standard `flag` package, which stops parsing at the first non-flag token. Write `gruff-go analyse --baseline foo.json .`, not `gruff-go analyse . --baseline foo.json`.
+> **Flag ordering.** Flags may appear before, between, or after path arguments. `--` ends flag parsing; use `gruff-go analyse -- -leading-dash-path` when a path begins with `-`.
 
 ## Recommended rollout pattern
 
@@ -204,20 +204,32 @@ repos:
     hooks:
       - id: gruff-go
         name: gruff-go
-        entry: gruff-go analyse --since HEAD --min-severity error .
+        entry: gruff-go analyse --since HEAD --min-severity advisory .
         language: system
         pass_filenames: false
         types: [go]
 ```
 
-Pair `--since HEAD` with `--min-severity error` so the hook stays fast and only blocks on serious regressions in the working tree.
+`--since HEAD` scopes the hook to changed regions. `--min-severity advisory` keeps the gate at gruff-go’s comprehensive default, so every reported finding can block.
 
 ## Threshold knobs
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - default `advisory` (every finding fails). Set `warning` for moderate gating, or `error` for strict gating that blocks only on the highest-impact findings. Add `none` to disable the finding gate (report findings and exit 0 when the scan otherwise succeeds). The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the 3-bucket vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
+- `--min-severity` - default `advisory`, the broadest gate: every finding can fail the run. `warning` narrows the gate to warning and error findings; `error` narrows it to error findings only; `none` disables finding-driven exit `1`. The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` was added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
 - `--fail-on` is an alias for `--min-severity`.
+
+### `--fail-on=error` is not a security gate
+
+With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are below error: 20 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.sql-string-query` and `security.shell-command`. Some `sensitive-data.*` rules use error severity, but that separate rule family does not cover the application-security classes under `security.*`.
+
+Use the default advisory floor when CI is intended to gate on all detected security issues. For an existing codebase, reduce initial scope with a baseline or `--since` rather than raising the severity floor and silently excluding detected classes.
+
+### Open family decision: security findings and grade A
+
+A run can report security findings and still receive grade A because the composite is a weighted aggregate. A fixture containing a dynamic SQL query and explicit shell execution scores A (99 / 100) while `--fail-on=error` exits `0`; the default advisory gate exits `1` for the same report. Grade A means the aggregate score is at least 90, not that the scan found no security issues.
+
+Gruff family contract §12 must decide whether any `security.*` finding should cap the composite below A or whether grades and finding gates remain independent. A cap would change serialized scores, grades, and cross-port semantics. No cap, severity, or scoring change is made here. Until that decision is ratified, CI should use the advisory finding gate and must not treat grade A as security proof.
 
 For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:
 

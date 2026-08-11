@@ -27,22 +27,31 @@ const (
 	ansiGreen  = "\x1b[32m"
 )
 
-// extractAnsiFlags removes --ansi and --no-ansi from args and returns the
-// requested mode. The flags can appear at any position.
-func extractAnsiFlags(args []string) ([]string, ansiMode) {
-	out := make([]string, 0, len(args))
-	mode := ansiAuto
-	for _, arg := range args {
-		switch arg {
+// extractAnsiFlags removes global colour flags before command dispatch.
+// The last explicit preference wins; a bare dash or `--` protects every later positional token.
+func extractAnsiFlags(commandArguments []string) ([]string, ansiMode) {
+	remainingArguments := make([]string, 0, len(commandArguments))
+	requestedMode := ansiAuto
+	// Colour flags remain global until the caller explicitly ends flag parsing.
+	for argumentIndex, argument := range commandArguments {
+		// Protected operands must reach the command parser unchanged, even when they resemble colour flags.
+		if argument == "--" || argument == "-" {
+			remainingArguments = append(remainingArguments, commandArguments[argumentIndex:]...)
+			break
+		}
+		switch argument {
 		case "--ansi":
-			mode = ansiOn
+			// Explicit colour bypasses terminal auto-detection.
+			requestedMode = ansiOn
 		case "--no-ansi":
-			mode = ansiOff
+			// Explicit opt-out keeps output plain even on a terminal.
+			requestedMode = ansiOff
 		default:
-			out = append(out, arg)
+			// Command and path arguments continue to command-specific parsing.
+			remainingArguments = append(remainingArguments, argument)
 		}
 	}
-	return out, mode
+	return remainingArguments, requestedMode
 }
 
 // ansiEnabled decides whether to emit ANSI escapes given the requested mode
@@ -63,20 +72,15 @@ func ansiEnabled(writer io.Writer, mode ansiMode) bool {
 	return isTerminalWriter(writer)
 }
 
-// isTerminalWriter probes for a TTY by Stat()'ing the underlying *os.File and
-// checking for ModeCharDevice. Any writer that isn't an *os.File (e.g. the
-// bytes.Buffer used in tests, or a pipe wrapped through a custom writer)
-// returns false, which is the conservative choice - when in doubt, no colour.
+// isTerminalWriter enables automatic colour only for an os.File backed by a real terminal.
+// Buffers, wrapped pipes, and character devices such as /dev/null remain unstyled.
 func isTerminalWriter(writer io.Writer) bool {
-	file, ok := writer.(*os.File)
-	if !ok {
+	stream, isFile := writer.(*os.File)
+	// A non-file writer has no terminal descriptor, so automatic colour stays off.
+	if !isFile {
 		return false
 	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return isInteractiveTerminal(stream)
 }
 
 // ansiStyler conditionally wraps text in ANSI escape sequences.

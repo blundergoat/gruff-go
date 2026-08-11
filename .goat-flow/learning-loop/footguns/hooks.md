@@ -33,6 +33,25 @@ How to avoid:
 How to avoid:
 - Do not add `ReportAllSkippedInputs: true` (or any analyse-style fail-louder option) to the hook's `analysis.Options` to "fix" the apparent inconsistency. It breaks the advisory contract and `internal/cli/hook_test.go` (search: `TestHookReportsIgnoredPathsAndConfigErrors`), which pins exit 0 plus `Ignored.Paths` for a config-ignored explicit input. If a skipped explicit path should be more visible to agents, add it to an in-band payload field, not the exit code.
 
+## Footgun: protected-path literals inside data filters can trigger the secret-file guard
+
+**Status:** active | **Created:** 2026-08-11 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** Before retrying a blocked data-classification command, distinguish a protected operand from a protected-looking literal inside the filter program; reformulate only when every real input is verified non-secret.
+**Trigger phase:** VERIFY
+**Incident count:** 1
+**Latest occurrence:** 2026-08-11
+
+hallucination-risk: medium
+
+A read-only Vault measurement was blocked before execution even though its file operands were the repository, a redacted gruff JSON report in `/tmp`, and ordinary output files. An inline AWK suffix classifier named a protected environment-file pattern, and the guard reported `Secret-file access (jq)` for the surrounding data-filter pipeline. Replacing that special case with a generic suffix classifier left the inputs and measurement unchanged and allowed the command to run.
+
+Evidence: `.goat-flow/hooks/deny-dangerous/patterns-paths.sh` (search: `check_secret_segment`) applies option-aware local-file parsing only to curl and recognized search commands. Other verbs fall through to `is_secret_path_touch` over the whole command text, so a protected-looking literal in a jq/AWK program is indistinguishable from an operand.
+
+How to avoid:
+- Treat the block as real until every command operand and redirection target has been checked. Never reformulate a command that actually reads or writes a protected file.
+- For verified non-secret reports, prefer generic extension or type classification that does not embed protected path names in the filter source.
+- Record that the original command did not execute; only the successful reformulated run is measurement evidence.
+
 ## Resolved Entries
 
 ## Footgun: `deny-dangerous` rejected a leading `$VAR` in a delete target but allowed one mid-path

@@ -36,7 +36,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	if *format != "html" && *format != "json" {

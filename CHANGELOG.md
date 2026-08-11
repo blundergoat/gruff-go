@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- **Flags work after paths** - Every subcommand now parses flags before, between, or after positional paths instead of silently forwarding trailing flags to discovery. Use `--` before a leading-dash path; a bare `-` also stops flag parsing.
+- **Redirected character devices stay non-interactive** - `/dev/null` no longer triggers the first-run config prompt or automatic ANSI output. Terminal detection now verifies a real terminal for stdin, stdout, and stderr.
+- **Summary separates its scan surface** - `summary --format text` now reports Go files parsed, text files scanned by raw-text rules, failed reads or parses, and skipped paths separately. Analysis JSON keeps its existing combined `summary.filesScanned` field.
+- **CI guide names the security gate ceiling** - Documents that `--fail-on=error` ignores the built-in `security.*` rule set and that grade A can coexist with detected security findings. The recommended pre-commit recipe uses the advisory gate; severities and scoring are unchanged pending a family decision.
 - **Token generators flag whatever the buffer is called** - `security.insecure-random-secret` no longer needs the destination buffer itself to be secret-named. `buf[i] = pool[rand.Intn(len(pool))]` and `buf = append(buf, ...)` inside `generateToken` now report, matching the `token[i] = ...` spelling they had always disagreed with. Ordinary selection stays silent.
 - **Concatenated token generation flags again** - `security.insecure-random-secret` treats `token += string(pool[rand.Intn(len(pool))])` and its `token = token + ...` form as generation. The existing-value exemption previously read them as sampling, so a `math/rand` token builder that v0.4.0 reported passed clean.
 - **Destination guards must reach the request** - `security.request-controlled-url` no longer combines a scheme check and a host check taken from mutually exclusive branches. A handler where neither path constrains both is reported again.

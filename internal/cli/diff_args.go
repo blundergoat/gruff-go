@@ -27,6 +27,11 @@ func normalizeAnalyseDiffArgs(args []string) []string {
 	normalized := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		// A standalone stdin operand or terminator protects every later token from diff normalization.
+		if arg == "--" || arg == "-" {
+			normalized = append(normalized, args[i:]...)
+			break
+		}
 		if arg != "--diff" {
 			normalized = append(normalized, arg)
 			continue

@@ -34,7 +34,7 @@ type hookFlagValues struct {
 // runHook executes the agent-hook JSON contract with advisory finding exits.
 func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 	// A help request returns guidance without scanning the user's project.
-	if hasHookHelpFlag(commandArguments) {
+	if hookHelpRequested(commandArguments) {
 		writeCommandHelp("hook", commandUsages["hook"], stdout, ansiStyler{})
 		return 0
 	}
@@ -118,32 +118,33 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// parseHookFlags parses hook-specific flags while preserving Go's positional parser contract.
+// parseHookFlags validates hook options and retains positional scan paths in the returned values.
+// It writes usage errors to stderr; false tells runHook to stop before analysis.
 func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues, bool) {
-	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	flags.Usage = func() { writeCommandHelp("hook", commandUsages["hook"], stderr, ansiStyler{}) }
-	format := flags.String("format", "json", "output format: json")
-	capabilities := flags.Bool("capabilities", false, "emit gruff.hook.v1 capability metadata and exit")
-	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
-	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
-	changedRanges := flags.String("changed-ranges", "", "explicit changed line ranges such as 3-3,8-10")
-	diffMode := flags.String("diff", "", "changed-region/new-only source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
-	baselinePath := flags.String("baseline", "", "baseline file to apply for stable-identity new-only")
-	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	flagSet := flag.NewFlagSet("hook", flag.ContinueOnError)
+	flagSet.SetOutput(stderr)
+	flagSet.Usage = func() { writeCommandHelp("hook", commandUsages["hook"], stderr, ansiStyler{}) }
+	outputFormat := flagSet.String("format", "json", "output format: json")
+	capabilitiesRequested := flagSet.Bool("capabilities", false, "emit gruff.hook.v1 capability metadata and exit")
+	configPath := flagSet.String("config", "", "gruff config file (.gruff-go.yaml)")
+	noConfig := flagSet.Bool("no-config", false, "skip auto-loading default gruff config")
+	changedRanges := flagSet.String("changed-ranges", "", "explicit changed line ranges such as 3-3,8-10")
+	diffMode := flagSet.String("diff", "", "changed-region/new-only source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
+	baselinePath := flagSet.String("baseline", "", "baseline file to apply for stable-identity new-only")
+	includeIgnored := flagSet.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
 	// Invalid flag syntax is already explained to the user through stderr.
-	if err := flags.Parse(normalizedArguments); err != nil {
+	if err := parseCommandArguments(flagSet, normalizedArguments); err != nil {
 		return hookFlagValues{}, false
 	}
-	diffPatch, readPatch := readDiffPatchIfRequested(*diffMode, stderr)
+	diffPatch, patchRead := readDiffPatchIfRequested(*diffMode, stderr)
 	// A failed stdin patch read leaves no reliable changed-region input.
-	if !readPatch {
+	if !patchRead {
 		return hookFlagValues{}, false
 	}
 	return hookFlagValues{
-		format:         *format,
-		capabilities:   *capabilities,
+		format:         *outputFormat,
+		capabilities:   *capabilitiesRequested,
 		configPath:     *configPath,
 		noConfig:       *noConfig,
 		changedRanges:  *changedRanges,
@@ -151,46 +152,30 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 		diffPatch:      diffPatch,
 		baselinePath:   *baselinePath,
 		includeIgnored: *includeIgnored,
-		paths:          flags.Args(),
+		paths:          flagSet.Args(),
 	}, true
 }
 
-// hasHookHelpFlag detects help before the first positional path.
-func hasHookHelpFlag(commandArguments []string) bool {
+// hookHelpRequested recognises help anywhere before an explicit parsing terminator.
+// Run it before FlagSet parsing so help returns the hook's command guidance instead of a scan.
+func hookHelpRequested(commandArguments []string) bool {
 	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
-	// Inspect flags only until the user's first positional project path.
-	for argumentIndex := 0; argumentIndex < len(normalizedArguments); argumentIndex++ {
-		argument := normalizedArguments[argumentIndex]
-		// Either supported help spelling should display command guidance.
-		if argument == "-h" || argument == "--help" {
-			return true
-		}
-		// An explicit separator makes every following token a user path.
-		if argument == "--" {
-			return false
-		}
-		// The first non-flag token begins positional project input.
-		if !strings.HasPrefix(argument, "-") {
-			return false
-		}
-		// Skip a value token so a path-like value is not mistaken for position input.
-		if hookFlagConsumesValue(argument) {
-			argumentIndex++
-		}
-	}
-	return false
+	return helpRequested(normalizedArguments, hookFlagHasSeparateValue)
 }
 
-// hookFlagConsumesValue reports whether the next argv token belongs to a hook flag.
-func hookFlagConsumesValue(flagArgument string) bool {
-	// An inline `--flag=value` already carries its user-provided value.
+// hookFlagHasSeparateValue identifies hook flags whose value is the next token.
+// The help pre-scan uses it so flag values that resemble `--help` stay values.
+func hookFlagHasSeparateValue(flagArgument string) bool {
+	// An inline assignment leaves the following token available as a path or another flag.
 	if strings.Contains(flagArgument, "=") {
 		return false
 	}
+	// These are the hook's non-Boolean flags; every other supported flag is self-contained.
 	switch strings.TrimLeft(flagArgument, "-") {
 	case "format", "config", "changed-ranges", "diff", "baseline":
 		return true
 	default:
+		// Boolean and unknown flags do not reserve the next token during the help pre-scan.
 		return false
 	}
 }

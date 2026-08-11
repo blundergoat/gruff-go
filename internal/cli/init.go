@@ -37,7 +37,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	force := flags.Bool("force", false, "regenerate the config; project-specific tuning is preserved across the regenerate (use --reset to clobber instead)")
 	reset := flags.Bool("reset", false, "with --force, discard existing tuning and write fresh defaults (destructive)")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	if *reset && !*force {

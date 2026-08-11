@@ -24,7 +24,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	if *outPath == "" {

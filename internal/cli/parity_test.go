@@ -139,9 +139,7 @@ func TestSummaryCommandText(t *testing.T) {
 	for _, fragment := range []string{
 		"gruff-go " + toolVersion + " summary",
 		"scanned: . (in ",
-		"files: ",
-		" analysed, ",
-		" skipped",
+		"files: 1 Go parsed, 0 text scanned, 0 failed, 0 skipped",
 		"scan time: ",
 		"Composite: ",
 		"Findings: ",
@@ -205,8 +203,8 @@ func TestSummaryCommandDefaultPath(t *testing.T) {
 	if !strings.Contains(out.String(), "scanned: . (in ") {
 		t.Errorf("summary (no path) missing default-path line; got: %s", out.String())
 	}
-	if !strings.Contains(out.String(), "files: 1 analysed") {
-		t.Errorf("summary (no path) should report 1 file analysed; got: %s", out.String())
+	if !strings.Contains(out.String(), "files: 1 Go parsed, 0 text scanned, 0 failed, 0 skipped") {
+		t.Errorf("summary (no path) should report the Go/text scan surface; got: %s", out.String())
 	}
 }
 
