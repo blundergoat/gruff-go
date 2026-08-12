@@ -51,6 +51,11 @@ yarn-error.log*
 /output/
 *.cache
 *.log
+# gruff-php writes its result cache to the current working directory
+# (ResultCache::DIRECTORY = '.gruff-cache'), so running a sibling port from this
+# checkout drops it here. `*.cache` above does not match it - the name ends in
+# "-cache", not ".cache" - so a `git add -A` would otherwise stage it.
+.gruff-cache/
 
 ### Performance harness (scripts/test-performance.sh) ###
 /scripts/.perf-corpus/

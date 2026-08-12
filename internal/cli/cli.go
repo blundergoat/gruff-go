@@ -278,6 +278,11 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
+	// The registry is the whole subject, so an operand here is input the command would drop.
+	if flags.NArg() > 0 {
+		fmt.Fprintln(stderr, "list-rules takes no positional arguments")
+		return 2
+	}
 	if *format != "text" && *format != "json" {
 		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
 		return 2

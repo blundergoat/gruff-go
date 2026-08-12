@@ -34,6 +34,11 @@ func runCompletion(args []string, stdout, stderr io.Writer) int {
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
+	// Only the first operand names a shell; a second is input this command would silently drop.
+	if flags.NArg() > 1 {
+		fmt.Fprintln(stderr, "completion takes at most one shell argument")
+		return 2
+	}
 	shell := "bash"
 	if flags.NArg() > 0 {
 		shell = flags.Arg(0)

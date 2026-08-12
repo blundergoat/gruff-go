@@ -116,7 +116,7 @@ Every rule has a default severity; configs can override per rule. ADR-009 collap
 | `warning` | 8 | amber | Worth fixing in the next clean-up pass. |
 | `advisory` | 1 | muted | Informational; trend over time. |
 
-The `--min-severity` flag (default `advisory`) sets the threshold at which findings flip the exit code from `0` to `1`. The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
+The `--min-severity` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse` and `summary`, `none` for `report` and `dashboard`; see [`configuration.md`](configuration.md#minimumseverity). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
 
 ## Per-rule reference
 

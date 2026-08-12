@@ -44,3 +44,71 @@ How to avoid:
 - Express control-flow claims relative to the operation they protect or replace. For a write that must supersede state at a sink, test whether the sink lies inside every optional region around the write—not whether the earlier state-producing write does.
 - Assert only the contract under test. A flag-order reproduction needs valid, identical JSON; hard-coding a remembered schema name adds a separate failure mode and can turn correct behavior into a false red result.
 - Run the dogfood gate after expanding table or subtest collections. Passing Go tests do not catch a test function that crosses the repository's own maintainability threshold; split it by behavior before changing policy.
+
+## Lesson: a remediation brief's evidence is a hypothesis, including its file list and its citations
+
+**Created:** 2026-08-12
+**Decision changed:** Before implementing a handed-down brief, re-derive its affected-site list from the code, re-read every contract section it cites, and re-measure any claim it states as a property of the system rather than of a sample.
+**Trigger phase:** READ
+
+A remediation brief written from a corpus run reads as verified because it carries measurements. The
+measurements can be real and the conclusions drawn from them still wrong in three distinct ways. All
+three occurred in one brief, and re-verifying it on 2026-08-12 found each.
+
+**A grep-derived file list is a hypothesis, not an inventory.** The brief located the
+flags-after-paths defect with `flag.NewFlagSet` and published the hit list as the affected set:
+`analyse_flags.go`, `report.go`, `baseline.go`, `summary.go`, `dashboard.go`, `completion.go`, and
+`cli.go`'s `list-rules`. Three of those never take positional paths — `dashboard` reads scan targets
+from `--paths`, `completion` uses `Arg(0)` as a shell name, `list-rules` consumes no operands at all —
+so the stated mechanism ("every subcommand takes those remaining args as paths") did not apply to
+them. More seriously, the grep **missed** `internal/cli/hook.go` (search: `paths:          flagSet.Args()`)
+and `internal/cli/check_ignore.go` (search: `paths := flags.Args()`), which do. `hook` is this port's
+primary surface. An implementer following the list literally would have shipped
+`gruff-go hook <path> --format json` still dropping `--format`. The grep answered "who constructs a
+FlagSet"; the question was "who consumes `Args()` as paths", which is a different grep.
+
+**A cited contract section may not say what the brief says it says.** The brief closed debate with
+"Under §7 the family flag surface is RATIFIED, so this is a gruff-go conformance defect, not a design
+choice open for debate." That section of the family contract — maintained outside this repository —
+has two bullets: family flags are accepted on every port with honest help text, and inputs are
+files/directories/path sets with `dir/` ≡ `dir/**`. Neither addresses where a flag may sit relative
+to an operand. The defect was real
+on its own merits — silent wrong results — but the citation was load-bearing for shutting down
+discussion and did not carry the weight. When a workspace makes citation mandatory, a citation that
+does not cover its claim is worse than none.
+
+**Absence in a sample is not a property of the system.** From "across all ten repos, no `security.*`
+rule ever reached `error`" the brief concluded, and the resulting `docs/ci-integration.md` published,
+that the built-in registry has no error-tier `security.*` rule. That happens to be true — 20 advisory
+and 2 warning of 22 default-enabled, confirmed by `list-rules --no-config --format json` — but it was
+never checked against the registry, it was published in a file no test read, and a `security.*` rule
+commit landed after the documentation did. The one-line registry check that would have settled it is
+now a test: `internal/rule/security_severity_guard_test.go` (search:
+`TestDefaultSecurityRulesStayBelowError`).
+
+A fourth, smaller instance in the same brief: "gruff-go's default `--fail-on` is `advisory`, so these
+findings do gate by default" is true for `analyse` and `summary` and false for `report` and
+`dashboard`, which default to `none` per `internal/finding/threshold.go` (search:
+`func DefaultFailThresholdFor`) and ADR-010. A per-command table existed in `docs/configuration.md`
+the whole time; the brief generalised from the command it happened to be testing, and three published
+docs inherited the generalisation.
+
+The cheap defence is not distrust, it is order: re-derive, re-read, re-measure **before**
+implementing, because each of these is a single command, and each was cheaper than the rework it
+would have caused.
+
+**Then the same failure recurred inside the re-verification itself, three times in one session.**
+Checking whether five ports honour flags placed after a path means running each twice and comparing
+stdout. Three of the five first produced an "identical" result that proved nothing: `gruff-ts`
+invoked as `node bin/gruff-ts` died with the same `SyntaxError` both times (that file is a shell
+wrapper); `gruff-py` under the system interpreter died with the same `ModuleNotFoundError` both
+times, then — once running — discovered **zero** files because the fixtures lived under `/tmp` and
+py's default ignore set excludes it; `gruff-php` exited 0 and also scanned zero files for the same
+reason, visible only in `ignoredPathDetails` as `{"source": "default", "pattern": "tmp"}`. Two equal
+outputs from two runs that did no work are equal for the wrong reason.
+
+A comparison-based check needs a **liveness column**: assert the run did something — files scanned,
+findings produced, a non-empty artefact — before comparing the two sides. The comparison answers
+"same?", never "same, and meaningful?". Scratch fixtures under `/tmp` are a standing trap for any
+scanner with a default ignore list; either place fixtures elsewhere or pass the port's
+`--include-ignored` equivalent, and check the scanned-file count either way.

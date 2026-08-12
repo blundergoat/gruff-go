@@ -43,6 +43,13 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 		return 2
 	}
 
+	// Scan targets arrive through flags here, so an operand names a target the server would never
+	// scan. Rejecting beats guessing between --project and --paths.
+	if flags.NArg() > 0 {
+		fmt.Fprintln(stderr, "dashboard takes no positional arguments; name scan targets with --project and --paths")
+		return 2
+	}
+
 	if *port < 1 || *port > 65535 {
 		fmt.Fprintln(stderr, "--port must be an integer from 1 to 65535")
 		return 2
