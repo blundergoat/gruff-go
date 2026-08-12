@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## v0.5.0 - 2026-08-13
+
+Secret previews are now redacted by default, the composite scores every rule-backed pillar rather than only those carrying findings, and baseline entries match one-to-one so one reviewed secret cannot hide another. Fatal diagnostics always exit `2`.
+
+- **Passwords containing `@` are reported again** - `sensitive-data.connection-string` split the credential at the first raw `@`, so `postgres://app:p@ssw0rd@db.prod.example.com/orders` resolved to a host of `ssw0rd@db.prod.example.com`, failed validation, and was dropped with no finding at all - a live production credential going unreported by an error-severity rule. The split now advances while the remaining authority still holds an `@`, the same direction `net/url` resolves the ambiguity, and stops at the authority so a `?owner=a@b` query cannot be mistaken for the boundary and void the localhost exemption.
+- **Redirects with a computed status are reported again** - `security.open-redirect-candidate` treated a `Location` header as a browser sink only when the response status was an integer literal or an `http.Status*` constant, so the ordinary `code := http.StatusFound; …; w.WriteHeader(code)` handler was never flagged. A status this parser-only rule cannot resolve is now a redirect candidate; a resolvable non-redirect such as `http.StatusCreated` or `200` still keeps the header out of the report.
+- **Slash normalisation survives an unrelated `break`** - `security.open-redirect-candidate` read every `break` inside a `//`-trimming loop as an escape, including one bound to a nested loop or switch, so a fully normalised redirect produced a false positive that fails the default advisory gate. Branch statements are now attributed to the construct Go binds them to; a `break` written directly in the trim loop, and any labelled branch or `goto`, still voids the normalisation proof.
+- **Preflight guards the post-turn limit hardening** - `.goat-flow/hooks/post-turn-safety.sh` is a managed file, and the hardening that makes nonnumeric or leading-zero scan limits fall back to defaults exists only in the installed copy; the upstream 1.15.1 template still evaluates `$((MAX_FILE_BYTES))` unguarded, where `invalid` becomes `0` and the safety scanner skips every file while reporting clean. Because the in-file self-test cases would be reverted together with the fix, `scripts/preflight-checks.sh` now runs that self-test under hostile limits from outside the file. `goat-flow audit` reports `drift: fail` on this hook **while the hardening is present** - re-apply it rather than reinstalling the template.
+- **Substitution placeholders are not credentials** - `sensitive-data.connection-string` reported `postgres://{{username}}:{{password}}@localhost:5432/mydb`, the canonical Vault and database-secrets templating form, and the `fmt.Sprintf("postgres://%s:%s@%s", …)` shape every Go service builds DSNs with. A password that is entirely a format verb, a `{{template}}` action, a `${VAR}` or `$VAR` expansion, or a `<placeholder>` is now exempt whatever the host is. A password that merely contains a brace, such as `s3cret{9}`, is still a credential. The bare words `password` and `secret` rejoin the local-development exemption they lost when placeholder matching became exact; the localhost co-condition still bounds them.
+- **A query-string append no longer voids a redirect proof** - `security.open-redirect-candidate` treated any later write to the target as invalidating, so the canonical normalisation - strip every leading slash in a loop, then append `?`+query, as Caddy's file server does - was reported despite being correct. Both redirect proofs are statements about a prefix, so a write that only extends the value on the right (`target += suffix`, `target = target + suffix`) now preserves them. Prepending (`target = "/" + target`) and wholesale reassignment still void the proof.
+- **Review-driven security correctness** - Tightens URL, redirect, random-token, HTTP-client, and connection-string detection.
+- **Deny-by-default secret previews** - Emits redacted or fixed markers across all sensitive-data rules and output surfaces.
+- **Affirmative URL destination validation** - Requires real validators or structural scheme, host, base, or relative-path evidence.
+- **Connection-string credential boundaries** - Detects reserved delimiters and suppresses only exact local placeholder passwords.
+- **Sensitive baseline safety** - Requires exact sensitive-finding matches so one reviewed secret cannot hide another.
+- **Monotone all-pillar composite** - Scores every rule-backed pillar, counting clean pillars as 100 while retaining finding-only evidence.
+- **One-to-one baseline identity matching** - Matches exact findings first, then stable identities once each, preserving duplicates.
+- **Fatal diagnostic exit contract** - Pins fatal diagnostics to exit `2`; `none` disables only finding failures at exit `1`.
+- **Strict YAML duplicate keys** - Rejects duplicates per mapping and reports sanitized first and duplicate line numbers.
+- **Path-filter contract** - Rejects unsafe Windows and `**` patterns; trailing directory slashes now match `/**` consistently.
+- **file-length: 1000 substantive lines at error (family ratification, 2026-08-05)** - Counts code only; tests default to advisory.
+- **Existing-value random selection precision** - Exempts direct same-collection sampling while retaining security-context findings.
+- **Skip-message marker precision** - Flags TODO/FIXME markers that introduce string-literal lines while keeping prose mentions quiet.
+- **Skip-only test deduplication** - Emits only `skipped-test` when a test's sole action is `Skip`, `Skipf`, or `SkipNow`.
+- **Range-address language semantics** - Applies Go 1.22 range semantics and treats modules without a Go directive as Go 1.16.
+- **Go-native process, initialism, loop-test, and signature audits** - Pins process grading and improves rule and cross-port audit evidence.
+- **Current severity vocabulary** - Uses advisory, warning, and error for severity; low, medium, and high remain confidence levels.
+- **GOAT Flow 1.13.1** - Refreshes skills, safety hooks, setup references, and guidance; Codex keeps the supported `PreToolUse` guard.
+- **Verification contract hardening** - Pins Go 1.25.12 and clarifies preflight, scope, learning retrieval, and release guidance.
+- **Rule-catalog drift guard** - Checks catalogue counts, IDs, metadata, severities, and the generated abbreviation seed.
+- **Version-reference ownership** - Audits current, published, and support versions and keeps command inventories aligned.
+- **Calibration and release evidence hardening** - Makes corpus runs private and strengthens command, version, and portability evidence.
 - **The security gate ceiling is now enforced** - `docs/ci-integration.md` tells CI authors that an error-only gate ignores every built-in `security.*` finding. That is a claim about the rule registry, and nothing checked it, so a future rule shipped at error would have made a published security statement quietly false. A registry test now fails the build if any default-enabled `security.*` rule reaches error, and names the section to update. It asserts the invariant, not a rule count, so new advisory security rules stay green.
 - **Docs state the gate default per command** - `README.md`, `docs/ci-integration.md`, and `docs/rules.md` described `--min-severity` as defaulting to `advisory` for everything. The binary default is per command and always has been: `advisory` for `analyse` and `summary`, `none` for the `report` and `dashboard` artifact generators. The CI guide now warns that a pipeline whose failing step is `report` or `dashboard` has no finding gate unless it asks for one, and all three defer to the table in `docs/configuration.md`, which was already correct.
 - **Commands reject arguments they never used** - `dashboard`, `list-rules`, and `completion` now exit `2` on a positional argument instead of accepting and discarding it. `gruff-go dashboard ./src` previously bound a server that scanned whatever `--project` and `--paths` resolved to, never `./src`; name scan targets with those flags. `completion` still takes one optional shell name and still defaults to `bash`. `init` and `check-ignore` already rejected or required their operands and are unchanged.
@@ -35,33 +67,6 @@
 - **GOAT Flow 1.15.1** - Refreshes Claude, Codex, and Copilot skills, safety hooks, and playbooks onto one Node hook launcher (`.goat-flow/hooks/hook-launch-runtime.mjs`, `hook-provider-adapters.mjs`) and moves `.goat-flow/config.yaml` to `1.15.1`.
 - **Recursive deletes with a mid-path variable now block** - The `deny-dangerous` guard tests for an unresolved `$` or backtick expansion anywhere in a delete target, not only at the front. `rm -rf cache/$TARGET` and `./cache/${TARGET}` return `rc=2` where 1.15.0 allowed them, closing the path that deleted outside the project once the shell expanded the variable.
 - **Hook effectiveness needs dated proof** - Support claims expire, so `audit` reports a registered hook as `scenario unverified` until `goat-flow hooks verify . --agent <id> --scenario <deny-hook|gruff-hook|post-turn-hook>` runs. Every supported scenario passes for the three installed agents; Copilot's `post-turn-hook` reports `unsupported` because its agentStop channel has no upstream registration adapter.
-
-## v0.5.0 - 2026-08-06
-
-Secret previews are now redacted by default, the composite scores every rule-backed pillar rather than only those carrying findings, and baseline entries match one-to-one so one reviewed secret cannot hide another. Fatal diagnostics always exit `2`.
-
-- **Review-driven security correctness** - Tightens URL, redirect, random-token, HTTP-client, and connection-string detection.
-- **Deny-by-default secret previews** - Emits redacted or fixed markers across all sensitive-data rules and output surfaces.
-- **Affirmative URL destination validation** - Requires real validators or structural scheme, host, base, or relative-path evidence.
-- **Connection-string credential boundaries** - Detects reserved delimiters and suppresses only exact local placeholder passwords.
-- **Sensitive baseline safety** - Requires exact sensitive-finding matches so one reviewed secret cannot hide another.
-- **Monotone all-pillar composite** - Scores every rule-backed pillar, counting clean pillars as 100 while retaining finding-only evidence.
-- **One-to-one baseline identity matching** - Matches exact findings first, then stable identities once each, preserving duplicates.
-- **Fatal diagnostic exit contract** - Pins fatal diagnostics to exit `2`; `none` disables only finding failures at exit `1`.
-- **Strict YAML duplicate keys** - Rejects duplicates per mapping and reports sanitized first and duplicate line numbers.
-- **Path-filter contract** - Rejects unsafe Windows and `**` patterns; trailing directory slashes now match `/**` consistently.
-- **file-length: 1000 substantive lines at error (family ratification, 2026-08-05)** - Counts code only; tests default to advisory.
-- **Existing-value random selection precision** - Exempts direct same-collection sampling while retaining security-context findings.
-- **Skip-message marker precision** - Flags TODO/FIXME markers that introduce string-literal lines while keeping prose mentions quiet.
-- **Skip-only test deduplication** - Emits only `skipped-test` when a test's sole action is `Skip`, `Skipf`, or `SkipNow`.
-- **Range-address language semantics** - Applies Go 1.22 range semantics and treats modules without a Go directive as Go 1.16.
-- **Go-native process, initialism, loop-test, and signature audits** - Pins process grading and improves rule and cross-port audit evidence.
-- **Current severity vocabulary** - Uses advisory, warning, and error for severity; low, medium, and high remain confidence levels.
-- **GOAT Flow 1.13.1** - Refreshes skills, safety hooks, setup references, and guidance; Codex keeps the supported `PreToolUse` guard.
-- **Verification contract hardening** - Pins Go 1.25.12 and clarifies preflight, scope, learning retrieval, and release guidance.
-- **Rule-catalog drift guard** - Checks catalogue counts, IDs, metadata, severities, and the generated abbreviation seed.
-- **Version-reference ownership** - Audits current, published, and support versions and keeps command inventories aligned.
-- **Calibration and release evidence hardening** - Makes corpus runs private and strengthens command, version, and portability evidence.
 
 ## v0.4.0 - 2026-06-14
 

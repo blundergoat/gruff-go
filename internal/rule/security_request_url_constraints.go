@@ -151,6 +151,90 @@ func parsedValueLinkNames(parsedInput ast.Expr, leftHandValues []ast.Expr, sinkV
 	return linkedNames
 }
 
+// anyNamePrefixRewrittenBetween reports whether a linked value changes in a way
+// that can alter its leading characters between the guard and the sink.
+//
+// It exists because the two redirect proofs here are both statements about a
+// prefix: a committed `/segment` start, or a loop that strips every leading
+// slash. Appending to the value cannot reintroduce a `//`, so the canonical
+//
+//	for strings.HasPrefix(toPath, "//") { toPath = strings.TrimPrefix(toPath, "/") }
+//	if r.URL.RawQuery != "" { toPath += "?" + r.URL.RawQuery }
+//
+// stays safe. Reading that query-string append as invalidation reported the very
+// normalisation the rule exists to bless, in real handlers that do it correctly.
+func anyNamePrefixRewrittenBetween(functionBody *ast.BlockStmt, names map[string]bool, afterPosition, beforePosition token.Pos) bool {
+	rewritten := false
+	ast.Inspect(functionBody, func(node ast.Node) bool {
+		if rewritten {
+			return false
+		}
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		if node == nil || node.Pos() <= afterPosition || node.Pos() >= beforePosition {
+			return true
+		}
+		switch statement := node.(type) {
+		case *ast.AssignStmt:
+			// A write that only extends the value on the right keeps the
+			// checked prefix; anything else replaces what the guard approved.
+			rewritten = lhsUsesAnyName(statement.Lhs, names) && !assignmentPreservesPrefix(statement, names)
+		case *ast.ValueSpec:
+			for _, name := range statement.Names {
+				if names[name.Name] {
+					rewritten = true
+					break
+				}
+			}
+		}
+		return !rewritten
+	})
+	return rewritten
+}
+
+// assignmentPreservesPrefix reports whether an assignment only extends its own
+// target on the right, leaving the leading characters unchanged.
+func assignmentPreservesPrefix(statement *ast.AssignStmt, names map[string]bool) bool {
+	// A multi-value assignment does not describe one extended string.
+	if len(statement.Lhs) != 1 || len(statement.Rhs) != 1 {
+		return false
+	}
+	target, isIdentifier := statement.Lhs[0].(*ast.Ident)
+	if !isIdentifier || !names[target.Name] {
+		return false
+	}
+	// `target += suffix` is exactly `target = target + suffix`.
+	if statement.Tok == token.ADD_ASSIGN {
+		return true
+	}
+	if statement.Tok != token.ASSIGN {
+		return false
+	}
+	// `target = target + suffix` keeps the prefix; `target = prefix + target`
+	// prepends and can put `//` back at the front, so only the leftmost
+	// position counts as an extension.
+	return leftmostConcatName(statement.Rhs[0]) == target.Name
+}
+
+// leftmostConcatName returns the identifier at the far left of a `+` chain.
+func leftmostConcatName(expr ast.Expr) string {
+	for {
+		switch value := unwrapRequestExprParens(expr).(type) {
+		case *ast.BinaryExpr:
+			// Only concatenation keeps a readable leading operand.
+			if value.Op != token.ADD {
+				return ""
+			}
+			expr = value.X
+		case *ast.Ident:
+			return value.Name
+		default:
+			return ""
+		}
+	}
+}
+
 // anyNameAssignedBetween reports whether a linked value is overwritten after
 // its evidence was established and before the destination sink executes.
 func anyNameAssignedBetween(functionBody *ast.BlockStmt, names map[string]bool, afterPosition, beforePosition token.Pos) bool {
@@ -183,19 +267,68 @@ func anyNameAssignedBetween(functionBody *ast.BlockStmt, names map[string]bool, 
 
 // branchLeavesTrimLoop reports whether a branch statement can reach code after
 // the loop, or skip a pass of it, without the loop condition being re-tested.
-// An unlabelled continue re-tests the condition and so cannot escape the trim.
 // True here voids the whole normalisation proof and the redirect stays in the
 // user's report, which is the safe direction for an escape we cannot rule out.
-func branchLeavesTrimLoop(branch *ast.BranchStmt) bool {
+//
+// insideNestedBreakable says whether the branch sits inside an inner for, range,
+// switch, type switch, or select. Go binds an unlabelled break to the innermost
+// such construct, so a break written there ends that construct and the trim loop
+// still runs to completion. Treating it as an escape rejected correctly
+// normalised handlers - the noise direction, and the reason this depth is
+// tracked rather than assumed.
+func branchLeavesTrimLoop(branch *ast.BranchStmt, insideNestedBreakable bool) bool {
 	switch branch.Tok {
-	case token.BREAK, token.GOTO:
-		// Both jump past the loop condition, so the redirect can still start
-		// `//evil.example` when it reaches the response.
+	case token.GOTO:
+		// A goto can land anywhere in the function, including past the loop.
 		return true
+	case token.BREAK:
+		// A label always names an outer construct; an unlabelled break escapes
+		// only when this loop is the innermost one enclosing it.
+		return branch.Label != nil || !insideNestedBreakable
 	case token.CONTINUE:
 		// A bare `continue` re-tests `HasPrefix(target, "//")` and is safe. A
 		// labelled one targets an outer loop and abandons the trim entirely.
 		return branch.Label != nil
+	default:
+		// `fallthrough` stays inside its own switch clause.
+		return false
+	}
+}
+
+// trimLoopBodyEscapes reports whether any branch inside the trim loop can leave
+// it before the condition is re-tested. It walks depth-aware because an
+// unlabelled break changes meaning once it sits inside an inner breakable
+// construct; a single flat scan cannot tell those two spellings apart.
+func trimLoopBodyEscapes(subtree ast.Node, insideNestedBreakable bool) bool {
+	escapes := false
+	ast.Inspect(subtree, func(node ast.Node) bool {
+		if escapes || node == nil {
+			return false
+		}
+		// A closure cannot branch out of the loop that encloses it.
+		if _, isFunction := node.(*ast.FuncLit); isFunction {
+			return false
+		}
+		// Re-enter an inner breakable construct so its own branches are read
+		// against it rather than against the trim loop.
+		if node != subtree && isBreakableConstruct(node) {
+			escapes = trimLoopBodyEscapes(node, true)
+			return false
+		}
+		if branch, isBranch := node.(*ast.BranchStmt); isBranch && branchLeavesTrimLoop(branch, insideNestedBreakable) {
+			escapes = true
+			return false
+		}
+		return true
+	})
+	return escapes
+}
+
+// isBreakableConstruct reports whether a node captures an unlabelled break.
+func isBreakableConstruct(node ast.Node) bool {
+	switch node.(type) {
+	case *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+		return true
 	default:
 		return false
 	}
@@ -390,7 +523,7 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 		// A user-visible safe guard needs a path segment, this sink value, and no
 		// later overwrite that invalidates the checked value before the redirect.
 		if hasLiteral && isSafeRelativePrefix(committedPrefix) && nodeUsesAnyIdent(prefixCall.Args[0], sinkValueNames) &&
-			!anyNameAssignedBetween(functionBody, sinkValueNames, returnGuard.End(), sinkPosition) {
+			!anyNamePrefixRewrittenBetween(functionBody, sinkValueNames, returnGuard.End(), sinkPosition) {
 			foundCommittedPrefix = true
 		}
 		return !foundCommittedPrefix
@@ -432,7 +565,7 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 			return true
 		}
 		foundSafeLoop = loopTrimsOneLeadingSlash(prefixLoop.Body, redirectIdentifier.Name, stringPackageAliases) &&
-			!anyNameAssignedBetween(functionBody, sinkValueNames, prefixLoop.End(), sinkPosition)
+			!anyNamePrefixRewrittenBetween(functionBody, sinkValueNames, prefixLoop.End(), sinkPosition)
 		return !foundSafeLoop
 	})
 	return foundSafeLoop
@@ -441,28 +574,14 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 // loopTrimsOneLeadingSlash verifies that each loop pass updates the checked
 // redirect value with strings.TrimPrefix(value, "/").
 func loopTrimsOneLeadingSlash(loopBody *ast.BlockStmt, redirectVariableName string, stringPackageAliases map[string]bool) bool {
-	// A break, goto, or labelled continue can reach the sink while the value
-	// still begins with `//`, because each one leaves this loop rather than
-	// re-testing its condition. Reject the whole normalization proof instead of
-	// trying to approximate branch reachability in this parser-only rule. A
-	// label naming this same loop would in fact be safe, but the label is not
-	// in scope here and over-rejecting only costs a visible finding.
-	hasEarlyExit := false
-	ast.Inspect(loopBody, func(node ast.Node) bool {
-		if hasEarlyExit {
-			return false
-		}
-		if _, nested := node.(*ast.FuncLit); nested {
-			return false
-		}
-		branch, ok := node.(*ast.BranchStmt)
-		if ok && branchLeavesTrimLoop(branch) {
-			hasEarlyExit = true
-			return false
-		}
-		return true
-	})
-	if hasEarlyExit {
+	// A break, goto, or labelled continue written directly in this loop can
+	// reach the sink while the value still begins with `//`, because each one
+	// leaves the loop rather than re-testing its condition. Reject the whole
+	// normalization proof instead of approximating branch reachability in this
+	// parser-only rule. A label naming this same loop would in fact be safe, but
+	// the label is not in scope here and over-rejecting only costs a visible
+	// finding.
+	if trimLoopBodyEscapes(loopBody, false) {
 		return false
 	}
 	// Inspect every statement because users may log or count normalization work.

@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-05-26
+last_reviewed: 2026-08-13
 ---
 
 # Setup Patterns
@@ -32,3 +32,20 @@ ADR-010 (v0.1.2 minimumSeverity work) introduced `finding.DefaultFailThresholdFo
 3. Document the lockstep footgun with a "Future per-command default changes should edit the helper, not the call sites" sentence so the next contributor sees the contract before scattering a literal.
 
 When this pattern lands, also update the relevant `.goat-flow/learning-loop/footguns/` entry to bump `last_reviewed:` and rewrite the "How to avoid" section to point at the helper rather than at a docs-sweep checklist - the manual enforcement step is now structural and worth recording so future audits don't redundantly grep for the old constants.
+
+## Pattern: Pin a vendored file's behaviour with a hostile-input probe the vendor cannot overwrite
+
+**Created:** 2026-08-13
+
+**Evidence:** OBSERVED
+
+**Context:** A fix applied to a vendored or managed file - `.goat-flow/hooks/*`, anything a package manager or `goat-flow install` restores - is one reinstall away from being reverted. Content hashing the file is brittle: any legitimate upstream update breaks it, so the check gets deleted or ignored. Re-testing the file with its own in-file self-test is worse than useless, because the self-test is part of the same file and reverts with the fix.
+
+**Approach:** Assert the *behaviour* from a project-owned file, using an input that only a fixed copy survives.
+
+1. Find an input that separates the two versions. Here, nonnumeric and leading-zero scan limits: `GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES=invalid`, `..._MAX_FINDINGS=08`.
+2. Drive the vendored file's existing entry point with that input rather than writing a parallel harness - the self-test still runs, it just runs under conditions the weakened version cannot satisfy.
+3. Assert the exit code from a file the vendor never rewrites (`scripts/preflight-checks.sh`, search: `check_post_turn_limit_hardening`), so CI fails on revert.
+4. Prove both directions before committing the check: run it against the fixed copy (expect pass) and against the upstream template (expect fail). A guard that has only been seen to pass has not been shown to guard anything.
+
+**Trade-off:** The probe survives cosmetic upstream refactors because it tests behaviour, but it needs a genuinely discriminating input; when no such input exists, the fix belongs upstream instead. It also encodes knowledge of the vendored file's interface, so a changed entry point or env-var name requires updating the probe - a loud failure, not a silent one, which is the point.

@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"strconv"
+	"strings"
 )
 
 // locationHeaderHasRedirectStatus ties a Location write to a later redirect
@@ -39,7 +40,7 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 		if !nodesCanShareControlPath(functionBody, locationCall, statusCall) {
 			return true
 		}
-		found = isRedirectHTTPStatus(statusCall.Args[0], httpPackageAliases)
+		found = statusCanRedirect(statusCall.Args[0], httpPackageAliases)
 		return !found
 	})
 	return found
@@ -90,28 +91,56 @@ func selectorReceiverIdent(selector *ast.SelectorExpr) (*ast.Ident, bool) {
 	return receiver, ok
 }
 
-// isRedirectHTTPStatus recognises the net/http statuses clients follow as
-// redirects, accepting either their integer or package-constant spelling.
-func isRedirectHTTPStatus(statusExpression ast.Expr, httpPackageAliases map[string]bool) bool {
-	if literal, ok := statusExpression.(*ast.BasicLit); ok && literal.Kind == token.INT {
+// statusCanRedirect reports whether a WriteHeader argument can send the browser
+// somewhere else. An integer literal and a net/http Status constant each name
+// their code exactly, so a response that is provably 200 or 201 keeps its
+// Location header out of the user's findings.
+//
+// Everything else - a variable, a helper call, another package's constant -
+// stays a redirect candidate. Requiring a statically known redirect instead hid
+// the ordinary `code := http.StatusFound; ...; w.WriteHeader(code)` handler
+// completely, and an unreported open redirect costs more than one extra finding
+// on a response whose status this parser-only rule cannot read.
+func statusCanRedirect(statusExpression ast.Expr, httpPackageAliases map[string]bool) bool {
+	if literal, isLiteral := statusExpression.(*ast.BasicLit); isLiteral && literal.Kind == token.INT {
 		statusCode, err := strconv.Atoi(literal.Value)
-		if err == nil {
-			switch statusCode {
-			case 301, 302, 303, 307, 308:
-				return true
-			}
+		// An unreadable literal leaves the status unknown rather than settled.
+		if err != nil {
+			return true
 		}
+		return isRedirectStatusCode(statusCode)
+	}
+	selector, isSelector := statusExpression.(*ast.SelectorExpr)
+	// A bare identifier or call carries a status this rule cannot resolve.
+	if !isSelector {
+		return true
+	}
+	packageIdentifier, isIdentifier := selector.X.(*ast.Ident)
+	// Only net/http's own constants are resolvable by name here.
+	if !isIdentifier || !httpPackageAliases[packageIdentifier.Name] {
+		return true
+	}
+	// A net/http selector that is not a Status constant says nothing about the
+	// response code, so it stays unresolved rather than counting as non-redirect.
+	if !strings.HasPrefix(selector.Sel.Name, "Status") {
+		return true
+	}
+	return isRedirectStatusConstant(selector.Sel.Name)
+}
+
+// isRedirectStatusCode lists the numeric statuses clients follow as redirects.
+func isRedirectStatusCode(statusCode int) bool {
+	switch statusCode {
+	case 301, 302, 303, 307, 308:
+		return true
+	default:
 		return false
 	}
-	selector, ok := statusExpression.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	packageIdentifier, ok := selector.X.(*ast.Ident)
-	if !ok || !httpPackageAliases[packageIdentifier.Name] {
-		return false
-	}
-	switch selector.Sel.Name {
+}
+
+// isRedirectStatusConstant lists the net/http spellings of those statuses.
+func isRedirectStatusConstant(constantName string) bool {
+	switch constantName {
 	case "StatusMovedPermanently", "StatusFound", "StatusSeeOther", "StatusTemporaryRedirect", "StatusPermanentRedirect":
 		return true
 	default:

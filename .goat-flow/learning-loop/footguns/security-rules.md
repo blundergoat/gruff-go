@@ -1,6 +1,6 @@
 ---
 category: security-rules
-last_reviewed: 2026-08-11
+last_reviewed: 2026-08-13
 ---
 
 # Security-Rule Footguns
@@ -65,6 +65,53 @@ How to avoid:
 - Prove reporting parity with a differential, not with a passing suite. Enumerate authority shapes
   against both revisions and compare counts; `internal/rule/sensitive_connection_test.go`
   (search: `multi host with unparseable member stays unreported`) pins the shape that regressed.
+- The same trap fired a second time on 2026-08-13, in the opposite direction. Splitting the
+  credential at the *first* raw `@` made `app:p@ssw0rd@db.prod.example.com/orders` resolve to a host
+  of `ssw0rd@db.prod.example.com`; the "authority still contains `@`" guard then returned the zero
+  value, and a live production credential was never reported. `splitConnectionCredentials`
+  (search: `func splitConnectionCredentials`) now advances while the remaining authority still holds
+  an `@`. Do not "simplify" that walk back to a single `strings.Index`.
+- The walk must stop at the authority, not at the last `@` in the string. `connectionAuthority`
+  (search: `func connectionAuthority`) trims path, query, and fragment first, so a `?owner=a@b`
+  query cannot become the boundary and hand back a host of `b` - which would silently void the
+  localhost exemption for a legitimate placeholder DSN. `internal/rule/sensitive_connection_test.go`
+  (search: `query at sign is not the credential boundary`) pins that direction.
+
+## Footgun: `ast.Inspect` flattens control flow, so a nested `break` reads as an escape from the outer loop
+
+**Status:** active | **Created:** 2026-08-13 | **Evidence:** OBSERVED
+**Decision changed:** whether a control-flow escape scan may use a single flat `ast.Inspect` walk
+**Trigger phase:** ACT
+
+`loopTrimsOneLeadingSlash` (`internal/rule/security_request_url_constraints.go`, search: `func loopTrimsOneLeadingSlash`) accepts a `//`-stripping loop as proof that a redirect target cannot stay protocol-relative. It has to reject escapes, because a `break` leaves the loop with the prefix intact.
+
+The first implementation scanned for those escapes with one `ast.Inspect` over the loop body, skipping only `*ast.FuncLit`. `ast.Inspect` walks the whole subtree, so a `break` belonging to a *nested* `for`, `range`, `switch`, `type switch`, or `select` was attributed to the trim loop. Go binds an unlabelled `break` to the innermost enclosing breakable construct, so those breaks never escape the trim at all. A fully normalised handler with an unrelated inner loop reported a false `security.open-redirect-candidate`, which fails the default advisory gate at exit 1 and lowers the grade.
+
+The whole `internal/rule` suite, `make check`, and the dogfood scan were green with the defect in place - every fixture wrote its `break` at the top level of the trim loop, which is the one depth where the flat walk happens to be correct.
+
+How to avoid:
+- Any scan that asks "can this statement leave *this* construct" must track depth. Re-enter nested breakable constructs with a flag rather than relying on one flat walk: `trimLoopBodyEscapes` (search: `func trimLoopBodyEscapes`) recurses with `insideNestedBreakable` and `isBreakableConstruct` (search: `func isBreakableConstruct`) names the capturing node types.
+- Attribute by token *and* depth. `branchLeavesTrimLoop` (search: `func branchLeavesTrimLoop`) escapes on any `goto`, on any labelled branch, and on an unlabelled `break` only when no inner construct captures it. An unlabelled `continue` re-tests the loop condition and never escapes.
+- Cover both depths in fixtures. A rule that only ever sees a top-level `break` cannot distinguish the two behaviours; `internal/rule/security_request_url_constraints_test.go` (search: `break bound to a nested loop still normalises`, `break bound to the trim loop leaves the prefix intact`) pins the pair.
+
+## Footgun: an invalidation check must match the property the guard proved
+
+**Status:** active | **Created:** 2026-08-13 | **Evidence:** OBSERVED
+**Decision changed:** which later writes may void a destination guard
+**Trigger phase:** ACT
+
+The request-URL rules expire a guard once the guarded value can change before the sink, via `anyNameAssignedBetween` (`internal/rule/security_request_url_constraints.go`, search: `func anyNameAssignedBetween`). That helper answers one question - "was this name written?" - but the file proves three different properties, and they do not all expire on the same writes.
+
+The redirect proofs are statements about a *prefix*: a committed `/segment` start (search: `func bodyHasCommittedRelativePrefix`) and a loop that strips every leading slash (search: `func bodyStripsProtocolRelativePrefix`). Appending to the value cannot put `//` back at the front, so a query-string append does not expire them. Using the generic write check anyway reported Caddy's file server (`modules/caddyhttp/fileserver/staticfiles.go`, search: `func redirect`), which writes the canonical safe form: strip in a loop, then `toPath += "?" + r.URL.RawQuery`. That is a false positive on the exact pattern the rule exists to bless, in the kind of production Go server gruff-go is aimed at.
+
+The scheme-and-host proof is different: it is about a parsed struct, and `anyNameAssignedBetween` is still correct there because `parsed.Host = …` really does change the destination.
+
+The corpus caught this and the unit suite did not: no fixture appended to a target after normalising it.
+
+How to avoid:
+- Ask what the guard proved before choosing the invalidation check. Prefix proofs use `anyNamePrefixRewrittenBetween` (search: `func anyNamePrefixRewrittenBetween`); whole-value proofs keep `anyNameAssignedBetween`.
+- A self-extension is `target += suffix` or `target = target + suffix` with the target leftmost. `assignmentPreservesPrefix` (search: `func assignmentPreservesPrefix`) and `leftmostConcatName` (search: `func leftmostConcatName`) encode that; `target = "/" + target` prepends and must still expire the proof.
+- Pin both directions. `internal/rule/security_request_url_constraints_test.go` (search: `query append after slash stripping stays safe`, `prepending after stripping puts the prefix back`) holds the pair.
 
 ## Resolved Entries
 
@@ -112,3 +159,4 @@ Evidence for the resolved boundary:
 
 How to avoid repeating:
 - When changing request-sanitizer evidence, check both `internal/rule/security_request_source.go` (search: `func (s *requestTaintScope) directRequestExpr`) and the rule-specific sanitizer word list. Any taint-transparent wrapper added to `directRequestExpr` can affect SSRF, open redirect, and path traversal, so add focused tests in each impacted rule file and run the dogfood scan.
+

@@ -408,6 +408,34 @@ check_shell_syntax() {
     printf '%d files' "${#files[@]}"
 }
 
+check_post_turn_limit_hardening() {
+    local hook='.goat-flow/hooks/post-turn-safety.sh' output
+    if [[ ! -f "$hook" ]]; then
+        printf 'post-turn-safety hook not installed'
+        return "$SKIP_EXIT"
+    fi
+    # The hook gates every file on MAX_FILE_BYTES. Unvalidated, a nonnumeric
+    # limit evaluates to 0 and the scanner silently skips everything while still
+    # reporting clean - a safety hook that does nothing and says it passed.
+    # Running the self-test under hostile limits distinguishes a hardened hook
+    # from one that has been reverted: the hardened hook returns 0, the
+    # unhardened upstream template returns 2 ("clean case failed on scanner 0").
+    #
+    # This lives here rather than inside the hook because the hook is a managed
+    # goat-flow file: a `goat-flow install` that restores the upstream template
+    # would revert the hardening AND the in-file self-test cases together, so
+    # only a project-owned check outside that file can notice.
+    if ! output=$(
+        GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES=invalid \
+            GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS=08 \
+            bash "$hook" --self-test 2>&1
+    ); then
+        printf 'post-turn-safety limit hardening reverted (%s); re-apply before shipping' "${output:-no output}"
+        return 1
+    fi
+    printf 'nonnumeric and leading-zero limits fall back'
+}
+
 check_shellcheck() {
     local files=() output combined status file
     mapfile -t files < <(repo_files '*.sh')
@@ -541,6 +569,7 @@ Runs the local verification gates for gruff-go:
   - Go vulnerability audit (govulncheck, skipped locally if unavailable)
   - Shell syntax (bash -n)
   - Shellcheck
+  - Post-turn limit hardening
   - Formatting (gofmt -l)
   - Static analysis (go vet)
   - Tests (go test ./...)
@@ -586,6 +615,7 @@ main() {
     run_step "Go vulnerability audit"     check_go_vuln
     run_step "Shell syntax (bash -n)"     check_shell_syntax
     run_step "Shellcheck"                 check_shellcheck
+    run_step "Post-turn limit hardening"  check_post_turn_limit_hardening
     run_step "Formatting (gofmt -l)"      check_gofmt
     run_step "Static analysis (go vet)"   check_go_vet
     run_step "Tests (go test ./...)"      check_go_test

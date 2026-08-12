@@ -55,7 +55,20 @@ func connectionCredentialCases() []connectionCredentialCase {
 		{name: "empty password", url: connectionURL("app", "", "localhost", "/orders"), wantFinding: false},
 		{name: "empty username", url: connectionURL("", "nonempty-value", "localhost", "/orders"), wantFinding: false},
 		{name: "empty host", url: connectionURL("app", "nonempty-value", "", "/orders"), wantFinding: false},
-		{name: "raw embedded at is ambiguous", url: connectionURL("app", "part@rest", "localhost", "/orders"), wantFinding: false},
+		{name: "raw embedded at resolves to the authority boundary", url: connectionURL("app", "part@rest", "localhost", "/orders"), password: "part@rest", wantFinding: true},
+		{name: "raw embedded at on a production host", url: connectionURL("app", "p@ssw0rd", "db.prod.example.com:5432", "/orders"), password: "p@ssw0rd", wantFinding: true},
+		{name: "go format verb password is a substitution", url: connectionURL("app", "%s", "db.prod.example.com", "/orders"), wantFinding: false},
+		{name: "template action password is a substitution", url: connectionURL("app", "{{password}}", "db.prod.example.com:5432", "/orders"), wantFinding: false},
+		{name: "env expansion password is a substitution", url: connectionURL("app", "${DB_PASS}", "db.prod.example.com", "/orders"), wantFinding: false},
+		{name: "bare env variable password is a substitution", url: connectionURL("app", "$DB_PASS", "db.prod.example.com", "/orders"), wantFinding: false},
+		{name: "angle bracket password is a substitution", url: connectionURL("app", "<password>", "db.prod.example.com", "/orders"), wantFinding: false},
+		{name: "password merely containing braces is a real credential", url: connectionURL("app", "s3cret{9}", "db.prod.example.com", "/orders"), password: "s3cret{9}", wantFinding: true},
+		{name: "bare password word on localhost is a fixture", url: connectionURL("user", "password", "localhost:5432", "/dbname"), wantFinding: false},
+		// Uses `secret` rather than `password` because the redaction assertion
+		// substring-matches the whole payload, and the finding message itself
+		// contains the word "password".
+		{name: "bare placeholder word on a production host is reported", url: connectionURL("user", "secret", "db.prod.example.com:5432", "/dbname"), password: "secret", wantFinding: true},
+		{name: "query at sign is not the credential boundary", url: connectionURL("app", "placeholder", "localhost", "/orders?owner=a@b.example"), wantFinding: false},
 		{name: "replica set placeholder is not exempt", url: connectionURL("app", "placeholder", "localhost:27017,localhost:27018", "/orders"), password: "placeholder", wantFinding: true},
 		// A replica-set member without its own port leaves text after the last
 		// colon that is not a valid port, so the authority does not parse at all

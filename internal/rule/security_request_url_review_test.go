@@ -548,6 +548,52 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
+}
+
+// TestOpenRedirectLocationStatusResolution pins which response statuses turn a
+// Location header into a browser sink: resolvable non-redirect codes suppress
+// the finding, while a status this parser-only rule cannot read keeps it.
+func TestOpenRedirectLocationStatusResolution(t *testing.T) {
+	t.Run("Location header with an unresolved status stays a redirect candidate", func(t *testing.T) {
+		// The status is chosen at runtime, which this parser-only rule cannot
+		// read. Requiring a statically known redirect hid this handler entirely,
+		// so an unresolved status keeps the destination in the user's report.
+		unit := parseOne(t, "handler.go", `package handler
+
+import "net/http"
+
+func handle(w http.ResponseWriter, r *http.Request) {
+	code := http.StatusFound
+	if r.FormValue("permanent") == "1" {
+		code = http.StatusMovedPermanently
+	}
+	w.Header().Set("Location", r.FormValue("next"))
+	w.WriteHeader(code)
+}
+`)
+		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+		if len(findings) != 1 {
+			t.Fatalf("findings = %#v, want one open-redirect finding", findings)
+		}
+	})
+
+	t.Run("Location header with Created response is not a redirect", func(t *testing.T) {
+		// 201 carries Location as resource metadata, not a browser destination.
+		unit := parseOne(t, "handler.go", `package handler
+
+import "net/http"
+
+func handle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Location", r.FormValue("next"))
+	w.WriteHeader(http.StatusCreated)
+}
+`)
+		findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+		if len(findings) != 0 {
+			t.Fatalf("findings = %#v, want no open-redirect finding", findings)
+		}
+	})
+
 	t.Run("Location header and redirect status in exclusive branches", func(t *testing.T) {
 		unit := parseOne(t, "handler.go", `package handler
 

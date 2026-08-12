@@ -354,3 +354,166 @@ func ` + handlerName + `(w http.ResponseWriter, r *http.Request) {
 }
 `
 }
+
+// TestTrimLoopBranchAttribution pins which `break` spellings void the
+// slash-normalisation proof. Go binds an unlabelled break to the innermost
+// enclosing loop or switch, so a break inside a nested construct never escapes
+// the trim; reading every break as an escape reported handlers that were in
+// fact fully normalised, and a false open-redirect finding fails the default
+// advisory gate.
+func TestTrimLoopBranchAttribution(t *testing.T) {
+	testCases := []struct {
+		journeyName      string
+		handlerBody      string
+		expectedFindings int
+	}{
+		{
+			journeyName: "complete normalisation stays clean",
+			handlerBody: `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "break bound to a nested loop still normalises",
+			handlerBody: `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		for range target {
+			break
+		}
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "break bound to a nested switch still normalises",
+			handlerBody: `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		switch len(target) {
+		case 0:
+			break
+		}
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "break bound to the trim loop leaves the prefix intact",
+			handlerBody: `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		if len(target) > 100 {
+			break
+		}
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
+		},
+		{
+			journeyName: "labelled break escapes from a nested loop",
+			handlerBody: `target := r.FormValue("next")
+outer:
+	for strings.HasPrefix(target, "//") {
+		for range target {
+			break outer
+		}
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
+		},
+	}
+
+	// Run each spelling against the same open-redirect report rule.
+	for _, testCase := range testCases {
+		t.Run(testCase.journeyName, func(t *testing.T) {
+			unit := parseOne(t, "handler.go", requestURLConstraintSource("redirect", testCase.handlerBody))
+			findings := OpenRedirectRule{}.AnalyzeUnit(unit, Context{})
+			// A mismatch means the user would see the wrong finding count.
+			if len(findings) != testCase.expectedFindings {
+				t.Fatalf("findings = %#v, want %d", findings, testCase.expectedFindings)
+			}
+		})
+	}
+}
+
+// TestRedirectPrefixSurvivesAppend pins that extending an already-normalised
+// redirect target on the right keeps its proof. Caddy's file server writes the
+// canonical form - strip every leading slash in a loop, then append the query
+// string - and reading that append as invalidation reported correct code.
+func TestRedirectPrefixSurvivesAppend(t *testing.T) {
+	testCases := []struct {
+		journeyName      string
+		handlerBody      string
+		expectedFindings int
+	}{
+		{
+			journeyName: "query append after slash stripping stays safe",
+			handlerBody: `toPath := r.FormValue("next")
+	for strings.HasPrefix(toPath, "//") {
+		toPath = strings.TrimPrefix(toPath, "/")
+	}
+	if r.URL.RawQuery != "" {
+		toPath += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, toPath, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "explicit self-concatenation after stripping stays safe",
+			handlerBody: `toPath := r.FormValue("next")
+	for strings.HasPrefix(toPath, "//") {
+		toPath = strings.TrimPrefix(toPath, "/")
+	}
+	toPath = toPath + "?utm=1"
+	http.Redirect(w, r, toPath, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "query append after a committed prefix guard stays safe",
+			handlerBody: `toPath := r.FormValue("next")
+	if !strings.HasPrefix(toPath, "/account/") {
+		return
+	}
+	toPath += "?utm=1"
+	http.Redirect(w, r, toPath, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "prepending after stripping puts the prefix back",
+			handlerBody: `toPath := r.FormValue("next")
+	for strings.HasPrefix(toPath, "//") {
+		toPath = strings.TrimPrefix(toPath, "/")
+	}
+	toPath = "/" + toPath
+	http.Redirect(w, r, toPath, 302)`,
+			expectedFindings: 1,
+		},
+		{
+			journeyName: "wholesale reassignment after stripping voids the proof",
+			handlerBody: `toPath := r.FormValue("next")
+	for strings.HasPrefix(toPath, "//") {
+		toPath = strings.TrimPrefix(toPath, "/")
+	}
+	toPath = r.FormValue("other")
+	http.Redirect(w, r, toPath, 302)`,
+			expectedFindings: 1,
+		},
+	}
+
+	// Run each spelling against the same open-redirect report rule.
+	for _, testCase := range testCases {
+		t.Run(testCase.journeyName, func(t *testing.T) {
+			unit := parseOne(t, "handler.go", requestURLConstraintSource("redirect", testCase.handlerBody))
+			findings := OpenRedirectRule{}.AnalyzeUnit(unit, Context{})
+			// A mismatch means the user would see the wrong finding count.
+			if len(findings) != testCase.expectedFindings {
+				t.Fatalf("findings = %#v, want %d", findings, testCase.expectedFindings)
+			}
+		})
+	}
+}

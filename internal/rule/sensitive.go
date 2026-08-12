@@ -40,9 +40,15 @@ var (
 // non-secrets when the connection's host is a local-development hostname.
 // Match is case-insensitive equality against the path-unescaped whole password;
 // mixed credentials that merely contain one of these words remain findings.
+// `password` and `secret` are the bare words themselves, not a prefix test:
+// `postgresql://user:password@localhost/dbname` is a fixture in every database
+// driver's test suite, and the exact-match switch stopped exempting it. The
+// local-host co-condition still bounds the exemption, so a production DSN whose
+// password happens to be the word stays reported.
 var connectionPlaceholderPasswords = []string{
 	"change_me", "changeme", "your_password", "your-password", "your-secret",
 	"placeholder", "example", "dummy", "fake", "invalid", "pass",
+	"password", "secret",
 	"dev_password", "test_password", "dev-password", "test-password",
 	"dev_password_change_me", "localpass", "localpassword",
 }
@@ -169,6 +175,12 @@ func (r ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding
 	for _, candidate := range matches {
 		parts := splitConnectionURL(candidate.value)
 		if parts.passwordState != connectionPasswordPresent {
+			continue
+		}
+		// A password supplied at runtime is not an embedded credential, whatever
+		// the host is, so this sits alongside the local-development exemption
+		// rather than inside it.
+		if isSubstitutionPassword(parts.password) {
 			continue
 		}
 		if isPlaceholderConnection(parts) {
@@ -438,12 +450,10 @@ func splitConnectionURL(connStr string) connectionURLParts {
 		return connectionURLParts{}
 	}
 	rest := connStr[schemeEnd+3:]
-	atIdx := strings.Index(rest, "@")
-	if atIdx < 0 {
+	credentials, hostSuffix, hasCredentialBoundary := splitConnectionCredentials(rest)
+	if !hasCredentialBoundary {
 		return connectionURLParts{}
 	}
-	credentials := rest[:atIdx]
-	hostSuffix := rest[atIdx+1:]
 	colonIdx := strings.Index(credentials, ":")
 	if colonIdx < 0 {
 		return connectionURLParts{}
@@ -458,11 +468,8 @@ func splitConnectionURL(connStr string) connectionURLParts {
 		state = connectionPasswordPresent
 	}
 
-	authority := hostSuffix
-	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
-		authority = authority[:end]
-	}
-	if authority == "" || strings.Contains(authority, "@") {
+	authority := connectionAuthority(hostSuffix)
+	if authority == "" {
 		return connectionURLParts{}
 	}
 	parsed, err := url.Parse("//" + authority)
@@ -488,6 +495,74 @@ func splitConnectionURL(connStr string) connectionURLParts {
 		return connectionURLParts{}
 	}
 	return connectionURLParts{password: password, host: host, passwordState: state}
+}
+
+// substitutionPasswordPattern matches a password component that is entirely a
+// runtime substitution rather than a literal credential. It covers the four
+// spellings that reach a connection string in practice: a Go format verb
+// (`%s`, `%-10s`), a Go or Vault template action (`{{password}}`), a shell or
+// environment expansion (`${DB_PASS}`, `$DB_PASS`), and a documentation
+// placeholder (`<password>`).
+//
+// The whole component must match. A password that merely contains a brace, such
+// as `s3cret{9}`, is a real credential and stays reported.
+var substitutionPasswordPattern = regexp.MustCompile(
+	`^(?:%[-+ #0-9.*]*[a-zA-Z]|\{\{[^{}]*\}\}|\$\{[^{}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|<[^<>]+>)$`)
+
+// isSubstitutionPassword reports whether the password is a placeholder the
+// program fills in at run time.
+//
+// Vault and every database-secrets engine spell their dynamic credentials
+// `postgres://{{username}}:{{password}}@host/db`, and Go code builds DSNs with
+// `fmt.Sprintf("postgres://%s:%s@%s", ...)`. Neither embeds a secret. Reporting
+// them put an error-severity finding on the most common connection-string idiom
+// in the ecosystem, which fails a default CI gate on correct code.
+func isSubstitutionPassword(password string) bool {
+	return substitutionPasswordPattern.MatchString(password)
+}
+
+// splitConnectionCredentials divides scheme-less connection text at the `@` that
+// really separates the credential from the host.
+//
+// RFC 3986 reserves `@` for that boundary and requires a password to encode its
+// own, but real DSNs embed a raw one anyway. Stopping at the first `@` reads
+// `app:p@ssw0rd@db.prod.example.com/orders` as the host `ssw0rd@db.prod...`,
+// which is not a host at all - the whole URI was then dropped and a live
+// production credential went unreported by an error-severity rule. So the split
+// advances while the remaining authority still holds an `@`, which is the same
+// direction net/url resolves the ambiguity.
+//
+// Advancing stops at the authority rather than running to the last `@` in the
+// string: a query such as `?opts=a@b` must not be mistaken for the boundary and
+// hand the caller a host of `b`, which would silently void the local-development
+// exemption for a legitimate localhost DSN.
+func splitConnectionCredentials(rest string) (string, string, bool) {
+	for searchOffset := 0; searchOffset <= len(rest); {
+		relativeAt := strings.Index(rest[searchOffset:], "@")
+		// No separator left means this text carries no embedded credential.
+		if relativeAt < 0 {
+			return "", "", false
+		}
+		boundary := searchOffset + relativeAt
+		hostSuffix := rest[boundary+1:]
+		// A further `@` inside the authority proves this one belonged to the
+		// password, so keep walking instead of declaring the URI malformed.
+		if strings.Contains(connectionAuthority(hostSuffix), "@") {
+			searchOffset = boundary + 1
+			continue
+		}
+		return rest[:boundary], hostSuffix, true
+	}
+	return "", "", false
+}
+
+// connectionAuthority trims path, query, and fragment from a host suffix so only
+// the host and optional port remain.
+func connectionAuthority(hostSuffix string) string {
+	if end := strings.IndexAny(hostSuffix, "/?#"); end >= 0 {
+		return hostSuffix[:end]
+	}
+	return hostSuffix
 }
 
 // stringEqualsAny reports whether value matches any element of options.

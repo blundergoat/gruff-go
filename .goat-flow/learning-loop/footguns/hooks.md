@@ -1,6 +1,6 @@
 ---
 category: hooks
-last_reviewed: 2026-08-11
+last_reviewed: 2026-08-13
 ---
 
 # Hook Footguns
@@ -51,6 +51,26 @@ How to avoid:
 - Treat the block as real until every command operand and redirection target has been checked. Never reformulate a command that actually reads or writes a protected file.
 - For verified non-secret reports, prefer generic extension or type classification that does not embed protected path names in the filter source.
 - Record that the original command did not execute; only the successful reformulated run is measurement evidence.
+
+## Footgun: a local fix inside a managed goat-flow hook is reverted by the next install, and the drift signal is inverted
+
+**Status:** active | **Created:** 2026-08-13 | **Evidence:** OBSERVED
+**Decision changed:** where a fix to a `.goat-flow/hooks/` file must be guarded from
+**Trigger phase:** VERIFY
+
+`.goat-flow/hooks/post-turn-safety.sh` is a managed file: `goat-flow install` restores it from `node_modules/@blundergoat/goat-flow/workflow/hooks/post-turn-safety.sh`. v0.5.0 hardened the installed copy so nonnumeric and leading-zero scan limits fall back to defaults (search: `MAX_FILE_BYTES=$((10#$MAX_FILE_BYTES))`). The upstream template guards only `MAX_SECONDS`, so it still evaluates `$((MAX_FILE_BYTES))` directly.
+
+That gap is not cosmetic. `MAX_FILE_BYTES` gates every file (template line, search: `[ "$size" -le "$MAX_FILE_BYTES" ]`). In bash, `MAX_FILE_BYTES=invalid` evaluates to `0`, so no file is ever under the limit: the safety scanner examines nothing and still reports clean. `08` is worse - `value too great for base` aborts the arithmetic outright.
+
+Two things make this hard to notice:
+
+- **The in-file self-test disappears with the fix.** The hardening and the self-test cases that exercise it live in the same managed file, so an install that reverts one reverts the other. `post-turn-safety.sh --self-test` then passes on the weakened hook, because the cases that would have failed are gone.
+- **The drift signal is backwards.** `goat-flow audit` reports `drift: fail` on `.goat-flow/hooks/post-turn-safety.sh` *while the hardening is present*, and would report `pass` once an install has stripped it. A green audit here means the protection is gone; the red one means it is intact.
+
+How to avoid:
+- Guard a managed-file fix from a project-owned file that an install cannot touch. `scripts/preflight-checks.sh` (search: `check_post_turn_limit_hardening`) runs the hook's own self-test under hostile limits: the hardened hook returns 0, the upstream template returns 2 with `clean case failed on scanner 0`. Both directions were verified before the check was committed.
+- Do not "resolve" this drift finding by reinstalling the template. Re-apply the hardening, or upstream it to goat-flow and take the newer template.
+- When `goat-flow audit` reports content drift on a hook, diff the installed copy against the template and decide which side is newer before acting. Assuming the template is authoritative silently reverts local security fixes.
 
 ## Resolved Entries
 
