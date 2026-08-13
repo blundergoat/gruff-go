@@ -24,7 +24,7 @@ Secret previews are now redacted by default, the composite scores every rule-bac
 - **Fatal diagnostic exit contract** - Pins fatal diagnostics to exit `2`; `none` disables only finding failures at exit `1`.
 - **Strict YAML duplicate keys** - Rejects duplicates per mapping and reports sanitized first and duplicate line numbers.
 - **Path-filter contract** - Rejects unsafe Windows and `**` patterns; trailing directory slashes now match `/**` consistently.
-- **file-length: 1000 substantive lines at error (family ratification, 2026-08-05)** - Counts code only; tests default to advisory.
+- **file-length: 1000 substantive lines at error (family ratification, 2026-08-05)** - Counts code only; tests default to advisory. **Upgrading changes your gate in both directions:** the count now skips blank and comment-only lines and the threshold doubles, so files between the old 500-line limit and the new one go quiet - but the severity moves from advisory to `error`, so a pipeline running `--fail-on=error` that passed on v0.4.x can fail on a file it already had. Across ten third-party Go repositories this rule produced 69 of the 174 total `error`-severity findings, so budget for it before upgrading a strict gate.
 - **Existing-value random selection precision** - Exempts direct same-collection sampling while retaining security-context findings.
 - **Skip-message marker precision** - Flags TODO/FIXME markers that introduce string-literal lines while keeping prose mentions quiet.
 - **Skip-only test deduplication** - Emits only `skipped-test` when a test's sole action is `Skip`, `Skipf`, or `SkipNow`.

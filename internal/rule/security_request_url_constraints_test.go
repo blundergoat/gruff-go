@@ -255,6 +255,29 @@ func TestOpenRedirectRequiresAffirmativeConstraint(t *testing.T) {
 			expectedFindings: 1,
 		},
 		{
+			// A `var` declaration seeds the prefix through a different syntax
+			// node than `:=`, so the fold requirement has to reach it too.
+			journeyName: "var declaration seeding the prefix still needs a fold",
+			handlerBody: `var target = r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
+		},
+		{
+			// Declare-then-assign splits the declaration from the request write,
+			// leaving the seeding assignment as the only evidence of control.
+			journeyName: "declare-then-assign seeding the prefix still needs a fold",
+			handlerBody: `var target string
+	target = r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
+		},
+		{
 			// Folding after the loop re-creates the prefix the loop just removed,
 			// so only a fold that precedes the loop counts as evidence.
 			journeyName: "backslash fold after the loop is too late",
