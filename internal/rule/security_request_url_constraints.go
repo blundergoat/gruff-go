@@ -565,10 +565,84 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 			return true
 		}
 		foundSafeLoop = loopTrimsOneLeadingSlash(prefixLoop.Body, redirectIdentifier.Name, stringPackageAliases) &&
+			bodyFoldsBackslashBefore(functionBody, redirectIdentifier.Name, stringPackageAliases, prefixLoop.Pos()) &&
 			!anyNamePrefixRewrittenBetween(functionBody, sinkValueNames, prefixLoop.End(), sinkPosition)
 		return !foundSafeLoop
 	})
 	return foundSafeLoop
+}
+
+// bodyFoldsBackslashBefore reports whether every backslash in the redirect value
+// becomes a forward slash before the trim loop runs.
+//
+// The loop alone proves only that the value cannot start `//`. Browsers resolve
+// `\` as `/` in the authority position (WHATWG URL), so `/\evil.example` never
+// satisfies the loop condition, survives untouched, and still leaves the site.
+// isSafeRelativePrefix already rejects that spelling for a committed literal
+// prefix; this keeps the normalisation proof honest about the same shape.
+//
+// Order is the whole point: folding first turns `/\evil` into `//evil`, which
+// the loop then strips. A fold placed after the loop would re-create the
+// protocol-relative prefix the loop had just removed, so only an earlier fold
+// counts.
+func bodyFoldsBackslashBefore(functionBody *ast.BlockStmt, redirectVariableName string, stringPackageAliases map[string]bool, loopPosition token.Pos) bool {
+	foldsBackslash := false
+	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
+		// Stop once one qualifying fold protects this redirect value.
+		if foldsBackslash {
+			return false
+		}
+		// A fold inside a nested callback runs on that callback's own value.
+		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
+			return false
+		}
+		foldAssignment, isAssignment := syntaxNode.(*ast.AssignStmt)
+		// Only a write that completes before the loop can normalise its input.
+		if !isAssignment || foldAssignment.End() > loopPosition ||
+			len(foldAssignment.Lhs) != 1 || len(foldAssignment.Rhs) != 1 {
+			return true
+		}
+		foldTarget, hasTarget := foldAssignment.Lhs[0].(*ast.Ident)
+		replaceCall, isCall := foldAssignment.Rhs[0].(*ast.CallExpr)
+		// Only writing back to the checked value changes what the loop sees.
+		if !hasTarget || foldTarget.Name != redirectVariableName || !isCall {
+			return true
+		}
+		foldsBackslash = replaceCallFoldsBackslash(replaceCall, redirectVariableName, stringPackageAliases)
+		return !foldsBackslash
+	})
+	return foldsBackslash
+}
+
+// replaceCallFoldsBackslash recognises the two strings spellings that rewrite
+// every backslash: ReplaceAll, and Replace with a negative count. A bounded
+// Replace leaves later backslashes in place, so it cannot stand in for either.
+func replaceCallFoldsBackslash(replaceCall *ast.CallExpr, redirectVariableName string, stringPackageAliases map[string]bool) bool {
+	replacesAll := selectorCallMatches(replaceCall, stringPackageAliases, "ReplaceAll") && len(replaceCall.Args) == 3
+	replacesCounted := selectorCallMatches(replaceCall, stringPackageAliases, "Replace") && len(replaceCall.Args) == 4
+	if !replacesAll && !replacesCounted {
+		return false
+	}
+	if replacesCounted && !isNegativeIntLiteral(replaceCall.Args[3]) {
+		return false
+	}
+	foldSource, hasSource := replaceCall.Args[0].(*ast.Ident)
+	replacedValue, hasReplaced := stringLiteral(replaceCall.Args[1])
+	replacementValue, hasReplacement := stringLiteral(replaceCall.Args[2])
+	// The fold must read the same value it writes, turning `\` into `/`.
+	return hasSource && foldSource.Name == redirectVariableName &&
+		hasReplaced && replacedValue == `\` && hasReplacement && replacementValue == "/"
+}
+
+// isNegativeIntLiteral reports whether an expression is a negative integer
+// literal, the `-1` that makes strings.Replace unbounded.
+func isNegativeIntLiteral(countExpression ast.Expr) bool {
+	negation, isNegation := unwrapRequestExprParens(countExpression).(*ast.UnaryExpr)
+	if !isNegation || negation.Op != token.SUB {
+		return false
+	}
+	countLiteral, isLiteral := unwrapRequestExprParens(negation.X).(*ast.BasicLit)
+	return isLiteral && countLiteral.Kind == token.INT && countLiteral.Value != "0"
 }
 
 // loopTrimsOneLeadingSlash verifies that each loop pass updates the checked

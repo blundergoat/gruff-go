@@ -414,6 +414,7 @@ func TestOpenRedirectConstraintDominance(t *testing.T) {
 	t.Run("normalization loop inside optional branch does not protect later redirect", func(t *testing.T) {
 		body := `target := r.FormValue("next")
 	if r.Method == "POST" {
+		target = strings.ReplaceAll(target, "\\", "/")
 		for strings.HasPrefix(target, "//") {
 			target = strings.TrimPrefix(target, "/")
 		}
@@ -455,6 +456,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	t.Run("normalization loop can exit early", func(t *testing.T) {
 		body := `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		if r.Method == "GET" {
 			break
@@ -473,6 +475,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		body := `target := r.FormValue("next")
 outer:
 	for attempt := 0; attempt < 2; attempt++ {
+		target = strings.ReplaceAll(target, "\\", "/")
 		for strings.HasPrefix(target, "//") {
 			if r.Method == "GET" {
 				continue outer
@@ -490,6 +493,7 @@ outer:
 
 	t.Run("normalization loop with an unlabelled continue stays affirmative", func(t *testing.T) {
 		body := `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		if r.Method == "GET" {
 			continue
@@ -520,6 +524,7 @@ outer:
 
 	t.Run("normalization loop becomes stale after reassignment", func(t *testing.T) {
 		body := `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		target = strings.TrimPrefix(target, "/")
 	}

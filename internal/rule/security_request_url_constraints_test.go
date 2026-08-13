@@ -233,12 +233,60 @@ func TestOpenRedirectRequiresAffirmativeConstraint(t *testing.T) {
 		{
 			journeyName: "repeated protocol-relative prefix stripping is affirmative",
 			handlerBody: `target := r.FormValue("next")
+	// Fold first so a backslash cannot smuggle an authority past the slash loop.
+	target = strings.ReplaceAll(target, "\\", "/")
 	// A user may submit several leading slashes, so remove them until the target is same-origin.
 	for strings.HasPrefix(target, "//") {
 		target = strings.TrimPrefix(target, "/")
 	}
 	http.Redirect(w, r, target, 302)`,
 			expectedFindings: 0,
+		},
+		{
+			// A `//`-only loop never inspects `/\evil.example`: the condition is
+			// false on the first test, so the value reaches http.Redirect intact
+			// and the browser resolves the backslash as a second slash.
+			journeyName: "slash-only stripping leaves a backslash authority",
+			handlerBody: `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
+		},
+		{
+			// Folding after the loop re-creates the prefix the loop just removed,
+			// so only a fold that precedes the loop counts as evidence.
+			journeyName: "backslash fold after the loop is too late",
+			handlerBody: `target := r.FormValue("next")
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	target = strings.ReplaceAll(target, "\\", "/")
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
+		},
+		{
+			// strings.Replace only stands in for ReplaceAll when its count is
+			// negative; a bounded count leaves later backslashes in place.
+			journeyName: "counted replace folds every backslash",
+			handlerBody: `target := r.FormValue("next")
+	target = strings.Replace(target, "\\", "/", -1)
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 0,
+		},
+		{
+			journeyName: "bounded replace leaves a backslash behind",
+			handlerBody: `target := r.FormValue("next")
+	target = strings.Replace(target, "\\", "/", 1)
+	for strings.HasPrefix(target, "//") {
+		target = strings.TrimPrefix(target, "/")
+	}
+	http.Redirect(w, r, target, 302)`,
+			expectedFindings: 1,
 		},
 		{journeyName: "parser helper still flags", handlerBody: redirectHelperBody("parser"), expectedFindings: 1},
 		{journeyName: "allowance collision still flags", handlerBody: redirectHelperBody("allowanceURL"), expectedFindings: 1},
@@ -370,6 +418,7 @@ func TestTrimLoopBranchAttribution(t *testing.T) {
 		{
 			journeyName: "complete normalisation stays clean",
 			handlerBody: `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		target = strings.TrimPrefix(target, "/")
 	}
@@ -379,6 +428,7 @@ func TestTrimLoopBranchAttribution(t *testing.T) {
 		{
 			journeyName: "break bound to a nested loop still normalises",
 			handlerBody: `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		for range target {
 			break
@@ -391,6 +441,7 @@ func TestTrimLoopBranchAttribution(t *testing.T) {
 		{
 			journeyName: "break bound to a nested switch still normalises",
 			handlerBody: `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		switch len(target) {
 		case 0:
@@ -404,6 +455,7 @@ func TestTrimLoopBranchAttribution(t *testing.T) {
 		{
 			journeyName: "break bound to the trim loop leaves the prefix intact",
 			handlerBody: `target := r.FormValue("next")
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		if len(target) > 100 {
 			break
@@ -417,6 +469,7 @@ func TestTrimLoopBranchAttribution(t *testing.T) {
 			journeyName: "labelled break escapes from a nested loop",
 			handlerBody: `target := r.FormValue("next")
 outer:
+	target = strings.ReplaceAll(target, "\\", "/")
 	for strings.HasPrefix(target, "//") {
 		for range target {
 			break outer
@@ -454,6 +507,7 @@ func TestRedirectPrefixSurvivesAppend(t *testing.T) {
 		{
 			journeyName: "query append after slash stripping stays safe",
 			handlerBody: `toPath := r.FormValue("next")
+	toPath = strings.ReplaceAll(toPath, "\\", "/")
 	for strings.HasPrefix(toPath, "//") {
 		toPath = strings.TrimPrefix(toPath, "/")
 	}
@@ -466,6 +520,7 @@ func TestRedirectPrefixSurvivesAppend(t *testing.T) {
 		{
 			journeyName: "explicit self-concatenation after stripping stays safe",
 			handlerBody: `toPath := r.FormValue("next")
+	toPath = strings.ReplaceAll(toPath, "\\", "/")
 	for strings.HasPrefix(toPath, "//") {
 		toPath = strings.TrimPrefix(toPath, "/")
 	}
@@ -486,6 +541,7 @@ func TestRedirectPrefixSurvivesAppend(t *testing.T) {
 		{
 			journeyName: "prepending after stripping puts the prefix back",
 			handlerBody: `toPath := r.FormValue("next")
+	toPath = strings.ReplaceAll(toPath, "\\", "/")
 	for strings.HasPrefix(toPath, "//") {
 		toPath = strings.TrimPrefix(toPath, "/")
 	}
@@ -496,6 +552,7 @@ func TestRedirectPrefixSurvivesAppend(t *testing.T) {
 		{
 			journeyName: "wholesale reassignment after stripping voids the proof",
 			handlerBody: `toPath := r.FormValue("next")
+	toPath = strings.ReplaceAll(toPath, "\\", "/")
 	for strings.HasPrefix(toPath, "//") {
 		toPath = strings.TrimPrefix(toPath, "/")
 	}

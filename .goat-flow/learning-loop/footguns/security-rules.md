@@ -113,6 +113,27 @@ How to avoid:
 - A self-extension is `target += suffix` or `target = target + suffix` with the target leftmost. `assignmentPreservesPrefix` (search: `func assignmentPreservesPrefix`) and `leftmostConcatName` (search: `func leftmostConcatName`) encode that; `target = "/" + target` prepends and must still expire the proof.
 - Pin both directions. `internal/rule/security_request_url_constraints_test.go` (search: `query append after slash stripping stays safe`, `prepending after stripping puts the prefix back`) holds the pair.
 
+## Footgun: a normalisation proof must cover every spelling the sink accepts
+
+**Status:** active | **Created:** 2026-08-13 | **Evidence:** OBSERVED
+
+hallucination-risk: medium (the loop *looks* like complete same-origin normalisation, and it is the shape security write-ups quote, so both an author and a reviewer read it as sufficient)
+
+`security.open-redirect-candidate` clears a redirect when the handler strips leading slashes in a loop (`internal/rule/security_request_url_constraints.go`, search: `func bodyStripsProtocolRelativePrefix`). The loop proves the value cannot begin `//`. It proves nothing about `/\`, which never satisfies `strings.HasPrefix(target, "//")` and so passes through untouched.
+
+That distinction does not survive the trip to a browser. `http.Redirect` forwards the value verbatim - its `path.Clean` step treats `\` as an ordinary path character, not a separator - and WHATWG URL parsing resolves `\` as `/` in the authority position. `/\evil.example` therefore navigates off-site, and the rule reported nothing.
+
+The gap was invisible because the sibling proof already knew about it: `isSafeRelativePrefix` (search: `func isSafeRelativePrefix`) rejects a literal prefix whose second byte is `/` **or** `\`. Two proofs for the same property disagreed about which spellings count, and only one of them was tested - neither `security_request_url_constraints_test.go` nor `security_request_url_review_test.go` contained a single backslash case.
+
+Resolution: the loop now clears a redirect only when a fold (`strings.ReplaceAll(v, "\\", "/")`, or `strings.Replace` with a negative count) precedes it (search: `func bodyFoldsBackslashBefore`). Order is load-bearing - a fold after the loop re-creates the prefix the loop removed.
+
+Evidence:
+- `internal/rule/security_request_url_constraints_test.go` (search: `slash-only stripping leaves a backslash authority`) pins the unfolded loop to a finding.
+- `internal/rule/security_request_url_constraints_test.go` (search: `backslash fold after the loop is too late`) pins the ordering requirement.
+- `internal/rule/security_request_url_constraints_test.go` (search: `bounded replace leaves a backslash behind`) pins that a counted `Replace` is not a fold.
+
+How to avoid repeating: when one rule grows a second proof for a property it already decides elsewhere, diff the two against the same character set before shipping. Ask what the *sink* accepts, not what the guard inspects - a redirect target reaches a URL parser with its own equivalences, so `\`, percent-encoding, and case folding all belong in the comparison. A proof that admits fewer spellings than the sink is a false negative, not conservatism.
+
 ## Resolved Entries
 
 ## Footgun: URL parsing hid request destinations through two independent routes
@@ -159,4 +180,3 @@ Evidence for the resolved boundary:
 
 How to avoid repeating:
 - When changing request-sanitizer evidence, check both `internal/rule/security_request_source.go` (search: `func (s *requestTaintScope) directRequestExpr`) and the rule-specific sanitizer word list. Any taint-transparent wrapper added to `directRequestExpr` can affect SSRF, open redirect, and path traversal, so add focused tests in each impacted rule file and run the dogfood scan.
-
