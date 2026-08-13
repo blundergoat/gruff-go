@@ -529,6 +529,21 @@ func TestRedirectPrefixSurvivesAppend(t *testing.T) {
 			expectedFindings: 0,
 		},
 		{
+			// Caddy's file server shape: the handler normalises a path it was
+			// handed and only then appends the query. Request data arrives after
+			// a `?`, so it cannot seed a `/\` authority and no fold is needed.
+			journeyName: "query append onto a non-request prefix needs no fold",
+			handlerBody: `toPath := lookupTarget()
+	for strings.HasPrefix(toPath, "//") {
+		toPath = strings.TrimPrefix(toPath, "/")
+	}
+	if r.URL.RawQuery != "" {
+		toPath += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, toPath, 301)`,
+			expectedFindings: 0,
+		},
+		{
 			journeyName: "query append after a committed prefix guard stays safe",
 			handlerBody: `toPath := r.FormValue("next")
 	if !strings.HasPrefix(toPath, "/account/") {

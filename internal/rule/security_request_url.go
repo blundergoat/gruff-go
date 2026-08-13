@@ -309,7 +309,7 @@ func destinationHasConstraint(requestScope *requestTaintScope, functionBody *ast
 	// Redirect scans accept only structural same-origin evidence from strings helpers.
 	if len(constraintOptions.stringPackageAliases) > 0 {
 		return bodyHasCommittedRelativePrefix(functionBody, sinkValueNames, constraintOptions.stringPackageAliases, sinkPosition) ||
-			bodyStripsProtocolRelativePrefix(functionBody, sinkValueNames, constraintOptions.stringPackageAliases, sinkPosition)
+			bodyStripsProtocolRelativePrefix(requestScope, functionBody, sinkValueNames, constraintOptions.stringPackageAliases, sinkPosition)
 	}
 	return false
 }

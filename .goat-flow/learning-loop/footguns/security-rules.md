@@ -127,6 +127,8 @@ The gap was invisible because the sibling proof already knew about it: `isSafeRe
 
 Resolution: the loop now clears a redirect only when a fold (`strings.ReplaceAll(v, "\\", "/")`, or `strings.Replace` with a negative count) precedes it (search: `func bodyFoldsBackslashBefore`). Order is load-bearing - a fold after the loop re-creates the prefix the loop removed.
 
+The fix needed a second bound, and the corpus is what surfaced it. Requiring the fold unconditionally reported Caddy's file server (`modules/caddyhttp/fileserver/staticfiles.go`, search: `func redirect`), where the only request-controlled data is `?`+`RawQuery` appended *after* normalisation. A suffix cannot grow an authority at the front, so the fold is now required only when request data reaches the leading characters (search: `func requestControlsLeadingCharacters`) - the same prefix-versus-suffix distinction `assignmentPreservesPrefix` already drew.
+
 Evidence:
 - `internal/rule/security_request_url_constraints_test.go` (search: `slash-only stripping leaves a backslash authority`) pins the unfolded loop to a finding.
 - `internal/rule/security_request_url_constraints_test.go` (search: `backslash fold after the loop is too late`) pins the ordering requirement.

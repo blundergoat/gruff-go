@@ -533,7 +533,7 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 
 // bodyStripsProtocolRelativePrefix accepts a loop that removes leading slashes
 // until a user-supplied redirect can no longer name an external host.
-func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames, stringPackageAliases map[string]bool, sinkPosition token.Pos) bool {
+func bodyStripsProtocolRelativePrefix(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkValueNames, stringPackageAliases map[string]bool, sinkPosition token.Pos) bool {
 	foundSafeLoop := false
 	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
 		// Stop once one complete normalization loop protects the redirect.
@@ -564,12 +564,73 @@ func bodyStripsProtocolRelativePrefix(functionBody *ast.BlockStmt, sinkValueName
 		if !hasLiteral || protocolRelativePrefix != "//" || !isIdentifier || !sinkValueNames[redirectIdentifier.Name] {
 			return true
 		}
+		// The fold guards the leading characters, so require it only where a
+		// caller can actually place one there.
+		backslashHandled := !requestControlsLeadingCharacters(requestScope, functionBody, redirectIdentifier.Name, prefixLoop.Pos()) ||
+			bodyFoldsBackslashBefore(functionBody, redirectIdentifier.Name, stringPackageAliases, prefixLoop.Pos())
 		foundSafeLoop = loopTrimsOneLeadingSlash(prefixLoop.Body, redirectIdentifier.Name, stringPackageAliases) &&
-			bodyFoldsBackslashBefore(functionBody, redirectIdentifier.Name, stringPackageAliases, prefixLoop.Pos()) &&
+			backslashHandled &&
 			!anyNamePrefixRewrittenBetween(functionBody, sinkValueNames, prefixLoop.End(), sinkPosition)
 		return !foundSafeLoop
 	})
 	return foundSafeLoop
+}
+
+// requestControlsLeadingCharacters reports whether request-controlled data can
+// reach the front of the redirect value before the normalisation loop runs.
+//
+// A `/\` authority has to be written at the front, so only a write that sets
+// the leading characters can introduce one. Caddy's file server normalises a
+// path it was handed and then appends `?`+RawQuery; the request-controlled part
+// lands after a `?` and cannot grow an authority, so requiring a fold there
+// reports the exact handler the loop exists to bless. Where the handler instead
+// seeds the value from the request - `target := r.FormValue("next")` - the
+// caller owns the first byte and the fold is the only thing standing between
+// `/\evil.example` and the browser.
+func requestControlsLeadingCharacters(requestScope *requestTaintScope, functionBody *ast.BlockStmt, redirectVariableName string, loopPosition token.Pos) bool {
+	controlsLeadingCharacters := false
+	redirectNames := map[string]bool{redirectVariableName: true}
+	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
+		// Stop at the first write that seeds the value from the request.
+		if controlsLeadingCharacters {
+			return false
+		}
+		// A nested callback writes its own copy, not this redirect value.
+		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
+			return false
+		}
+		switch statement := syntaxNode.(type) {
+		case *ast.AssignStmt:
+			// Only a write landing before the loop decides what it normalises.
+			if statement.Pos() >= loopPosition || !lhsUsesAnyName(statement.Lhs, redirectNames) {
+				return true
+			}
+			// An append extends the value on the right and leaves the existing
+			// leading characters alone, so it cannot seed the prefix.
+			if assignmentPreservesPrefix(statement, redirectNames) {
+				return true
+			}
+			for _, assignedValue := range statement.Rhs {
+				if requestScope.directRequestExpr(assignedValue) {
+					controlsLeadingCharacters = true
+				}
+			}
+		case *ast.ValueSpec:
+			if statement.Pos() >= loopPosition {
+				return true
+			}
+			for valueIndex, declaredName := range statement.Names {
+				if !redirectNames[declaredName.Name] || valueIndex >= len(statement.Values) {
+					continue
+				}
+				if requestScope.directRequestExpr(statement.Values[valueIndex]) {
+					controlsLeadingCharacters = true
+				}
+			}
+		}
+		return !controlsLeadingCharacters
+	})
+	return controlsLeadingCharacters
 }
 
 // bodyFoldsBackslashBefore reports whether every backslash in the redirect value
