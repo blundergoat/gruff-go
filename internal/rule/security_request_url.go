@@ -411,6 +411,14 @@ func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.Cal
 		}
 	case *ast.BinaryExpr:
 		switch expression.Op {
+		case token.EQL, token.NEQ:
+			// `validate(u) == false` guards exactly what `!validate(u)` guards.
+			// Without this the explicit-boolean style reads as an unguarded sink
+			// and fails a default scan on correctly validated code.
+			if operand, literal, ok := booleanComparisonOperand(expression); ok {
+				return conditionOutcomeImpliesValidator(operand, validatorCall,
+					comparisonOperandOutcome(expression.Op, literal, outcome))
+			}
 		case token.LAND:
 			if outcome {
 				return conditionOutcomeImpliesValidator(expression.X, validatorCall, true) ||
@@ -428,6 +436,46 @@ func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.Cal
 		}
 	}
 	return false
+}
+
+// booleanComparisonOperand splits a comparison against a predeclared `true` or
+// `false` into the other operand and that literal's value. Only comparisons that
+// name a boolean literal qualify, so `a == b` still falls through unproven.
+func booleanComparisonOperand(comparison *ast.BinaryExpr) (ast.Expr, bool, bool) {
+	if literal, ok := universeBoolLiteral(comparison.Y); ok {
+		return comparison.X, literal, true
+	}
+	if literal, ok := universeBoolLiteral(comparison.X); ok {
+		return comparison.Y, literal, true
+	}
+	return nil, false, false
+}
+
+// universeBoolLiteral reports whether expr is the predeclared `true` or `false`.
+// A local may shadow either name, so a resolved identifier is not the constant.
+func universeBoolLiteral(expr ast.Expr) (bool, bool) {
+	identifier, isIdentifier := unwrapRequestExprParens(expr).(*ast.Ident)
+	// A resolved identifier is a declared shadow, not the predeclared constant.
+	if !isIdentifier || identifier.Obj != nil {
+		return false, false
+	}
+	switch identifier.Name {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	}
+	return false, false
+}
+
+// comparisonOperandOutcome maps an observed comparison result back to the value
+// the non-literal operand must have held for that result to occur.
+func comparisonOperandOutcome(operator token.Token, literal bool, outcome bool) bool {
+	// Observing `operand == literal` as outcome means they agree exactly when outcome holds.
+	if operator == token.EQL {
+		return outcome == literal
+	}
+	return outcome != literal
 }
 
 // exprContainsExactCall reports whether the condition contains this AST call,

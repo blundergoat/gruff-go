@@ -6,6 +6,7 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -114,14 +115,48 @@ func substantiveLineNumbers(unit parser.Unit) []int {
 // maskParsedComments replaces parsed comment text with spaces while preserving lines.
 // The scanner can then count code without mistaking comments inside strings for prose.
 func maskParsedComments(sourceWithoutComments []byte, unit parser.Unit) {
+	cgoPreamble := cgoPreambleComment(unit.AST)
 	// Each group may contain adjacent line comments or one block comment.
 	for _, commentGroup := range unit.AST.Comments {
+		// A cgo preamble is compiled C source, not prose, so it stays countable.
+		if cgoPreamble != nil && commentGroup == cgoPreamble {
+			continue
+		}
 		for _, comment := range commentGroup.List {
 			commentStart := unit.FileSet.Position(comment.Pos()).Offset
 			commentEnd := unit.FileSet.Position(comment.End()).Offset
 			maskSourceRange(sourceWithoutComments, commentStart, commentEnd)
 		}
 	}
+}
+
+// cgoPreambleComment returns the comment group holding the C source that precedes
+// `import "C"`. go/parser reports it as an ordinary comment, but cgo compiles it
+// as part of the program, so masking it would drop real code from every line
+// count and let a large mixed Go/C file slip past the size rules unreported.
+func cgoPreambleComment(file *ast.File) *ast.CommentGroup {
+	if file == nil {
+		return nil
+	}
+	for _, declaration := range file.Decls {
+		importDecl, isGenDecl := declaration.(*ast.GenDecl)
+		if !isGenDecl || importDecl.Tok != token.IMPORT {
+			continue
+		}
+		for _, spec := range importDecl.Specs {
+			importSpec, isImport := spec.(*ast.ImportSpec)
+			if !isImport || importSpec.Path == nil || importSpec.Path.Value != `"C"` {
+				continue
+			}
+			// A grouped import carries the preamble on the spec; the single-import
+			// form cgo requires for a preamble carries it on the declaration.
+			if importSpec.Doc != nil {
+				return importSpec.Doc
+			}
+			return importDecl.Doc
+		}
+	}
+	return nil
 }
 
 // maskSourceRange clears one comment span but retains newline boundaries.

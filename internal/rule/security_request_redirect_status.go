@@ -117,7 +117,7 @@ func statusCanRedirect(statusExpression ast.Expr, httpPackageAliases map[string]
 	}
 	packageIdentifier, isIdentifier := selector.X.(*ast.Ident)
 	// Only net/http's own constants are resolvable by name here.
-	if !isIdentifier || !httpPackageAliases[packageIdentifier.Name] {
+	if !isIdentifier || !isImportedPackageIdentifier(packageIdentifier, httpPackageAliases) {
 		return true
 	}
 	// A net/http selector that is not a Status constant says nothing about the

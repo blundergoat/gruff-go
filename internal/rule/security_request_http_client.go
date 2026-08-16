@@ -33,7 +33,7 @@ func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases map[string
 	}
 	packageIdentifier, hasPackageIdentifier := methodSelector.X.(*ast.Ident)
 	// Package helpers expose their URL at a stable position in the UI metadata.
-	if hasPackageIdentifier && httpPackageAliases[packageIdentifier.Name] {
+	if hasPackageIdentifier && isImportedPackageIdentifier(packageIdentifier, httpPackageAliases) {
 		switch methodSelector.Sel.Name {
 		case "Get", "Head", "Post", "PostForm":
 			return 0, packageIdentifier.Name + "." + methodSelector.Sel.Name, true
@@ -62,7 +62,7 @@ func isHTTPClientReceiver(receiverExpression ast.Expr, httpPackageAliases map[st
 		return clientBindings.canHoldHTTPClientAt(receiverValue, requestCall)
 	case *ast.SelectorExpr:
 		packageIdentifier, isIdentifier := receiverValue.X.(*ast.Ident)
-		return isIdentifier && httpPackageAliases[packageIdentifier.Name] && receiverValue.Sel.Name == "DefaultClient"
+		return isIdentifier && isImportedPackageIdentifier(packageIdentifier, httpPackageAliases) && receiverValue.Sel.Name == "DefaultClient"
 	}
 	return false
 }
@@ -261,7 +261,7 @@ func isHTTPClientValueType(clientType ast.Expr, httpPackageAliases map[string]bo
 		return false
 	}
 	packageIdentifier, ok := selector.X.(*ast.Ident)
-	return ok && httpPackageAliases[packageIdentifier.Name]
+	return ok && isImportedPackageIdentifier(packageIdentifier, httpPackageAliases)
 }
 
 // isHTTPClientExpr recognises an http.Client construction or reference.
@@ -277,7 +277,7 @@ func isHTTPClientExpr(clientExpression ast.Expr, httpPackageAliases map[string]b
 		return isHTTPClientLiteral(clientValue, httpPackageAliases)
 	case *ast.SelectorExpr:
 		packageIdentifier, isIdentifier := clientValue.X.(*ast.Ident)
-		return isIdentifier && httpPackageAliases[packageIdentifier.Name] && clientValue.Sel.Name == "DefaultClient"
+		return isIdentifier && isImportedPackageIdentifier(packageIdentifier, httpPackageAliases) && clientValue.Sel.Name == "DefaultClient"
 	}
 	return false
 }

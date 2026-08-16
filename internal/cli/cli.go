@@ -20,6 +20,10 @@ const toolVersion = "0.5.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
+	// `--diff -` and `--since -` must read as one flag-and-value pair before any
+	// extractor below treats the bare dash as an operand terminator and strands
+	// every later global flag in the command's own argument list.
+	args = normalizeGlobalStdinFlagValues(args)
 	args, ansiPref := extractAnsiFlags(args)
 	args, quiet := extractQuiet(args)
 	args, noInteraction := extractNoInteraction(args)

@@ -77,7 +77,7 @@ func (s *requestTaintScope) urlSyntaxParseArg(candidateCall *ast.CallExpr) (ast.
 	}
 	packageIdentifier, isIdentifier := parserSelector.X.(*ast.Ident)
 	// A matching import alias prevents an unrelated Parse method from gaining taint.
-	if !isIdentifier || !s.netURLPkgs[packageIdentifier.Name] {
+	if !isIdentifier || !isImportedPackageIdentifier(packageIdentifier, s.netURLPkgs) {
 		return nil, false
 	}
 	return candidateCall.Args[0], true

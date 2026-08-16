@@ -44,6 +44,9 @@ type requestTaintScope struct {
 	// value is only treated as tainted at a sink that follows its taint, not at
 	// an earlier use that precedes a later request assignment.
 	firstTaintPos map[*ast.Object]token.Pos
+	// body is the analysed function body. Sinks walk it to find writes that
+	// replace a tainted value with request-free data before the sink runs.
+	body *ast.BlockStmt
 }
 
 // forEachRequestFunc invokes visit for every function body in the file that
@@ -91,6 +94,7 @@ func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.Bloc
 		ioPkgs:            packageImportNames(file, "io", "io"),
 		ioutilPkgs:        packageImportNames(file, "io/ioutil", "ioutil"),
 		firstTaintPos:     map[*ast.Object]token.Pos{},
+		body:              body,
 	}
 	scope.collectTaintedVars(body)
 	return scope, true
@@ -225,7 +229,7 @@ func (s *requestTaintScope) pathCleanArg(call *ast.CallExpr) (ast.Expr, bool) {
 		return nil, false
 	}
 	receiver, ok := selector.X.(*ast.Ident)
-	if !ok || (!s.filepathPkgs[receiver.Name] && !s.pathPkgs[receiver.Name]) {
+	if !ok || (!isImportedPackageIdentifier(receiver, s.filepathPkgs) && !isImportedPackageIdentifier(receiver, s.pathPkgs)) {
 		return nil, false
 	}
 	return call.Args[0], true
@@ -306,9 +310,11 @@ func (s *requestTaintScope) isStringBuilderCall(call *ast.CallExpr) bool {
 	}
 	switch selector.Sel.Name {
 	case "Sprintf", "Sprint", "Sprintln":
-		return s.fmtPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.fmtPkgs)
 	case "Join":
-		return s.stringsPkgs[receiver.Name] || s.filepathPkgs[receiver.Name] || s.pathPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.stringsPkgs) ||
+			isImportedPackageIdentifier(receiver, s.filepathPkgs) ||
+			isImportedPackageIdentifier(receiver, s.pathPkgs)
 	}
 	return false
 }
@@ -327,11 +333,23 @@ func (s *requestTaintScope) isReaderConsumer(call *ast.CallExpr) bool {
 	}
 	switch selector.Sel.Name {
 	case "ReadAll":
-		return s.ioPkgs[receiver.Name] || s.ioutilPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.ioPkgs) || isImportedPackageIdentifier(receiver, s.ioutilPkgs)
 	case "ReadFull":
-		return s.ioPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.ioPkgs)
 	}
 	return false
+}
+
+// isImportedPackageIdentifier reports whether identifier names one of the given
+// import aliases and still refers to that import rather than to a local
+// declaration. go/parser leaves an import reference unresolved, so a resolved
+// identifier is a shadow: `http := localClient{}` must not read as net/http.
+func isImportedPackageIdentifier(identifier *ast.Ident, packageAliases map[string]bool) bool {
+	// A resolved identifier is a declared shadow, not the imported package.
+	if identifier == nil || identifier.Obj != nil {
+		return false
+	}
+	return packageAliases[identifier.Name]
 }
 
 // flattenChain reduces a selector/call/index chain to its root identifier and

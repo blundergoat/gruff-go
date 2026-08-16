@@ -1,6 +1,6 @@
 ---
 category: verification
-last_reviewed: 2026-08-12
+last_reviewed: 2026-08-16
 ---
 
 # Verification Lessons
@@ -8,10 +8,10 @@ last_reviewed: 2026-08-12
 ## Lesson: reproduce a coding-agent PR-review finding before fixing it
 
 **Created:** 2026-06-14
-**Decision changed:** Re-run the exact failing probe after each semantic fix; do not infer success from changing the review-commented helper.
+**Decision changed:** Re-run the exact failing probe after each semantic fix; do not infer success from changing the review-commented helper. Also prove each new regression test fails with the fix removed.
 **Trigger phase:** VERIFY
-**Incident count:** 8
-**Latest occurrence:** 2026-08-12
+**Incident count:** 9
+**Latest occurrence:** 2026-08-16
 
 Coding-agent reviewers (Codex, Cursor, Copilot, CodeRabbit) describe behaviour they infer from a diff, and some of that inferred behaviour is intended, not a bug. In PR #5's second review wave, six findings all looked valid on a read; writing a failing-first test (or a throwaway probe) for each showed two were false alarms, and I had already started building both fixes before the reproduction step caught them:
 
@@ -23,6 +23,12 @@ The four genuine findings (PEM inline-literal false negative, nested-goroutine s
 PR #6 repeated the lesson at a finer boundary. A first fix keyed parsed URL receivers by `ast.Object`, but the regression still failed because the shared taint registry remained keyed by identifier text. The durable change had to carry lexical identity through `internal/rule/security_request_source.go` (search: `taintedBindings`) and the taint-position helper, not only through `parsedURLStringReceiver`. In the same verification pass, a redirect dominance check was accidentally added to the parsed-URL helper that already had it; the focused optional-prefix test stayed red until the check moved to `bodyHasCommittedRelativePrefix`. Both errors looked complete in the diff and were exposed only by re-running the exact reproductions.
 
 The same turn also patched a repeated `type getter` anchor inside an embedded Go fixture instead of after the enclosing test. `gofmt` rejected the host test file immediately. Numbered context around a repeated patch anchor is part of verification when tests embed the same language they are written in; a syntactic match does not establish the intended structural location.
+
+PR #6's 2026-08-13 wave extended the lesson from the reviewer's claim to the agent's own test. Of six findings, five reproduced against a built binary and one did not: Cursor's High-severity "hook bootstrap reads wrong argv" assumed `node -e` puts `[eval]` in `process.argv[1]`, but `node -e 'script' a b c` yields `[node, a, b, c]`, so the launcher's `process.argv[1]`-`[5]` binding was already correct - and the equivalent `.claude/settings.json` launcher blocked two commands during the same session, which is the behaviour the finding claimed was impossible. Severity labels do not survive a one-line probe.
+
+More usefully, a *passing* new regression test proved nothing until the fix was removed. `TestRequestControlledURLPackageShadowing` gained a case where a local shadows `fmt`; it passed before the fix too, because the fixture imported only `net/http`, so `packageImportNames(file, "fmt", "fmt")` (`internal/rule/security_request_source.go`, search: `func packageImportNames`) returned an empty map and the alias lookup was false either way. The fixture had to import and use `fmt` for the case to exercise the shadow at all. Alias-keyed rules only reach their lookup when the fixture genuinely imports the package.
+
+How to avoid: after a new rule test passes, neutralise the fix - revert the file, or stub the single discriminator it added - and confirm the test fails for the reason claimed. Findings-expected cases that pass in both states are negative controls, not evidence.
 
 A proactive HTTP-client timeline test then caught a Go-specific binding mistake: `statement.Tok == token.DEFINE` does not mean every left-hand name is newly declared. In `client, marker := ...`, `client` can keep an earlier interface type while only `marker` is new. The corrected implementation checks `identifier.Obj.Decl == statement` before recording an inferred concrete type (search: `recordInferredClientType`).
 

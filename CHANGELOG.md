@@ -10,6 +10,7 @@ Sharper security and sensitive-data rules, secret previews redacted by default, 
 - **BREAKING: fatal diagnostics exit `2`** - A crash is distinct from a finding failure, and `none` disables only the failure at exit `1`.
 - **BREAKING: unused positional arguments are rejected** - `dashboard`, `list-rules`, and `completion` exit `2` instead of ignoring a path you passed.
 - **Flags work after paths** - Subcommands parse flags before, between, or after positional paths. Use `--` before a path starting with a dash.
+- **A `-` patch value keeps the global flags after it** - `analyse --diff - --quiet` applies quiet mode instead of rejecting it as undefined; `--since -` and the verbosity, ANSI, and interaction flags recover too.
 - **Secret previews are redacted by default** - Every sensitive-data rule and output format emits a redacted marker instead of the matched secret.
 - **Passwords containing `@` are reported again** - The split stops at the authority, so `app:p@ssw0rd@db/orders` no longer resolves to a bogus host.
 - **Placeholders are not credentials** - A password that is entirely `{{action}}`, `${VAR}`, or `<placeholder>` is exempt; `s3cret{9}` still reports.
@@ -20,6 +21,9 @@ Sharper security and sensitive-data rules, secret previews redacted by default, 
 - **Guards expire when the value changes** - Writing to a field or pointee of a guarded value re-opens the finding that guard had cleared.
 - **Token generators flag any buffer name** - `insecure-random-secret` now reports `buf[i] = ...` and `token += string(...)` inside a generator.
 - **Split destination guards no longer pass** - A scheme check and a host check from mutually exclusive branches stop counting as one guard.
+- **Explicit boolean guards count as validation** - `if validateURL(u) == false` proves the same guard as `!validateURL(u)`, so the explicit style no longer reports a validated URL.
+- **A shadowed import is no longer its package** - A local named `http`, `fmt`, `io`, `path`, or `url` stops being read as the imported package, removing false SSRF sinks and false taint propagation.
+- **An overwritten request value stops reporting** - A write that must run before the sink clears the taint; a write inside a branch the sink sits outside of, a `+=`, or a later request write still reports. A `goto`, a closure that rewrites the value, or taking its address keeps the finding.
 - **The composite scores every pillar** - A clean rule-backed pillar counts as 100 instead of being dropped from the average.
 - **Baselines match one-to-one** - Exact findings match first, then stable identities once each, so a second secret on one line is not absorbed.
 - **Reviewed findings stay occurrence-specific** - Baseline matching needs a named symbol or metric, so one accepted finding cannot hide another.
@@ -31,6 +35,7 @@ Sharper security and sensitive-data rules, secret previews redacted by default, 
 - **Summary separates its scan surface** - `summary --format text` counts Go files parsed, text files scanned, failed reads, and skips separately.
 - **Context parse failures are counted** - A supporting file that fails to parse appears in the summary even when it was used only for context.
 - **`size.file-length` anchors to the real line** - The finding points at the line crossing the budget, so diff and changed-region scans keep it.
+- **cgo preambles count as code** - C source before `import "C"` reaches the substantive line count, so a large mixed Go/C file no longer bypasses `size.file-length`.
 - **CI recipes lead with `--since`** - `docs/ci-integration.md` documents `--since <ref>` as the primary diff flag; `--diff-base` still works.
 - **Skip-only tests report once** - A test whose only action is `Skip`, `Skipf`, or `SkipNow` emits `skipped-test` alone, not a stack of findings.
 - **TODO marker precision** - Markers that introduce a string-literal line are flagged, while a TODO mentioned in prose stays quiet.

@@ -19,6 +19,40 @@ func (values analyseFlagValues) resolvedDiffMode() string {
 	return values.diffMode
 }
 
+// stdinPatchFlags name the flags whose value may be the `-` stdin sentinel.
+// resolveAndReadDiffPatch reads a stdin patch for either spelling, so both need
+// their value folded into one token. Go's flag package accepts one or two
+// leading dashes, so both forms of each name appear here.
+var stdinPatchFlags = map[string]bool{
+	"--diff": true, "-diff": true,
+	"--since": true, "-since": true,
+}
+
+// normalizeGlobalStdinFlagValues rewrites `--diff -` into `--diff=-`, and the
+// same for `--since`, before the global flag extractors run. Those extractors
+// treat a bare dash as the conventional stdin operand and stop scanning there, so
+// leaving the dash as its own token strands every later global flag in the
+// command's argument list, where that command's FlagSet rejects it as undefined.
+// Folding only these values lets a bare dash keep its operand meaning elsewhere.
+func normalizeGlobalStdinFlagValues(args []string) []string {
+	normalized := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		// A terminator or a standalone stdin operand protects every later token.
+		if argument == "--" || argument == "-" {
+			normalized = append(normalized, args[index:]...)
+			break
+		}
+		if stdinPatchFlags[argument] && index+1 < len(args) && args[index+1] == "-" {
+			normalized = append(normalized, argument+"=-")
+			index++
+			continue
+		}
+		normalized = append(normalized, argument)
+	}
+	return normalized
+}
+
 // normalizeAnalyseDiffArgs rewrites a bare `--diff` (no value, or followed by
 // another flag) into `--diff=working-tree`, and `--diff -` into `--diff=-`, so it
 // behaves like an optional-value flag - which Go's flag package does not support

@@ -1,6 +1,6 @@
 ---
 category: security-rules
-last_reviewed: 2026-08-13
+last_reviewed: 2026-08-16
 ---
 
 # Security-Rule Footguns
@@ -112,6 +112,25 @@ How to avoid:
 - Ask what the guard proved before choosing the invalidation check. Prefix proofs use `anyNamePrefixRewrittenBetween` (search: `func anyNamePrefixRewrittenBetween`); whole-value proofs keep `anyNameAssignedBetween`.
 - A self-extension is `target += suffix` or `target = target + suffix` with the target leftmost. `assignmentPreservesPrefix` (search: `func assignmentPreservesPrefix`) and `leftmostConcatName` (search: `func leftmostConcatName`) encode that; `target = "/" + target` prepends and must still expire the proof.
 - Pin both directions. `internal/rule/security_request_url_constraints_test.go` (search: `query append after slash stripping stays safe`, `prepending after stripping puts the prefix back`) holds the pair.
+
+## Footgun: a statement-order dominance proof is undone by goto, closures, and address-of
+
+**Status:** active | **Created:** 2026-08-16 | **Evidence:** OBSERVED
+**Decision changed:** whether a "this write always runs first" proof may suppress a security finding
+**Trigger phase:** ACT
+
+Suppressing a request-taint finding because a later write replaced the value needs the write to *dominate* the sink. `statementsDominatingSink` (`internal/rule/security_request_taint_clearing.go`, search: `func statementsDominatingSink`) establishes that from statement order: at each level of the sink's enclosing statement lists, everything before the sink's own statement runs first. That reasoning is sound for branches, loops, and case clauses the sink already sits inside - and silently wrong for three constructs, each of which turns a false-positive fix into a *false negative* in a default-enabled security rule:
+
+- `goto skip` jumps over the clearing assignment, so the sink still reads request data. Jumping over an assignment (unlike a declaration) is legal Go.
+- A closure defined before the clear and called after it - `reset := func() { target = r.FormValue("x") }` then `reset()` - rewrites the binding with an `AssignStmt` whose position precedes the clear, so a position-windowed rewrite check never sees it.
+- `fill(&target, r)` writes through a pointer with no assignment to the binding anywhere in the caller.
+
+All three were introduced while fixing a genuine false positive and were caught only by writing probes specifically for the escape hatches, not by the corpus: 7,592 findings across six real repositories were byte-identical before and after, because production Go rarely uses any of them. A clean corpus diff is evidence of no regression, not evidence that a suppression path is sound.
+
+How to avoid:
+- A suppression proof needs an explicit defeat list, not just a positive rule. `clearingDefeatedByControlFlow` (search: `func clearingDefeatedByControlFlow`) refuses to clear when the body holds a `goto`, takes the binding's address, or assigns it inside any `ast.FuncLit`.
+- Bias the residual error toward reporting. Wrongly keeping taint costs one finding a reviewer dismisses; wrongly clearing it hides the SSRF the rule exists to catch.
+- Probe the escape hatches directly. `internal/rule/security_request_taint_clearing_test.go` (search: `a goto can skip the clear so the taint stands`, `a closure that rewrites the value defeats the clear`) and `TestRequestControlledURLClearWithAddressTaken` pin one case each.
 
 ## Footgun: a normalisation proof must cover every spelling the sink accepts
 

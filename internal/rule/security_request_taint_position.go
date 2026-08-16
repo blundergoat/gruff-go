@@ -95,5 +95,10 @@ func (s *requestTaintScope) taintedBefore(identifier *ast.Ident, sinkPos token.P
 		return true
 	}
 	pos, ok := s.firstTaintPos[identifier.Obj]
-	return ok && pos < sinkPos
+	if !ok || pos >= sinkPos {
+		return false
+	}
+	// A dominating write of request-free data replaces the tainted value, so the
+	// sink reads clean data even though this binding held request input earlier.
+	return !s.taintClearedBefore(identifier.Obj, pos, sinkPos)
 }
