@@ -120,26 +120,28 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 // rules, so per ADR-007/ADR-009 they stay out of default scans until a project
 // enables them, rather than riding at an inflated severity to dodge the gate.
 func defaultSensitiveDataUnitRules(config Config) []UnitRule {
+	previews := newSensitivePreviewPolicy(config.SensitiveDataPreviewAllowlist)
 	return []UnitRule{
-		SensitiveDataRule{PreviewAllowlist: config.SensitiveDataPreviewAllowlist},
-		PrivateKeyRule{},
-		AWSAccessKeyRule{},
-		JWTTokenRule{},
-		ConnectionStringRule{},
-		GitHubTokenRule{},
-		SlackTokenRule{},
-		StripeLiveKeyRule{},
-		GoogleAPIKeyRule{},
-		AnthropicAPIKeyRule{},
-		GCPServiceAccountRule{},
-		NPMTokenRule{},
-		GitLabTokenRule{},
+		SensitiveDataRule{previews: previews},
+		PrivateKeyRule{previews: previews},
+		AWSAccessKeyRule{previews: previews},
+		JWTTokenRule{previews: previews},
+		ConnectionStringRule{previews: previews},
+		GitHubTokenRule{previews: previews},
+		SlackTokenRule{previews: previews},
+		StripeLiveKeyRule{previews: previews},
+		GoogleAPIKeyRule{previews: previews},
+		AnthropicAPIKeyRule{previews: previews},
+		GCPServiceAccountRule{previews: previews},
+		NPMTokenRule{previews: previews},
+		GitLabTokenRule{previews: previews},
 		HighEntropyStringRule{
 			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
 			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
+			previews:  previews,
 		},
-		PIIPatternRule{},
-		PHIPatternRule{},
+		PIIPatternRule{previews: previews},
+		PHIPatternRule{previews: previews},
 	}
 }
 

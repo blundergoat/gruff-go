@@ -201,14 +201,14 @@ func (s *requestTaintScope) requestSensitiveRead(arg ast.Expr) (string, bool) {
 			return true
 		}
 		if selector.Sel.Name == "Cookie" {
-			if ident, ok := selector.X.(*ast.Ident); ok && s.requests[ident.Name] {
+			if ident, ok := selector.X.(*ast.Ident); ok && s.isRequestIdentifier(ident) {
 				reason = "cookie"
 				return false
 			}
 		}
 		if selector.Sel.Name == "Get" && len(call.Args) >= 1 {
 			if inner, ok := selector.X.(*ast.SelectorExpr); ok && inner.Sel.Name == "Header" {
-				if ident, ok := inner.X.(*ast.Ident); ok && s.requests[ident.Name] {
+				if ident, ok := inner.X.(*ast.Ident); ok && s.isRequestIdentifier(ident) {
 					if literal, ok := stringLiteral(call.Args[0]); ok && isAuthHeaderName(literal) {
 						reason = "auth-header"
 						return false

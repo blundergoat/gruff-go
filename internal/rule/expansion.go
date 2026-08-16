@@ -1,5 +1,6 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the expansion rule pack (package name, dead code, security, test quality).
+// This file implements package-name, dead-code, security, and test rules.
+// Its findings explain code changes users can make before the next scan.
 package rule
 
 import (
@@ -9,14 +10,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// skipTodoMarkers are case-insensitive substrings we treat as evidence that a
-// `t.Skip(...)` is debt rather than a legitimate environment-not-ready guard.
-var skipTodoMarkers = []string{"todo", "fixme", "xxx", "hack", "wip"}
+// skipDebtMarkers introduce work that should not stay hidden behind a test guard.
+// Matching is case-insensitive and anchored by skipMessageLineIntroducesDebt.
+var skipDebtMarkers = []string{"todo", "fixme", "xxx", "hack", "wip"}
 
 // PackageNameUnderscoreRule flags Go package names that contain underscores.
 type PackageNameUnderscoreRule struct{}
@@ -140,6 +143,10 @@ func (ShellCommandRule) Definition() Definition {
 		DefaultEnabled:   true,
 		Tags:             []string{"security"},
 		Remediation:      "Call the target executable directly and pass arguments without shell interpretation.",
+		FalsePositiveShapes: []FalsePositiveShape{{
+			Shape:      "Intentional shell orchestration whose interpreter and command text are fixed and reviewed can still look like injection-prone execution.",
+			Mitigation: "Call the target executable directly where possible, or disable the rule for the reviewed path when shell syntax is required.",
+		}},
 	}
 }
 
@@ -170,7 +177,9 @@ func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
-// SkippedTestRule flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.
+// SkippedTestRule finds test skips that can hide unfinished coverage.
+// Conditional environment guards stay quiet unless their message introduces debt.
+// Users can remove the skip or track the condition outside the test body.
 type SkippedTestRule struct{}
 
 // Definition declares the test-quality.skipped-test rule that fires when t.Skip, t.Skipf, or t.SkipNow appears in any _test.go file.
@@ -185,6 +194,10 @@ func (SkippedTestRule) Definition() Definition {
 		DefaultEnabled: true,
 		Tags:           []string{"tests"},
 		Remediation:    "Remove the skip or document and track the condition outside the test body.",
+		FalsePositiveShapes: []FalsePositiveShape{{
+			Shape:      "A legitimate conditional skip reason whose first physical line begins with TODO/FIXME-style product terminology.",
+			Mitigation: "Put explanatory words before the quoted marker, or disable the rule for that path when the external wording must stay first.",
+		}},
 	}
 }
 
@@ -298,24 +311,87 @@ func isPosInsideAny(start, end token.Pos, ranges []posRange) bool {
 	return false
 }
 
-// skipMessageMentionsDebt returns true when any string-literal argument to the
-// skip call carries a TODO/FIXME/XXX/HACK/WIP marker (case-insensitive). These
-// markers indicate the skip is documenting work to come, not infrastructure
-// availability, so we keep flagging them even when conditionally reachable.
+// skipMessageMentionsDebt reports whether a literal skip message introduces debt.
+// Prose mentions stay quiet; a marker may introduce any physical message line.
 func skipMessageMentionsDebt(call *ast.CallExpr) bool {
-	for _, arg := range call.Args {
-		literal, ok := stringLiteral(arg)
-		if !ok {
+	// Only literal text can provide reliable marker evidence to the user.
+	for _, argument := range call.Args {
+		messageText, isLiteral := stringLiteral(argument)
+		// A dynamic message cannot prove that the checked-in test carries marker debt.
+		if !isLiteral {
 			continue
 		}
-		lower := strings.ToLower(literal)
-		for _, marker := range skipTodoMarkers {
-			if strings.Contains(lower, marker) {
+		// Multiline reasons may introduce the actionable marker after explanatory text.
+		for _, messageLine := range strings.Split(messageText, "\n") {
+			// An introduced marker keeps the conditional skip visible in the report.
+			if skipMessageLineIntroducesDebt(messageLine) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// skipMessageLineIntroducesDebt matches a leading marker after optional space or a list bullet.
+// Delimiters distinguish real debt from prose names such as TODOs or todo-without-tracking.
+func skipMessageLineIntroducesDebt(messageLine string) bool {
+	messageBody := trimOptionalSkipMessageBullet(strings.TrimSpace(messageLine))
+	lowerMessageBody := strings.ToLower(messageBody)
+	// Check the shared vocabulary without treating a mid-sentence word as an introduced marker.
+	for _, debtMarker := range skipDebtMarkers {
+		markerSuffix, startsWithMarker := strings.CutPrefix(lowerMessageBody, debtMarker)
+		// A different leading word means this marker is only prose, if it appears at all.
+		if !startsWithMarker {
+			continue
+		}
+		return hasSkipDebtMarkerDelimiter(markerSuffix)
+	}
+	return false
+}
+
+// trimOptionalSkipMessageBullet removes a conventional bullet before a marker.
+// A hyphenated word without following space remains ordinary message text.
+func trimOptionalSkipMessageBullet(messageBody string) string {
+	// Empty and one-character messages cannot contain a bullet plus a marker.
+	if len(messageBody) < 2 {
+		return messageBody
+	}
+	// Only common list bullets opt into the marker position that follows.
+	if !strings.ContainsRune("-*+", rune(messageBody[0])) {
+		return messageBody
+	}
+	textAfterBullet := messageBody[1:]
+	firstRune, _ := utf8.DecodeRuneInString(textAfterBullet)
+	// `-TODO` is not a list item, so the leading hyphen remains meaningful text.
+	if !unicode.IsSpace(firstRune) {
+		return messageBody
+	}
+	return strings.TrimSpace(textAfterBullet)
+}
+
+// hasSkipDebtMarkerDelimiter accepts punctuation used by real leading markers.
+// A hyphen counts only at the end or before space, keeping hyphenated names quiet.
+func hasSkipDebtMarkerDelimiter(markerSuffix string) bool {
+	// A bare marker is enough to tell the user the guarded test is deferred work.
+	if markerSuffix == "" {
+		return true
+	}
+	delimiter, delimiterWidth := utf8.DecodeRuneInString(markerSuffix)
+	// Owners, labels, and space-continuation messages are conventional marker forms.
+	if delimiter == ':' || delimiter == '(' || unicode.IsSpace(delimiter) {
+		return true
+	}
+	// Other continuations, such as the `s` in TODOs, are ordinary words.
+	if delimiter != '-' {
+		return false
+	}
+	textAfterHyphen := markerSuffix[delimiterWidth:]
+	// A terminal hyphen is an explicit marker delimiter rather than a word continuation.
+	if textAfterHyphen == "" {
+		return true
+	}
+	nextRune, _ := utf8.DecodeRuneInString(textAfterHyphen)
+	return unicode.IsSpace(nextRune)
 }
 
 // isControlFlowBlock reports whether the block is the body of an if/for/switch/select construct.

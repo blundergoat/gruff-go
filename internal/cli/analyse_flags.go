@@ -65,64 +65,71 @@ type analyseFlagPointers struct {
 	includeIgnored       *bool
 }
 
-// analyseFlagConsumesValue reports whether arg names an analyse flag whose value
-// lives in the following argv token when no --flag=value form is used.
-func analyseFlagConsumesValue(arg string) bool {
-	if strings.Contains(arg, "=") {
+// analyseFlagHasSeparateValue identifies analyse flags whose value is the next token.
+// The help pre-scan uses it so a flag value spelled `--help` is not mistaken for a help request.
+func analyseFlagHasSeparateValue(flagArgument string) bool {
+	// An inline assignment leaves the following token available as a path or another flag.
+	if strings.Contains(flagArgument, "=") {
 		return false
 	}
-	switch strings.TrimLeft(arg, "-") {
+	// These are analyse's non-Boolean flags; every other supported flag is self-contained.
+	switch strings.TrimLeft(flagArgument, "-") {
 	case "format", "min-severity", "fail-on", "config", "baseline",
 		"generate-baseline", "diff-base", "diff", "since", "changed-ranges",
 		"changed-scope", "include-rules", "exclude-rules", "include-pillars",
 		"exclude-pillars", "report-editor-link":
 		return true
 	default:
+		// Boolean and unknown flags do not reserve the next token during the help pre-scan.
 		return false
 	}
 }
 
-// parseAnalyseFlags parses and validates analyse flags, printing validation
-// errors to stderr in the same style as the legacy inline parser.
-func parseAnalyseFlags(args []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
-	flags := newAnalyseFlagSet(stderr)
-	flagValues := registerAnalyseFlags(flags)
-	args = normalizeAnalyseDiffArgs(args)
-	if err := flags.Parse(args); err != nil {
-		return flags, analyseFlagValues{}, false
+// parseAnalyseFlags validates analyse options and retains positional paths in the returned FlagSet.
+// It writes usage errors to stderr; false tells runAnalyse to stop before loading config or scanning.
+func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
+	flagSet := newAnalyseFlagSet(stderr)
+	registeredFlags := registerAnalyseFlags(flagSet)
+	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
+	// FlagSet already wrote a syntax error, so the command only needs the unsuccessful status.
+	if err := parseCommandArguments(flagSet, normalizedArguments); err != nil {
+		return flagSet, analyseFlagValues{}, false
 	}
-	if !validateAnalyseEnums(*flagValues.format, *flagValues.editorLink, *flagValues.changedScope, stderr) {
-		return flags, analyseFlagValues{}, false
+	// Unsupported output, editor-link, or changed-scope values are command-usage errors.
+	if !validateAnalyseEnums(*registeredFlags.format, *registeredFlags.editorLink, *registeredFlags.changedScope, stderr) {
+		return flagSet, analyseFlagValues{}, false
 	}
 	// Reject an incompatible --generate-baseline combination before reading a
 	// --diff=- stdin patch, so the documented error returns immediately instead
 	// of blocking on stdin in an interactive shell or hook. generateBaselineState
 	// reads only flag values, not the patch, so validating here is safe.
-	if *flagValues.generateBaselinePath != "" {
-		if err := validateGenerateBaselineFlags(flagValues.values(nil, false).generateBaselineState()); err != nil {
+	if *registeredFlags.generateBaselinePath != "" {
+		if err := validateGenerateBaselineFlags(registeredFlags.values(nil, false).generateBaselineState()); err != nil {
 			fmt.Fprintln(stderr, err)
-			return flags, analyseFlagValues{}, false
+			return flagSet, analyseFlagValues{}, false
 		}
 	}
-	diffPatch, ok := resolveAndReadDiffPatch(*flagValues.diffMode, *flagValues.since, stderr)
-	if !ok {
-		return flags, analyseFlagValues{}, false
+	diffPatch, patchRead := resolveAndReadDiffPatch(*registeredFlags.diffMode, *registeredFlags.since, stderr)
+	// A failed stdin patch read leaves no reliable changed-region input.
+	if !patchRead {
+		return flagSet, analyseFlagValues{}, false
 	}
-	minSeverityExplicit, ok := checkMinSeverityFlag(flags, *flagValues.minSeverity, stderr)
-	if !ok {
-		return flags, analyseFlagValues{}, false
+	minimumSeverityExplicit, severityValid := checkMinSeverityFlag(flagSet, *registeredFlags.minSeverity, stderr)
+	// An invalid threshold is a usage error, not a partial scan with a fallback gate.
+	if !severityValid {
+		return flagSet, analyseFlagValues{}, false
 	}
-	return flags, flagValues.values(diffPatch, minSeverityExplicit), true
+	return flagSet, registeredFlags.values(diffPatch, minimumSeverityExplicit), true
 }
 
 // newAnalyseFlagSet creates the analyse flag parser with GNU-style usage text.
 func newAnalyseFlagSet(stderr io.Writer) *flag.FlagSet {
-	flags := flag.NewFlagSet("analyse", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	flags.Usage = func() {
+	flagSet := flag.NewFlagSet("analyse", flag.ContinueOnError)
+	flagSet.SetOutput(stderr)
+	flagSet.Usage = func() {
 		writeCommandHelp("analyse", commandUsages["analyse"], stderr, ansiStyler{})
 	}
-	return flags
+	return flagSet
 }
 
 // registerAnalyseFlags registers every analyse flag and returns their storage.

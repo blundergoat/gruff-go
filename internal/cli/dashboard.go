@@ -39,7 +39,14 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in the report")
 	editorLink := flags.String("report-editor-link", "none", "html file:line link mode: none, vscode, or phpstorm")
 	allowPublic := flags.Bool("allow-public", false, "allow binding to non-loopback hosts")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
+		return 2
+	}
+
+	// Scan targets arrive through flags here, so an operand names a target the server would never
+	// scan. Rejecting beats guessing between --project and --paths.
+	if flags.NArg() > 0 {
+		fmt.Fprintln(stderr, "dashboard takes no positional arguments; name scan targets with --project and --paths")
 		return 2
 	}
 

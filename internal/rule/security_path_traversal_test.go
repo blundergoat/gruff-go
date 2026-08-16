@@ -1,4 +1,6 @@
-// Package rule tests the parser-only path-traversal security rule.
+// Package rule tests the path-traversal evidence displayed in scan reports.
+// Its fixtures model user-controlled paths, normalization, and containment so
+// terminal, JSON, and dashboard results agree on which file access is safe.
 package rule
 
 import "testing"
@@ -89,6 +91,31 @@ import (
 
 func read(w http.ResponseWriter, r *http.Request) {
 	_, _ = os.Open(filepath.Clean(r.FormValue("file")))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "URL parsing does not remove path taint",
+			code: `// Package handler models file paths submitted through a web UI.
+// This fixture parses a URL before opening its path, proving syntax work does
+// not remove the user's control from the path-traversal report.
+package handler
+
+import (
+	"net/http"
+	"net/url"
+	"os"
+)
+
+// read models the user's file selection reaching a filesystem operation.
+func read(w http.ResponseWriter, r *http.Request) {
+	parsed, err := url.Parse(r.FormValue("file"))
+	// A malformed user path stops before any filesystem access.
+	if err != nil {
+		return
+	}
+	_, _ = os.Open(parsed.Path)
 }
 `,
 			want: 1,

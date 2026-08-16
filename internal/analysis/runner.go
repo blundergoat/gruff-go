@@ -28,7 +28,7 @@ type Options struct {
 	// Format selects the report renderer ("text", "json", "html", "sarif", "github"); empty defaults to "text".
 	Format string
 	// FailOn is the threshold at or above which a finding triggers exit code 1.
-	// FailThreshold (not Severity) so callers can express "never fail" via
+	// FailThreshold (not Severity) so callers can express "never fail on findings" via
 	// finding.FailThresholdNone.
 	FailOn finding.FailThreshold
 	// Registry supplies the rules invoked against parsed units.
@@ -37,7 +37,8 @@ type Options struct {
 	IgnorePaths []string
 	// IncludeIgnored disables gitignore and metadata directory pruning when true.
 	IncludeIgnored bool
-	// ReportAllSkippedInputs reports explicit input paths that are all skipped as diagnostics.
+	// ReportAllSkippedInputs reports explicit input paths that are all skipped as
+	// fatal diagnostics. Advisory hook mode intentionally leaves this disabled.
 	ReportAllSkippedInputs bool
 	// BaselinePath points at an optional baseline file used to suppress previously accepted findings.
 	BaselinePath string
@@ -196,7 +197,9 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 	return diagnostics
 }
 
-// diagnosticsFromParser lifts each parser-stage diagnostic into the unified analysis Diagnostic shape, stamping every entry with stage "parse" and severity high so callers can surface broken syntax without a separate code path.
+// diagnosticsFromParser lifts each parser-stage diagnostic into the unified
+// analysis Diagnostic shape, stamping every entry with stage "parse" and
+// descriptive error severity.
 func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	diagnostics := []Diagnostic{}
 	for _, item := range parseDiagnostics {
@@ -324,9 +327,9 @@ func resolveChangedScope(ctx context.Context, root string, files []source.File, 
 	}
 }
 
-// appendDiffDiagnostic records a diff-stage failure as an error-severity
-// Diagnostic so the scan continues and reports the problem instead of aborting -
-// the changed-region filter is best-effort, not fatal to the run.
+// appendDiffDiagnostic records a diff-stage failure as a fatal, error-severity
+// Diagnostic. The scan continues long enough to render the structured failure,
+// then ResolveExitCode returns 2. Nonfatal diff limitations use DiffSummary.Caveat.
 func appendDiffDiagnostic(diagnostics []Diagnostic, err error) []Diagnostic {
 	return append(diagnostics, Diagnostic{
 		Stage:    "diff",

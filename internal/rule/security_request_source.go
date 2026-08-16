@@ -23,24 +23,30 @@ var requestTaintedMembers = map[string]bool{
 	"PathValue": true, "Cookie": true, "Referer": true, "UserAgent": true,
 }
 
-// requestTaintScope carries the per-function evidence the request-driven rules
-// share: names bound to *http.Request parameters, locals tainted from those
-// requests, and the imported aliases of the string-builder packages whose calls
-// propagate taint.
+// requestTaintScope carries the per-function evidence shared by request-driven
+// rules: lexical request and taint bindings, imported builder aliases, and URL
+// parse results that preserve caller-controlled destinations.
 type requestTaintScope struct {
-	requests     map[string]bool
-	tainted      map[string]bool
-	fmtPkgs      map[string]bool
-	stringsPkgs  map[string]bool
-	filepathPkgs map[string]bool
-	pathPkgs     map[string]bool
-	ioPkgs       map[string]bool
-	ioutilPkgs   map[string]bool
-	// firstTaintPos records, per tainted local, the position of the earliest
+	functionType      *ast.FuncType
+	requestNames      map[string]bool
+	requestBindings   map[*ast.Object]bool
+	taintedBindings   map[*ast.Object]bool
+	fmtPkgs           map[string]bool
+	stringsPkgs       map[string]bool
+	filepathPkgs      map[string]bool
+	pathPkgs          map[string]bool
+	netURLPkgs        map[string]bool
+	parsedURLBindings map[*ast.Object]bool
+	ioPkgs            map[string]bool
+	ioutilPkgs        map[string]bool
+	// firstTaintPos records, per tainted binding, the position of the earliest
 	// assignment that introduced request-controlled data. Sinks consult it so a
 	// value is only treated as tainted at a sink that follows its taint, not at
 	// an earlier use that precedes a later request assignment.
-	firstTaintPos map[string]token.Pos
+	firstTaintPos map[*ast.Object]token.Pos
+	// body is the analysed function body. Sinks walk it to find writes that
+	// replace a tainted value with request-free data before the sink runs.
+	body *ast.BlockStmt
 }
 
 // forEachRequestFunc invokes visit for every function body in the file that
@@ -70,44 +76,58 @@ func forEachRequestFunc(file *ast.File, httpPkgs map[string]bool, visit func(sco
 // given the file's net/http aliases. It returns ok=false when the function has
 // no *http.Request parameter so callers skip cheaply.
 func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.BlockStmt, httpPkgs map[string]bool) (*requestTaintScope, bool) {
-	requests := requestParamNames(funcType, httpPkgs)
-	if len(requests) == 0 || body == nil {
+	requestNames, requestBindings := requestParameters(funcType, httpPkgs)
+	if len(requestNames) == 0 || body == nil {
 		return nil, false
 	}
 	scope := &requestTaintScope{
-		requests:      requests,
-		tainted:       map[string]bool{},
-		fmtPkgs:       packageImportNames(file, "fmt", "fmt"),
-		stringsPkgs:   packageImportNames(file, "strings", "strings"),
-		filepathPkgs:  packageImportNames(file, "path/filepath", "filepath"),
-		pathPkgs:      packageImportNames(file, "path", "path"),
-		ioPkgs:        packageImportNames(file, "io", "io"),
-		ioutilPkgs:    packageImportNames(file, "io/ioutil", "ioutil"),
-		firstTaintPos: map[string]token.Pos{},
+		functionType:      funcType,
+		requestNames:      requestNames,
+		requestBindings:   requestBindings,
+		taintedBindings:   map[*ast.Object]bool{},
+		fmtPkgs:           packageImportNames(file, "fmt", "fmt"),
+		stringsPkgs:       packageImportNames(file, "strings", "strings"),
+		filepathPkgs:      packageImportNames(file, "path/filepath", "filepath"),
+		pathPkgs:          packageImportNames(file, "path", "path"),
+		netURLPkgs:        packageImportNames(file, "net/url", "url"),
+		parsedURLBindings: map[*ast.Object]bool{},
+		ioPkgs:            packageImportNames(file, "io", "io"),
+		ioutilPkgs:        packageImportNames(file, "io/ioutil", "ioutil"),
+		firstTaintPos:     map[*ast.Object]token.Pos{},
+		body:              body,
 	}
 	scope.collectTaintedVars(body)
 	return scope, true
 }
 
-// requestParamNames returns the parameter names declared as *http.Request on a
-// function type, mirroring httpRequestParamNames for closures that carry only an
-// *ast.FuncType.
-func requestParamNames(funcType *ast.FuncType, httpPkgs map[string]bool) map[string]bool {
-	out := map[string]bool{}
+// requestParameters returns the names and lexical bindings declared as
+// *http.Request parameters. Names support sanitizer filtering; bindings prevent
+// a shadowed local from inheriting request-control status.
+func requestParameters(funcType *ast.FuncType, httpPkgs map[string]bool) (map[string]bool, map[*ast.Object]bool) {
+	requestNames := map[string]bool{}
+	requestBindings := map[*ast.Object]bool{}
+	// A missing parameter list means this function cannot be a request handler.
 	if funcType == nil || funcType.Params == nil {
-		return out
+		return requestNames, requestBindings
 	}
+	// Record every request parameter the handler can read from.
 	for _, field := range funcType.Params.List {
+		// Other parameter types do not expose caller-controlled HTTP input.
 		if !isHTTPRequestPointer(field.Type, httpPkgs) {
 			continue
 		}
+		// Each named request keeps its own binding inside the function.
 		for _, name := range field.Names {
+			// Blank request parameters cannot be referenced by a sink expression.
 			if name.Name != "_" {
-				out[name.Name] = true
+				requestNames[name.Name] = true
+				if name.Obj != nil {
+					requestBindings[name.Obj] = true
+				}
 			}
 		}
 	}
-	return out
+	return requestNames, requestBindings
 }
 
 // collectTaintedVars records locals whose value derives from request-controlled
@@ -128,7 +148,10 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						continue
 					}
 					if s.directRequestExpr(stmt.Rhs[i]) {
-						s.markTaintedAt(ident.Name, s.taintIntroPos(stmt.Rhs[i], ident.Pos()))
+						s.markTaintedAt(ident, s.taintIntroPos(stmt.Rhs[i], ident.Pos()))
+						if s.isParsedURLExpr(stmt.Rhs[i]) {
+							s.markParsedURLBinding(ident)
+						}
 					}
 				}
 			case *ast.ValueSpec:
@@ -137,7 +160,10 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						continue
 					}
 					if s.directRequestExpr(stmt.Values[i]) {
-						s.markTaintedAt(name.Name, s.taintIntroPos(stmt.Values[i], name.Pos()))
+						s.markTaintedAt(name, s.taintIntroPos(stmt.Values[i], name.Pos()))
+						if s.isParsedURLExpr(stmt.Values[i]) {
+							s.markParsedURLBinding(name)
+						}
 					}
 				}
 			}
@@ -146,10 +172,8 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 	}
 }
 
-// directRequestExpr reports whether expr is request-controlled through the
-// restricted propagation set (request accessors, tainted locals, string-builder
-// calls, conversions, and + concatenation). Arbitrary calls return false so a
-// sanitising helper breaks the chain.
+// directRequestExpr follows request input through known transparent operations.
+// Syntax-only URL/path work stays visible; an arbitrary helper may sanitize it.
 func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 	switch e := expr.(type) {
 	case *ast.ParenExpr:
@@ -157,7 +181,7 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 	case *ast.StarExpr:
 		return s.directRequestExpr(e.X)
 	case *ast.Ident:
-		return s.tainted[e.Name]
+		return e.Obj != nil && s.taintedBindings[e.Obj]
 	case *ast.BinaryExpr:
 		return e.Op == token.ADD && (s.directRequestExpr(e.X) || s.directRequestExpr(e.Y))
 	case *ast.CallExpr:
@@ -169,6 +193,14 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 		}
 		if arg, ok := s.pathCleanArg(e); ok {
 			return s.directRequestExpr(arg)
+		}
+		// Keep a parsed user URL visible until the URL rule finds destination guards.
+		if parsedURLInput, isSyntaxParse := s.urlSyntaxParseArg(e); isSyntaxParse {
+			return s.directRequestExpr(parsedURLInput)
+		}
+		// Converting a parsed request URL back to text preserves its destination.
+		if _, isParsedString := s.parsedURLStringReceiver(e); isParsedString {
+			return true
 		}
 		if s.isStringBuilderCall(e) || s.isReaderConsumer(e) {
 			for _, arg := range e.Args {
@@ -197,7 +229,7 @@ func (s *requestTaintScope) pathCleanArg(call *ast.CallExpr) (ast.Expr, bool) {
 		return nil, false
 	}
 	receiver, ok := selector.X.(*ast.Ident)
-	if !ok || (!s.filepathPkgs[receiver.Name] && !s.pathPkgs[receiver.Name]) {
+	if !ok || (!isImportedPackageIdentifier(receiver, s.filepathPkgs) && !isImportedPackageIdentifier(receiver, s.pathPkgs)) {
 		return nil, false
 	}
 	return call.Args[0], true
@@ -221,7 +253,7 @@ func (s *requestTaintScope) exprHasRequest(expr ast.Expr, sinkPos token.Pos) (st
 			label = found
 			return false
 		}
-		if ident, ok := current.(*ast.Ident); ok && s.taintedBefore(ident.Name, sinkPos) {
+		if ident, ok := current.(*ast.Ident); ok && s.taintedBefore(ident, sinkPos) {
 			label = ident.Name
 			return false
 		}
@@ -234,15 +266,34 @@ func (s *requestTaintScope) exprHasRequest(expr ast.Expr, sinkPos token.Pos) (st
 // so, returns a short root.member label (for example "r.FormValue").
 func (s *requestTaintScope) requestAccessLabel(expr ast.Expr) (string, bool) {
 	root, members := flattenChain(expr)
-	if root == "" || !s.requests[root] {
+	// A bare request identifier does not expose a caller-controlled member.
+	if root == nil || len(members) == 0 {
+		return "", false
+	}
+	if !s.isRequestIdentifier(root) {
 		return "", false
 	}
 	for _, member := range members {
 		if requestTaintedMembers[member] {
-			return root + "." + members[0], true
+			return root.Name + "." + members[0], true
 		}
 	}
 	return "", false
+}
+
+// isRequestIdentifier reports whether an identifier is the handler's request
+// parameter. Resolved syntax uses lexical identity; malformed partial Go falls
+// back to the declared request name because no binding is available.
+func (s *requestTaintScope) isRequestIdentifier(identifier *ast.Ident) bool {
+	// Missing syntax cannot identify a request parameter.
+	if identifier == nil {
+		return false
+	}
+	// A resolved shadow must not inherit request status from its spelling.
+	if identifier.Obj != nil {
+		return s.requestBindings[identifier.Obj]
+	}
+	return s.requestNames[identifier.Name]
 }
 
 // isStringBuilderCall reports whether call is one of the concatenating/formatting
@@ -259,9 +310,11 @@ func (s *requestTaintScope) isStringBuilderCall(call *ast.CallExpr) bool {
 	}
 	switch selector.Sel.Name {
 	case "Sprintf", "Sprint", "Sprintln":
-		return s.fmtPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.fmtPkgs)
 	case "Join":
-		return s.stringsPkgs[receiver.Name] || s.filepathPkgs[receiver.Name] || s.pathPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.stringsPkgs) ||
+			isImportedPackageIdentifier(receiver, s.filepathPkgs) ||
+			isImportedPackageIdentifier(receiver, s.pathPkgs)
 	}
 	return false
 }
@@ -280,20 +333,31 @@ func (s *requestTaintScope) isReaderConsumer(call *ast.CallExpr) bool {
 	}
 	switch selector.Sel.Name {
 	case "ReadAll":
-		return s.ioPkgs[receiver.Name] || s.ioutilPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.ioPkgs) || isImportedPackageIdentifier(receiver, s.ioutilPkgs)
 	case "ReadFull":
-		return s.ioPkgs[receiver.Name]
+		return isImportedPackageIdentifier(receiver, s.ioPkgs)
 	}
 	return false
 }
 
-// flattenChain reduces a selector/call/index chain to its root identifier name
-// and the ordered member names accessed on it, so request access can be matched
-// structurally without rendering source text.
-func flattenChain(expr ast.Expr) (string, []string) {
+// isImportedPackageIdentifier reports whether identifier names one of the given
+// import aliases and still refers to that import rather than to a local
+// declaration. go/parser leaves an import reference unresolved, so a resolved
+// identifier is a shadow: `http := localClient{}` must not read as net/http.
+func isImportedPackageIdentifier(identifier *ast.Ident, packageAliases map[string]bool) bool {
+	// A resolved identifier is a declared shadow, not the imported package.
+	if identifier == nil || identifier.Obj != nil {
+		return false
+	}
+	return packageAliases[identifier.Name]
+}
+
+// flattenChain reduces a selector/call/index chain to its root identifier and
+// ordered member names. Keeping the identifier preserves lexical binding data.
+func flattenChain(expr ast.Expr) (*ast.Ident, []string) {
 	switch e := expr.(type) {
 	case *ast.Ident:
-		return e.Name, nil
+		return e, nil
 	case *ast.SelectorExpr:
 		root, members := flattenChain(e.X)
 		return root, append(members, e.Sel.Name)
@@ -308,7 +372,7 @@ func flattenChain(expr ast.Expr) (string, []string) {
 	case *ast.StarExpr:
 		return flattenChain(e.X)
 	default:
-		return "", nil
+		return nil, nil
 	}
 }
 
@@ -352,8 +416,8 @@ func identNames(expr ast.Expr) map[string]bool {
 // finding because of unrelated request handling.
 func (s *requestTaintScope) sanitizerValueNames(arg ast.Expr) map[string]bool {
 	names := identNames(arg)
-	for request := range s.requests {
-		delete(names, request)
+	for requestName := range s.requestNames {
+		delete(names, requestName)
 	}
 	return names
 }

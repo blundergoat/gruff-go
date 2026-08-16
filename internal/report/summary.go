@@ -5,6 +5,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -81,12 +82,13 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 		top = 10
 	}
 	score := report.Score
+	fileCounts := countSummaryFiles(report)
 	header := fmt.Sprintf(
-		"%s %s summary\nscanned: %s (in %s)\nfiles: %d analysed, %d skipped\n",
+		"%s %s summary\nscanned: %s (in %s)\nfiles: %d Go parsed, %d text scanned, %d failed, %d skipped\n",
 		report.Tool.Name, report.Tool.Version,
 		summaryInputs(report.Run.Inputs),
 		summaryWorkingDir(report.Run.WorkingDirectory),
-		report.Summary.FilesScanned, report.Summary.FilesSkipped,
+		fileCounts.parsedGoFiles, fileCounts.scannedTextFiles, fileCounts.failedFiles, report.Summary.FilesSkipped,
 	)
 	if _, err := fmt.Fprint(writer, header); err != nil {
 		return err
@@ -127,6 +129,47 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
 	return err
+}
+
+// summaryFileCounts records the scan categories shown in human-readable summary output.
+// Keeping these counts internal avoids changing the versioned JSON report contract.
+type summaryFileCounts struct {
+	parsedGoFiles    int
+	scannedTextFiles int
+	failedFiles      int
+}
+
+// countSummaryFiles classifies each discovered input for the text summary.
+// It explains which files reached Go parsing, raw-text rules, or neither while JSON stays unchanged.
+func countSummaryFiles(analysisReport analysis.Report) summaryFileCounts {
+	parseFailedPaths := map[string]struct{}{}
+	// One file may emit several diagnostics, so path identity keeps the failure count file-based.
+	for _, diagnostic := range analysisReport.Diagnostics {
+		// Parser-stage diagnostics cover both read failures and Go syntax errors before rule analysis.
+		if diagnostic.Stage == "parse" && diagnostic.File != "" {
+			parseFailedPaths[diagnostic.File] = struct{}{}
+		}
+	}
+
+	// Explicit-file scans can diagnose a supporting Go sibling without listing
+	// it in Paths.Scanned. Count every diagnosed file once before classifying the
+	// successfully scanned paths.
+	fileCounts := summaryFileCounts{failedFiles: len(parseFailedPaths)}
+	// Every discovered path contributes to exactly one user-visible summary category.
+	for _, scannedPath := range analysisReport.Paths.Scanned {
+		// A failed read or parse never reached rule analysis.
+		if _, failed := parseFailedPaths[scannedPath]; failed {
+			continue
+		}
+		// A successful Go input reached AST parsing rather than only raw-text rules.
+		if strings.EqualFold(path.Ext(scannedPath), ".go") {
+			fileCounts.parsedGoFiles++
+			continue
+		}
+		// Every other readable input was scanned by the raw-text rule set.
+		fileCounts.scannedTextFiles++
+	}
+	return fileCounts
 }
 
 // writeSummaryBaseline prints the three-state baseline counts when a baseline was

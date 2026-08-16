@@ -1,8 +1,12 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file covers the acronym-case rule's positive and negative cases.
+// Package rule tests initialism guidance shown to Go users.
+// Idiomatic names stay quiet while mixed casing receives a concrete replacement.
+// Generated and cgo-owned identifiers remain outside hand-authored rename work.
 package rule
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestAcronymCaseFlagsMixedCaseInitialisms checks that mixed-case Go initialisms are flagged with canonical replacements.
 func TestAcronymCaseFlagsMixedCaseInitialisms(t *testing.T) {
@@ -64,6 +68,44 @@ type URLParser struct{}
 	findings := AcronymCaseRule{}.AnalyzeUnit(unit, Context{})
 	if len(findings) != 0 {
 		t.Fatalf("consistent acronym casing should pass, got %#v", findings)
+	}
+}
+
+// TestAcronymCaseRemediationNamesAndAcceptsGoInitialisms connects the catalogue
+// guidance users read to the exact identifier changes that clear the finding.
+func TestAcronymCaseRemediationNamesAndAcceptsGoInitialisms(t *testing.T) {
+	driftUnit := parseOne(t, "pkg/drift.go", `package pkg
+
+type ParseUrl struct{}
+
+func remember(userId int) {
+	_ = userId
+}
+`)
+	driftFindings := AcronymCaseRule{}.AnalyzeUnit(driftUnit, Context{})
+	// Both common drift shapes should direct the user to Go's canonical spelling.
+	if len(driftFindings) != 2 {
+		t.Fatalf("mixed-case findings = %#v, want ParseUrl and userId", driftFindings)
+	}
+
+	remediation := AcronymCaseRule{}.Definition().Remediation
+	// Concrete UI guidance lets the user apply the fix without inferring casing rules.
+	if !strings.Contains(remediation, "parseURL") || !strings.Contains(remediation, "userID") {
+		t.Fatalf("remediation = %q, want parseURL and userID examples", remediation)
+	}
+
+	fixedUnit := parseOne(t, "pkg/fixed.go", `package pkg
+
+type ParseURL struct{}
+
+func remember(userID int) {
+	_ = userID
+}
+`)
+	fixedFindings := AcronymCaseRule{}.AnalyzeUnit(fixedUnit, Context{})
+	// Applying the catalogue's named replacements should leave the user with a clean scan.
+	if len(fixedFindings) != 0 {
+		t.Fatalf("fixed initialism findings = %#v, want none", fixedFindings)
 	}
 }
 
@@ -138,6 +180,27 @@ type HttpClient struct{}
 	findings := AcronymCaseRule{}.AnalyzeUnit(unit, Context{})
 	if len(findings) != 1 || findings[0].Symbol != "HttpClient" {
 		t.Fatalf("bare DO NOT EDIT should not suppress hand-authored file, got %#v", findings)
+	}
+}
+
+// TestAcronymCaseIgnoresCgoSelectorIdentifiers confirms C-owned underscore names
+// do not become Go rename findings when a user calls them through package C.
+func TestAcronymCaseIgnoresCgoSelectorIdentifiers(t *testing.T) {
+	unit := parseOne(t, "pkg/cgo.go", `package pkg
+
+/*
+int read_url_id(void) { return 1; }
+*/
+import "C"
+
+func cgoURLID() int {
+	return int(C.read_url_id())
+}
+`)
+	findings := AcronymCaseRule{}.AnalyzeUnit(unit, Context{})
+	// A quiet result leaves generated C naming under cgo ownership instead of asking the Go user to rename it.
+	if len(findings) != 0 {
+		t.Fatalf("cgo selector findings = %#v, want none", findings)
 	}
 }
 

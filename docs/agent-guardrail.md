@@ -106,6 +106,12 @@ gruff-go analyse --generate-baseline gruff-baseline.json .
 gruff-go analyse --baseline gruff-baseline.json --min-severity advisory .
 ```
 
+Baseline and hook new-only filtering share one matcher: exact fingerprints pair
+first, then remaining contract-stable identities pair one-to-one. A reviewed
+finding can move without resurfacing, but one prior occurrence cannot hide
+multiple duplicate issues. Legacy baseline rows without `stableIdentity` remain
+exact-only.
+
 ## How the rules serve the mission
 
 | Axis | What enforces it |

@@ -1,3 +1,6 @@
+// Package cli prepares prior findings for agent-hook new-only filtering.
+// This file resolves baseline or git history into the shared one-to-one matcher
+// so hook users see the same duplicate and line-shift behavior as analyse.
 package cli
 
 import (
@@ -11,148 +14,117 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// hookIdentityKey identifies a prior finding by B3 stable identity.
-type hookIdentityKey struct {
-	ruleID         string
-	file           string
-	stableIdentity string
+// hookFindingBaseline stores the optional prior findings used by hook new-only.
+// An enabled empty file means the user explicitly selected a base with no debt;
+// a disabled value means hook output should skip baseline classification.
+type hookFindingBaseline struct {
+	enabled bool
+	file    baseline.File
 }
 
-// hookFingerprintKey preserves fallback matching for older baseline files.
-type hookFingerprintKey struct {
-	ruleID      string
-	file        string
-	fingerprint string
-}
-
-// hookIdentitySet stores the optional new-only base identity set.
-type hookIdentitySet struct {
-	enabled      bool
-	stable       map[hookIdentityKey]struct{}
-	fingerprints map[hookFingerprintKey]struct{}
-}
-
-// contains reports whether a current finding already existed in the base.
-func (set hookIdentitySet) contains(item finding.Finding) bool {
-	if !set.enabled {
-		return false
+// newFindings classifies the complete current slice through baseline.Apply.
+// Disabled input returns every finding because the user selected no prior base.
+func (hookBaseline hookFindingBaseline) newFindings(currentFindings []finding.Finding) []finding.Finding {
+	// Without a baseline or git base, every current finding remains hook-visible.
+	if !hookBaseline.enabled {
+		return currentFindings
 	}
-	stable := item.ComputeContractStableIdentity()
-	if _, ok := set.stable[hookIdentityKey{ruleID: item.RuleID, file: item.File, stableIdentity: stable}]; ok {
-		return true
-	}
-	_, ok := set.fingerprints[hookFingerprintKey{ruleID: item.RuleID, file: item.File, fingerprint: item.Fingerprint}]
-	return ok
+	return baseline.Apply(currentFindings, hookBaseline.file).Findings
 }
 
-// resolveHookChanged computes the changed region used for line/symbol attribution.
-func resolveHookChanged(ctx context.Context, root string, scanned []string, values hookFlagValues) (diff.ChangedLines, bool, error) {
+// resolveHookChanged computes changed lines used for hook location attribution.
+// Disabled output means the user requested no changed-region filtering.
+func resolveHookChanged(scanContext context.Context, projectRoot string, scannedPaths []string, hookFlags hookFlagValues) (diff.ChangedLines, bool, error) {
 	switch {
-	case values.changedRanges != "":
-		changed, err := diff.ExplicitRanges("explicit", values.changedRanges, scanned)
-		return changed, err == nil, err
-	case values.diffMode == "-":
-		return diff.Parse("stdin", values.diffPatch), true, nil
-	case values.diffMode != "":
-		changed, err := diff.FromMode(ctx, root, values.diffMode, values.paths)
-		return changed, err == nil, err
+	case hookFlags.changedRanges != "":
+		changedLines, err := diff.ExplicitRanges("explicit", hookFlags.changedRanges, scannedPaths)
+		return changedLines, err == nil, err
+	case hookFlags.diffMode == "-":
+		return diff.Parse("stdin", hookFlags.diffPatch), true, nil
+	case hookFlags.diffMode != "":
+		changedLines, err := diff.FromMode(scanContext, projectRoot, hookFlags.diffMode, hookFlags.paths)
+		return changedLines, err == nil, err
 	default:
 		return diff.ChangedLines{}, false, nil
 	}
 }
 
-// resolveHookBaseIdentities loads the B3 new-only base from baseline or git diff.
-func resolveHookBaseIdentities(ctx context.Context, root string, values hookFlagValues, registry rule.Registry, ignorePaths []string) (hookIdentitySet, error) {
-	if values.baselinePath != "" {
-		return hookIdentitySetFromBaseline(root, values.baselinePath)
+// resolveHookFindingBaseline loads the user's new-only base from a baseline or git.
+// Empty success means no base was requested; errors retain existing hook handling.
+func resolveHookFindingBaseline(scanContext context.Context, projectRoot string, hookFlags hookFlagValues, ruleRegistry rule.Registry, ignoredPathPatterns []string) (hookFindingBaseline, error) {
+	// An explicit baseline takes precedence over any git-derived hook base.
+	if hookFlags.baselinePath != "" {
+		return hookFindingBaselineFromFile(projectRoot, hookFlags.baselinePath)
 	}
-	baseRef, ok, err := hookBaseTreeish(ctx, root, values.diffMode)
+	baseRevision, hasBaseRevision, err := hookBaseTreeish(scanContext, projectRoot, hookFlags.diffMode)
+	// A git resolution failure is returned for the hook's existing error policy.
 	if err != nil {
-		return hookIdentitySet{}, err
+		return hookFindingBaseline{}, err
 	}
-	if !ok {
-		return hookIdentitySet{}, nil
+	// No diff base means the user requested changed ranges without new-only history.
+	if !hasBaseRevision {
+		return hookFindingBaseline{}, nil
 	}
-	baseRoot, cleanup, err := exportGitTree(ctx, root, baseRef, values.paths)
+	baseProjectRoot, cleanupBaseProject, err := exportGitTree(scanContext, projectRoot, baseRevision, hookFlags.paths)
+	// An unavailable base tree cannot provide reliable prior findings.
 	if err != nil {
-		return hookIdentitySet{}, err
+		return hookFindingBaseline{}, err
 	}
-	defer cleanup()
-	baseReport, err := analysis.Analyze(analysis.Options{
-		Root:           baseRoot,
-		Paths:          values.paths,
+	defer cleanupBaseProject()
+	baseAnalysisReport, err := analysis.Analyze(analysis.Options{
+		Root:           baseProjectRoot,
+		Paths:          hookFlags.paths,
 		Format:         "json",
 		FailOn:         finding.FailThresholdNone,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: values.includeIgnored,
+		Registry:       ruleRegistry,
+		IgnorePaths:    ignoredPathPatterns,
+		IncludeIgnored: hookFlags.includeIgnored,
 	})
+	// Analysis failures stop the prior base from being treated as complete.
 	if err != nil {
-		return hookIdentitySet{}, err
+		return hookFindingBaseline{}, err
 	}
-	return hookIdentitySetFromFindings(baseReport.Findings), nil
+	return hookFindingBaselineFromFindings(baseAnalysisReport.Findings), nil
 }
 
-// hookIdentitySetFromBaseline reads stable identities from a baseline file.
-func hookIdentitySetFromBaseline(root, path string) (hookIdentitySet, error) {
-	loadPath := path
-	if !filepath.IsAbs(loadPath) {
-		loadPath = filepath.Join(root, loadPath)
+// hookFindingBaselineFromFile loads modern or legacy entries without reshaping.
+// The shared matcher decides whether each row supports stable or exact-only use.
+func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingBaseline, error) {
+	resolvedBaselinePath := baselinePath
+	// Relative paths are resolved from the project the user asked hook to scan.
+	if !filepath.IsAbs(resolvedBaselinePath) {
+		resolvedBaselinePath = filepath.Join(projectRoot, resolvedBaselinePath)
 	}
-	file, err := baseline.Load(loadPath)
+	baselineFile, err := baseline.Load(resolvedBaselinePath)
+	// Invalid or missing baseline files retain hook's fatal diagnostic behavior.
 	if err != nil {
-		return hookIdentitySet{}, err
+		return hookFindingBaseline{}, err
 	}
-	set := newHookIdentitySet()
-	for _, entry := range file.Findings {
-		if entry.StableIdentity != "" {
-			set.stable[hookIdentityKey{ruleID: entry.RuleID, file: entry.File, stableIdentity: entry.StableIdentity}] = struct{}{}
-			continue
-		}
-		set.fingerprints[hookFingerprintKey{ruleID: entry.RuleID, file: entry.File, fingerprint: entry.Fingerprint}] = struct{}{}
-	}
-	return set, nil
+	return hookFindingBaseline{enabled: true, file: baselineFile}, nil
 }
 
-// hookIdentitySetFromFindings builds a stable-identity base from analysis output.
-func hookIdentitySetFromFindings(findings []finding.Finding) hookIdentitySet {
-	set := newHookIdentitySet()
-	for _, item := range findings {
-		set.stable[hookIdentityKey{ruleID: item.RuleID, file: item.File, stableIdentity: item.ComputeContractStableIdentity()}] = struct{}{}
-	}
-	return set
+// hookFindingBaselineFromFindings converts a git-base scan to baseline entries.
+// FromFindings supplies deterministic ordering and contract-stable identities.
+func hookFindingBaselineFromFindings(priorFindings []finding.Finding) hookFindingBaseline {
+	return hookFindingBaseline{enabled: true, file: baseline.FromFindings(priorFindings)}
 }
 
-// newHookIdentitySet creates an enabled empty identity set.
-func newHookIdentitySet() hookIdentitySet {
-	return hookIdentitySet{
-		enabled:      true,
-		stable:       map[hookIdentityKey]struct{}{},
-		fingerprints: map[hookFingerprintKey]struct{}{},
-	}
-}
-
-// hookBaseTreeish resolves the git tree that represents the pre-edit state a
-// diff mode is measured against, so new-only matching uses the same base as the
-// changed region:
-//   - working-tree (uncommitted vs HEAD) and staged (index vs HEAD) -> HEAD
-//   - unstaged (working tree vs index) -> the index itself, written to a tree, so
-//     a finding introduced by a staged edit is not mislabelled "new"
-//   - an explicit base ref -> that ref
-//
-// The "" / "-" modes have no git base (no diff mode, or a stdin patch).
-func hookBaseTreeish(ctx context.Context, root, diffMode string) (string, bool, error) {
+// hookBaseTreeish selects the prior git tree used for user-facing new-only results.
+// Working/staged use HEAD, unstaged uses the index tree, and explicit refs use
+// themselves; empty or stdin modes intentionally have no base.
+func hookBaseTreeish(scanContext context.Context, projectRoot, diffMode string) (string, bool, error) {
 	switch diffMode {
 	case "", "-":
 		return "", false, nil
 	case "working-tree", "staged":
 		return "HEAD", true, nil
 	case "unstaged":
-		tree, err := gitWriteTree(ctx, root)
+		indexTree, err := gitWriteTree(scanContext, projectRoot)
+		// Git can fail here when the user's repository has no usable index tree.
 		if err != nil {
 			return "", false, err
 		}
-		return tree, true, nil
+		return indexTree, true, nil
 	default:
 		return diffMode, true, nil
 	}

@@ -1,5 +1,6 @@
-// Package scoring computes compact quality scores from analysis findings.
-// It produces pillar-level and file-level grades plus a complexity distribution.
+// Package scoring turns scanner findings into the quality totals users see.
+// It keeps per-pillar and per-file evidence alongside the headline grade.
+// Reports use these values to show whether a remediation improved the project.
 package scoring
 
 import (
@@ -14,15 +15,16 @@ import (
 
 // Score is the top-level scoring payload rendered into the analysis report.
 type Score struct {
-	// Composite is the 0-100 overall quality score averaged across contributing pillars.
+	// Composite is the truncated mean across every rule-backed pillar.
+	// A pillar with no score-impacting findings contributes 100.
 	Composite int `json:"composite"`
 	// Grade is the letter grade derived from Composite.
 	Grade string `json:"grade"`
-	// Pillars maps each contributing pillar name to its 0-100 score.
+	// Pillars maps each finding-bearing pillar name to its 0-100 score.
 	Pillars map[string]int `json:"pillars"`
 	// PillarDetails is the sorted per-pillar breakdown including severity counts.
 	PillarDetails []PillarDetail `json:"pillarDetails"`
-	// Coverage describes which pillars contributed and any associated caveat.
+	// Coverage describes where deductions came from and limits what a clean area proves.
 	Coverage ScoreCoverage `json:"coverage"`
 	// TopOffender lists the highest-penalty files in descending order.
 	TopOffender []FileScore `json:"topOffenders"`
@@ -32,9 +34,10 @@ type Score struct {
 	ComplexityDistributionScope string `json:"complexityDistributionScope"`
 }
 
-// ScoreCoverage describes which pillars contributed to the composite score and a caveat.
+// ScoreCoverage shows users which pillars produced score deductions.
+// It is evidence coverage, not the set used as the composite denominator.
 type ScoreCoverage struct {
-	// ContributingPillars lists, sorted, the pillar names that produced score-impacting findings.
+	// ContributingPillars lists, sorted, the pillars that produced score-impacting findings.
 	ContributingPillars []string `json:"contributingPillars"`
 	// Caveat is an optional sentence explaining limited coverage of the score.
 	Caveat string `json:"caveat,omitempty"`
@@ -83,9 +86,15 @@ const complexityCyclomaticRuleID = "complexity.cyclomatic"
 // complexityDistributionScopeFindingOnly marks histograms built from findings only.
 const complexityDistributionScopeFindingOnly = "finding-only"
 
-// Calculate aggregates findings into a composite Score with per-pillar detail.
-func Calculate(findings []finding.Finding) Score {
+// Calculate builds the score users see from findings and the registered pillar set.
+// An empty pillar set falls back to finding pillars for programmatic callers.
+func Calculate(findings []finding.Finding, ruleBackedPillars ...finding.Pillar) Score {
 	penalties := clusterPenalties(findings)
+	compositePillars := make(map[string]struct{}, len(ruleBackedPillars))
+	// Every registered product area starts clean so one noisy area cannot hide the rest.
+	for _, pillar := range ruleBackedPillars {
+		compositePillars[string(pillar)] = struct{}{}
+	}
 	pillarPenalty := map[string]float64{}
 	filePenalty := map[string]float64{}
 	fileFindings := map[string]int{}
@@ -97,6 +106,8 @@ func Calculate(findings []finding.Finding) Score {
 		}
 		penalty := penalties[index]
 		pillar := string(findingItem.Pillar)
+		// A custom caller may report a valid finding before supplying registry metadata.
+		compositePillars[pillar] = struct{}{}
 		pillarPenalty[pillar] += penalty
 		filePenalty[findingItem.File] += penalty
 		fileFindings[findingItem.File]++
@@ -116,24 +127,14 @@ func Calculate(findings []finding.Finding) Score {
 		}
 	}
 
-	distribution := emptyComplexityDistribution()
-	for _, findingItem := range findings {
-		if findingItem.RuleID != complexityCyclomaticRuleID {
-			continue
-		}
-		value, ok := metadataInt(findingItem.Metadata, "complexity")
-		if !ok {
-			continue
-		}
-		distribution[complexityBin(value)]++
-	}
+	distribution := complexityFindingDistribution(findings)
 
-	pillars := map[string]int{}
+	findingBearingPillarScores := map[string]int{}
 	if len(pillarPenalty) == 0 {
 		return Score{
 			Composite:                   100,
 			Grade:                       "A",
-			Pillars:                     pillars,
+			Pillars:                     findingBearingPillarScores,
 			PillarDetails:               []PillarDetail{},
 			Coverage:                    scoreCoverage(pillarPenalty),
 			TopOffender:                 []FileScore{},
@@ -142,22 +143,24 @@ func Calculate(findings []finding.Finding) Score {
 		}
 	}
 
-	total := 0
+	compositeScoreTotal := 100 * len(compositePillars)
+	// Finding-bearing pillars replace their clean 100 with the penalized score shown in details.
 	for pillar, penalty := range pillarPenalty {
-		score := max(0, 100-roundPenalty(penalty))
-		pillars[pillar] = score
-		total += score
+		pillarScore := max(0, 100-roundPenalty(penalty))
+		findingBearingPillarScores[pillar] = pillarScore
+		compositeScoreTotal += pillarScore - 100
 	}
-	composite := total / len(pillars)
+	// Integer division deliberately truncates the fractional headline score toward zero.
+	compositeScore := compositeScoreTotal / len(compositePillars)
 	for pillar, detail := range pillarCounts {
-		detail.Score = pillars[pillar]
+		detail.Score = findingBearingPillarScores[pillar]
 		detail.Grade = grade(detail.Score)
 		detail.Penalty = pillarPenalty[pillar]
 	}
 	return Score{
-		Composite:                   composite,
-		Grade:                       grade(composite),
-		Pillars:                     pillars,
+		Composite:                   compositeScore,
+		Grade:                       grade(compositeScore),
+		Pillars:                     findingBearingPillarScores,
 		PillarDetails:               collectPillarDetails(pillarCounts),
 		Coverage:                    scoreCoverage(pillarPenalty),
 		TopOffender:                 topOffenders(filePenalty, fileFindings, fileMaxCyclomatic),
@@ -166,7 +169,27 @@ func Calculate(findings []finding.Finding) Score {
 	}
 }
 
-// scoreCoverage builds the coverage caveat from the contributing pillars.
+// complexityFindingDistribution builds the finding-only histogram shown in reports.
+// Missing or unrelated metadata leaves the user's corresponding bins at zero.
+func complexityFindingDistribution(findings []finding.Finding) map[string]int {
+	distribution := emptyComplexityDistribution()
+	// Only cyclomatic findings carry values that belong in this user-facing chart.
+	for _, findingItem := range findings {
+		// Ignore other rules because their findings have no cyclomatic value to chart.
+		if findingItem.RuleID != complexityCyclomaticRuleID {
+			continue
+		}
+		complexity, hasComplexity := metadataInt(findingItem.Metadata, "complexity")
+		// A missing value means the scanner has no measurement to chart for this finding.
+		if !hasComplexity {
+			continue
+		}
+		distribution[complexityBin(complexity)]++
+	}
+	return distribution
+}
+
+// scoreCoverage names the pillars responsible for deductions and any evidence caveat.
 func scoreCoverage(pillarPenalty map[string]float64) ScoreCoverage {
 	pillars := make([]string, 0, len(pillarPenalty))
 	for pillar := range pillarPenalty {

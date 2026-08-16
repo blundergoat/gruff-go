@@ -100,6 +100,12 @@ func TestParallelRangeCaptureRuleRequiresLegacyGoVersion(t *testing.T) {
 	if findings := (ParallelRangeCaptureRule{}).AnalyzeUnit(noModule, Context{}); len(findings) != 0 {
 		t.Fatalf("missing go.mod findings = %#v, want none", findings)
 	}
+
+	implicitLegacy := parseOne(t, "parallel_test.go", parallelRangeCaptureFixture())
+	implicitRoot := writeGoModForUnit(t, implicitLegacy, ".", "module sample\n")
+	if findings := (ParallelRangeCaptureRule{}).AnalyzeUnit(implicitLegacy, Context{Root: implicitRoot}); len(findings) != 1 {
+		t.Fatalf("go.mod without go directive findings = %#v, want one for implicit Go 1.16", findings)
+	}
 }
 
 // TestParallelRangeCaptureRuleUsesNearestGoMod ensures nested modules use their own directive.

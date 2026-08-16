@@ -1,11 +1,13 @@
-// Package scoring tests cover composite scoring, file enrichment, and complexity bins.
-// They drive Calculate with crafted findings and assert deterministic output.
+// Package scoring tests the quality totals shown in CLI and machine reports.
+// Crafted findings keep score changes predictable for users comparing scans.
+// The suite also protects the aggregate from moving backwards after a fix.
 package scoring
 
 import (
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
 // TestCalculateScoresFindings verifies pillar penalties and coverage caveats.
@@ -68,6 +70,106 @@ func TestCalculateCleanScore(t *testing.T) {
 	if score.PillarDetails == nil {
 		t.Fatal("pillar details should be a non-nil slice on clean scores")
 	}
+}
+
+// TestCalculateCompositeCountsCleanRuleBackedPillars expects clean product areas
+// to contribute 100 instead of disappearing from the score shown to the user.
+func TestCalculateCompositeCountsCleanRuleBackedPillars(t *testing.T) {
+	registeredPillars := registeredRuleBackedPillars(t)
+	pillarCount := len(registeredPillars)
+	findings := []finding.Finding{
+		{File: "size.go", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "complex.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceMedium, Pillar: finding.PillarComplexity},
+	}
+
+	score := Calculate(findings, registeredPillars...)
+	want := (92 + 78 + 100*(pillarCount-2)) / pillarCount
+	// A different value means the headline omitted at least one clean rule-backed area.
+	if score.Composite != want {
+		t.Fatalf("composite = %d, want %d across %d rule-backed pillars", score.Composite, want, pillarCount)
+	}
+}
+
+// TestCalculateCompositeNeverDropsWhenFindingRemoved protects the user journey
+// where resolving any one finding must not make the headline quality score worse.
+func TestCalculateCompositeNeverDropsWhenFindingRemoved(t *testing.T) {
+	registeredPillars := registeredRuleBackedPillars(t)
+	findings := []finding.Finding{
+		{File: "size.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "size.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "docs.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarDocumentation},
+	}
+	before := Calculate(findings, registeredPillars...).Composite
+
+	// Try every possible single remediation because users can clear findings in any order.
+	for removedIndex := range findings {
+		remaining := append([]finding.Finding(nil), findings[:removedIndex]...)
+		remaining = append(remaining, findings[removedIndex+1:]...)
+		after := Calculate(remaining, registeredPillars...).Composite
+		// A lower score would punish the user for completing a remediation.
+		if after < before {
+			t.Errorf("removing finding %d lowered composite from %d to %d", removedIndex, before, after)
+		}
+	}
+}
+
+// TestCalculateCompositeKeepsClearedPillarInMean reproduces the punished-finisher
+// case where removing the last mild finding used to drop an above-average pillar.
+func TestCalculateCompositeKeepsClearedPillarInMean(t *testing.T) {
+	registeredPillars := registeredRuleBackedPillars(t)
+	findings := []finding.Finding{
+		{File: "size.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "size.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
+		{File: "docs.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarDocumentation},
+	}
+	before := Calculate(findings, registeredPillars...).Composite
+	after := Calculate(findings[:2], registeredPillars...).Composite
+
+	// The quality total must rise or stay level after the documentation pillar becomes clean.
+	if after < before {
+		t.Fatalf("clearing the final documentation finding lowered composite from %d to %d", before, after)
+	}
+}
+
+// TestCalculateCompositeTruncatesIntegerMean pins the existing integer contract:
+// fractional composite values truncate toward zero instead of rounding half-up.
+func TestCalculateCompositeTruncatesIntegerMean(t *testing.T) {
+	registeredPillars := registeredRuleBackedPillars(t)
+	pillarCount := len(registeredPillars)
+	score := Calculate([]finding.Finding{{
+		File:       "docs.go",
+		Severity:   finding.SeverityAdvisory,
+		Confidence: finding.ConfidenceHigh,
+		Pillar:     finding.PillarDocumentation,
+	}}, registeredPillars...)
+	want := (99 + 100*(pillarCount-1)) / pillarCount
+
+	// A one-point finding leaves a fractional mean that proves truncation to CLI users.
+	if score.Composite != want {
+		t.Fatalf("composite = %d, want truncated integer mean %d", score.Composite, want)
+	}
+}
+
+// registeredRuleBackedPillars derives the product areas from the live catalogue.
+// Tests follow new areas without hardcoding names or hiding opt-in rules.
+func registeredRuleBackedPillars(t *testing.T) []finding.Pillar {
+	t.Helper()
+	uniquePillars := map[finding.Pillar]struct{}{}
+	registry := rule.Defaults()
+	// Every registered rule-backed area counts, including opt-in and currently clean areas.
+	for _, definition := range registry.Definitions() {
+		uniquePillars[definition.Pillar] = struct{}{}
+	}
+	// A missing pillar universe would make every composite meaningless to report users.
+	if len(uniquePillars) == 0 {
+		t.Fatal("default registry has no rule-backed pillars")
+	}
+	pillars := make([]finding.Pillar, 0, len(uniquePillars))
+	// Return values instead of only a count so the production calculation owns the denominator.
+	for pillar := range uniquePillars {
+		pillars = append(pillars, pillar)
+	}
+	return pillars
 }
 
 // TestCalculatePillarDetailsSortedAndCounted verifies pillar detail counts and ordering.

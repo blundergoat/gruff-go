@@ -27,8 +27,9 @@ paths:
     - internal/rule/sensitive_expansion_test.go
 
 # Project-wide allowlists and preview controls.
-# acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path
-# globs where sensitive-data rules may include the matched preview.
+# acceptedAbbreviations relax naming.acronym-case; secretPreviews authorizes
+# fixed category/scheme markers only. Empty/nonmatching paths stay [redacted].
+# This preview control never suppresses sensitive-data findings.
 allowlists:
   acceptedAbbreviations:
     - AST
@@ -419,8 +420,8 @@ rules:
   # Flags Go files that exceed the default line-count threshold.
   size.file-length:
     enabled: true
-    severity: advisory
-    threshold: 500
+    severity: error
+    threshold: 1000
 
   # Flags Go functions that exceed the default line-count threshold.
   size.function-length:

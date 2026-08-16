@@ -1,0 +1,149 @@
+// Package cli tests pin the shared command and hook exit-code contract.
+package cli
+
+import (
+	"bytes"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// TestDiagnosticExitContractAcrossStagesCommandsAndThresholds exercises every
+// supported diagnostic stage/command pairing at all four finding thresholds.
+func TestDiagnosticExitContractAcrossStagesCommandsAndThresholds(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "clean/clean.go", "// Package clean is a clean fixture.\npackage clean\n")
+	writeFile(t, root, "finding/finding.go", "package finding\n")
+	writeFile(t, root, "warning/warning.go", "// Package warning is a warning fixture.\npackage warning\n\nfunc tooLong() {\n"+strings.Repeat("\tprintln(\"x\")\n", 81)+"}\n")
+	writeFile(t, root, "broken/broken.go", "package broken\n\nfunc broken(\n")
+	writeFile(t, root, ".goat-flow/generated.go", "package metadata\n")
+	writeFile(t, root, "bad-config.yaml", "schemaVersion: gruff-go.config.v9\n")
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "test@example.invalid")
+	runGit(t, root, "config", "user.name", "Test User")
+	runGit(t, root, "add", "clean/clean.go", "finding/finding.go", "warning/warning.go", "broken/broken.go")
+	runGit(t, root, "commit", "-q", "-m", "diagnostic contract fixtures")
+	t.Chdir(root)
+
+	commands := []string{"analyse", "summary", "report"}
+	thresholds := []string{"none", "advisory", "warning", "error"}
+	diagnosticRows := []struct {
+		stage    string
+		path     string
+		commands []string
+		extra    []string
+	}{
+		{stage: "discovery", path: "missing/missing.go", commands: commands},
+		{stage: "parse", path: "broken/broken.go", commands: commands},
+		{stage: "baseline", path: "clean/clean.go", commands: []string{"analyse", "report"}, extra: []string{"--baseline", "missing-baseline.json"}},
+		{stage: "diff", path: "clean/clean.go", commands: []string{"analyse", "report"}, extra: []string{"--diff-base", "badref"}},
+		{stage: "all-skipped", path: ".goat-flow/generated.go", commands: []string{"analyse"}},
+	}
+
+	for _, row := range diagnosticRows {
+		for _, command := range row.commands {
+			for _, threshold := range thresholds {
+				name := row.stage + "/" + command + "/" + threshold
+				t.Run(name, func(t *testing.T) {
+					args := diagnosticCommandArgs(command, threshold, row.path, row.extra...)
+					assertDiagnosticCommandExit(t, args, 2)
+				})
+			}
+		}
+	}
+
+	for _, command := range commands {
+		for _, threshold := range thresholds {
+			t.Run("clean/"+command+"/"+threshold, func(t *testing.T) {
+				assertDiagnosticCommandExit(t, diagnosticCommandArgs(command, threshold, "clean/clean.go"), 0)
+			})
+		}
+	}
+
+	findingExits := map[string]int{"none": 0, "advisory": 1, "warning": 0, "error": 0}
+	for _, command := range commands {
+		for _, threshold := range thresholds {
+			t.Run("finding/"+command+"/"+threshold, func(t *testing.T) {
+				assertDiagnosticCommandExit(t, diagnosticCommandArgs(command, threshold, "finding/finding.go"), findingExits[threshold])
+			})
+		}
+	}
+
+	warningExits := map[string]int{"none": 0, "advisory": 1, "warning": 1, "error": 0}
+	for _, command := range commands {
+		for _, threshold := range thresholds {
+			t.Run("warning/"+command+"/"+threshold, func(t *testing.T) {
+				assertDiagnosticCommandExit(t, diagnosticCommandArgs(command, threshold, "warning/warning.go"), warningExits[threshold])
+			})
+		}
+	}
+}
+
+// TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput pins exit 2 before
+// analysis for malformed flags and invalid configuration on every scan command.
+func TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "clean.go", "// Package clean is a clean fixture.\npackage clean\n")
+	writeFile(t, root, "bad-config.yaml", "schemaVersion: gruff-go.config.v9\n")
+	t.Chdir(root)
+
+	for _, command := range []string{"analyse", "summary", "report"} {
+		t.Run(command+"/invalid-threshold", func(t *testing.T) {
+			assertDiagnosticCommandExit(t, diagnosticCommandArgs(command, "invalid", "clean.go"), 2)
+		})
+		t.Run(command+"/invalid-config", func(t *testing.T) {
+			args := []string{command, "--format", "json", "--config", "bad-config.yaml", "clean.go"}
+			assertDiagnosticCommandExit(t, args, 2)
+		})
+	}
+}
+
+// TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures proves hook
+// ignored/skipped paths remain exit 0 while real analysis failures remain exit 2.
+func TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - \"ignored/**\"\n")
+	writeFile(t, root, "ignored/skip.go", "// Package ignored is a fixture.\npackage ignored\n")
+	writeFile(t, root, ".goat-flow/generated.go", "package metadata\n")
+	writeFile(t, root, "broken.go", "package broken\n\nfunc broken(\n")
+	t.Chdir(root)
+
+	ignored, code := runHookReport(t, "hook", "--format", "json", "ignored/skip.go")
+	if code != 0 || !hookReportContainsIgnoredPath(ignored, "ignored/skip.go") {
+		t.Fatalf("config-ignored hook exit = %d, ignored = %#v; want exit 0 with in-band path", code, ignored.Ignored.Paths)
+	}
+
+	skipped, code := runHookReport(t, "hook", "--format", "json", "--no-config", ".goat-flow/generated.go")
+	if code != 0 || !hookReportContainsIgnoredPath(skipped, ".goat-flow/generated.go") {
+		t.Fatalf("default-skipped hook exit = %d, ignored = %#v; want exit 0 with in-band path", code, skipped.Ignored.Paths)
+	}
+
+	failed, code := runHookReport(t, "hook", "--format", "json", "--no-config", "broken.go")
+	if code != 2 || !failed.Config.SchemaOK {
+		t.Fatalf("parse-failure hook exit = %d, config = %#v; want operational exit 2", code, failed.Config)
+	}
+}
+
+// diagnosticCommandArgs builds a scan command with flags before its path.
+func diagnosticCommandArgs(command, threshold, path string, extra ...string) []string {
+	args := []string{command, "--no-config", "--format", "json", "--min-severity", threshold}
+	args = append(args, extra...)
+	return append(args, path)
+}
+
+// assertDiagnosticCommandExit runs one literal table row and reports both
+// output streams if its numeric exit changes.
+func assertDiagnosticCommandExit(t *testing.T, args []string, want int) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	if got := Main(args, &stdout, &stderr); got != want {
+		t.Fatalf("%v exit = %d, want %d\nstderr=%s\nstdout=%s", args, got, want, stderr.String(), stdout.String())
+	}
+}
+
+// hookReportContainsIgnoredPath reports whether the hook payload carries path.
+func hookReportContainsIgnoredPath(payload hookReport, path string) bool {
+	return slices.ContainsFunc(payload.Ignored.Paths, func(item hookIgnoredPath) bool {
+		return item.Path == path
+	})
+}

@@ -6,6 +6,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -100,6 +101,38 @@ func TestRenderPreservesExistingScaffoldTuning(t *testing.T) {
 	}
 }
 
+// TestInitAcceptedAbbreviationsFamilySeed pins the fresh-init output to the
+// ratified 16-word family list while leaving existing-config preservation to
+// TestRenderPreservesExistingScaffoldTuning.
+func TestInitAcceptedAbbreviationsFamilySeed(t *testing.T) {
+	definitions := defaultDefinitions()
+	configBody := Render(definitions, RenderOptions{})
+	parsed, err := Parse(configBody, definitions)
+	if err != nil {
+		t.Fatalf("fresh init config did not parse: %v", err)
+	}
+	want := []string{"age", "app", "db", "fs", "id", "io", "key", "log", "max", "min", "now", "raw", "rx", "tx", "ui", "url"}
+	if got := parsed.AcceptedAbbreviations; !reflect.DeepEqual(got, want) {
+		t.Fatalf("fresh init acceptedAbbreviations = %q, want family seed %q", got, want)
+	}
+}
+
+// TestRenderExplainsDenyByDefaultSecretPreviews keeps generated configuration
+// from implying that allowlisted paths may reveal matched credential bytes.
+func TestRenderExplainsDenyByDefaultSecretPreviews(t *testing.T) {
+	body := string(Render(defaultDefinitions(), RenderOptions{}))
+	for _, want := range []string{
+		"fixed category/scheme markers only",
+		"Empty/nonmatching paths stay [redacted]",
+		"never suppresses sensitive-data findings",
+		"secretPreviews: []",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rendered config missing secret-preview guidance %q", want)
+		}
+	}
+}
+
 // TestRenderPreservesPerRuleOverrides confirms that per-rule severity,
 // threshold, and options overrides from an existing config carry into the
 // regenerated output. Rules without overrides still emit registry defaults.
@@ -151,7 +184,7 @@ func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 // dogfood .gruff-go.yaml and in adopters' configs.
 func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
-	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: advisory\n    threshold: 500\n") {
+	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: error\n    threshold: 1000\n") {
 		t.Fatalf("expected singular threshold form for size.file-length; got:\n%s", body)
 	}
 	if !strings.Contains(body, "design.hotspot-file:\n    enabled: true\n    severity: advisory\n    thresholds:\n      minFindings: 3\n      minPillars: 2\n") {

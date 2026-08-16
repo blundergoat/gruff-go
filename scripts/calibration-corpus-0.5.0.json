@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "gruff-go.calibration-corpus.v1",
+  "repositories": [
+    {
+      "name": "CyberStrikeAI",
+      "url": "https://github.com/Ed1s0nZ/CyberStrikeAI",
+      "revision": "b3f7b8494b5471e025eb6de62f6f22f648e49627",
+      "module": ".",
+      "reason": "Security-oriented Go service with authentication, protocol-signature, and credential-output paths unlike gruff-go dogfood."
+    },
+    {
+      "name": "caddy",
+      "url": "https://github.com/caddyserver/caddy",
+      "revision": "4fd8c87f56e4c427727b3cdd6b034cb6d2dbb637",
+      "module": ".",
+      "reason": "Mature public infrastructure server providing a large negative/control population for parser-only security rules."
+    },
+    {
+      "name": "cc-connect",
+      "url": "https://github.com/chenhg5/cc-connect",
+      "revision": "63dbb7d27dc232dca7dacc08b35c448ec3467634",
+      "module": ".",
+      "reason": "Multi-platform messaging integration with protocol-mandated crypto, test mirrors, and credential-bearing CLI output."
+    },
+    {
+      "name": "new-api",
+      "url": "https://github.com/QuantumNous/new-api",
+      "revision": "d2576ddcd31ff752c30b54d1781e802e4021f824",
+      "module": ".",
+      "reason": "Large authentication, OAuth, payment, and API-key service exercising random-selection and security-context boundaries."
+    }
+  ],
+  "manualOracles": {
+    "security.weak-crypto": {
+      "repository": "new-api",
+      "module": ".",
+      "file": "common/hash.go",
+      "line": 17,
+      "anchor": "h := sha1.New()",
+      "searchCommand": "rg -n 'sha1\\.(New|Sum)|common\\.Sha1' common controller service",
+      "rationale": "A generic SHA-1 helper feeds payment reference identifiers, but the parser-only rule cannot connect the neutral helper body to downstream security-sensitive callers."
+    },
+    "security.insecure-random-secret": {
+      "repository": "new-api",
+      "module": ".",
+      "file": "controller/oauth.go",
+      "line": 25,
+      "anchor": "state := common.GetRandomString(12)",
+      "searchCommand": "rg -n 'GetRandomString|oauth_state' controller/oauth.go common/str.go",
+      "rationale": "OAuth CSRF state is produced through a cross-function random-string helper, outside the rule's direct math/rand call and same-function context model."
+    },
+    "security.sensitive-data-logging": {
+      "repository": "cc-connect",
+      "module": ".",
+      "file": "cmd/cc-connect/web.go",
+      "line": 65,
+      "anchor": "fmt.Printf(\"Token: %s\\n\", token)",
+      "searchCommand": "rg -n 'Token: %s|login\\?token=%s' cmd/cc-connect/web.go",
+      "rationale": "The CLI prints a raw management token, but the rule deliberately omits bare token identifiers and therefore misses this credential-bearing sink."
+    }
+  }
+}

@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
 [![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
 
-`gruff-go` is an opinionated code-quality scanner for Go, built to govern AI-generated code. Its primary use is as a **coding-agent hook**: it forces an agent to produce code a human who didn't write it can read, review, and trust. It reads Go packages, scores findings across quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
+`gruff-go` is an opinionated, parser-only code-quality scanner for Go, built to govern AI-generated code. It reads Go packages without executing them, scores findings across 11 quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
 
 ## Mission
 
@@ -41,7 +41,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 - Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
 - No runtime dependencies outside the Go standard library.
 
-The project-pinned install flow uses Go's `tool` support, introduced before this module's current Go requirement. The binary itself still requires Go `1.25+`.
+The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24` or newer. The binary itself requires Go `1.25+`, so that is the effective floor.
 
 ## Install
 
@@ -96,6 +96,7 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | Command | Purpose |
 | --- | --- |
 | `analyse` | Run rules over the supplied paths and emit a report. |
+| `hook` | Emit the `gruff.hook.v1` JSON contract for coding-agent changes. |
 | `summary` | Print a compact score, per-pillar counts, top rules, and top files. |
 | `report` | Render static HTML or JSON to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a baseline file. |
@@ -105,6 +106,8 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | `dashboard` | Serve the local browser dashboard. |
 | `list`, `help` | Show command lists and command-specific help. |
 | `completion` | Print a shell completion script. |
+
+`analyze` is accepted as an alias for `analyse`.
 
 Run `go tool gruff-go help <command>` for command-specific flags.
 
@@ -132,7 +135,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `1` | At least one finding met `--min-severity`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--min-severity` defaults to `advisory` (every finding fails). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
+`--min-severity` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](docs/configuration.md#minimumseverity). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
 
 ## CI Usage
 
@@ -162,7 +165,7 @@ paths:
 
 allowlists:
   acceptedAbbreviations: ["ID", "HTTP", "JSON", "AST"]
-  secretPreviews: [] # path globs where redacted secret previews may be shown
+  secretPreviews: [] # authorize fixed category/scheme markers; payload stays hidden
 
 selection:
   excludeRules: []
@@ -202,12 +205,19 @@ See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and r
 
 ## Baselines And Changed-Code Scans
 
-Baselines suppress reviewed findings by fingerprint without disabling rules:
+Baselines suppress reviewed findings without disabling rules:
 
 ```bash
 go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
+
+Matching is one-to-one. Gruff consumes exact rule/file/fingerprint pairs first,
+then pairs remaining modern entries by their line-insensitive contract identity.
+This keeps reviewed findings unchanged after line or measured-value shifts without
+letting one baseline row hide multiple duplicate findings. Older entries without
+`stableIdentity` remain compatible and use exact fingerprint matching only. The
+agent hook uses the same matcher for baseline and git-base new-only filtering.
 
 Changed-region scans use Git only when requested:
 
@@ -230,11 +240,11 @@ go tool gruff-go dashboard --project .
 
 The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
 
-In polyglot repositories, remember that `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
+In polyglot repositories, `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
 
 ## Trust Boundary
 
-Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data previews are redacted before they reach terminal, JSON, SARIF, GitHub, or HTML output.
+Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data previews are deny-by-default: empty or nonmatching preview allowlists emit `[redacted]`, while matching paths may emit only fixed category or connection-scheme markers—never reusable payload bytes.
 
 ## Stability Contract
 
@@ -262,12 +272,16 @@ make check
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md)
+[`docs/`](docs/README.md) indexes the full set. The most-used entries:
+
+- [Agent guardrail](docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
 - [Configuration](docs/configuration.md)
 - [Output formats](docs/output-formats.md)
 - [Rules](docs/rules.md)
 - [Dashboard](docs/dashboard.md)
 - [CI integration](docs/ci-integration.md)
+- [Releasing](docs/releasing.md)
+- [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 

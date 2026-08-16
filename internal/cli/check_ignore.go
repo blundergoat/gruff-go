@@ -40,7 +40,7 @@ func runCheckIgnore(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "ignore git/default-ignored paths only; config paths.ignore still applies")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	if *format != "text" && *format != "json" {

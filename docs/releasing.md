@@ -8,12 +8,25 @@ and report contracts.
 Run the local check suite before tagging:
 
 ```sh
-make check
 scripts/preflight-checks.sh
 ```
 
-The checks should cover formatting, `go vet`, tests, shell syntax, and dogfood
-analysis.
+Preflight is the release gate and runs nine checks: version metadata, `npm audit`,
+`govulncheck`, `bash -n`, shellcheck, `gofmt -l`, `go vet`, `go test ./...`, and a
+dogfood self-scan that must return grade A. `make check` covers only the three Go
+checks in that list and is the edit-time floor, so preflight supersedes it here.
+
+Before changing a source version, exercise the read-only ownership guard:
+
+```sh
+scripts/bump-version_test.sh
+scripts/bump-version.sh --check-references --root . --source-version "$(go run ./cmd/gruff-go --version | awk '{ print $2 }')"
+```
+
+`source-current` rows must match the source version. `published-install` and
+`security-support` rows are review prompts because public releases may
+intentionally trail the source tree; `unclassified` rows must gain an owner or
+be removed before the bump.
 
 ## CLI Contract
 
@@ -37,16 +50,27 @@ Update docs when command output or schemas change:
 - `docs/output-formats.md`
 - `docs/ci-integration.md`
 - `docs/dashboard.md`
+- `docs/agent-guardrail.md`
 - `docs/rules.md`
 
-If the rule registry changes, regenerate or manually verify `docs/rules.md`
-against `gruff-go list-rules --format json`.
+`docs/rules.md` is machine-checked: `TestRulesDocsStructuredMetadataMatchesRegistry`
+compares its counts, opt-in IDs, catalogue rows, and per-rule sections against the
+no-config registry, so a registry change fails `go test ./internal/cli/...` until the
+page matches. The other pages have no such guard and need a manual pass.
 
 ## Binary Wrapper
 
-`bin/gruff-go` is local build output (gitignored, not tracked). Build a fresh
-binary from source whenever you need to exercise the CLI surface directly so it
-matches the current code:
+`bin/gruff-go.sh` is the tracked launcher, mirroring the `bin/gruff-<lang>`
+entrypoints in the sibling gruff ports. It rebuilds `bin/gruff-go` whenever that
+binary is missing or older than the tracked Go sources, then execs it, so it
+always exercises current code:
+
+```sh
+bin/gruff-go.sh --help
+```
+
+`bin/gruff-go` itself is build output (gitignored, not tracked). Build it directly
+when you want to skip the staleness check:
 
 ```sh
 go build -o bin/gruff-go ./cmd/gruff-go   # or: scripts/build-bin-gruff-go.sh

@@ -4,7 +4,9 @@
 
 Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
 
-Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, and capability labels). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
+Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
+
+The first summary sentence, the `Opt-in rules:` line, catalog rows, `### <rule-id>` headings, and exact `Pillar`, `Default severity`, `Default-enabled`, `Threshold`, `Confidence`, `Capability`, and `Tags` bullets form a narrow structured authoring contract. Tests compare those markers with the built-in no-config registry, including counts and the exact opt-in set. Keep both the catalog row and per-rule bullets in the same change as intentional registry metadata updates. Descriptions, remediation, examples, options, secondary pillars, and other explanatory prose remain free-form and are not parsed by this contract.
 
 ## Rule reference
 
@@ -21,7 +23,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 25` | Functions whose nested control flow and boolean decisions exceed the threshold. |
 | [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
-| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | warning | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
+| [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | advisory | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
 | [`dead-code.unused-private-const`](#dead-codeunused-private-const) | dead-code | advisory | parser | - | Opt-in candidate for package-private constants that are not referenced in their parsed package. |
 | [`dead-code.unused-private-function`](#dead-codeunused-private-function) | dead-code | advisory | parser | - | Package-private top-level functions that are not referenced in their parsed package. |
@@ -30,8 +32,8 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
 | [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
 | [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Score-neutral composite triage for files with findings across multiple quality pillars. |
-| [`docs.comment-rubric`](#docscomment-rubric) | documentation | warning | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
-| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | warning | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
+| [`docs.comment-rubric`](#docscomment-rubric) | documentation | advisory | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
+| [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | advisory | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | advisory | parser | - | Packages with no package-level comment in any file. |
 | [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | advisory | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
@@ -66,7 +68,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
 | [`security.sensitive-data-logging`](#securitysensitive-data-logging) | security | advisory | parser | - | Logging calls whose arguments carry secret-named values, secret env reads, or request auth headers/cookies. |
-| [`security.shell-command`](#securityshell-command) | security | error | parser | - | `exec.Command` invocations that route through a shell interpreter. |
+| [`security.shell-command`](#securityshell-command) | security | warning | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
@@ -89,10 +91,10 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
 | [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
 | [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
-| [`size.file-length`](#sizefile-length) | size | advisory | parser | `maxLines: 500` | Files exceeding the line-count threshold. |
+| [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | warning | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | advisory | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
@@ -114,7 +116,7 @@ Every rule has a default severity; configs can override per rule. ADR-009 collap
 | `warning` | 8 | amber | Worth fixing in the next clean-up pass. |
 | `advisory` | 1 | muted | Informational; trend over time. |
 
-The `--min-severity` flag (default `advisory`) sets the threshold at which findings flip the exit code from `0` to `1`. The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
+The `--min-severity` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse` and `summary`, `none` for `report` and `dashboard`; see [`configuration.md`](configuration.md#minimumseverity). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
 
 ## Per-rule reference
 
@@ -165,7 +167,7 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 ### `dead-code.empty-block`
 
 - **Pillar:** dead-code
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -286,7 +288,7 @@ Emits score-neutral composite triage for files with at least `minFindings` findi
 ### `docs.comment-rubric`
 
 - **Pillar:** documentation
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Threshold:** `minPackageCommentLines` (default `1`)
 - **Confidence:** medium
@@ -325,7 +327,7 @@ rules:
 ### `docs.config-field-comment`
 
 - **Pillar:** documentation
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -450,9 +452,13 @@ Flags `log.Fatal`, `log.Fatalf`, `log.Fatalln`, and `os.Exit` calls outside comm
 - **Capability:** parser
 - **Tags:** `loops`
 
-Flags storing, returning, or appending `&v` where `v` is a range value variable. The pointer refers to the range variable copy rather than the backing collection element; `&slice[i]` remains the accepted element-address form.
+Flags storing, returning, sending, or appending the address of a range key/value variable when the loop retains shared-variable semantics. Assignment-form loops (`for key, value = range items`) always reuse preexisting variables, so their escaping addresses flag for every Go version and even without module metadata.
 
-**Remediation.** Take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
+Declaration-form loops (`for key, value := range items`) flag only when the nearest `go.mod` selects a language version before Go 1.22. Go 1.22 introduced a new key/value variable for each declaration-form iteration, so those loops are silent in modules declaring Go 1.22 or newer. A found `go.mod` without a `go` directive has Go's implicit 1.16 semantics and flags; when no `go.mod` is resolvable between the file and scan root, the version-dependent declaration case stays silent rather than guessing. The gate is applied to each range statement, so a modern module can suppress a `:=` loop while still reporting an `=` loop in the same file.
+
+Taking an indexed element address such as `&slice[i]` remains accepted, as does a range-variable address used only within the current iteration without a known escaping store.
+
+**Remediation.** Prefer declaration-form iteration variables in Go 1.22+ modules, take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
 
 ### `maintainability.production-panic`
 
@@ -491,7 +497,7 @@ Each finding's metadata carries the deprecated API and replacement API.
 - **Capability:** parser
 - **Tags:** `go-style`, `naming`
 
-Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Correct all-caps forms such as `HTTPClient`, `URLParser`, `JSONReport`, and `IDGenerator` pass; lowercase initialisms in unexported names such as `urlParser` also pass.
+Flags type names, function and method names, variable and constant names, struct fields, and function parameters that spell configured initialisms with mixed casing, such as `HttpClient`, `UrlParser`, `JsonReport`, or `IdGenerator`. Canonical forms such as `HTTPClient`, `parseURL`, `JSONReport`, and `userID` pass; a lowercase initialism at the start of an unexported name, such as `urlParser`, also passes. Generated files are skipped, and C selector names reached through cgo are not Go declarations owned by this rule.
 
 `allowlists.acceptedAbbreviations` suppresses findings for matching tokens project-wide. Use the rule-local `allow` list only for exact third-party or generated API names that must stay as-is.
 
@@ -508,7 +514,9 @@ rules:
       allow: ["ThirdPartyHttpName"]
 ```
 
-**Remediation.** Use all-caps initialisms in exported names and consistently cased initialisms in unexported names.
+**Known precision limit.** A hand-written binding, framework hook, or external API may require non-Go initialism casing. Add the exact declaration to `rules.naming.acronym-case.options.allow`, or keep generated bindings marked as generated code. The same guidance is available from `list-rules --format json`.
+
+**Remediation.** Use Go's canonical all-caps initialism spelling within identifiers, such as `userID` and `parseURL`.
 
 ### `naming.contextual-generic`
 
@@ -824,7 +832,7 @@ Flags production `http.Server` composite literals that omit all explicit timeout
 - **Capability:** parser
 - **Tags:** `random`, `security`
 
-Flags Go files that import `math/rand` and use package-level random APIs in secret-looking contexts such as token, nonce, session, password, key, CSRF, salt, OTP, or OAuth state generation. The parser-only check looks at the enclosing function name, assignment target, and call arguments, so ordinary sampling, shuffling, simulation, benchmark, and test-randomness names are ignored unless the surrounding symbol clearly carries a production-secret term. `crypto/rand` is not flagged.
+Flags Go files that import `math/rand` and use package-level random APIs in secret-looking contexts such as token, nonce, session, password, key, CSRF, salt, OTP, or OAuth state generation. The parser-only check looks at the enclosing function name, assignment target, and call arguments, so ordinary sampling, shuffling, simulation, benchmark, and test-randomness names are ignored unless the surrounding symbol clearly carries a production-secret term. A direct same-collection selection such as `keys[rand.Intn(len(keys))]` is treated as choosing an existing value rather than generating secret material; mismatched or transformed bounds and stored indexes remain in scope. `crypto/rand` is not flagged.
 
 Each finding's metadata carries the random API and context word.
 
@@ -839,7 +847,7 @@ Each finding's metadata carries the random API and context word.
 - **Capability:** parser
 - **Tags:** `http`, `redirect`, `security`
 
-Flags request-derived values passed to `http.Redirect` or a `Location` response header without a nearby allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. A target that begins with a host-relative `/` literal (but not protocol-relative `//`) is treated as safe, as is a value cleared by a validator/allowlist call. Candidate wording.
+Flags request-derived values passed to `http.Redirect` or a `Location` response header without an affirmative allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. Safe evidence is a literal committed path segment such as `"/account/" + value`, an exiting `HasPrefix(value, "/account/")` guard, a loop that strips every leading protocol-relative `//`, an exact validator/allowlist/local/relative identifier token, or an explicit parsed HTTP scheme-and-host allowlist. A bare `HasPrefix(value, "/")`, `url.Parse`, or a helper whose name merely contains `parse`, `prefix`, `allow`, or `trusted` is not destination validation. Candidate wording.
 
 Each finding's metadata carries the redirect sink and request source label, never a raw value.
 
@@ -897,7 +905,9 @@ Each finding's metadata carries the request parameter name and read call.
 - **Capability:** parser
 - **Tags:** `http`, `security`, `ssrf`
 
-Flags request-derived values passed as the URL of an outbound `net/http` request (`http.Get`/`Head`/`Post`/`PostForm`, `http.NewRequest`/`NewRequestWithContext`, or the same methods on an `http.Client` value) without a nearby allowlist or parse/validate check (possible SSRF). The request value may be inline or a same-function local tainted from a request accessor, including through `io.ReadAll(r.Body)`, string concatenation, and `fmt.Sprintf`. A validator/allowlist call or `url.Parse` referencing the value suppresses the finding. Candidate wording.
+Flags request-derived values passed as the URL of an outbound `net/http` request (`http.Get`/`Head`/`Post`/`PostForm`, `http.NewRequest`/`NewRequestWithContext`, or the same methods on an `http.Client` value) without an affirmative destination constraint (possible SSRF). The request value may be inline or a same-function local tainted from a request accessor, including through `io.ReadAll(r.Body)`, string concatenation, `fmt.Sprintf`, and assigned `url.Parse`/`url.ParseRequestURI` results. Parsing validates syntax only and never suppresses the finding by itself.
+
+Safe evidence is an exact validator/allowlist identifier token that references the sink value, explicit earlier guards that reject every parsed URL outside an allowed HTTP scheme and exact host, or construction from a fixed trusted base. Identifier matching is token-based: `validateURL` and `isAllowedDestination` count, while `parser`, `parseAndReturn`, `allowanceURL`, `untrustedURL`, `notTrustedURL`, and `disallowHost` do not. Candidate wording.
 
 Each finding's metadata carries the HTTP sink and request source label.
 
@@ -922,15 +932,17 @@ Each finding's metadata carries only the logging sink and a classification reaso
 ### `security.shell-command`
 
 - **Pillar:** security
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `security`
 
-Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe` without flagging direct executable calls such as `exec.Command("git", "status")`. Shell-routed exec is the classic injection vector when any portion of the command is user-controlled.
+Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe`. Direct execution stays quiet whether an argument varies (`exec.Command("gofmt", "-l", dir)`) or the executable name varies (`exec.Command(userInput)`); explicit shell execution such as `exec.Command("sh", "-c", command)` remains a warning because shell interpretation is present.
 
-**Remediation.** Call the target executable directly with `exec.Command("ls", args...)` and pass arguments as separate parameters rather than interpolating them into a shell string.
+**Known precision limit.** Intentional shell orchestration with a fixed, reviewed command still reports because parser-only evidence cannot prove runtime input safety. Call the target executable directly where possible, or disable the rule for the reviewed path when shell syntax is required. The same guidance is available from `list-rules --format json`.
+
+**Remediation.** Call the target executable directly and pass arguments without shell interpretation.
 
 ### `security.sql-string-query`
 
@@ -1022,6 +1034,16 @@ Each finding's metadata records the `entity-map` evidence.
 
 **Remediation.** Leave `xml.Decoder.Entity` unset so `encoding/xml`'s safe default applies, or validate and constrain any custom entity map fed from untrusted input.
 
+**Sensitive-data preview policy.** Every `sensitive-data.*` detector uses one
+deny-by-default policy. Empty and nonmatching `allowlists.secretPreviews` emit
+only `[redacted]`; matching paths may emit fixed markers such as
+`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:jwt]`,
+`[redacted:email]`, or `[redacted:ssn]`. Connection findings may additionally
+name only the matched scheme (`[redacted:connection-string:postgres]`). Generic
+assignment and entropy findings stay `[redacted]` even when allowlisted. The
+allowlist never suppresses a finding and never authorizes credential or
+identifier payload bytes.
+
 ### `sensitive-data.anthropic-api-key`
 
 - **Pillar:** sensitive-data
@@ -1044,7 +1066,7 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. The finding's `preview` metadata is redacted via the shared `redact()` helper; the raw key never reaches text / JSON / SARIF / GitHub / HTML output (asserted by `internal/report/sensitive_redaction_test.go`).
+Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. Preview metadata follows the shared deny-by-default policy: unauthorized paths receive `[redacted]`, and authorized paths receive `[redacted:aws-access-key]` with zero key characters. Raw and reusable fragments never reach text / JSON / SARIF / GitHub / HTML output.
 
 **Remediation.** Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them.
 
@@ -1057,9 +1079,9 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags database / queue / cache connection URIs that embed a username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Preview is redacted in every output format.
+Flags database / queue / cache connection URIs that embed a non-empty username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Passwords containing raw or percent-encoded reserved bytes such as `/`, `:`, `+`, `=`, and encoded `@` are detected. Preview is `[redacted]` unless the path is authorized; an authorized preview contains only the scheme marker (for example `[redacted:connection-string:postgres]`), never user, password, host, path, or query.
 
-Obvious dev/test placeholders are skipped only when both halves match: the host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the embedded password contains a placeholder token such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. Real-looking credentials at local hosts still fire.
+Obvious dev/test placeholders are skipped only when both halves match: the bare host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the entire case-normalised, path-percent-decoded password equals an approved placeholder such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. A literal `+` stays a plus rather than becoming a space. Mixed values such as `myPassphrase2024` and `not-invalid-prod`, malformed percent encodings, and placeholders on non-local hosts still fire.
 
 **Remediation.** Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.
 
@@ -1074,7 +1096,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the host 
 
 Flags files containing both a `"type": "service_account"` field and a PEM private-key header (`-----BEGIN ... PRIVATE KEY-----`) - the documented shape of a GCP service-account JSON key file. Neither marker alone triggers the rule: `"type": "service_account"` in a doc snippet is harmless, and an isolated PEM key is already covered by `sensitive-data.private-key`. The co-occurrence is the signal.
 
-The finding is located at the line of the `"type"` marker. Both markers are redacted in the preview metadata; the raw private-key body never reaches any output format.
+The finding is located at the line of the `"type"` marker. Empty/nonmatching paths fully mask both preview fields. Matching paths emit only `[redacted:gcp-service-account]` and `[redacted:private-key]`; the type literal, key header/body, and reusable fragments never reach any output format.
 
 **Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `error` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
 
@@ -1144,7 +1166,7 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only controls whether redacted previews may be shown; it does not suppress findings.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only authorizes the marker `[redacted:jwt]`; it exposes no JWT segment bytes and does not suppress findings.
 
 ### `sensitive-data.npm-token`
 
@@ -1168,7 +1190,7 @@ Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes whe
 - **Capability:** parser
 - **Tags:** `secrets`, `phi`
 
-Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries only a redacted preview and a `category` tag.
+Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries a `category` tag and either `[redacted]` or its fixed authorized marker (`[redacted:ssn]`, `[redacted:medicare]`, `[redacted:mrn]`), never identifier characters.
 
 **Overlap with `sensitive-data.pii-pattern`.** Government and health identifiers belong to this rule, not the PII rule, so an SSN is reported once here rather than by both. Enable both rules together for full personal-data coverage without double-counting.
 
@@ -1183,7 +1205,7 @@ Flags protected health information identifiers embedded in source or text: US So
 - **Capability:** parser
 - **Tags:** `secrets`, `pii`
 
-Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries only a redacted preview and a `category` tag.
+Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries a `category` tag and either `[redacted]` or its fixed authorized marker (`[redacted:email]`, `[redacted:phone]`, `[redacted:payment-card]`), never identifier characters.
 
 **Overlap with `sensitive-data.phi-pattern`.** This rule covers contact and payment PII; government/health identifiers (SSN, Medicare, MRN) are owned by `sensitive-data.phi-pattern` so they are never counted twice.
 
@@ -1200,6 +1222,8 @@ Flags personally identifiable information embedded in source or text: email addr
 
 Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", and Go code that only strips or re-wraps PEM header delimiters are skipped; a raw PEM block still fires. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
 
+Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized path. Neither state includes key type, header, or body bytes.
+
 **Remediation.** Remove the key, rotate it, and load it from a secret manager or environment-specific runtime configuration.
 
 ### `sensitive-data.secret-pattern`
@@ -1214,7 +1238,7 @@ Flags high-risk secret-like literal assignments in Go source and text/config fil
 
 All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
 
-Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. `allowlists.secretPreviews` is preview-only: it allows redacted previews in configured paths but does not suppress findings.
+Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret previews remain `[redacted]` for every path; `allowlists.secretPreviews` never suppresses findings.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
 
@@ -1247,13 +1271,13 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 ### `size.file-length`
 
 - **Pillar:** size
-- **Default severity:** advisory
+- **Default severity:** error
 - **Default-enabled:** yes
-- **Threshold:** `maxLines` (default `500`)
+- **Threshold:** `maxLines` (default `1000`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files that exceed the configured line-count threshold. Long files frequently mix unrelated responsibilities. Raw file length is advisory by default; `design.hotspot-file` provides stronger signal when size combines with findings from other pillars.
+Flags Go files whose substantive line count exceeds the configured threshold. Blank lines and comment-only lines are free (family ratification, 2026-08-05), so required documentation can never push a file over the size bar; strings containing comment markers still count because comment spans come from the parsed AST. Long files frequently mix unrelated responsibilities. In `_test.go` files the default severity is calibrated down to advisory, matching the existing size-rule test calibration; an explicitly configured severity is applied as configured.
 
 **Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
 
@@ -1281,14 +1305,16 @@ Flags Go functions that exceed the configured code-line threshold. Blank lines, 
 - **Confidence:** high
 - **Capability:** parser
 
-Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count).
+Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count). The rule reads Go AST parameter fields, so generic functions, nested function types, and grouped names such as `y, z string` are counted without text-signature truncation.
+
+**Known precision limit.** A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature that cannot be reshaped. Keep the required signature, then raise `maxParameters` or disable the rule in project configuration after review. The same guidance is available from `list-rules --format json`.
 
 **Remediation.** Group related parameters into a struct, accept an options type, or split the function.
 
 ### `test-quality.empty-test`
 
 - **Pillar:** test-quality
-- **Default severity:** warning
+- **Default severity:** advisory
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1335,6 +1361,8 @@ Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`,
 
 Flags `Test…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. Benchmarks are excluded because many legitimate benchmarks measure setup or throughput without assertions. A test that cannot fail is asserting nothing and provides false confidence.
 
+When a runnable test or fuzz target's body consists solely of a direct call to `Skip`, `Skipf`, or `SkipNow` on its entrypoint testing receiver, `test-quality.skipped-test` owns that exact signal and this rule does not emit a duplicate. Comments do not add a statement; conditionals, nested callbacks, explicit empty statements, setup, and any other second statement remain outside this exception.
+
 The rule walks the function body looking for those methods on the test function's `*testing.T` or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`, and same-file helpers that accept the active testing receiver and contain a parser-visible failure path. Captured helper objects are recognised only when they were initialized with the active testing receiver before the assertion call and the called method has an assertion-like name. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
 
 **Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
@@ -1350,7 +1378,7 @@ The rule walks the function body looking for those methods on the test function'
 
 Flags table-driven `t.Run` closures that call `t.Parallel()` and reference a range variable without an explicit shadow copy before the subtest, but only when the nearest `go.mod` declares `go < 1.22`.
 
-Go 1.22 changed range-loop variable semantics so each iteration gets its own variables. For modules declaring `go 1.22` or newer, this rule stays silent. When no `go.mod` can be found between the file and scan root, the default-on rule also stays silent rather than guessing.
+Go 1.22 changed declaration-form range-loop variable semantics so each iteration gets its own variables. For modules declaring `go 1.22` or newer, this rule stays silent. A found `go.mod` without a `go` directive uses Go's implicit 1.16 semantics and remains in scope. When no `go.mod` can be found between the file and scan root, the default-on rule stays silent rather than guessing.
 
 The rule recognises the common `tc := tc` pattern as the local evidence that capture is intentional and stable in legacy modules.
 
@@ -1365,7 +1393,11 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless their string-literal message carries a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). Skipped tests are easy to forget and often hide real regressions.
+Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless a physical line of a string-literal message is introduced by a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). The marker may follow an optional list bullet and must be bare or followed by `:`, `(`, whitespace, or a delimiter hyphen. Conventional forms such as `TODO(username): restore coverage` remain findings; quoted, backticked, mid-sentence, plural (`TODOs`), and hyphenated-name (`todo-without-tracking`) mentions stay quiet. Ordinary Go comments are not scanned by this rule. Skipped tests are easy to forget and often hide real regressions.
+
+Receiver-aware skip detection retains its broader ownership in helpers, benchmarks, wrong-signature test-like functions, nested callbacks, and fuzz targets. Only the duplicate `no-failure-path` finding is removed for a runnable Test/Fuzz entrypoint whose entire body is the direct skip call.
+
+**Known precision limit.** A legitimate conditional skip reason whose first physical line must begin with TODO/FIXME-style product terminology is indistinguishable from debt. Put explanatory words before the quoted token, or disable the rule for that path when the external wording must remain first. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 **Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
 

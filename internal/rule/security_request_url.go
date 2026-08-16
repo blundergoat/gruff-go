@@ -6,31 +6,39 @@ package rule
 import (
 	"go/ast"
 	"go/token"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// urlSanitizerWords name the same-function evidence that a request-controlled URL
-// was validated before reaching an HTTP client: an allowlist, a validator, or a
-// parse/verify step. Matching is a lowercased substring test on the call name.
-var urlSanitizerWords = []string{"allow", "whitelist", "validate", "verif", "sanit", "permit", "isallow", "parse", "trusted"}
+// destinationSanitizerTokens are exact identifier tokens that affirmatively name
+// a destination allowlist or validator. Syntax parsers are intentionally absent.
+var destinationSanitizerTokens = map[string]bool{
+	"allow": true, "allowed": true, "allowlist": true, "whitelist": true,
+	"validate": true, "validated": true, "validation": true, "validator": true,
+	"verify": true, "verified": true, "verification": true, "verifier": true,
+	"sanitize": true, "sanitized": true, "sanitizer": true,
+	"sanitise": true, "sanitised": true, "sanitiser": true,
+	"permit": true, "permitted": true, "trust": true, "trusted": true,
+}
 
-// redirectSanitizerWords name the same-function evidence that a redirect target
-// was constrained to a safe destination before use.
-var redirectSanitizerWords = []string{"allow", "whitelist", "validate", "verif", "sanit", "islocal", "isrelative", "trusted", "parse", "prefix"}
+// redirectDestinationTokens extend affirmative validation with exact local or
+// relative-target terminology. A generic prefix operation is not sufficient.
+var redirectDestinationTokens = map[string]bool{"local": true, "relative": true}
 
 // RequestControlledURLRule flags request-derived values used as the URL of an
 // outbound HTTP request without allowlist or validation evidence.
+// Use its finding when reviewing whether a UI-submitted URL can reach net/http.
 type RequestControlledURLRule struct{}
 
-// Definition declares the security.request-controlled-url rule for bounded
-// same-function SSRF evidence.
+// Definition provides the request-URL metadata shown in scan output.
+// The UI uses it to explain the risk and the trusted-destination fix.
 func (RequestControlledURLRule) Definition() Definition {
 	return Definition{
 		ID:             "security.request-controlled-url",
 		Title:          "Request-controlled request URL",
-		Description:    "Flags request-derived values passed as the URL of an outbound net/http request without a nearby allowlist or parse/validate check (possible SSRF). Uses bounded same-function evidence and candidate wording.",
+		Description:    "Flags request-derived values passed as the URL of an outbound net/http request without an affirmative destination allowlist or validation check (possible SSRF). Uses bounded same-function evidence and candidate wording.",
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
@@ -40,57 +48,67 @@ func (RequestControlledURLRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for request-controlled URLs reaching HTTP client sinks.
+// AnalyzeUnit finds request-controlled URLs that reach HTTP client sinks.
+// Run it to populate the user's report with unconstrained outbound destinations.
 func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	// A user sees no URL findings for unparsed, non-production, or test-only input.
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
 	}
-	httpPackages := packageImportNames(unit.AST, "net/http", "http")
-	if len(httpPackages) == 0 {
+	httpPackageAliases := packageImportNames(unit.AST, "net/http", "http")
+	// Without net/http, this file cannot send the request shown in this rule's UI.
+	if len(httpPackageAliases) == 0 {
 		return nil
 	}
-	findings := []finding.Finding{}
-	forEachRequestFunc(unit.AST, httpPackages, func(scope *requestTaintScope, body *ast.BlockStmt) {
-		clientVars := collectHTTPClientVars(body, httpPackages)
-		ast.Inspect(body, func(node ast.Node) bool {
-			if _, nested := node.(*ast.FuncLit); nested {
+	scanFindings := []finding.Finding{}
+	// Review each handler separately so the report cites the user's exact sink.
+	forEachRequestFunc(unit.AST, httpPackageAliases, func(requestScope *requestTaintScope, functionBody *ast.BlockStmt) {
+		httpClientBindings := collectHTTPClientBindings(requestScope.functionType, functionBody, httpPackageAliases)
+		ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
+			// Nested callbacks are analysed as their own request handlers.
+			if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 				return false
 			}
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
+			candidateCall, isCall := syntaxNode.(*ast.CallExpr)
+			// Non-call syntax cannot be an outbound request shown to the user.
+			if !isCall {
 				return true
 			}
-			urlIndex, sink, ok := httpClientURLArg(call, httpPackages, clientVars)
-			if !ok || urlIndex >= len(call.Args) {
+			urlArgumentIndex, sinkLabel, isHTTPSink := httpClientURLArg(candidateCall, httpPackageAliases, httpClientBindings)
+			// Ignore calls that do not expose a valid net/http URL argument.
+			if !isHTTPSink || urlArgumentIndex >= len(candidateCall.Args) {
 				return true
 			}
-			urlArg := call.Args[urlIndex]
-			source, ok := scope.exprHasRequest(urlArg, call.Pos())
-			if !ok {
+			urlArgument := candidateCall.Args[urlArgumentIndex]
+			requestSource, isRequestControlled := requestScope.exprHasRequest(urlArgument, candidateCall.Pos())
+			// Fixed or internal destinations stay out of the user's findings list.
+			if !isRequestControlled {
 				return true
 			}
-			if scope.argHasInlineSanitizer(urlArg, urlSanitizerWords) || bodyHasSanitizingCall(body, scope.sanitizerValueNames(urlArg), urlSanitizerWords, call.Pos()) {
+			// An affirmative destination guard makes this request safe to omit.
+			if destinationHasConstraint(requestScope, functionBody, urlArgument, destinationConstraintOptions{}, candidateCall.Pos()) {
 				return true
 			}
-			position := unit.FileSet.Position(call.Pos())
-			findings = append(findings, finding.Finding{
+			sinkPosition := unit.FileSet.Position(candidateCall.Pos())
+			scanFindings = append(scanFindings, finding.Finding{
 				Message:  "request-controlled value used as HTTP request URL without allowlist or validation (possible SSRF)",
 				File:     unit.File.Path,
-				Location: &finding.Location{Line: position.Line, Column: position.Column},
-				Metadata: map[string]any{"sink": sink, "source": source},
+				Location: &finding.Location{Line: sinkPosition.Line, Column: sinkPosition.Column},
+				Metadata: map[string]any{"sink": sinkLabel, "source": requestSource},
 			})
 			return true
 		})
 	})
-	return findings
+	return scanFindings
 }
 
 // OpenRedirectRule flags request-derived values used as a redirect destination
 // without validation that the target is safe.
+// Use its finding when a submitted next-page value can steer the user's browser.
 type OpenRedirectRule struct{}
 
-// Definition declares the security.open-redirect-candidate rule for bounded
-// same-function redirect evidence.
+// Definition provides the open-redirect metadata shown in scan output.
+// The UI uses it to explain when a submitted destination can steer the browser.
 func (OpenRedirectRule) Definition() Definition {
 	return Definition{
 		ID:             "security.open-redirect-candidate",
@@ -105,135 +123,132 @@ func (OpenRedirectRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for request-controlled redirect destinations.
+// AnalyzeUnit finds request-controlled redirect destinations without safeguards.
+// Run it to populate the user's report with redirects that may leave the site.
 func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	// A user sees no redirect findings for unparsed, non-production, or test input.
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
 	}
-	httpPackages := packageImportNames(unit.AST, "net/http", "http")
-	if len(httpPackages) == 0 {
+	httpPackageAliases := packageImportNames(unit.AST, "net/http", "http")
+	// Without net/http, this file cannot emit the redirect represented by the rule.
+	if len(httpPackageAliases) == 0 {
 		return nil
 	}
-	findings := []finding.Finding{}
-	forEachRequestFunc(unit.AST, httpPackages, func(scope *requestTaintScope, body *ast.BlockStmt) {
-		ast.Inspect(body, func(node ast.Node) bool {
-			if _, nested := node.(*ast.FuncLit); nested {
+	stringsPackageAliases := packageImportNames(unit.AST, "strings", "strings")
+	scanFindings := []finding.Finding{}
+	// Review each handler separately so UI locations stay tied to one response.
+	forEachRequestFunc(unit.AST, httpPackageAliases, func(requestScope *requestTaintScope, functionBody *ast.BlockStmt) {
+		ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
+			// Nested callbacks are analysed independently with their own request input.
+			if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 				return false
 			}
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
+			candidateCall, isCall := syntaxNode.(*ast.CallExpr)
+			// Non-call syntax cannot set the redirect shown in the scan report.
+			if !isCall {
 				return true
 			}
-			target, sink, ok := redirectTargetArg(call, httpPackages)
-			if !ok {
+			redirectTarget, sinkLabel, isRedirectSink := redirectTargetArg(candidateCall, httpPackageAliases, functionBody)
+			// Ignore calls that do not control an HTTP redirect destination.
+			if !isRedirectSink {
 				return true
 			}
-			source, ok := scope.exprHasRequest(target, call.Pos())
-			if !ok {
+			requestSource, isRequestControlled := requestScope.exprHasRequest(redirectTarget, candidateCall.Pos())
+			// Fixed destinations do not create an open-redirect warning for the user.
+			if !isRequestControlled {
 				return true
 			}
-			if literal, ok := leftmostStringLiteral(target); ok && isSafeRelativePrefix(literal) {
+			fixedPrefix, hasFixedPrefix := leftmostStringLiteral(redirectTarget)
+			// A literal path segment keeps any appended user value on the same host.
+			if hasFixedPrefix && isSafeRelativePrefix(fixedPrefix) {
 				return true
 			}
-			if scope.argHasInlineSanitizer(target, redirectSanitizerWords) || bodyHasSanitizingCall(body, scope.sanitizerValueNames(target), redirectSanitizerWords, call.Pos()) {
+			constraintOptions := destinationConstraintOptions{additionalValidatorTokens: redirectDestinationTokens, stringPackageAliases: stringsPackageAliases}
+			// Robust validation or normalization makes the redirect safe to omit.
+			if destinationHasConstraint(requestScope, functionBody, redirectTarget, constraintOptions, candidateCall.Pos()) {
 				return true
 			}
-			position := unit.FileSet.Position(call.Pos())
-			findings = append(findings, finding.Finding{
+			sinkPosition := unit.FileSet.Position(candidateCall.Pos())
+			scanFindings = append(scanFindings, finding.Finding{
 				Message:  "request-controlled value used as redirect target without validation (possible open redirect)",
 				File:     unit.File.Path,
-				Location: &finding.Location{Line: position.Line, Column: position.Column},
-				Metadata: map[string]any{"sink": sink, "source": source},
+				Location: &finding.Location{Line: sinkPosition.Line, Column: sinkPosition.Column},
+				Metadata: map[string]any{"sink": sinkLabel, "source": requestSource},
 			})
 			return true
 		})
 	})
-	return findings
+	return scanFindings
 }
 
-// httpClientURLArg reports the URL argument index and a sink label for net/http
-// client calls that fetch a URL, covering both package-qualified helpers and
-// methods on a known http.Client value.
-func httpClientURLArg(call *ast.CallExpr, httpPackages, clientVars map[string]bool) (int, string, bool) {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return 0, "", false
+// redirectTargetArg returns the destination and UI sink label for a redirect call.
+// Use it to keep http.Redirect and Location-header findings consistent.
+func redirectTargetArg(candidateCall *ast.CallExpr, httpPackageAliases map[string]bool, functionBody *ast.BlockStmt) (ast.Expr, string, bool) {
+	// A standard redirect exposes its destination as the third argument in reports.
+	if selectorCallMatches(candidateCall, httpPackageAliases, "Redirect") && len(candidateCall.Args) >= 4 {
+		return candidateCall.Args[2], "http.Redirect", true
 	}
-	if receiver, ok := selector.X.(*ast.Ident); ok && httpPackages[receiver.Name] {
-		switch selector.Sel.Name {
-		case "Get", "Head", "Post", "PostForm":
-			return 0, receiver.Name + "." + selector.Sel.Name, true
-		case "NewRequest":
-			return 1, receiver.Name + ".NewRequest", true
-		case "NewRequestWithContext":
-			return 2, receiver.Name + ".NewRequestWithContext", true
-		}
-		return 0, "", false
+	methodSelector, isSelector := candidateCall.Fun.(*ast.SelectorExpr)
+	// Only a two-argument Set call can write a Location response header.
+	if !isSelector || methodSelector.Sel.Name != "Set" || len(candidateCall.Args) != 2 {
+		return nil, "", false
 	}
-	if isHTTPClientReceiver(selector.X, httpPackages, clientVars) {
-		switch selector.Sel.Name {
-		case "Get", "Head", "Post", "PostForm":
-			return 0, "client." + selector.Sel.Name, true
-		}
+	// Request or unrelated headers do not redirect the user's browser.
+	if !isHeaderMethodCallReceiver(methodSelector.X) {
+		return nil, "", false
 	}
-	return 0, "", false
+	headerName, hasLiteralHeader := stringLiteral(candidateCall.Args[0])
+	// A dynamic or non-Location header is not an open-redirect sink.
+	if !hasLiteralHeader || !isLocationHeader(headerName) {
+		return nil, "", false
+	}
+	// Location is also valid metadata on non-redirect responses (for example
+	// 201 Created). Only a matching later redirect status makes it a browser sink.
+	if !locationHeaderHasRedirectStatus(functionBody, candidateCall, httpPackageAliases) {
+		return nil, "", false
+	}
+	return candidateCall.Args[1], "Header.Set(Location)", true
 }
 
-// redirectTargetArg reports the redirect destination expression and sink label
-// for http.Redirect calls and Location-header assignments.
-func redirectTargetArg(call *ast.CallExpr, httpPackages map[string]bool) (ast.Expr, string, bool) {
-	if selectorCallMatches(call, httpPackages, "Redirect") && len(call.Args) >= 4 {
-		return call.Args[2], "http.Redirect", true
-	}
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "Set" || len(call.Args) != 2 {
-		return nil, "", false
-	}
-	if !isHeaderMethodCallReceiver(selector.X) {
-		return nil, "", false
-	}
-	header, ok := stringLiteral(call.Args[0])
-	if !ok || !isLocationHeader(header) {
-		return nil, "", false
-	}
-	return call.Args[1], "Header.Set(Location)", true
-}
-
-// isHeaderMethodCallReceiver reports whether expr is a `<x>.Header()` method call —
-// the http.ResponseWriter.Header() accessor. It is a method call, unlike the
-// http.Request.Header field, so gating a header Set on it distinguishes a response
-// header write (w.Header().Set(...)) from setting a header on the inbound request
-// or on an unrelated object.
-func isHeaderMethodCallReceiver(expr ast.Expr) bool {
-	call, ok := expr.(*ast.CallExpr)
-	if !ok || len(call.Args) != 0 {
+// isHeaderMethodCallReceiver recognises `<x>.Header()` response access.
+// It keeps request-header writes out of the user's redirect findings.
+func isHeaderMethodCallReceiver(headerAccessorExpression ast.Expr) bool {
+	headerAccessorCall, isCall := headerAccessorExpression.(*ast.CallExpr)
+	// The browser response header accessor has no arguments.
+	if !isCall || len(headerAccessorCall.Args) != 0 {
 		return false
 	}
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	return ok && selector.Sel.Name == "Header"
+	methodSelector, isSelector := headerAccessorCall.Fun.(*ast.SelectorExpr)
+	return isSelector && methodSelector.Sel.Name == "Header"
 }
 
 // isLocationHeader reports whether a header name targets the redirect Location
 // header, ignoring case as net/http canonicalises header keys.
-func isLocationHeader(name string) bool {
-	return equalFoldASCII(name, "Location")
+func isLocationHeader(headerName string) bool {
+	return equalFoldASCII(headerName, "Location")
 }
 
 // equalFoldASCII reports case-insensitive equality for ASCII header names without
 // pulling in Unicode folding.
-func equalFoldASCII(a, b string) bool {
-	if len(a) != len(b) {
+func equalFoldASCII(leftValue, rightValue string) bool {
+	// Different lengths cannot name the same response header.
+	if len(leftValue) != len(rightValue) {
 		return false
 	}
-	for i := 0; i < len(a); i++ {
-		ca, cb := a[i], b[i]
-		if 'A' <= ca && ca <= 'Z' {
-			ca += 'a' - 'A'
+	// Compare each byte because HTTP header names are ASCII in this scanner.
+	for characterIndex := 0; characterIndex < len(leftValue); characterIndex++ {
+		leftCharacter, rightCharacter := leftValue[characterIndex], rightValue[characterIndex]
+		// Normalize uppercase input a user may write in source.
+		if 'A' <= leftCharacter && leftCharacter <= 'Z' {
+			leftCharacter += 'a' - 'A'
 		}
-		if 'A' <= cb && cb <= 'Z' {
-			cb += 'a' - 'A'
+		// Normalize the expected header name the same way.
+		if 'A' <= rightCharacter && rightCharacter <= 'Z' {
+			rightCharacter += 'a' - 'A'
 		}
-		if ca != cb {
+		// One differing character means the call will not redirect the browser.
+		if leftCharacter != rightCharacter {
 			return false
 		}
 	}
@@ -242,88 +257,252 @@ func equalFoldASCII(a, b string) bool {
 
 // leftmostStringLiteral returns the value of the left-most string literal in a
 // + concatenation, used to inspect the fixed prefix of a constructed target.
-func leftmostStringLiteral(expr ast.Expr) (string, bool) {
-	switch e := expr.(type) {
+func leftmostStringLiteral(targetExpression ast.Expr) (string, bool) {
+	switch targetSyntax := targetExpression.(type) {
 	case *ast.ParenExpr:
-		return leftmostStringLiteral(e.X)
+		return leftmostStringLiteral(targetSyntax.X)
 	case *ast.BinaryExpr:
-		if e.Op == token.ADD {
-			return leftmostStringLiteral(e.X)
+		// A concatenated target inherits its user-visible prefix from the left side.
+		if targetSyntax.Op == token.ADD {
+			return leftmostStringLiteral(targetSyntax.X)
 		}
 	case *ast.BasicLit:
-		return stringLiteral(e)
+		return stringLiteral(targetSyntax)
 	}
 	return "", false
 }
 
-// isSafeRelativePrefix reports whether a fixed literal prefix keeps a redirect
-// host-relative no matter what request-controlled suffix is concatenated after it.
-// A bare "/" is not enough: a request value beginning with "/" or "\" extends it
-// into a protocol-relative "//host" or "/\host", so the prefix must commit to a
-// path segment ("/x…") before the request-controlled data.
-func isSafeRelativePrefix(value string) bool {
-	if len(value) < 2 || value[0] != '/' {
+// isSafeRelativePrefix requires a literal path segment before submitted text.
+// A bare slash is unsafe because a user can extend it into `//external-host`.
+func isSafeRelativePrefix(fixedPrefix string) bool {
+	// Empty, bare-slash, and absolute inputs can still become external redirects.
+	if len(fixedPrefix) < 2 || fixedPrefix[0] != '/' {
 		return false
 	}
-	return value[1] != '/' && value[1] != '\\'
+	return fixedPrefix[1] != '/' && fixedPrefix[1] != '\\'
 }
 
-// isHTTPClientReceiver reports whether expr is a known http.Client value: a local
-// collected by collectHTTPClientVars or the package-level http.DefaultClient.
-func isHTTPClientReceiver(expr ast.Expr, httpPackages, clientVars map[string]bool) bool {
-	switch value := expr.(type) {
-	case *ast.Ident:
-		return clientVars[value.Name]
-	case *ast.SelectorExpr:
-		receiver, ok := value.X.(*ast.Ident)
-		return ok && httpPackages[receiver.Name] && value.Sel.Name == "DefaultClient"
+// destinationConstraintOptions adds redirect-only evidence to the shared URL policy.
+// Request scans leave both maps empty; redirect scans provide relative tokens
+// and strings aliases so the user sees only destinations lacking real guards.
+type destinationConstraintOptions struct {
+	additionalValidatorTokens map[string]bool
+	stringPackageAliases      map[string]bool
+}
+
+// destinationHasConstraint reports an exact validator token, parsed scheme+host
+// allowlist, or redirect guard requiring a committed relative-path segment.
+func destinationHasConstraint(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkArgument ast.Expr, constraintOptions destinationConstraintOptions, sinkPosition token.Pos) bool {
+	// An inline validator explains why the destination is absent from the report.
+	if argHasDestinationSanitizer(requestScope, sinkArgument, constraintOptions.additionalValidatorTokens) {
+		return true
+	}
+	sinkValueNames := requestScope.sanitizerValueNames(sinkArgument)
+	// An earlier exact-named validator can protect a named sink value.
+	if bodyHasDestinationSanitizer(functionBody, sinkValueNames, constraintOptions.additionalValidatorTokens, sinkPosition) {
+		return true
+	}
+	// Explicit scheme and host guards provide structural destination evidence.
+	if bodyHasParsedDestinationAllowlist(requestScope, functionBody, sinkValueNames, sinkPosition) {
+		return true
+	}
+	// Redirect scans accept only structural same-origin evidence from strings helpers.
+	if len(constraintOptions.stringPackageAliases) > 0 {
+		return bodyHasCommittedRelativePrefix(functionBody, sinkValueNames, constraintOptions.stringPackageAliases, sinkPosition) ||
+			bodyStripsProtocolRelativePrefix(requestScope, functionBody, sinkValueNames, constraintOptions.stringPackageAliases, sinkPosition)
 	}
 	return false
 }
 
-// collectHTTPClientVars records locals bound to an http.Client value so method
-// calls on them count as outbound HTTP sinks.
-func collectHTTPClientVars(body *ast.BlockStmt, httpPackages map[string]bool) map[string]bool {
-	vars := map[string]bool{}
-	ast.Inspect(body, func(node ast.Node) bool {
+// argHasDestinationSanitizer recognises an exact validator token whose complete
+// result is passed to the sink. A sanitizer nested beside raw request input does
+// not constrain the final destination expression.
+func argHasDestinationSanitizer(requestScope *requestTaintScope, sinkArgument ast.Expr, additionalValidatorTokens map[string]bool) bool {
+	candidateCall, isCall := unwrapRequestExprParens(sinkArgument).(*ast.CallExpr)
+	if !isCall || !callHasDestinationToken(candidateCall, additionalValidatorTokens) {
+		return false
+	}
+	_, containsRequestInput := requestScope.exprHasRequest(candidateCall, token.NoPos)
+	return containsRequestInput
+}
+
+// bodyHasDestinationSanitizer recognises a validator call before the sink only
+// when its call name contains a complete approved identifier token.
+func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, additionalValidatorTokens map[string]bool, sinkPosition token.Pos) bool {
+	// Inline request expressions have no local name for a separate validator call.
+	if len(sinkValueNames) == 0 {
+		return false
+	}
+	foundBodySanitizer := false
+	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
+		// Stop once the scan has an affirmative reason to omit the finding.
+		if foundBodySanitizer {
+			return false
+		}
+		// A nested callback cannot validate the outer user's destination.
+		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
+			return false
+		}
+		candidateCall, isCall := syntaxNode.(*ast.CallExpr)
+		// Later or non-validator calls cannot protect the sink already reported.
+		if !isCall || candidateCall.Pos() >= sinkPosition || !callHasDestinationToken(candidateCall, additionalValidatorTokens) {
+			return true
+		}
+		// The validator must reference the exact value used by the outbound action,
+		// control whether the sink is reachable, and remain valid for that value.
+		if nodeUsesAnyIdent(candidateCall, sinkValueNames) &&
+			!anyNameAssignedBetween(functionBody, sinkValueNames, candidateCall.End(), sinkPosition) &&
+			validatorCallProtectsSink(functionBody, candidateCall, sinkPosition) {
+			foundBodySanitizer = true
+		}
+		return !foundBodySanitizer
+	})
+	return foundBodySanitizer
+}
+
+// validatorCallProtectsSink recognises the two affirmative control-flow forms:
+// a rejecting guard whose false path reaches a later sink, or a positive guard
+// whose true body contains the sink.
+func validatorCallProtectsSink(functionBody *ast.BlockStmt, validatorCall *ast.CallExpr, sinkPosition token.Pos) bool {
+	protected := false
+	ast.Inspect(functionBody, func(node ast.Node) bool {
+		if protected {
+			return false
+		}
 		if _, nested := node.(*ast.FuncLit); nested {
 			return false
 		}
-		switch stmt := node.(type) {
-		case *ast.AssignStmt:
-			for i, lhs := range stmt.Lhs {
-				name, ok := lhs.(*ast.Ident)
-				if !ok || name.Name == "_" || i >= len(stmt.Rhs) || !isHTTPClientExpr(stmt.Rhs[i], httpPackages) {
-					continue
-				}
-				vars[name.Name] = true
-			}
-		case *ast.ValueSpec:
-			for i, name := range stmt.Names {
-				if name.Name == "_" || i >= len(stmt.Values) || !isHTTPClientExpr(stmt.Values[i], httpPackages) {
-					continue
-				}
-				vars[name.Name] = true
-			}
+		guard, ok := node.(*ast.IfStmt)
+		if !ok || !exprContainsExactCall(guard.Cond, validatorCall) {
+			return true
+		}
+		// A guard inside an optional outer branch does not dominate a sink after
+		// that branch; every enclosing control region must also contain the sink.
+		if !enclosingControlRegionsContainPosition(functionBody, guard, sinkPosition) {
+			return true
+		}
+		if guard.Body.Pos() < sinkPosition && sinkPosition < guard.Body.End() &&
+			conditionOutcomeImpliesValidator(guard.Cond, validatorCall, true) {
+			protected = true
+			return false
+		}
+		if guard.End() < sinkPosition && blockEndsWithReturn(guard.Body) &&
+			conditionOutcomeImpliesValidator(guard.Cond, validatorCall, false) {
+			protected = true
+			return false
 		}
 		return true
 	})
-	return vars
+	return protected
 }
 
-// isHTTPClientExpr reports whether expr constructs or references an http.Client:
-// a &http.Client{} / http.Client{} literal or the http.DefaultClient value.
-func isHTTPClientExpr(expr ast.Expr, httpPackages map[string]bool) bool {
-	switch value := expr.(type) {
+// conditionOutcomeImpliesValidator reports whether observing one boolean result
+// proves that validatorCall itself returned true. It preserves AND/OR semantics
+// instead of counting a call merely because it appears somewhere in a condition.
+func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.CallExpr, outcome bool) bool {
+	condition = unwrapRequestExprParens(condition)
+	if condition == validatorCall {
+		return outcome
+	}
+	switch expression := condition.(type) {
 	case *ast.UnaryExpr:
-		if value.Op == token.AND {
-			return isHTTPClientExpr(value.X, httpPackages)
+		if expression.Op == token.NOT {
+			return conditionOutcomeImpliesValidator(expression.X, validatorCall, !outcome)
 		}
-	case *ast.CompositeLit:
-		return isHTTPClientLiteral(value, httpPackages)
-	case *ast.SelectorExpr:
-		receiver, ok := value.X.(*ast.Ident)
-		return ok && httpPackages[receiver.Name] && value.Sel.Name == "DefaultClient"
+	case *ast.BinaryExpr:
+		switch expression.Op {
+		case token.EQL, token.NEQ:
+			// `validate(u) == false` guards exactly what `!validate(u)` guards.
+			// Without this the explicit-boolean style reads as an unguarded sink
+			// and fails a default scan on correctly validated code.
+			if operand, literal, ok := booleanComparisonOperand(expression); ok {
+				return conditionOutcomeImpliesValidator(operand, validatorCall,
+					comparisonOperandOutcome(expression.Op, literal, outcome))
+			}
+		case token.LAND:
+			if outcome {
+				return conditionOutcomeImpliesValidator(expression.X, validatorCall, true) ||
+					conditionOutcomeImpliesValidator(expression.Y, validatorCall, true)
+			}
+			return conditionOutcomeImpliesValidator(expression.X, validatorCall, false) &&
+				conditionOutcomeImpliesValidator(expression.Y, validatorCall, false)
+		case token.LOR:
+			if outcome {
+				return conditionOutcomeImpliesValidator(expression.X, validatorCall, true) &&
+					conditionOutcomeImpliesValidator(expression.Y, validatorCall, true)
+			}
+			return conditionOutcomeImpliesValidator(expression.X, validatorCall, false) ||
+				conditionOutcomeImpliesValidator(expression.Y, validatorCall, false)
+		}
+	}
+	return false
+}
+
+// booleanComparisonOperand splits a comparison against a predeclared `true` or
+// `false` into the other operand and that literal's value. Only comparisons that
+// name a boolean literal qualify, so `a == b` still falls through unproven.
+func booleanComparisonOperand(comparison *ast.BinaryExpr) (ast.Expr, bool, bool) {
+	if literal, ok := universeBoolLiteral(comparison.Y); ok {
+		return comparison.X, literal, true
+	}
+	if literal, ok := universeBoolLiteral(comparison.X); ok {
+		return comparison.Y, literal, true
+	}
+	return nil, false, false
+}
+
+// universeBoolLiteral reports whether expr is the predeclared `true` or `false`.
+// A local may shadow either name, so a resolved identifier is not the constant.
+func universeBoolLiteral(expr ast.Expr) (bool, bool) {
+	identifier, isIdentifier := unwrapRequestExprParens(expr).(*ast.Ident)
+	// A resolved identifier is a declared shadow, not the predeclared constant.
+	if !isIdentifier || identifier.Obj != nil {
+		return false, false
+	}
+	switch identifier.Name {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	}
+	return false, false
+}
+
+// comparisonOperandOutcome maps an observed comparison result back to the value
+// the non-literal operand must have held for that result to occur.
+func comparisonOperandOutcome(operator token.Token, literal bool, outcome bool) bool {
+	// Observing `operand == literal` as outcome means they agree exactly when outcome holds.
+	if operator == token.EQL {
+		return outcome == literal
+	}
+	return outcome != literal
+}
+
+// exprContainsExactCall reports whether the condition contains this AST call,
+// not merely another call with the same text or name.
+func exprContainsExactCall(expression ast.Expr, targetCall *ast.CallExpr) bool {
+	found := false
+	ast.Inspect(expression, func(node ast.Node) bool {
+		if node == targetCall {
+			found = true
+			return false
+		}
+		return !found
+	})
+	return found
+}
+
+// callHasDestinationToken uses complete camel/snake-case tokens so names such
+// as parser, allowance, disallow, untrusted, and sanitation cannot collide.
+func callHasDestinationToken(candidateCall *ast.CallExpr, additionalValidatorTokens map[string]bool) bool {
+	callNameTokens := splitIdentifierTokens(callName(candidateCall))
+	// Inspect complete tokens so UI labels never trust a substring collision.
+	for tokenIndex, identifierToken := range callNameTokens {
+		identifierToken = strings.ToLower(identifierToken)
+		// Negated names such as notTrusted remain visible findings for the user.
+		if (destinationSanitizerTokens[identifierToken] || additionalValidatorTokens[identifierToken]) && !precededByDestinationNegation(callNameTokens, tokenIndex) {
+			return true
+		}
 	}
 	return false
 }

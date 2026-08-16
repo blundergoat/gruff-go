@@ -2,88 +2,126 @@
 
 ## [Unreleased]
 
+## v0.5.0 - 2026-08-16
+
+Sharper security and sensitive-data rules, secret previews redacted by default, a composite that scores every pillar, and baselines that match one-to-one. Three breaking changes: `size.file-length` moves to error severity at 1000 lines, fatal diagnostics exit `2`, and commands reject positional arguments they never used.
+
+- **BREAKING: `size.file-length` is error at 1000 lines** - Comments and blanks stop counting, but `--fail-on=error` can fail on an unchanged file.
+- **BREAKING: fatal diagnostics exit `2`** - A crash is distinct from a finding failure, and `none` disables only the failure at exit `1`.
+- **BREAKING: unused positional arguments are rejected** - `dashboard`, `list-rules`, and `completion` exit `2` instead of ignoring a path you passed.
+- **Flags work after paths** - Subcommands parse flags before, between, or after positional paths. Use `--` before a path starting with a dash.
+- **A `-` patch value keeps the global flags after it** - `analyse --diff - --quiet` applies quiet mode instead of rejecting it as undefined; `--since -` and the verbosity, ANSI, and interaction flags recover too.
+- **Secret previews are redacted by default** - Every sensitive-data rule and output format emits a redacted marker instead of the matched secret.
+- **Passwords containing `@` are reported again** - The split stops at the authority, so `app:p@ssw0rd@db/orders` no longer resolves to a bogus host.
+- **Placeholders are not credentials** - A password that is entirely `{{action}}`, `${VAR}`, or `<placeholder>` is exempt; `s3cret{9}` still reports.
+- **Replica-set URIs are handled honestly** - `h1:27017,h2:27017` is no longer reduced to a misleading hostname; which URIs report is unchanged.
+- **Backslash redirects are caught** - A `//`-trimming loop leaves `/\evil.example` intact, so it proves nothing unless a backslash fold runs first.
+- **Computed redirect statuses are caught** - A `WriteHeader` status the parser cannot resolve counts as a redirect; a known non-redirect stays quiet.
+- **Fewer redirect false positives** - A `break` bound to a nested loop, or a query appended after normalisation, no longer voids a valid proof.
+- **Guards expire when the value changes** - Writing to a field or pointee of a guarded value re-opens the finding that guard had cleared.
+- **Token generators flag any buffer name** - `insecure-random-secret` now reports `buf[i] = ...` and `token += string(...)` inside a generator.
+- **Split destination guards no longer pass** - A scheme check and a host check from mutually exclusive branches stop counting as one guard.
+- **Explicit boolean guards count as validation** - `if validateURL(u) == false` proves the same guard as `!validateURL(u)`, so the explicit style no longer reports a validated URL.
+- **A shadowed import is no longer its package** - A local named `http`, `fmt`, `io`, `path`, or `url` stops being read as the imported package, removing false SSRF sinks and false taint propagation.
+- **An overwritten request value stops reporting** - A write that must run before the sink clears the taint; a write inside a branch the sink sits outside of, a `+=`, or a later request write still reports. A `goto`, a closure that rewrites the value, or taking its address keeps the finding.
+- **The composite scores every pillar** - A clean rule-backed pillar counts as 100 instead of being dropped from the average.
+- **Baselines match one-to-one** - Exact findings match first, then stable identities once each, so a second secret on one line is not absorbed.
+- **Reviewed findings stay occurrence-specific** - Baseline matching needs a named symbol or metric, so one accepted finding cannot hide another.
+- **Duplicate YAML keys are rejected** - `.gruff-go.yaml` fails per mapping, naming both line numbers instead of silently taking the last value.
+- **Path filters reject unsafe patterns** - Windows-style and bare `**` patterns are refused, and a trailing slash now matches `/**` consistently.
+- **The security gate ceiling is enforced** - A registry test fails the build if a default-enabled `security.*` rule ships at error severity.
+- **Gate defaults are documented per command** - `--min-severity` defaults to `advisory` for `analyse`/`summary` and `none` for `report`/`dashboard`.
+- **Redirected output stays non-interactive** - Writing to `/dev/null` or a pipe no longer triggers the first-run config prompt or ANSI colour codes.
+- **Summary separates its scan surface** - `summary --format text` counts Go files parsed, text files scanned, failed reads, and skips separately.
+- **Context parse failures are counted** - A supporting file that fails to parse appears in the summary even when it was used only for context.
+- **`size.file-length` anchors to the real line** - The finding points at the line crossing the budget, so diff and changed-region scans keep it.
+- **cgo preambles count as code** - C source before `import "C"` reaches the substantive line count, so a large mixed Go/C file no longer bypasses `size.file-length`.
+- **CI recipes lead with `--since`** - `docs/ci-integration.md` documents `--since <ref>` as the primary diff flag; `--diff-base` still works.
+- **Skip-only tests report once** - A test whose only action is `Skip`, `Skipf`, or `SkipNow` emits `skipped-test` alone, not a stack of findings.
+- **TODO marker precision** - Markers that introduce a string-literal line are flagged, while a TODO mentioned in prose stays quiet.
+- **Random selection precision** - Sampling directly from an existing collection is exempt, while random values in a security context still report.
+- **Go 1.22 range semantics** - Loop-variable rules apply per-iteration semantics, and a module with no Go directive is treated as Go 1.16.
+- **Go toolchain pinned to 1.25.13** - Clears three standard-library `govulncheck` findings (GO-2026-6090, 6089, 5972) without suppressing the audit.
+- **The Claude profile denies secret edits** - Secret paths and nine `.env` variants gain `Edit` denials; path-scoped `Write` rules never applied.
+- **Deletes with a variable path block** - The deny guard rejects an unresolved expansion anywhere in the target, so `rm -rf cache/$TARGET` fails.
+- **Post-turn scan limits fall back safely** - A nonnumeric limit reverts to the default instead of skipping every file while reporting clean.
+- **GOAT Flow 1.15.1** - Refreshes Claude, Codex, and Copilot skills, safety hooks, and playbooks onto one Node hook launcher.
+
 ## v0.4.0 - 2026-06-14
 
-A precision release: fewer false positives in the security, sensitive-data, and test-quality rules, plus a steadier agent hook. No schema or config changes from v0.3.0.
+Fewer false positives in the security, sensitive-data, and test-quality rules, plus a steadier agent hook. No schema or config changes from v0.3.0.
 
-- **Generated-file handling** - Go generated-file detection now requires both `generated` and `DO NOT EDIT` in the leading comments, `--include-ignored` reaches the rule-level guards, and the skip is Go-only, so a `DO NOT EDIT` banner in a non-Go file no longer hides findings.
-- **Sensitive-data false positives** - In Go and config files alike, the secret scanner now skips comment-only lines, `${name}` placeholders, `your-`/`CHANGEME`-style examples, runtime-generated values, and PEM-delimiter prose; real secrets, PEM blocks, JWTs, and provider tokens — including a key embedded inline or multiline in a `strings.ReplaceAll`/trim call — still flag. This clears the example-config false positives found in corpus testing.
-- **Test-quality precision** - `test-quality.no-failure-path` skips benchmarks and recognises your own failure/assertion helpers. `test-quality.sleep-in-test` only allows a sleep inside a real polling loop (deadline or attempt cap, a visible exit, and a failure check after it); `continue`/`goto`/`fallthrough` no longer count as that exit, a sleep in a nested goroutine is not whitelisted by the enclosing loop, and a loop whose only exit checks wall-clock time still flags.
-- **Explicit-file scans** - `analyse path/to/file.go` now reads same-directory Go siblings for context, so cross-file false positives like `dead-code.unused-private-function` and `docs.package-comment` are gone, while the siblings' own findings stay out of the report. A sibling that fails to parse reports a diagnostic instead of silently causing a false positive, and a genuine package-level violation (such as a missing package comment) is re-anchored to the requested file rather than dropped.
-- **SQL detection** - `security.sql-string-query` now accepts queries built only from string literals (including parameterised fragments with bind arguments) and still flags `fmt.Sprintf` and identifier interpolation.
-- **Agent hook resilience** - `hook --diff HEAD` in a repo with no commits now returns the normal `gruff.hook.v1` JSON with a warning and scans without diff filtering instead of failing. Git-base exports are scoped to the requested paths.
-- **Docs and tooling** - `design.hotspot-file` is documented as score-neutral triage (a grouping pointer, not a fix target), `allowlists.secretPreviews` as preview-only, and a new local corpus-calibration script reports files, skips, findings, grades, and timings per module.
+- **Generated-file handling** - The skip needs both `generated` and `DO NOT EDIT` and is Go-only, so a banner elsewhere no longer hides findings.
+- **Sensitive-data false positives** - The scanner skips comments, `${name}` placeholders, `CHANGEME` examples, and PEM prose; real secrets flag.
+- **Test-quality precision** - `no-failure-path` skips benchmarks and knows your own assertion helpers; `sleep-in-test` needs a real polling loop.
+- **Explicit-file scans** - `analyse path/to/file.go` reads same-directory siblings for context, so cross-file false positives disappear.
+- **SQL detection** - `sql-string-query` accepts queries built only from string literals, including bind parameters, and still flags interpolation.
+- **Agent hook resilience** - `hook --diff HEAD` in a repo with no commits returns normal JSON with a warning and scans without diff filtering.
+- **Docs and tooling** - `design.hotspot-file` is documented as score-neutral triage and `allowlists.secretPreviews` as preview-only.
 
 ## v0.3.0 - 2026-06-09
 
-Pre-1.0 release that codifies gruff's mission - a coding-agent guardrail that makes AI-generated code a human can verify, trust, and sign off on (legible enough to review, secure where the eye fails, honestly tested rather than padded with low-signal ceremony) - and aligns the default rule pack, the rule catalogue, and the docs to it. The catalogue ends this release at **83 rules across 11 pillars (70 default-enabled, 13 opt-in)**. This release intentionally keeps the project on the `0.x` line while the remaining 1.0 adoption milestones settle.
+Codifies gruff's mission as a coding-agent guardrail for AI code a human can verify, and aligns the default pack to it: 83 rules across 11 pillars, 70 default-enabled.
 
-- **Mission codified** - gruff is framed as a coding-agent guardrail for human-verifiable AI code across README, `.goat-flow/architecture.md`, `CLAUDE.md`/`AGENTS.md`, and a new [`docs/agent-guardrail.md`](docs/agent-guardrail.md); the gate stays single-knob with no split severities ([ADR-011](.goat-flow/learning-loop/decisions/ADR-011-mission-ai-generated-code-verifiability.md), [ADR-013](.goat-flow/learning-loop/decisions/ADR-013-single-knob-gate-no-split-severities.md)).
-- **Agent hook contract v1** - new `gruff-go hook --format json` emits the cross-analyzer `gruff.hook.v1` contract for coding-agent PostToolUse hooks: advisory exit 0, in-band `suppressed`/`ignored`/`config`, `--capabilities` negotiation, value-stable `stableIdentity`, and scope-aware changed-region + new-only filtering.
-- **Diff-aware changed-region analysis** - `analyse --changed-ranges` / `--since` / `--diff` / `--changed-scope` score only the findings the agent changed while still parsing the whole project for context.
-- **Authoritative `paths.ignore` + `check-ignore`** - `paths.ignore` is honoured in every invocation shape, and new `gruff-go check-ignore` reports whether a path is excluded with git-style exit codes ([ADR-015](.goat-flow/learning-loop/decisions/ADR-015-authoritative-path-ignore-and-check-ignore.md)).
-- **Three-state baseline classification** - a baseline now classifies every run `new`/`unchanged`/`resolved` with additive counts and an opt-in `--baseline-show` ([ADR-012](.goat-flow/learning-loop/decisions/ADR-012-baseline-three-state-classification.md)).
-- **Removed `complexity.npath`** (breaking) - deleted from the registry; config rejects the unknown rule ID, so drop the block or run `init --force --reset` ([ADR-014](.goat-flow/learning-loop/decisions/ADR-014-remove-npath-complexity-rule.md)).
-- **Removed `design.god-function`** (breaking) - deleted; correlated per-symbol findings now cluster in scoring instead ([ADR-018](.goat-flow/learning-loop/decisions/ADR-018-remove-god-function-and-cluster-correlated-findings.md)).
-- **Default pack retuned to the mission** - six convention-only rules move to opt-in, `complexity.cognitive` tightens to 25, and `size.file-length` drops to advisory ([ADR-016](.goat-flow/learning-loop/decisions/ADR-016-default-pack-retune-to-verifiability-mission.md)).
-- **Request-driven application-security rules** - seven new default-on parser rules trace request-controlled values into SSRF, path-traversal, open-redirect, XSS, XXE, unsafe-deserialization, and sensitive-logging sinks with statement-order-sensitive evidence.
-- **GitHub Actions workflow security rules** - five new default-on rules flag unpinned actions, piped remote shells, broad permissions, risky `pull_request_target`, and PR-exposed secrets across `.github/workflows`.
-- **Go-module + sensitive-data rules** - two default-on `go.mod` `replace`-directive rules plus three opt-in entropy/PII/PHI detectors that emit redacted previews only.
-- **Analysis JSON schema → `gruff.analysis.v2`** - cross-port schema string, with flat `line`/`endLine`/`column` and line-insensitive `stableIdentity` added and the legacy nested `location` retained for one release.
-- **Cross-port canonical text output** - every command leads with a `gruff-go <version> <subcommand>` masthead and a `Composite:` / error-first `Findings:` block shared across text, summary, and markdown.
-- **P5 score clustering** - correlated per-symbol findings score as one root cause (`max/len`) so the cluster bills the grade once; every finding is still reported ([ADR-018](.goat-flow/learning-loop/decisions/ADR-018-remove-god-function-and-cluster-correlated-findings.md)).
-- **Review-driven precision fixes** - numerous default-on security/workflow/template/taint false positives fixed with positive and negative tests, plus `gruff.hook.v1` correctness follow-ups (per-rule threshold `direction`, `--diff unstaged` index base).
+- **BREAKING: `complexity.npath` removed** - Config now rejects the rule ID; drop the block or run `init --force --reset` (ADR-014).
+- **BREAKING: `design.god-function` removed** - Correlated per-symbol findings cluster in scoring instead of a whole-function finding (ADR-018).
+- **BREAKING: analysis JSON is `gruff.analysis.v2`** - Adds flat `line`/`column` and `stableIdentity`; the nested `location` stays for one release.
+- **Agent hook contract** - New `hook --format json` emits the cross-port `gruff.hook.v1` contract for agent hooks, exiting 0 on advisory findings.
+- **Diff-aware analysis** - `--changed-ranges`, `--since`, `--diff`, and `--changed-scope` score only what changed while still parsing the project.
+- **Authoritative `paths.ignore`** - Ignores apply in every invocation, and new `check-ignore` reports exclusion with git-style exit codes (ADR-015).
+- **Three-state baselines** - Every run classifies findings as `new`, `unchanged`, or `resolved`, with an opt-in `--baseline-show` (ADR-012).
+- **Request-driven security rules** - Seven default-on rules trace request values into SSRF, path-traversal, redirect, XSS, XXE, and logging sinks.
+- **Workflow security rules** - Five default-on rules flag unpinned actions, piped remote shells, broad permissions, and PR-exposed secrets.
+- **Go-module and sensitive-data rules** - Two `go.mod` `replace` rules ship default-on, plus opt-in entropy, PII, and PHI detectors.
+- **Default pack retuned** - Six convention rules move to opt-in and `complexity.cognitive` tightens to 25 (ADR-016).
+- **Canonical text output** - Every command leads with a `gruff-go <version> <subcommand>` masthead and a shared `Composite:` and `Findings:` block.
+- **Score clustering** - Correlated findings on one symbol bill the grade once instead of compounding; each finding is still reported (ADR-018).
 
 ## v0.2.0 - 2026-05-28
 
-Cross-port severity harmonisation, per-command exit-code policy, and CI-ready Markdown output. Severity vocabulary collapses from five buckets to three; analysis schema bumps `v0.1 → v0.2`; default `--min-severity` for gating commands drops from `medium` to `advisory`; `summary --format=json` switches to the new `gruff-go.summary.v0.1` digest. Hard-break with no deprecation cycle per the project's pre-1.0 no-legacy-compat policy; migration notes are in the per-change entries below.
+Severity harmonisation across the gruff family, per-command exit-code policy, and Markdown output. Hard-break with no deprecation cycle, per the pre-1.0 no-legacy-compat policy.
 
-- **Severity vocabulary** - 5→3 buckets (`advisory / warning / error`) matching gruff-rs / gruff-ts / gruff-py / gruff-php. The old names (`critical / high / medium / low / info / notice / warn`) are rejected at config and CLI load with `unknown severity "<name>"`. Mapping: `critical / high → error`; `medium / warn → warning`; `low / info / notice → advisory`; `info` dropped (no rule emitted it). See [ADR-009](.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md).
-- **Per-command `minimumSeverity:` block** - New top-level `.gruff-go.yaml` key with sub-keys `analyse / summary / report / dashboard` and values `advisory | warning | error | none`. Precedence: CLI flag > config block > binary default. Additive and optional - configs without the block load unchanged; no config schema bump. Default thresholds split per command: `analyse / summary: medium → advisory` (gating commands fail loudly on any finding), `report / dashboard: medium → none` (inspection commands never exit 1). Set `minimumSeverity.analyse: warning` to retain the prior `medium`-equivalent gate. See [ADR-010](.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
-- **Analysis output schema** - `gruff-go.analysis.v0.1 → v0.2`. Keys in `Report.Summary.CountsBySeverity` and `PillarDetail.{Critical, High, Medium, Low, Info}` change shape to `{Advisory, Warning, Error}`. SARIF readers see the same output `level` mapping (`error / warning / note`) - the simplification is internal. Per-severity penalty weights also collapse `1 / 3 / 8 / 15 / 30 → 1 / 8 / 30`; pillar scores shift at the margin and consumers tracking trends should re-baseline against `v0.2.0` snapshots.
-- **`summary --format=json` digest** - Returns the new `gruff-go.summary.v0.1` schema instead of the analysis schema: `schemaVersion` plus a `pillars` array with `grade`, `score`, `applicable`, and per-severity counts. Consumers that parsed the full analysis payload from `summary --format=json` should switch to `analyse --format=summary-json` (continues at `gruff-go.analysis.v0.2`).
-- **Markdown output** - `analyse --format=markdown` (alias `md`) renders a CommonMark digest tuned for CI logs and GitHub PR comments: short header, severity totals, the canonical 7-column Pillars table, top-rules block when findings exist.
-- **Canonical Pillars table** - 7-column block (pillar, grade, score, findings, advisory, warning, error - sorted by findings descending then pillar ascending) now shared across `summary` text output, `analyse --format=html` (replaces the previous card grid; scores render with two decimal places), and the new markdown format. Always covers all ten gruff-go pillars; clean scans surface as grade A rows with zero counts.
-- **`penalty` field on pillars** - New field on `PillarDetail` JSON and `gruff.summary.v2` pillar objects. Raw, unclamped score deduction (score is still `max(0, 100 - penalty)`) preserves worst-pillar ranking when scores floor at zero: a pillar with 200 advisory findings reports `penalty=200, score=0`, distinct from one error finding at `penalty=30, score=70`.
-- **`none` threshold value** - New value accepted by `--min-severity`, `--fail-on`, and `minimumSeverity.<cmd>` that disables the gate entirely (report findings, always exit 0). The right default for inspection commands.
-- **Go API** - New `finding.FailThreshold` type plus `finding.DefaultFailThresholdFor(cmd)` helper. Both the analysis runner fallback and the dashboard state default consume the helper, closing the lockstep footgun where the two could drift apart.
-- **Dashboard CLI precedence** - The dashboard server consults `config.minimumSeverity.dashboard` when `--fail-on` is not explicitly passed (detected via `flag.FlagSet.Visit`); previously the flag's default-value propagation silently short-circuited every config-driven dashboard threshold.
-- **`acceptedAbbreviations` validation** - Now rejects only blank entries; the previous validator required every entry to be uppercase. Entries normalise to lowercase before matching, so `ID` and `id` resolve to the same allowlist key. Rule-consumer semantics differ from sibling ports - documented in [`.goat-flow/learning-loop/footguns/setup.md`](.goat-flow/learning-loop/footguns/setup.md).
-- **Release tooling** - `scripts/publish-go-pkg.sh` publishes tagged Go module releases: verifies the tag against source metadata, warms `proxy.golang.org`, and checks a temporary `go install`. Release gate applies consistently across create-tag and pre-existing-tag paths - `require_clean_worktree`, `require_main_branch`, `require_upstream_current` always run (`--allow-non-main` opts out); an existing local tag not pointing at HEAD hard-fails with a `git checkout $TAG` hint; v2+ tags rejected when `go.mod`'s module path lacks the corresponding `/vN` suffix. Version-string validation rejects Go-invalid SemVer (leading zeros like `01.2.3`, empty pre-release identifiers like `1.2.3-`, and build-metadata suffixes like `1.2.3+meta`) before any tag is created, instead of after `proxy.golang.org` has already rejected the pushed tag.
-- **`init --force` migration safety** - `gruff-go init --force` on a pre-0.2 config carrying legacy severity overrides (e.g. `severity: notice`) now preserves `paths.ignore`, allowlists, thresholds, and options as documented. The rule whose severity used a 5-bucket name re-resolves to the registry default in the rendered output (no silent legacy mapping per the no-legacy-compat policy), but the user's other tuning survives the regenerate. Previously, strict validation failed the preserve load and the file was silently overwritten with fresh defaults.
-- **Schema-mismatch error messages** - Config and baseline `schemaVersion`-mismatch errors now name the expected version and the exact remediation command (`gruff-go init --force` for `.gruff-go.yaml`, `gruff-go baseline --out <path>` for baseline files) instead of just reporting the unsupported value.
-- **`docs/rules.md` accuracy fixes** - `complexity.nesting-depth` and `complexity.npath` per-rule sections now report the correct default thresholds (`maxDepth: 5`, `maxComplexity: 1024`) matching the summary table and source-of-truth constants in `internal/rule/`. The `sensitive-data.stripe-key` row now escapes `|` characters inside `(sk\|pk\|rk)_live_…` so strict GFM renderers do not split the table cell.
-- **Dogfood config migration** - The project's own `.gruff-go.yaml` per-rule overrides migrated to the new severity vocabulary (`notice → advisory`, `critical → error`); the dogfood scan remains grade A under the new defaults.
+- **BREAKING: three severity buckets** - `advisory`, `warning`, and `error` replace the five old names, which are now rejected at load (ADR-009).
+- **BREAKING: analysis schema `v0.1` → `v0.2`** - Severity keys become `{Advisory, Warning, Error}` and penalty weights collapse to `1 / 8 / 30`.
+- **BREAKING: gate defaults split per command** - `analyse`/`summary` drop to `advisory`; `report`/`dashboard` drop to `none` and never exit 1.
+- **BREAKING: `summary --format=json` is `gruff.summary.v2`** - A pillar digest replaces the full payload; use `analyse --format=summary-json`.
+- **Per-command severity config** - New `minimumSeverity:` block sets a threshold per command; the CLI flag still wins (ADR-010).
+- **`none` threshold value** - Accepted by `--min-severity` and `--fail-on` to report findings and still exit 0, the right default for inspection.
+- **Markdown output** - `analyse --format=markdown` renders a CommonMark digest for CI logs and PR comments, with severity totals and top rules.
+- **Canonical pillars table** - One 7-column table is shared by `summary` text, HTML, and Markdown, and always lists all ten pillars.
+- **`penalty` field on pillars** - Reports the raw unclamped deduction, so you can rank the worst pillar once several have floored at 0.
+- **Dashboard honours config** - The server consults `minimumSeverity.dashboard` when `--fail-on` is absent; the flag default previously overrode it.
+- **`init --force` is safe on old configs** - Ignores, allowlists, thresholds, and options survive the regenerate instead of being overwritten.
+- **Clearer schema-mismatch errors** - Config and baseline version errors name the expected version and the exact command that fixes it.
+- **`acceptedAbbreviations` fix** - Only blank entries are rejected, and entries normalise to lowercase so `ID` and `id` are the same key.
+- **Release tooling** - `publish-go-pkg.sh` verifies the tag against source metadata and rejects Go-invalid SemVer before creating it.
+- **`docs/rules.md` accuracy** - `complexity.nesting-depth` and `complexity.npath` now document their real defaults, `maxDepth: 5` and `1024`.
 
 ## v0.1.1 - 2026-05-24
 
 Onboarding, baselines, and 23 new default-enabled parser rules. Backwards-compatible with v0.1.0; schemas unchanged.
 
-- **`gruff-go init` subcommand** - Writes a default `.gruff-go.yaml` to the working directory mirroring registry defaults. `init --force` is a safe regenerate-with-merge: parses the existing config, splices `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, and per-rule `enabled / severity / threshold / thresholds / options` overrides into the rendered output, then adds blocks for rules new to the registry at defaults. Legacy destructive overwrite is opt-in via `--force --reset`, which now fails unless `--force` is also supplied (matching the documented destructive-reset contract).
-- **First-run config prompt** - `analyse`, `summary`, `report`, and `dashboard` offer to generate a config when none is found. Skipped automatically in CI and scripts, when `--config` or `--no-config` is set, and with the new `-n` / `--no-interaction` flag. The prompt and status text write to stderr so JSON / HTML stdout stays clean for redirects.
-- **Fresh-start baselines** - `gruff-go analyse --generate-baseline gruff-baseline.json .` writes a baseline from a clean scan in one step. The CLI rejects baseline, diff, and display-filter flags that would make the generated file partial. Text summaries point new users at this exact command and quote shell-sensitive input paths before rendering copy/paste commands; `.gitignore` skip counts are shown when relevant.
-- **23 new default-enabled rules (41 → 64 total)** - `complexity.cognitive`, `complexity.npath`, `dead-code.unreachable-code`, `dead-code.unused-private-function`, `docs.suppression-without-rationale`, `maintainability.context-todo-production`, `maintainability.defer-in-loop`, `maintainability.ignored-error`, `maintainability.log-fatal-library`, `maintainability.loop-variable-address`, `maintainability.production-panic`, `modernisation.ioutil-deprecated`, `security.http-client-no-timeout`, `security.http-server-no-timeout`, `security.permissive-file-mode`, `security.request-body-without-limit`, `sensitive-data.gitlab-token`, `sensitive-data.npm-token`, `test-quality.fatal-in-goroutine`, `test-quality.helper-missing-t-helper`, `test-quality.parallel-range-capture`, `test-quality.sleep-in-test`, `test-quality.tempdir-misuse`.
-- **Precision fixes on existing rules** - `security.permissive-file-mode` no longer flags `os.OpenFile` calls whose flags statically omit `O_CREATE` (the kernel ignores `mode` in that case); opaque flags still flag conservatively. `test-quality.parallel-range-capture` only reports when the nearest `go.mod` declares `go < 1.22`; modules using Go 1.22+ range-loop semantics, and files without module metadata, are treated as out of scope. `docs.config-field-comment` stays default-enabled but does nothing until `includePaths` is configured, preventing broad exported-field documentation noise. Pillar metadata: `design.hotspot-file` now counts under maintainability; `naming.get-prefix` under modernisation.
-- **CLI ergonomics** - `analyse`, `summary`, and `report` accept `--fail-on` as an alias for `--min-severity`, matching the dashboard flag and the broader gruff-family CLI vocabulary. `--silent` aliases `--quiet`. Symfony-style verbosity flags (`-v`, `-vv`, `-vvv`, `--verbose`) parse for parity; verbosity is currently a no-op.
-- **Shell completion** - `gruff-go completion [bash|zsh|fish]` prints completion scripts. Write failures now error instead of silently succeeding after a failed stdout write.
-- **Dashboard `Options.Ready` channel** - Optional `chan<- struct{}` that closes once the listener has bound and the start-up banner has been written. Tests and supervised launchers use it to synchronise teardown without polling or sleeping; `TestServeShutsDownOnContextCancel` now waits on `Ready` instead of a 50ms sleep.
-- **Release tooling** - `scripts/bump-version.sh` updates both `package.json` and `package-lock.json`, validates package metadata with Node, checks anchored version literals before editing, regenerates CLI goldens, and scans tracked source for stale version references. `scripts/preflight-checks.sh` adds `npm audit`, `govulncheck`, version-metadata consistency, and a `--release` mode that hard-fails on an unbumped source version. New `scripts/dependency-install.sh` and `scripts/dependency-update.sh` install and refresh npm, Go module, and `govulncheck` dependencies. CI uses `go-version: 1.25.x`, installs Node 22 and `govulncheck`, pins `actions/setup-node` to an immutable commit, and runs preflight in `--release` mode before publishing.
-- **Toolchain pin** - Local and CI Go commands prefer Go 1.25.10 via `go.mod` toolchain metadata, clearing current standard-library `govulncheck` findings without suppressing the audit.
-- **Documentation** - New [`docs/README.md`](docs/README.md) index and [`docs/releasing.md`](docs/releasing.md) release checklist. README reorganised around the project-pinned `go tool gruff-go` workflow, current command surface, trust boundary, dashboard defaults, stability contract, and release checklist. Clarified that `allowlists.secretPreviews` controls preview redaction only - it does not suppress sensitive-data findings; use rule exclusions, path ignores, or inline suppressions when a finding should be intentionally hidden. Removed the parser-only-as-architectural-commitment ADR; future rules that need type or SSA capability declare the higher tier and depend on matching runtime support landing.
-- **Internal rule file renames** - Ten `internal/rule/*_m[07|08|37|38]*.go` files renamed to topic-based names (`security_hardening_defaults.go`, `security_sql_and_archive_test.go`, `security_crypto_strength_test.go`, `maintainability_runtime_pitfalls.go`, `test_quality_helper_and_parallel.go`, `test_quality_async_and_tempdir.go`, and their `_test.go` peers). The prior `_m08 / _m37 / _m38` filenames survived an earlier milestone-identifier cleanup that only touched markdown and doc comments.
-- **`baseline` subcommand split** - `runBaseline`, `baselineScanOptions`, and `writeBaselineFromScan` moved out of `internal/cli/cli.go` into a dedicated file, mirroring the per-subcommand file pattern and bringing `cli.go` back under the project's 500-line file-length threshold. No behavioural change.
-- **`scripts/preflight-checks.sh` ergonomics** - Skips the `package.json / package-lock.json` version check when `node` is not installed in local mode, matching the existing `SKIP_EXIT` behaviour of `check_npm_audit` and `check_go_vuln`. `--release` mode still hard-fails so release-time invariants stay strict.
+- **`gruff-go init`** - Writes a default `.gruff-go.yaml`; `--force` merges your existing overrides, and `--force --reset` overwrites from scratch.
+- **First-run config prompt** - `analyse`, `summary`, `report`, and `dashboard` offer to generate a config, skipping the prompt in CI or with `-n`.
+- **Fresh-start baselines** - `analyse --generate-baseline gruff-baseline.json .` captures a baseline from a clean scan in one step.
+- **23 new default-enabled rules (41 → 64)** - Adds complexity, dead-code, maintainability, security, sensitive-data, and test-quality coverage.
+- **Precision fixes** - `permissive-file-mode` ignores calls without `O_CREATE`, and `parallel-range-capture` only reports below Go 1.22.
+- **CLI ergonomics** - `--fail-on` aliases `--min-severity` for family parity, and `--silent` aliases `--quiet`.
+- **Shell completion** - `gruff-go completion [bash|zsh|fish]` prints a completion script, and a failed write now errors.
+- **Dashboard `Options.Ready`** - An optional channel closes once the listener has bound, so tests can synchronise teardown without polling.
+- **Release tooling** - `bump-version.sh` updates every version literal, and `preflight-checks.sh` adds `npm audit` and `govulncheck` gates.
+- **Documentation** - New `docs/README.md` index and `docs/releasing.md` checklist; `allowlists.secretPreviews` controls redaction only.
 
 ## v0.1.0 - 2026-05-23
 
 First public release. Parser-only Go code-quality scanner; six CLI commands; 41 rules across 9 pillars; six output formats; local HTML dashboard.
 
-- **CLI commands** - `analyse`, `baseline`, `dashboard`, `report`, `summary`, `list-rules`.
-- **Rule catalogue** - 41 rules across 9 pillars (40 default-on).
-- **Configuration** - Strict `.gruff-go.yaml` config; `.gitignore`-aware discovery.
-- **Workflow features** - Baselines and diff-mode for tracking findings against a known-clean state or a base commit.
-- **Output formats** - Six: `text`, `json`, `summary-json`, `sarif`, `github`, `html`.
-- **Local dashboard** - HTML dashboard served by the `dashboard` command.
-- **Schemas** - `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, `gruff-go.baseline.v0.1` - stable within `0.1.x`.
-- **Install** - `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0` or `go get -tool ...@v0.1.0` on Go 1.24+. Prebuilt Linux / macOS / Windows binaries attached to the GitHub Release.
-- **Known limitations** - Parser-only (no type / SSA analysis); HTML dashboard accessibility review ongoing.
+- **CLI commands** - `analyse`, `baseline`, `dashboard`, `report`, `summary`, and `list-rules`.
+- **Rule catalogue** - 41 rules across 9 pillars, 40 of them enabled by default.
+- **Configuration** - Strict `.gruff-go.yaml` schema with `.gitignore`-aware file discovery.
+- **Workflow features** - Baselines and diff-mode track findings against a known-clean state or a base commit.
+- **Output formats** - `text`, `json`, `summary-json`, `sarif`, `github`, and `html`.
+- **Local dashboard** - The `dashboard` command serves the HTML report locally.
+- **Schemas** - `gruff-go.analysis.v0.1`, `gruff-go.config.v0.1`, and `gruff-go.baseline.v0.1`, stable within `0.1.x`.
+- **Install** - `go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.1.0` on Go 1.24+, or a prebuilt binary from the GitHub Release.
+- **Known limitations** - Parser-only, with no type or SSA analysis; the dashboard accessibility review is ongoing.

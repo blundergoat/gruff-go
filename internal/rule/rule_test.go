@@ -1,5 +1,6 @@
 // Package rule defines gruff-go's rule registry and analysers.
 // This file covers Definition validation and Registry dispatch semantics.
+// The tests keep catalogue errors actionable before a user starts a scan.
 package rule
 
 import (
@@ -38,6 +39,30 @@ func TestDefinitionValidateRejectsInvalidCapability(t *testing.T) {
 
 	if err := definition.Validate(); err == nil {
 		t.Fatal("expected invalid capability error")
+	}
+}
+
+// TestDefinitionValidateRejectsIncompleteFalsePositiveShapes ensures catalogue
+// guidance always tells users both what can misfire and how to mitigate it.
+func TestDefinitionValidateRejectsIncompleteFalsePositiveShapes(t *testing.T) {
+	testCases := []struct {
+		name       string
+		knownShape FalsePositiveShape
+	}{
+		{name: "missing shape", knownShape: FalsePositiveShape{Mitigation: "Rephrase the message."}},
+		{name: "missing mitigation", knownShape: FalsePositiveShape{Shape: "A leading product token."}},
+	}
+
+	// Validate each incomplete catalogue entry independently for a precise startup error.
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			definition := validDefinition("test-quality.skipped-test")
+			definition.FalsePositiveShapes = []FalsePositiveShape{testCase.knownShape}
+			// An accepted blank would surface unusable guidance in list-rules output.
+			if err := definition.Validate(); err == nil {
+				t.Fatal("expected incomplete false-positive shape error")
+			}
+		})
 	}
 }
 

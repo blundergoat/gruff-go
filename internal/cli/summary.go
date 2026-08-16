@@ -27,7 +27,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	minSeverity := string(finding.DefaultFailThresholdFor("summary"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
 	if *format != "text" && *format != "json" {

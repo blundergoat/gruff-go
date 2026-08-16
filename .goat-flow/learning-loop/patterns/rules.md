@@ -1,6 +1,6 @@
 ---
 category: rules
-last_reviewed: 2026-06-14
+last_reviewed: 2026-08-05
 ---
 
 # Rule-Authoring Patterns
@@ -54,3 +54,23 @@ last_reviewed: 2026-06-14
 **Context:** A default-rule precision change (a new skip, a broadened or narrowed match) can fix one false positive while creating others, and unit fixtures rarely cover real-world shapes. Unit tests proved the v0.4.0 `sensitive-data.secret-pattern` fix in isolation, but only the corpus showed it removed exactly the 16 commented-placeholder false positives in `cc-connect/config.example.toml` without zeroing the genuine test-fixture and code-sample hits in other repos.
 
 **Approach:** Build once (`go build -o /tmp/gruff ./cmd/gruff-go`). Per corpus repo (cd-per-repo - see the corpus footgun in `../footguns/calibration.md`), capture `analyse --format json --no-config .` and break findings down by `ruleId` (`jq -r '.findings[].ruleId' | sort | uniq -c | sort -rn`). Drill into the rules the change touched plus the high-confidence security/sensitive-data rules: pull `file:line + message`, read the source at each site, and judge true-positive vs false-positive - high-volume rules (docs/complexity/size) on large mature repos are usually working as designed, so spend the budget on the changed and Error-severity rules. Re-scan after the fix and diff the per-rule counts: confirm the FP count dropped to the expected number AND that real positives elsewhere did not disappear (no over-suppression). Finish with the dogfood scan (grade A) - a fixture that embeds a contiguous secret-shaped literal or pushes a `_test.go` past the 500-line `size.file-length` cap will regress gruff's own scan (see the secret-pattern footgun in `../footguns/security-rules.md`).
+
+## Pattern: Anchor marker vocabulary to introduced physical lines
+
+**Created:** 2026-08-05
+
+**Evidence:** OBSERVED
+
+**Context:** `test-quality.skipped-test` used case-insensitive substring search over literal `t.Skip` arguments. Conditional integration skips that merely explained `TODO` handling were reported as debt, including quoted, backticked, plural, and hyphenated-name prose. The regression matrix in `internal/rule/skipped_test_marker_test.go` reproduced six quiet shapes while keeping conventional leading markers actionable.
+
+**Approach:** Unquote AST string literals, split their displayed value into physical lines, and require the marker to introduce a line after optional whitespace or a list bullet. Accept only conventional delimiters: end of line, `:`, `(`, whitespace, or a hyphen followed by whitespace/end. Pair every quiet prose shape with real colon, owner, dash, space, bare, lowercase, bullet, multiline, and Go-style `TODO(username):` cases. Run the existing calibration fixture afterward; if it goes quiet, replace its evidence with a genuinely leading marker rather than weakening the check.
+
+## Pattern: Map cross-port defects to native rule ownership before porting
+
+**Created:** 2026-08-05
+
+**Evidence:** OBSERVED
+
+**Context:** A gruff-ts false-positive pass named process execution, loop-in-test labelling, and nested signature parsing as family defect classes. In gruff-go, `security.shell-command` owns only explicit interpreter execution, `test-quality.parallel-range-capture` owns a separate Go-version capture hazard, and documentation rules inspect `go/ast` declarations rather than `@param` text. Runtime probes in `/tmp/gruff-go-cross-port-repros-f253192aeec9/` plus the registry showed that literal rule-name matching would have invented new Go policy for two non-applicable classes.
+
+**Approach:** Before adapting a sibling fix, map the language primitive, live registry ID, detector input, and user-facing remediation. Run the translated positive and quiet shapes at HEAD, then classify the class as reproduces, already-fixed, or not-applicable. Pin already-correct behavior at the nearest native AST boundary; for not-applicable classes, record complete registry/source-search evidence instead of adding a lookalike rule.

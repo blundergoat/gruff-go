@@ -102,8 +102,9 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf)
 
 	fmt.Fprintln(buf, "# Project-wide allowlists and preview controls.")
-	fmt.Fprintln(buf, "# acceptedAbbreviations relax naming.acronym-case; secretPreviews lists path")
-	fmt.Fprintln(buf, "# globs where sensitive-data rules may include the matched preview.")
+	fmt.Fprintln(buf, "# acceptedAbbreviations relax naming.acronym-case; secretPreviews authorizes")
+	fmt.Fprintln(buf, "# fixed category/scheme markers only. Empty/nonmatching paths stay [redacted].")
+	fmt.Fprintln(buf, "# This preview control never suppresses sensitive-data findings.")
 	fmt.Fprintln(buf, "allowlists:")
 	writeRenderStringList(buf, "  acceptedAbbreviations", preservedAcceptedAbbreviations(opts))
 	writeRenderStringList(buf, "  secretPreviews", preservedSecretPreviews(opts))

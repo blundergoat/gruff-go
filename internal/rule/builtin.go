@@ -1,23 +1,24 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file defines the core builtin rule pack (size, complexity, docs, sensitive data).
+// Package rule defines the checks users see in gruff-go scan results.
+// This file implements core size, complexity, documentation, and secret checks.
+// Each finding points users toward code that is easier to review or safer to ship.
 package rule
 
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
-	"github.com/blundergoat/gruff-go/internal/pathfilter"
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
 // Default thresholds and secret-detection patterns used by the builtin rule pack.
 const (
-	fileLengthThreshold     = 500
+	fileLengthThreshold     = 1000
 	functionLengthThreshold = 80
 	cyclomaticThreshold     = 20
 	secretKeyPattern        = `api[_-]?key|auth[_-]?token|access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization|bearer|secret|token|password`
@@ -41,15 +42,15 @@ func (r FileLengthRule) maxLines() int {
 	return r.MaxLines
 }
 
-// Definition declares the size.file-length rule with a default 500-line cap, advisory severity, and high confidence.
+// Definition declares the size.file-length rule with a default 1000 substantive-line cap, error severity, and high confidence.
 func (r FileLengthRule) Definition() Definition {
 	maxLines := r.maxLines()
 	return Definition{
 		ID:             "size.file-length",
 		Title:          "File length",
-		Description:    "Flags Go files that exceed the default line-count threshold.",
+		Description:    "Flags Go files whose substantive line count (blank and comment-only lines are free) exceeds the threshold.",
 		Pillar:         finding.PillarSize,
-		Severity:       finding.SeverityAdvisory,
+		Severity:       finding.SeverityError,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
@@ -57,24 +58,117 @@ func (r FileLengthRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits one finding when a Go file's line count exceeds the threshold.
+// AnalyzeUnit emits one finding when a Go file exceeds the substantive-line limit.
+// Blank and comment-only lines are free, so documentation does not inflate the result.
 func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	maxLines := r.maxLines()
-	if unit.File.Type != source.FileTypeGo || unit.LineCount <= maxLines {
+	// Non-Go inputs use their own checks and never show a Go file-length finding.
+	if unit.File.Type != source.FileTypeGo {
 		return nil
 	}
-	metadata := map[string]any{"lines": unit.LineCount, "threshold": maxLines}
+	codeLines := substantiveLineNumbers(unit)
+	substantiveLines := len(codeLines)
+	// Files within the configured limit stay out of the user's findings list.
+	if substantiveLines <= maxLines {
+		return nil
+	}
+	metadata := map[string]any{"lines": substantiveLines, "threshold": maxLines}
+	// Test metadata lets the registry soften fixture-size findings for users.
 	if isGoTestFile(unit.File.Path) {
 		metadata["testFile"] = true
 	}
 	return []finding.Finding{{
-		Message: fmt.Sprintf("file has %d lines, above threshold %d", unit.LineCount, maxLines),
+		Message: fmt.Sprintf("file has %d substantive lines, above threshold %d", substantiveLines, maxLines),
 		File:    unit.File.Path,
 		Location: &finding.Location{
-			Line: maxLines + 1,
+			// Anchor to where the threshold is actually crossed. The count skips
+			// blanks and comments, so the physical line of the (maxLines+1)th code
+			// line is what a reviewer opens and what changed-region filtering matches.
+			Line: codeLines[maxLines],
 		},
 		Metadata: metadata,
 	}}
+}
+
+// substantiveLineNumbers returns the 1-based physical line number of every line
+// carrying code, in source order. Blank and comment-only lines are omitted, so the
+// caller gets both the count (via len) and where each counted line actually sits -
+// the two differ whenever a file carries documentation or spacing.
+// Comment ranges come from the parsed AST, so strings containing comment markers stay substantive;
+// parse-failed files fall back to counting non-blank raw lines.
+func substantiveLineNumbers(unit parser.Unit) []int {
+	sourceWithoutComments := []byte(unit.Source)
+	// Parsed comment positions keep quoted comment markers visible as user code.
+	if unit.AST != nil && unit.FileSet != nil {
+		maskParsedComments(sourceWithoutComments, unit)
+	}
+	lineNumbers := []int{}
+	// Every remaining non-empty line represents code the user must review.
+	for index, line := range strings.Split(string(sourceWithoutComments), "\n") {
+		if strings.TrimSpace(line) != "" {
+			lineNumbers = append(lineNumbers, index+1)
+		}
+	}
+	return lineNumbers
+}
+
+// maskParsedComments replaces parsed comment text with spaces while preserving lines.
+// The scanner can then count code without mistaking comments inside strings for prose.
+func maskParsedComments(sourceWithoutComments []byte, unit parser.Unit) {
+	cgoPreamble := cgoPreambleComment(unit.AST)
+	// Each group may contain adjacent line comments or one block comment.
+	for _, commentGroup := range unit.AST.Comments {
+		// A cgo preamble is compiled C source, not prose, so it stays countable.
+		if cgoPreamble != nil && commentGroup == cgoPreamble {
+			continue
+		}
+		for _, comment := range commentGroup.List {
+			commentStart := unit.FileSet.Position(comment.Pos()).Offset
+			commentEnd := unit.FileSet.Position(comment.End()).Offset
+			maskSourceRange(sourceWithoutComments, commentStart, commentEnd)
+		}
+	}
+}
+
+// cgoPreambleComment returns the comment group holding the C source that precedes
+// `import "C"`. go/parser reports it as an ordinary comment, but cgo compiles it
+// as part of the program, so masking it would drop real code from every line
+// count and let a large mixed Go/C file slip past the size rules unreported.
+func cgoPreambleComment(file *ast.File) *ast.CommentGroup {
+	if file == nil {
+		return nil
+	}
+	for _, declaration := range file.Decls {
+		importDecl, isGenDecl := declaration.(*ast.GenDecl)
+		if !isGenDecl || importDecl.Tok != token.IMPORT {
+			continue
+		}
+		for _, spec := range importDecl.Specs {
+			importSpec, isImport := spec.(*ast.ImportSpec)
+			if !isImport || importSpec.Path == nil || importSpec.Path.Value != `"C"` {
+				continue
+			}
+			// A grouped import carries the preamble on the spec; the single-import
+			// form cgo requires for a preamble carries it on the declaration.
+			if importSpec.Doc != nil {
+				return importSpec.Doc
+			}
+			return importDecl.Doc
+		}
+	}
+	return nil
+}
+
+// maskSourceRange clears one comment span but retains newline boundaries.
+// Keeping those boundaries preserves the line numbers users see in findings.
+func maskSourceRange(sourceWithoutComments []byte, commentStart int, commentEnd int) {
+	for byteIndex := commentStart; byteIndex < commentEnd && byteIndex < len(sourceWithoutComments); byteIndex++ {
+		// Newlines stay in place so later UI locations still match the source file.
+		if sourceWithoutComments[byteIndex] == '\n' {
+			continue
+		}
+		sourceWithoutComments[byteIndex] = ' '
+	}
 }
 
 // FunctionLengthRule flags Go functions whose body length exceeds the configured maximum.
@@ -306,8 +400,7 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []fin
 
 // SensitiveDataRule flags secret-like key/value assignments in Go and text/config files.
 type SensitiveDataRule struct {
-	// PreviewAllowlist lists file path globs whose findings may include a redacted preview of the matched literal.
-	PreviewAllowlist []string
+	previews sensitivePreviewPolicy
 }
 
 // Definition declares the sensitive-data.secret-pattern rule that flags secret-like key/value assignments with high severity.
@@ -346,9 +439,8 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		if isPlaceholderSecretAssignment(match) {
 			continue
 		}
-		metadata := map[string]any{}
-		if len(r.PreviewAllowlist) == 0 || pathfilter.MatchesAny(r.PreviewAllowlist, unit.File.Path) {
-			metadata["preview"] = redact(match)
+		metadata := map[string]any{
+			"preview": r.previews.format(unit.File.Path, previewGeneric, match),
 		}
 		findings = append(findings, finding.Finding{
 			Message:  "secret-like assignment detected",
@@ -479,12 +571,4 @@ func functionName(fn *ast.FuncDecl) string {
 // isGoTestFile reports whether the file path is a Go test file (_test.go suffix).
 func isGoTestFile(path string) bool {
 	return strings.HasSuffix(path, "_test.go")
-}
-
-// redact masks a secret-like value, keeping only enough characters for triage.
-func redact(value string) string {
-	if len(value) <= 12 {
-		return "[redacted]"
-	}
-	return value[:6] + "..." + value[len(value)-4:]
 }

@@ -44,7 +44,7 @@ var phiPlaceholderSSNs = map[string]struct{}{
 // Medicare beneficiary identifiers, and labelled medical record numbers - in
 // source or text. It owns the government/health identifier shapes so they are
 // reported once here rather than also by PIIPatternRule.
-type PHIPatternRule struct{}
+type PHIPatternRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.phi-pattern rule. Opt-in and
 // warning/medium: SSN-shaped and MBI-shaped strings can occur in fixtures and
@@ -66,9 +66,9 @@ func (PHIPatternRule) Definition() Definition {
 }
 
 // AnalyzeUnit scans code-bearing lines for SSN, Medicare, and labelled-MRN shapes,
-// skipping structurally invalid or placeholder SSNs, and emits a redacted preview
+// skipping structurally invalid or placeholder SSNs, and emits a policy-masked preview
 // for each real-looking hit.
-func (PHIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+func (r PHIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.Source == "" {
 		return nil
 	}
@@ -78,36 +78,36 @@ func (PHIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 		if !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
-		findings = append(findings, phiLineFindings(unit.File.Path, line, lineNumber+1)...)
+		findings = append(findings, phiLineFindings(unit.File.Path, line, lineNumber+1, r.previews)...)
 	}
 	return findings
 }
 
 // phiLineFindings returns the PHI findings for a single line, one per category
-// that matches. Each records its category and a redacted preview, never the raw
+// that matches. Each records its category and a policy marker, never the raw
 // identifier.
-func phiLineFindings(path, line string, lineNumber int) []finding.Finding {
+func phiLineFindings(path, line string, lineNumber int, previews sensitivePreviewPolicy) []finding.Finding {
 	out := []finding.Finding{}
 	if ssn := phiSSNPattern.FindString(line); ssn != "" && isStructurallyValidSSN(ssn) && !isPlaceholderSSN(ssn) {
-		out = append(out, phiFinding(path, lineNumber, "ssn", ssn))
+		out = append(out, phiFinding(path, lineNumber, "ssn", ssn, previews))
 	}
 	if mbi := phiMedicarePattern.FindString(line); mbi != "" {
-		out = append(out, phiFinding(path, lineNumber, "medicare", mbi))
+		out = append(out, phiFinding(path, lineNumber, "medicare", mbi, previews))
 	}
 	if match := phiMRNPattern.FindStringSubmatch(line); match != nil {
-		out = append(out, phiFinding(path, lineNumber, "mrn", match[1]))
+		out = append(out, phiFinding(path, lineNumber, "mrn", match[1], previews))
 	}
 	return out
 }
 
 // phiFinding builds one redacted PHI finding tagged with its category.
-func phiFinding(path string, lineNumber int, category, raw string) finding.Finding {
+func phiFinding(path string, lineNumber int, category, raw string, previews sensitivePreviewPolicy) finding.Finding {
 	return finding.Finding{
 		Message:  category + " PHI identifier detected",
 		File:     path,
 		Location: &finding.Location{Line: lineNumber},
 		Metadata: map[string]any{
-			"preview":  redact(raw),
+			"preview":  previews.format(path, personalDataPreviewCategory(category), raw),
 			"category": category,
 		},
 	}

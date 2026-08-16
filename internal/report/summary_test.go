@@ -228,3 +228,46 @@ func TestWriteSummaryTextIncludesPillarsBlock(t *testing.T) {
 		t.Fatalf("summary text missing canonical clean pillar row; got:\n%s", body)
 	}
 }
+
+// TestWriteSummaryTextClassifiesScannedFiles verifies text inputs and failed Go files get distinct counts.
+func TestWriteSummaryTextClassifiesScannedFiles(t *testing.T) {
+	analysisReport := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "text",
+		FailOn:      finding.FailThresholdNone,
+		Scanned:     []string{"main.go", "config.txt", "broken.go"},
+		Diagnostics: []analysis.Diagnostic{{Stage: "parse", File: "broken.go", Message: "expected declaration"}},
+		Definitions: defaultDefinitions(),
+	})
+	var summaryOutput bytes.Buffer
+	if err := WriteSummaryText(&summaryOutput, analysisReport, SummaryOptions{}); err != nil {
+		t.Fatalf("WriteSummaryText: %v", err)
+	}
+	const expectedLine = "files: 1 Go parsed, 1 text scanned, 1 failed, 0 skipped\n"
+	if !strings.Contains(summaryOutput.String(), expectedLine) {
+		t.Fatalf("summary text missing %q; got:\n%s", expectedLine, summaryOutput.String())
+	}
+}
+
+// TestWriteSummaryTextCountsContextOnlyParseFailures includes supporting package
+// files that failed parsing even though they were not explicit scan targets.
+func TestWriteSummaryTextCountsContextOnlyParseFailures(t *testing.T) {
+	analysisReport := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"main.go"},
+		Format:      "text",
+		FailOn:      finding.FailThresholdNone,
+		Scanned:     []string{"main.go"},
+		Diagnostics: []analysis.Diagnostic{{Stage: "parse", File: "support.go", Message: "expected declaration"}},
+		Definitions: defaultDefinitions(),
+	})
+	var summaryOutput bytes.Buffer
+	if err := WriteSummaryText(&summaryOutput, analysisReport, SummaryOptions{}); err != nil {
+		t.Fatalf("WriteSummaryText: %v", err)
+	}
+	const expectedLine = "files: 1 Go parsed, 0 text scanned, 1 failed, 0 skipped\n"
+	if !strings.Contains(summaryOutput.String(), expectedLine) {
+		t.Fatalf("summary text missing %q; got:\n%s", expectedLine, summaryOutput.String())
+	}
+}

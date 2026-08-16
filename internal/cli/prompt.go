@@ -25,21 +25,28 @@ var promptStdin io.Reader = os.Stdin
 // affirmative path without a real terminal attached.
 var stdinTerminalCheck = stdinIsTerminal
 
-// extractNoInteraction removes -n / --no-interaction from args and reports
-// whether the flag was set. The flag is global, so it can appear at any
-// position alongside -q/--quiet and the ANSI flags.
-func extractNoInteraction(args []string) ([]string, bool) {
-	out := make([]string, 0, len(args))
-	noInteraction := false
-	for _, arg := range args {
-		switch arg {
+// extractNoInteraction removes the global non-interactive flag before command dispatch.
+// A bare dash or `--` protects later flag-shaped paths from global parsing.
+func extractNoInteraction(commandArguments []string) ([]string, bool) {
+	remainingArguments := make([]string, 0, len(commandArguments))
+	nonInteractiveRequested := false
+	// The flag may follow a path until the caller explicitly ends flag parsing.
+	for argumentIndex, argument := range commandArguments {
+		// Protected operands must reach the command parser unchanged.
+		if argument == "--" || argument == "-" {
+			remainingArguments = append(remainingArguments, commandArguments[argumentIndex:]...)
+			break
+		}
+		switch argument {
 		case "-n", "--no-interaction":
-			noInteraction = true
+			// Non-interactive mode suppresses first-run prompts even on a terminal.
+			nonInteractiveRequested = true
 		default:
-			out = append(out, arg)
+			// Command-specific tokens pass through unchanged.
+			remainingArguments = append(remainingArguments, argument)
 		}
 	}
-	return out, noInteraction
+	return remainingArguments, nonInteractiveRequested
 }
 
 // configuredRegistryInteractive resolves the rule registry and, when no config
@@ -117,13 +124,8 @@ func promptForDefaultConfig(promptWriter io.Writer) bool {
 	return answer == "y" || answer == "yes"
 }
 
-// stdinIsTerminal reports whether os.Stdin is a character device, mirroring
-// the heuristic isTerminalWriter uses for the stdout/stderr ANSI decision so
-// CI runners, pipes, and redirected stdin all skip the prompt automatically.
+// stdinIsTerminal enables the first-run prompt only when stdin is an interactive terminal.
+// Redirected files, pipes, and /dev/null therefore run without waiting for input.
 func stdinIsTerminal() bool {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return isInteractiveTerminal(os.Stdin)
 }

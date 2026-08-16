@@ -90,6 +90,9 @@ func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 		if fn.Body == nil || len(fn.Body.List) == 0 {
 			continue
 		}
+		if isExactSkipOnlyFailurePathTest(fn, testingPackages) {
+			continue
+		}
 		if hasFailureCallWithHelpers(fn, testingPackages, assertionPackages, failureHelpers) {
 			continue
 		}

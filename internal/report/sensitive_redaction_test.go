@@ -20,7 +20,7 @@ import (
 // "preview" in its metadata.
 func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	rawSecret := "AKIAIOSFODNN7EXAMPLE"
-	rawPassword := "supersecretpassword"
+	rawPassword := "supersecretQ7UX"
 	rawPrivateKey := "-----BEGIN RSA PRIVATE KEY-----"
 	rawNPMToken := "npm_00000000000000000000ZZ"
 	rawGitLabToken := "glpat-aBcDeFgHiJkLmNoPqRsTuVwXyZ"
@@ -40,7 +40,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
-				Metadata:   map[string]any{"preview": "AKIAIO..." + "PLE"},
+				Metadata:   map[string]any{"preview": "[redacted:aws-access-key]"},
 			},
 			{
 				RuleID:     "sensitive-data.connection-string",
@@ -50,7 +50,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceMedium,
 				Pillar:     finding.PillarSensitiveData,
-				Metadata:   map[string]any{"preview": "postgres://app:su..." + "ders"},
+				Metadata:   map[string]any{"preview": "[redacted:connection-string:postgres]"},
 			},
 			{
 				RuleID:     "sensitive-data.private-key",
@@ -60,7 +60,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
-				Metadata:   map[string]any{"preview": "-----B..." + "KEY-"},
+				Metadata:   map[string]any{"preview": "[redacted:private-key]"},
 			},
 			{
 				RuleID:     "sensitive-data.npm-token",
@@ -70,7 +70,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
-				Metadata:   map[string]any{"preview": "npm_00..." + "00ZZ"},
+				Metadata:   map[string]any{"preview": "[redacted:npm-token]"},
 			},
 			{
 				RuleID:     "sensitive-data.gitlab-token",
@@ -80,7 +80,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 				Severity:   finding.SeverityError,
 				Confidence: finding.ConfidenceHigh,
 				Pillar:     finding.PillarSensitiveData,
-				Metadata:   map[string]any{"preview": "glpat-..." + "VwXyZ"},
+				Metadata:   map[string]any{"preview": "[redacted:gitlab-token]"},
 			},
 		},
 		Definitions: defaultDefinitions(),
@@ -99,7 +99,13 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		{"markdown", func(buf *bytes.Buffer) error { return WriteMarkdown(buf, report) }},
 	}
 
-	leaks := []string{rawSecret, rawPassword, rawPrivateKey, rawNPMToken, rawGitLabToken}
+	leaks := []string{
+		rawSecret, rawSecret[4:10], rawSecret[len(rawSecret)-4:],
+		rawPassword, rawPassword[:6], rawPassword[len(rawPassword)-4:],
+		rawPrivateKey, rawPrivateKey[:6],
+		rawNPMToken, rawNPMToken[4:10], rawNPMToken[len(rawNPMToken)-4:],
+		rawGitLabToken, rawGitLabToken[6:12], rawGitLabToken[len(rawGitLabToken)-4:],
+	}
 
 	for _, format := range formats {
 		t.Run(format.name, func(t *testing.T) {

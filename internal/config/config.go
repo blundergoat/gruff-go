@@ -79,7 +79,8 @@ type PathsConfig struct {
 type AllowlistsConfig struct {
 	// AcceptedAbbreviations is the gruff-family alias folded into Config.AcceptedAbbreviations.
 	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
-	// SecretPreviews lists path patterns where the sensitive-data rules may emit the matched preview.
+	// SecretPreviews lists paths authorized for fixed sensitive-data category or
+	// connection-scheme markers. It never authorizes matched payload bytes.
 	SecretPreviews []string `json:"secretPreviews,omitempty"`
 }
 
@@ -99,7 +100,8 @@ type SelectionConfig struct {
 
 // SensitiveDataConfig stores sensitive-data rule preview exceptions.
 type SensitiveDataConfig struct {
-	// PreviewAllowlist lists path patterns where the sensitive-data rules may emit the matched secret preview.
+	// PreviewAllowlist is the legacy alias for paths authorized to receive fixed
+	// category or connection-scheme markers; empty and nonmatching lists fully mask.
 	PreviewAllowlist []string `json:"previewAllowlist,omitempty"`
 }
 

@@ -1,8 +1,10 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file covers test-file calibration for size-related rules.
+// Package rule tests size findings shown for Go test files.
+// Fixtures prove defaults soften test noise without overriding project choices.
+// Users therefore see the severity they configured when intent is explicit.
 package rule
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -16,6 +18,7 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long_test.go", Type: source.FileTypeGo},
 		LineCount: fileLengthThreshold + 1,
+		Source:    strings.Repeat("line\n", fileLengthThreshold+1),
 		Functions: []parser.Function{{
 			Name:    "TestLong",
 			Line:    1,
@@ -32,23 +35,9 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	for _, item := range findings {
 		byRule[item.RuleID] = item
 	}
-	assertAdvisoryTestSizeFinding(t, "size.file-length", byRule["size.file-length"])
+	// file-length now defaults to error, so test files soften it exactly like function-length.
+	assertCalibratedTestSizeFinding(t, "size.file-length", byRule["size.file-length"])
 	assertCalibratedTestSizeFinding(t, "size.function-length", byRule["size.function-length"])
-}
-
-// assertAdvisoryTestSizeFinding asserts a size rule already advisory by
-// default keeps high-confidence metadata on test files.
-func assertAdvisoryTestSizeFinding(t *testing.T, ruleID string, item finding.Finding) {
-	t.Helper()
-	if item.RuleID == "" {
-		t.Fatalf("missing %s finding", ruleID)
-	}
-	if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceHigh {
-		t.Fatalf("%s severity/confidence = %s/%s, want advisory/high", ruleID, item.Severity, item.Confidence)
-	}
-	if item.Metadata["testFile"] != true {
-		t.Fatalf("%s missing testFile metadata: %#v", ruleID, item.Metadata)
-	}
 }
 
 // TestSizeRuleConfiguredSeverityOverridesTestCalibration verifies configured severity wins over calibration.
@@ -62,6 +51,7 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long_test.go", Type: source.FileTypeGo},
 		LineCount: fileLengthThreshold + 1,
+		Source:    strings.Repeat("line\n", fileLengthThreshold+1),
 	}
 
 	findings := registry.Analyze([]parser.Unit{unit}, Context{})

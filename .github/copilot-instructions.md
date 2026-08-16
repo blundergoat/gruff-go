@@ -1,4 +1,4 @@
-# gruff-go - Go code-quality scanner (v0.2.0)
+# gruff-go - Go code-quality scanner (v0.5.0)
 
 `gruff-go` is a parser-only Go static analysis CLI. Its mission is to govern AI-generated code: used as a coding-agent hook, it forces output a human who didn't write it can verify, trust, and sign off on — legible, secure where review misses, and honestly tested (no low-signal test bloat). Judge every default, threshold, and rule against that goal; full framing in [`.goat-flow/architecture.md`](../.goat-flow/architecture.md) → Mission, recorded in [ADR-011](../.goat-flow/learning-loop/decisions/ADR-011-mission-ai-generated-code-verifiability.md). The Go application lives under `cmd/gruff-go` (entrypoint) and `internal/` (analysis pipeline, rule registry, scoring, report rendering, dashboard). GOAT Flow lives alongside for agent guardrails and project memory under `.goat-flow/` and `.github/`.
 
@@ -29,7 +29,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
 
 ## Commit Messages
-Conventional commits (`type(scope): subject` or `type: subject`); observed types `feat, chore, docs, refactor, fix`. Keep the subject concrete (name the behavior, file family, or command); add a body when the change spans more than one axis. Full reference: `docs/coding-standards/git-commit.md`.
+Conventional commits (`type(scope): subject` or `type: subject`); observed types `feat, chore, docs, refactor, fix`. Keep the subject concrete (name the behavior, file family, or command); add a body when the change spans more than one axis. Full reference: `docs/coding-standards/git-commit-message.md`.
 
 ## Key Resources
 - Learning loop: `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, `.goat-flow/learning-loop/decisions/`.
@@ -99,6 +99,6 @@ Every line in this hot-path file must be a behavioral rule, scope boundary, comm
 | User-facing docs | `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/{rules,configuration,output-formats,dashboard,ci-integration}.md` |
 | Release tooling | `scripts/bump-version.sh`, `scripts/test-performance.sh`, `Makefile` |
 | Project package metadata | `package.json`, `package-lock.json`, `go.mod` |
-| Commit guidance | `docs/coding-standards/git-commit.md` |
+| Commit guidance | `docs/coding-standards/git-commit-message.md` |
 | Peer instructions | `CLAUDE.md`, `AGENTS.md` |
 | Workspace notes | `.goat-flow/logs/sessions/`, `.goat-flow/plans/` |

@@ -1,5 +1,6 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file implements the acronym-case rule that enforces Go initialism casing.
+// Package rule defines the checks users see in gruff-go scan results.
+// This file keeps Go initialisms consistent in names such as userID and parseURL.
+// It reports hand-authored declaration drift while leaving generated names alone.
 package rule
 
 import (
@@ -53,7 +54,9 @@ type acronymIssue struct {
 	canonical string
 }
 
-// AcronymCaseRule flags mixed-case Go initialisms such as HttpClient.
+// AcronymCaseRule finds mixed-case initialisms in Go declarations.
+// Users enable it when a codebase wants names such as userID and parseURL.
+// Generated files and exact configured exceptions stay outside rename work.
 type AcronymCaseRule struct {
 	// Acronyms overrides the default initialism list (HTTP, URL, ID, ...) the rule enforces.
 	Acronyms []string
@@ -76,7 +79,11 @@ func (r AcronymCaseRule) Definition() Definition {
 		DefaultEnabled: false,
 		Tags:           []string{"go-style", "naming"},
 		Options:        map[string]any{"acronyms": defaultAcronymNames, "allow": []string{}},
-		Remediation:    "Use all-caps initialisms in exported names and consistently cased initialisms in unexported names.",
+		Remediation:    "Use Go's canonical all-caps initialism spelling within identifiers, such as userID and parseURL.",
+		FalsePositiveShapes: []FalsePositiveShape{{
+			Shape:      "A hand-written binding, framework hook, or external API may require a declaration whose name uses non-Go initialism casing.",
+			Mitigation: "Add the exact required identifier to rules.naming.acronym-case.options.allow, or keep generated bindings marked as generated code.",
+		}},
 	}
 }
 

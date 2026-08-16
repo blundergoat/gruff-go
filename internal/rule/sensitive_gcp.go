@@ -22,7 +22,7 @@ var serviceAccountTypePattern = regexp.MustCompile(`"type"\s*:\s*"service_accoun
 // It fires only when a file contains both a `"type": "service_account"` marker
 // and a PEM private-key header on code-bearing lines, so neither marker alone
 // triggers a finding. Coexists with sensitive-data.private-key per ADR-007.
-type GCPServiceAccountRule struct{}
+type GCPServiceAccountRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.gcp-service-account rule that flags files containing both `"type": "service_account"` and a PEM private-key header with critical severity and high confidence.
 func (GCPServiceAccountRule) Definition() Definition {
@@ -40,6 +40,11 @@ func (GCPServiceAccountRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits at most one finding when both the service-account type marker and a PEM private-key header appear on code-bearing lines in the same file.
-func (GCPServiceAccountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	return scanUnitForCoOccurrence(unit, serviceAccountTypePattern, privateKeyPattern, "GCP service-account JSON key detected")
+func (r GCPServiceAccountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	spec := coOccurrenceSecretSpec{
+		primary: serviceAccountTypePattern, secondary: privateKeyPattern,
+		message:         "GCP service-account JSON key detected",
+		primaryCategory: previewGCPServiceAccount, secondaryCategory: previewPrivateKey,
+	}
+	return scanUnitForCoOccurrence(unit, spec, r.previews)
 }

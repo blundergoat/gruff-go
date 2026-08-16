@@ -2,7 +2,7 @@
   "schemaVersion": "gruff.analysis.v2",
   "tool": {
     "name": "gruff-go",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "run": {
     "workingDirectory": "<WORKDIR>",
@@ -56,7 +56,7 @@
     "hiddenFindings": 0
   },
   "score": {
-    "composite": 92,
+    "composite": 99,
     "grade": "A",
     "pillars": {
       "complexity": 92

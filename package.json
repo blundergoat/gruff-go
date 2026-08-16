@@ -1,6 +1,6 @@
 {
   "name": "gruff-go",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Opinionated Go code-quality scanner that governs AI-generated code for human review - legible, secure, honestly tested (npm tooling metadata; the application is the Go binary under cmd/gruff-go).",
   "main": "index.js",
@@ -19,6 +19,6 @@
   },
   "homepage": "https://github.com/blundergoat/gruff-go#readme",
   "devDependencies": {
-    "@blundergoat/goat-flow": "^1.6.4"
+    "@blundergoat/goat-flow": "^1.15.1"
   }
 }

@@ -47,7 +47,7 @@ var piiExampleEmailLocals = []string{
 // phone numbers, and payment card numbers - embedded in source or text. It is the
 // PII half of the M30 PII/PHI split; government/health identifiers (SSN, MRN,
 // Medicare) belong to PHIPatternRule so an SSN is never counted by both.
-type PIIPatternRule struct{}
+type PIIPatternRule struct{ previews sensitivePreviewPolicy }
 
 // Definition declares the sensitive-data.pii-pattern rule. Opt-in and
 // warning/medium: emails and phone-shaped numbers are common in legitimate code
@@ -70,8 +70,8 @@ func (PIIPatternRule) Definition() Definition {
 
 // AnalyzeUnit scans code-bearing lines for email, phone, and payment-card shapes,
 // skipping documentation/placeholder addresses and card-shaped numbers that fail
-// Luhn, and emits a redacted preview for each real-looking hit.
-func (PIIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+// Luhn, and emits a policy-masked preview for each real-looking hit.
+func (r PIIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.Source == "" {
 		return nil
 	}
@@ -81,7 +81,7 @@ func (PIIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 		if !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
-		findings = append(findings, piiLineFindings(unit.File.Path, line, lineNumber+1)...)
+		findings = append(findings, piiLineFindings(unit.File.Path, line, lineNumber+1, r.previews)...)
 	}
 	return findings
 }
@@ -89,29 +89,29 @@ func (PIIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 // piiLineFindings returns the PII findings for a single line, one per category
 // that matches. Categories are checked independently so an email and a phone on
 // the same line both surface; each finding records its category and redacted
-// preview, never the raw value.
-func piiLineFindings(path, line string, lineNumber int) []finding.Finding {
+// preview marker, never the raw value.
+func piiLineFindings(path, line string, lineNumber int, previews sensitivePreviewPolicy) []finding.Finding {
 	out := []finding.Finding{}
 	if email := piiEmailPattern.FindString(line); email != "" && !isPlaceholderEmail(email) {
-		out = append(out, piiFinding(path, lineNumber, "email", email))
+		out = append(out, piiFinding(path, lineNumber, "email", email, previews))
 	}
 	if phone := piiPhonePattern.FindString(line); phone != "" {
-		out = append(out, piiFinding(path, lineNumber, "phone", strings.TrimSpace(phone)))
+		out = append(out, piiFinding(path, lineNumber, "phone", strings.TrimSpace(phone), previews))
 	}
 	if card := piiCardPattern.FindString(line); card != "" && isLuhnValid(card) {
-		out = append(out, piiFinding(path, lineNumber, "payment-card", card))
+		out = append(out, piiFinding(path, lineNumber, "payment-card", card, previews))
 	}
 	return out
 }
 
 // piiFinding builds one redacted PII finding tagged with its category.
-func piiFinding(path string, lineNumber int, category, raw string) finding.Finding {
+func piiFinding(path string, lineNumber int, category, raw string, previews sensitivePreviewPolicy) finding.Finding {
 	return finding.Finding{
 		Message:  category + " PII detected",
 		File:     path,
 		Location: &finding.Location{Line: lineNumber},
 		Metadata: map[string]any{
-			"preview":  redact(raw),
+			"preview":  previews.format(path, personalDataPreviewCategory(category), raw),
 			"category": category,
 		},
 	}

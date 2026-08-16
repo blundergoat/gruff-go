@@ -1,5 +1,6 @@
-// Package rule defines gruff-go's rule registry and analysers.
-// This file holds structural metric rules (parameter count, nesting depth, exported-symbol comments).
+// Package rule defines the checks users see in gruff-go scan results.
+// This file measures parameter count and nesting, then checks exported comments.
+// Each result points users from a structural symptom to a concrete code edit.
 package rule
 
 import (
@@ -18,18 +19,18 @@ const (
 	nestingDepthThreshold   = 5
 )
 
-// ParameterCountRule flags functions and methods whose parameter list exceeds the maximum.
+// ParameterCountRule finds functions whose input list exceeds the project limit.
+// Users see it when an API may be easier to call with options or smaller steps.
+// Method receivers are excluded because callers do not pass them explicitly.
 type ParameterCountRule struct {
 	// MaxParameters is the per-function parameter cap (excluding the receiver) before a finding is emitted.
 	MaxParameters int
 }
 
-// maxParameters returns the configured cap, falling back to
-// parameterCountThreshold when MaxParameters is the zero value. This treats
-// "unconfigured" (rule registered without YAML overrides) as "use the default"
-// rather than "disable the check" - otherwise a stock registry entry would
-// silently flag every multi-arg function as exceeding zero parameters.
+// maxParameters returns the configured UI threshold or the built-in default.
+// A zero value means “use the default,” not “flag every function with inputs.”
 func (r ParameterCountRule) maxParameters() int {
+	// An omitted or invalid limit means the user accepted the built-in default.
 	if r.MaxParameters <= 0 {
 		return parameterCountThreshold
 	}
@@ -38,7 +39,7 @@ func (r ParameterCountRule) maxParameters() int {
 
 // Definition declares the size.parameter-count rule with a default maximum of 8 non-receiver parameters and low severity.
 func (r ParameterCountRule) Definition() Definition {
-	max := r.maxParameters()
+	maximumParameters := r.maxParameters()
 	return Definition{
 		ID:             "size.parameter-count",
 		Title:          "Parameter count",
@@ -47,57 +48,67 @@ func (r ParameterCountRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
-		Thresholds:     map[string]float64{"maxParameters": float64(max)},
+		Thresholds:     map[string]float64{"maxParameters": float64(maximumParameters)},
 		Remediation:    "Group related parameters into a struct, accept an options type, or split the function.",
+		FalsePositiveShapes: []FalsePositiveShape{{
+			Shape:      "A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature the user cannot reshape.",
+			Mitigation: "Keep the required signature, then raise maxParameters or disable size.parameter-count in project configuration after review.",
+		}},
 	}
 }
 
 // AnalyzeUnit emits findings for every function whose parameter count exceeds the threshold.
 func (r ParameterCountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+	// A parse failure has no trustworthy signature to show the user.
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
 	}
-	max := r.maxParameters()
+	maximumParameters := r.maxParameters()
 	findings := []finding.Finding{}
+	// Each declaration can represent a separate API a caller must understand.
 	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Type == nil {
+		functionDeclaration, isFunction := decl.(*ast.FuncDecl)
+		// Types and variables have no callable parameter list to assess.
+		if !isFunction || functionDeclaration.Type == nil {
 			continue
 		}
-		count := paramCount(fn)
-		if count <= max {
+		parameterTotal := paramCount(functionDeclaration)
+		// Signatures within the configured limit stay out of the findings list.
+		if parameterTotal <= maximumParameters {
 			continue
 		}
-		start := unit.FileSet.Position(fn.Pos())
-		end := unit.FileSet.Position(fn.End())
+		start := unit.FileSet.Position(functionDeclaration.Pos())
+		end := unit.FileSet.Position(functionDeclaration.End())
 		findings = append(findings, finding.Finding{
-			Message:  fmt.Sprintf("function has %d parameters, above threshold %d", count, max),
+			Message:  fmt.Sprintf("function has %d parameters, above threshold %d", parameterTotal, maximumParameters),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
-			Symbol:   functionName(fn),
-			Metadata: map[string]any{"parameters": count, "threshold": max},
+			Symbol:   functionName(functionDeclaration),
+			Metadata: map[string]any{"parameters": parameterTotal, "threshold": maximumParameters},
 		})
 	}
 	return findings
 }
 
-// paramCount expands grouped-name fields like (a, b, c int) into three
-// parameters and counts an unnamed field (e.g. an interface signature's
-// `func(int, string)`) as one. The method receiver is naturally excluded
-// because it lives on fn.Recv, not fn.Type.Params.
+// paramCount expands grouped names and counts each unnamed input once.
+// It reads the Go AST, so nested function types cannot truncate the signature.
+// Receivers live outside Params and do not appear in the user-facing count.
 func paramCount(fn *ast.FuncDecl) int {
+	// A missing parameter list means callers provide no inputs.
 	if fn.Type == nil || fn.Type.Params == nil {
 		return 0
 	}
-	count := 0
+	parameterTotal := 0
+	// Grouped names still represent separate inputs in the user's signature.
 	for _, field := range fn.Type.Params.List {
+		// An unnamed type such as func(int) still consumes one argument.
 		if len(field.Names) == 0 {
-			count++
+			parameterTotal++
 			continue
 		}
-		count += len(field.Names)
+		parameterTotal += len(field.Names)
 	}
-	return count
+	return parameterTotal
 }
 
 // NestingDepthRule flags functions whose maximum control-flow nesting exceeds the threshold.
