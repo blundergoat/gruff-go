@@ -144,7 +144,10 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 	return out, index, nil
 }
 
-// parseYAMLList parses a sequence block of dash-prefixed scalar entries.
+// parseYAMLList parses a sequence block of dash-prefixed entries. An item is a
+// scalar unless its text opens a mapping, in which case the item and every
+// following deeper-indented line parse as one map - the shape
+// sensitiveExclusions needs (FAMILY-CONTRACT.md section 13a).
 func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) {
 	out := []any{}
 	for index < len(lines) {
@@ -156,10 +159,50 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 			return nil, index, fmt.Errorf("unexpected YAML list item at line %d", line.number)
 		}
 		valueText := strings.TrimSpace(strings.TrimPrefix(line.text, "- "))
-		out = append(out, parseYAMLScalar(valueText))
-		index++
+		if !yamlListItemOpensMap(valueText) {
+			out = append(out, parseYAMLScalar(valueText))
+			index++
+			continue
+		}
+		value, next, err := parseYAMLListItemMap(lines, index, indent, valueText)
+		if err != nil {
+			return nil, index, err
+		}
+		out = append(out, value)
+		index = next
 	}
 	return out, index, nil
+}
+
+// yamlListItemOpensMap reports whether a list item's text starts a mapping
+// rather than a scalar. A quoted item stays a scalar even when it contains a
+// colon, so the existing string lists keep their meaning.
+func yamlListItemOpensMap(text string) bool {
+	if strings.HasPrefix(text, "'") || strings.HasPrefix(text, "\"") {
+		return false
+	}
+	return strings.Contains(text, ": ") || strings.HasSuffix(text, ":")
+}
+
+// parseYAMLListItemMap parses one dash-introduced mapping item: its first
+// key/value plus every following line indented deeper than the dash. Returns
+// the map and the cursor positioned on the next list item.
+func parseYAMLListItemMap(lines []yamlLine, index int, indent int, firstText string) (map[string]any, int, error) {
+	itemIndent := indent + 2
+	item := []yamlLine{{number: lines[index].number, indent: itemIndent, text: firstText}}
+	next := index + 1
+	for next < len(lines) && lines[next].indent > indent {
+		item = append(item, lines[next])
+		next++
+	}
+	value, cursor, err := parseYAMLMap(item, 0, itemIndent)
+	if err != nil {
+		return nil, index, err
+	}
+	if cursor != len(item) {
+		return nil, index, fmt.Errorf("unexpected YAML indentation at line %d", item[cursor].number)
+	}
+	return value, next, nil
 }
 
 // parseYAMLScalar converts a raw token into a string, bool, number, or null.

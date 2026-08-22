@@ -5,7 +5,8 @@
 //
 // When RenderOptions.Existing is set, Render layers the project-specific values
 // from the previously-loaded config onto the new template: `paths.ignore`,
-// `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, and any
+// `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`,
+// `sensitiveExclusions`, and any
 // per-rule `enabled`/`severity`/`threshold`/`thresholds`/`options` overrides
 // for rules that are still in the registry. Rules that no longer exist are
 // dropped; rules that are new since the previous config land at registry
@@ -43,10 +44,34 @@ func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 
 	var buf bytes.Buffer
 	writeRenderHeader(&buf)
+	writeRenderDeepScanBudget(&buf, opts)
 	writeRenderMinimumSeverity(&buf, opts)
 	writeRenderScaffolds(&buf, opts)
 	writeRenderRules(&buf, sorted, opts)
 	return buf.Bytes()
+}
+
+// writeRenderDeepScanBudget publishes the paired degradation bounds and preserves prior tuning.
+func writeRenderDeepScanBudget(buf *bytes.Buffer, opts RenderOptions) {
+	enabled := true
+	maxLines := DefaultDeepScanMaxLines
+	maxBytes := DefaultDeepScanMaxBytes
+	if opts.Existing != nil {
+		if opts.Existing.DeepScanBudget.Enabled != nil {
+			enabled = *opts.Existing.DeepScanBudget.Enabled
+		}
+		if opts.Existing.DeepScanBudget.MaxLines != nil {
+			maxLines = *opts.Existing.DeepScanBudget.MaxLines
+		}
+		if opts.Existing.DeepScanBudget.MaxBytes != nil {
+			maxBytes = *opts.Existing.DeepScanBudget.MaxBytes
+		}
+	}
+	fmt.Fprintln(buf, "# Above either bound, retain text-level rules and omit AST-backed deep analysis.")
+	fmt.Fprintln(buf, "deepScanBudget:")
+	fmt.Fprintf(buf, "  enabled: %t\n", enabled)
+	fmt.Fprintf(buf, "  maxLines: %d\n", maxLines)
+	fmt.Fprintf(buf, "  maxBytes: %d\n\n", maxBytes)
 }
 
 // writeRenderMinimumSeverity emits the per-command exit-code threshold block
@@ -110,6 +135,8 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	writeRenderStringList(buf, "  secretPreviews", preservedSecretPreviews(opts))
 	fmt.Fprintln(buf)
 
+	writeRenderSensitiveExclusionsSection(buf, opts)
+
 	fmt.Fprintln(buf, "# Selection narrows the active rule set. Empty lists keep the default")
 	fmt.Fprintln(buf, "# selection (every rule below whose `enabled` is true).")
 	fmt.Fprintln(buf, "selection:")
@@ -118,6 +145,54 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "  pillars: []")
 	fmt.Fprintln(buf, "  excludePillars: []")
 	fmt.Fprintln(buf)
+}
+
+// writeRenderSensitiveExclusionsSection emits the sensitiveExclusions block with
+// the commented worked example a user needs to discover the section. Entries are
+// authored by hand on purpose: no reported marker, preview, or matched value is
+// ever converted into one (FAMILY-CONTRACT.md section 13a).
+func writeRenderSensitiveExclusionsSection(buf *bytes.Buffer, opts RenderOptions) {
+	fmt.Fprintln(buf, "# Sensitive-data exclusions. Each entry suppresses one sensitive-data rule in")
+	fmt.Fprintln(buf, "# one project-relative file and requires a written reason. A symbol narrows the")
+	fmt.Fprintln(buf, "# scope further. Message- and value-matching keys are rejected, and entries are")
+	fmt.Fprintln(buf, "# written by hand: no reported marker or preview is ever turned into one for you.")
+	fmt.Fprintln(buf, "# Every entry is counted in the report's suppressions array, zero matches included.")
+	fmt.Fprintln(buf, "#")
+	fmt.Fprintln(buf, "# sensitiveExclusions:")
+	fmt.Fprintln(buf, "#   - rule: sensitive-data.aws-access-key")
+	fmt.Fprintln(buf, "#     path: internal/rule/testdata/aws_sample.env")
+	fmt.Fprintln(buf, "#     symbol: Fixtures.AWSSample")
+	fmt.Fprintln(buf, "#     reason: Synthetic key used by the loader fixture; not a live credential.")
+	writeRenderSensitiveExclusions(buf, preservedSensitiveExclusions(opts))
+	fmt.Fprintln(buf)
+}
+
+// writeRenderSensitiveExclusions emits the section body: the inline empty list
+// for a project with no exclusions, otherwise one mapping item per preserved
+// entry in the order the user wrote them.
+func writeRenderSensitiveExclusions(buf *bytes.Buffer, entries []SensitiveExclusion) {
+	if len(entries) == 0 {
+		fmt.Fprintln(buf, "sensitiveExclusions: []")
+		return
+	}
+	fmt.Fprintln(buf, "sensitiveExclusions:")
+	for _, entry := range entries {
+		fmt.Fprintf(buf, "  - rule: %s\n", yamlQuoteIfNeeded(entry.Rule))
+		fmt.Fprintf(buf, "    path: %s\n", yamlQuoteIfNeeded(entry.Path))
+		if entry.Symbol != "" {
+			fmt.Fprintf(buf, "    symbol: %s\n", yamlQuoteIfNeeded(entry.Symbol))
+		}
+		fmt.Fprintf(buf, "    reason: %s\n", yamlQuoteIfNeeded(entry.Reason))
+	}
+}
+
+// preservedSensitiveExclusions returns the existing config's sensitiveExclusions
+// so `gruff-go init --force` regenerates without dropping accepted suppressions.
+func preservedSensitiveExclusions(opts RenderOptions) []SensitiveExclusion {
+	if opts.Existing == nil {
+		return nil
+	}
+	return opts.Existing.SensitiveExclusions
 }
 
 // preservedIgnorePaths returns the existing config's paths.ignore (canonically

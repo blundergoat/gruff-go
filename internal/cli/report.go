@@ -36,6 +36,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
@@ -60,20 +61,27 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	deepScanBudget, err := resolveDeepScanBudget(*deepScanBudgetRaw, cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	displayFilter, err := parseDisplayFilter(*includeRules, *excludeRules, *includePillars, *excludePillars, registry.Definitions())
 	if err != nil {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          flags.Args(),
-		Format:         *format,
-		FailOn:         failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: *includeIgnored,
-		BaselinePath:   *baselinePath,
-		DiffBase:       *diffBase,
+		Paths:               flags.Args(),
+		Format:              *format,
+		FailOn:              failOn,
+		Registry:            registry,
+		IgnorePaths:         ignorePaths,
+		SensitiveExclusions: sensitiveExclusionsFor(cfg),
+		DeepScanBudget:      deepScanBudget,
+		IncludeIgnored:      *includeIgnored,
+		BaselinePath:        *baselinePath,
+		DiffBase:            *diffBase,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -81,19 +89,22 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	}
 	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)
 
-	writer, closer, err := openReportWriter(stdout, *output)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	defer closer()
-
 	htmlOpts := report.HTMLOptions{EditorLink: *editorLink, Interactive: *reportInteractive}
-	if err := writeReport(writer, analysisReport, *format, htmlOpts); err != nil {
+	if err := emitReport(stdout, *output, analysisReport, *format, htmlOpts); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	return analysisReport.Summary.ExitCode
+}
+
+// emitReport opens the requested destination and writes one complete report.
+func emitReport(stdout io.Writer, path string, analysisReport analysis.Report, format string, htmlOpts report.HTMLOptions) error {
+	writer, closer, err := openReportWriter(stdout, path)
+	if err != nil {
+		return err
+	}
+	defer closer()
+	return writeReport(writer, analysisReport, format, htmlOpts)
 }
 
 // openReportWriter selects stdout or a created file as the report writer.

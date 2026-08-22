@@ -49,8 +49,9 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 				SemanticVersion: report.Tool.Version,
 				Rules:           sarifRules(report.Rules),
 			}},
-			Results:    sarifResults(report.Findings, report.Rules, report.Baseline.Applied),
-			Properties: sarifRunPropertiesFromReport(report),
+			Invocations: sarifInvocations(report.Diagnostics),
+			Results:     sarifResults(report.Findings, report.Rules, report.Baseline.Applied),
+			Properties:  sarifRunPropertiesFromReport(report),
 		}},
 	}
 	return WriteJSON(writer, payload)
@@ -58,6 +59,23 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 
 // WriteGitHub writes each finding as a GitHub workflow annotation command on its own line.
 func WriteGitHub(writer io.Writer, report analysis.Report) error {
+	for _, diagnostic := range report.Diagnostics {
+		level := "error"
+		if diagnostic.InvalidatesRun != nil && !*diagnostic.InvalidatesRun {
+			level = "notice"
+		}
+		location := ""
+		if diagnostic.File != "" {
+			line := 1
+			if diagnostic.Location != nil && diagnostic.Location.Line > 0 {
+				line = diagnostic.Location.Line
+			}
+			location = fmt.Sprintf("file=%s,line=%d,", escapeGitHubProperty(diagnostic.File), line)
+		}
+		if _, err := fmt.Fprintf(writer, "::%s %stitle=%s::%s\n", level, location, escapeGitHubProperty(diagnosticLabel(diagnostic)), escapeGitHubMessage(diagnostic.Message)); err != nil {
+			return err
+		}
+	}
 	for _, item := range report.Findings {
 		level := githubLevel(item.Severity)
 		location := githubLocation(item)
@@ -84,10 +102,84 @@ type sarifLog struct {
 type sarifRun struct {
 	// Tool describes the analyser tool that produced the run.
 	Tool sarifTool `json:"tool"`
+	// Invocations carries runtime diagnostics that are not rule findings.
+	Invocations []sarifInvocation `json:"invocations,omitempty"`
 	// Results is the list of per-finding SARIF results emitted by the run.
 	Results []sarifResult `json:"results"`
 	// Properties carries gruff-specific run-level metadata.
 	Properties sarifRunProperties `json:"properties"`
+}
+
+// sarifInvocation records runtime notifications and whether fatal diagnostics occurred.
+type sarifInvocation struct {
+	ExecutionSuccessful        bool                `json:"executionSuccessful"`
+	ToolExecutionNotifications []sarifNotification `json:"toolExecutionNotifications"`
+}
+
+// sarifNotification is one diagnostic emitted during the tool invocation.
+type sarifNotification struct {
+	Descriptor map[string]string `json:"descriptor"`
+	Level      string            `json:"level"`
+	Message    sarifText         `json:"message"`
+	Locations  []sarifLocation   `json:"locations,omitempty"`
+	Properties map[string]any    `json:"properties"`
+}
+
+// diagnosticLabel prefers the stable type while retaining legacy stage labels.
+func diagnosticLabel(diagnostic analysis.Diagnostic) string {
+	if diagnostic.DiagnosticType != "" {
+		return diagnostic.DiagnosticType
+	}
+	return diagnostic.Stage
+}
+
+// hasInvalidatingDiagnostic reports whether any diagnostic retains legacy fatal semantics.
+func hasInvalidatingDiagnostic(diagnostics []analysis.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
+			return true
+		}
+	}
+	return false
+}
+
+// sarifInvocations keeps ordinary diagnostic-free SARIF byte-stable while surfacing runtime notes.
+func sarifInvocations(diagnostics []analysis.Diagnostic) []sarifInvocation {
+	if len(diagnostics) == 0 {
+		return nil
+	}
+	return []sarifInvocation{{
+		ExecutionSuccessful:        !hasInvalidatingDiagnostic(diagnostics),
+		ToolExecutionNotifications: sarifDiagnostics(diagnostics),
+	}}
+}
+
+// sarifDiagnostics projects runtime diagnostics into invocation notifications.
+func sarifDiagnostics(diagnostics []analysis.Diagnostic) []sarifNotification {
+	out := make([]sarifNotification, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		level := "error"
+		invalidatesRun := true
+		if diagnostic.InvalidatesRun != nil && !*diagnostic.InvalidatesRun {
+			level = "note"
+			invalidatesRun = false
+		}
+		notification := sarifNotification{
+			Descriptor: map[string]string{"id": diagnosticLabel(diagnostic)},
+			Level:      level,
+			Message:    sarifText{Text: diagnostic.Message},
+			Properties: map[string]any{"invalidatesRun": invalidatesRun},
+		}
+		if diagnostic.File != "" {
+			var region *sarifRegion
+			if diagnostic.Location != nil && diagnostic.Location.Line > 0 {
+				region = &sarifRegion{StartLine: diagnostic.Location.Line, StartColumn: diagnostic.Location.Column}
+			}
+			notification.Locations = []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{ArtifactLocation: sarifArtifactLocation{URI: sarifURI(diagnostic.File)}, Region: region}}}
+		}
+		out = append(out, notification)
+	}
+	return out
 }
 
 // sarifTool describes the analyser tool block in a SARIF run.

@@ -19,6 +19,8 @@ const SchemaVersion = "gruff.analysis.v2"
 // Diagnostic describes an operationally fatal, non-finding failure encountered
 // while building a report.
 type Diagnostic struct {
+	// DiagnosticType is the stable machine identifier when the message has a named contract.
+	DiagnosticType string `json:"diagnosticType,omitempty"`
 	// Stage names the pipeline phase (discovery, parse, baseline, diff) that emitted this diagnostic.
 	Stage string `json:"stage"`
 	// Message is the human-readable description of the problem.
@@ -30,6 +32,8 @@ type Diagnostic struct {
 	// Severity is descriptive and currently always error; diagnostic presence,
 	// rather than this value, resolves the run to exit code 2.
 	Severity finding.Severity `json:"severity"`
+	// InvalidatesRun is false only for visible degradation diagnostics; nil preserves legacy fatal semantics.
+	InvalidatesRun *bool `json:"invalidatesRun,omitempty"`
 }
 
 // Report is the full structured result of one analysis run.
@@ -50,6 +54,9 @@ type Report struct {
 	SuppressedCount *int `json:"suppressedCount,omitempty"`
 	// DisplayFilter records presentation-only filters that hid findings.
 	DisplayFilter DisplayFilterSummary `json:"displayFilter"`
+	// Suppressions is the sensitive-exclusion audit: one row per configured
+	// entry, including entries that matched nothing.
+	Suppressions []SuppressionSummary `json:"suppressions"`
 	// Score holds the grade and pillar breakdown produced by the scoring engine.
 	Score scoring.Score `json:"score"`
 	// Rules lists every rule definition active for the run.
@@ -237,6 +244,8 @@ type ReportInput struct {
 	Diff DiffSummary
 	// SuppressedCount is present when changed-region filtering ran.
 	SuppressedCount *int
+	// Suppressions is the audit row set produced by ApplySensitiveExclusions.
+	Suppressions []SuppressionSummary
 }
 
 // NewReport assembles a deterministic report from analysis inputs.
@@ -277,6 +286,7 @@ func NewReport(input ReportInput) Report {
 		Baseline:        input.Baseline,
 		Diff:            input.Diff,
 		SuppressedCount: input.SuppressedCount,
+		Suppressions:    nonNilSuppressions(input.Suppressions),
 		Score:           scoring.Calculate(findings, ruleBackedPillars(definitions)...),
 		Rules:           definitions,
 		Paths: Paths{
@@ -290,6 +300,15 @@ func NewReport(input ReportInput) Report {
 	}
 	SortReport(&report)
 	return report
+}
+
+// nonNilSuppressions returns an empty audit slice instead of nil, so the report's
+// suppressions key always serialises as an array for machine consumers.
+func nonNilSuppressions(summaries []SuppressionSummary) []SuppressionSummary {
+	if summaries == nil {
+		return []SuppressionSummary{}
+	}
+	return summaries
 }
 
 // ruleBackedPillars returns each primary area represented in the rule catalogue.
@@ -352,8 +371,10 @@ func nonNilDefinitions(values []rule.Definition) []rule.Definition {
 // ResolveExitCode returns the CLI exit code implied by diagnostics and findings.
 // The None sentinel disables only the finding gate; any diagnostic still exits 2.
 func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failOn finding.FailThreshold) int {
-	if len(diagnostics) > 0 {
-		return 2
+	for _, diagnostic := range diagnostics {
+		if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
+			return 2
+		}
 	}
 	for _, item := range findings {
 		if failOn.IsTriggeredBy(item.Severity) {

@@ -1,0 +1,297 @@
+{
+  "corpora": {
+    "large": {
+      "median_ms": 551.73014402
+    },
+    "medium": {
+      "median_ms": 65.66933194
+    },
+    "self": {
+      "median_ms": 281.45324556
+    }
+  },
+  "createdAt": "2026-08-22T05:40:25.074035+00:00",
+  "host": {
+    "cpu": "Intel(R) Core(TM) Ultra 9 275HX",
+    "go": "go version go1.25.13 linux/amd64",
+    "platform": "linux-x86_64",
+    "uname": "Linux 6.6.87.2-microsoft-standard-WSL2 x86_64"
+  },
+  "rules": {
+    "complexity.cognitive": {
+      "median_ms": 20.4966243
+    },
+    "complexity.cyclomatic": {
+      "median_ms": 21.580883260000004
+    },
+    "complexity.nesting-depth": {
+      "median_ms": 20.86440318
+    },
+    "dead-code.empty-block": {
+      "median_ms": 20.810496620000002
+    },
+    "dead-code.unreachable-code": {
+      "median_ms": 21.22850154
+    },
+    "dead-code.unused-private-const": {
+      "median_ms": 23.585968400000006
+    },
+    "dead-code.unused-private-function": {
+      "median_ms": 23.005046400000005
+    },
+    "dead-code.unused-private-type": {
+      "median_ms": 23.82854992
+    },
+    "dead-code.unused-private-var": {
+      "median_ms": 23.551163860000003
+    },
+    "dependency.go-mod-local-replace": {
+      "median_ms": 20.68141586
+    },
+    "dependency.go-mod-remote-replace": {
+      "median_ms": 21.289573840000003
+    },
+    "design.hotspot-file": {
+      "median_ms": 20.70079636
+    },
+    "docs.comment-rubric": {
+      "median_ms": 20.58183908
+    },
+    "docs.config-field-comment": {
+      "median_ms": 20.42917546
+    },
+    "docs.exported-symbol-comment": {
+      "median_ms": 22.379369739999998
+    },
+    "docs.package-comment": {
+      "median_ms": 21.012805800000002
+    },
+    "docs.suppression-without-rationale": {
+      "median_ms": 22.21674214
+    },
+    "maintainability.context-todo-production": {
+      "median_ms": 21.16049354
+    },
+    "maintainability.defer-in-loop": {
+      "median_ms": 22.03392762
+    },
+    "maintainability.ignored-error": {
+      "median_ms": 21.07405788
+    },
+    "maintainability.log-fatal-library": {
+      "median_ms": 22.31037916
+    },
+    "maintainability.loop-variable-address": {
+      "median_ms": 27.687301740000002
+    },
+    "maintainability.production-panic": {
+      "median_ms": 21.417433120000002
+    },
+    "modernisation.ioutil-deprecated": {
+      "median_ms": 21.18732582
+    },
+    "naming.acronym-case": {
+      "median_ms": 24.833414360000003
+    },
+    "naming.contextual-generic": {
+      "median_ms": 24.28290244
+    },
+    "naming.get-prefix": {
+      "median_ms": 22.264756600000002
+    },
+    "naming.identifier-quality": {
+      "median_ms": 22.112163540000005
+    },
+    "naming.misspelling": {
+      "median_ms": 22.20044266
+    },
+    "naming.negated-boolean": {
+      "median_ms": 21.089242360000004
+    },
+    "naming.package-stutter": {
+      "median_ms": 20.60545726
+    },
+    "naming.package-underscore": {
+      "median_ms": 20.83445368
+    },
+    "naming.receiver-consistency": {
+      "median_ms": 21.976706640000003
+    },
+    "security.archive-path-traversal": {
+      "median_ms": 21.30749046
+    },
+    "security.github-actions-broad-permissions": {
+      "median_ms": 20.502339200000005
+    },
+    "security.github-actions-pull-request-target": {
+      "median_ms": 20.819401540000005
+    },
+    "security.github-actions-remote-shell": {
+      "median_ms": 20.247848440000006
+    },
+    "security.github-actions-secrets-in-pr": {
+      "median_ms": 20.7910343
+    },
+    "security.github-actions-unpinned-action": {
+      "median_ms": 20.37222586
+    },
+    "security.http-client-no-timeout": {
+      "median_ms": 21.41141834
+    },
+    "security.http-server-no-timeout": {
+      "median_ms": 21.882835220000004
+    },
+    "security.insecure-random-secret": {
+      "median_ms": 21.25946542
+    },
+    "security.open-redirect-candidate": {
+      "median_ms": 21.39651914
+    },
+    "security.path-traversal-file-access": {
+      "median_ms": 20.645836
+    },
+    "security.permissive-file-mode": {
+      "median_ms": 21.87776502
+    },
+    "security.request-body-without-limit": {
+      "median_ms": 21.2486611
+    },
+    "security.request-controlled-url": {
+      "median_ms": 21.703523900000004
+    },
+    "security.sensitive-data-logging": {
+      "median_ms": 21.970308040000003
+    },
+    "security.shell-command": {
+      "median_ms": 21.423408920000004
+    },
+    "security.sql-string-query": {
+      "median_ms": 22.37660732
+    },
+    "security.template-injection-xss": {
+      "median_ms": 20.877757660000004
+    },
+    "security.tls-insecure-config": {
+      "median_ms": 21.40049672
+    },
+    "security.unsafe-deserialization": {
+      "median_ms": 21.16511222
+    },
+    "security.weak-crypto": {
+      "median_ms": 20.99821618
+    },
+    "security.xxe-candidate": {
+      "median_ms": 20.604129840000002
+    },
+    "sensitive-data.anthropic-api-key": {
+      "median_ms": 22.24053438
+    },
+    "sensitive-data.aws-access-key": {
+      "median_ms": 22.212175020000004
+    },
+    "sensitive-data.connection-string": {
+      "median_ms": 22.88174808
+    },
+    "sensitive-data.gcp-service-account": {
+      "median_ms": 22.088124920000002
+    },
+    "sensitive-data.github-token": {
+      "median_ms": 21.5017774
+    },
+    "sensitive-data.gitlab-token": {
+      "median_ms": 22.539194759999997
+    },
+    "sensitive-data.google-api-key": {
+      "median_ms": 22.507080600000002
+    },
+    "sensitive-data.high-entropy-string": {
+      "median_ms": 22.78145644
+    },
+    "sensitive-data.jwt-token": {
+      "median_ms": 21.774511240000002
+    },
+    "sensitive-data.npm-token": {
+      "median_ms": 22.404239640000004
+    },
+    "sensitive-data.phi-pattern": {
+      "median_ms": 23.455168060000002
+    },
+    "sensitive-data.pii-pattern": {
+      "median_ms": 23.58677828
+    },
+    "sensitive-data.private-key": {
+      "median_ms": 22.824061040000004
+    },
+    "sensitive-data.secret-pattern": {
+      "median_ms": 22.843961760000003
+    },
+    "sensitive-data.slack-token": {
+      "median_ms": 22.18135046
+    },
+    "sensitive-data.stripe-key": {
+      "median_ms": 22.53295448
+    },
+    "size.file-length": {
+      "median_ms": 23.14037448
+    },
+    "size.function-length": {
+      "median_ms": 26.276315500000003
+    },
+    "size.parameter-count": {
+      "median_ms": 20.85151386
+    },
+    "test-quality.empty-test": {
+      "median_ms": 21.334987260000002
+    },
+    "test-quality.fatal-in-goroutine": {
+      "median_ms": 20.881971540000002
+    },
+    "test-quality.helper-missing-t-helper": {
+      "median_ms": 21.2425031
+    },
+    "test-quality.no-failure-path": {
+      "median_ms": 20.707388240000004
+    },
+    "test-quality.parallel-range-capture": {
+      "median_ms": 20.69684702
+    },
+    "test-quality.skipped-test": {
+      "median_ms": 20.64836812
+    },
+    "test-quality.sleep-in-test": {
+      "median_ms": 21.185775640000003
+    },
+    "test-quality.static-analysis-redundant-test": {
+      "median_ms": 21.451165460000002
+    },
+    "test-quality.tempdir-misuse": {
+      "median_ms": 20.93180664
+    }
+  },
+  "runner": {
+    "corpusSeed": 20260517,
+    "hyperfineVersion": "hyperfine 1.20.0",
+    "minRuns": 5,
+    "warmup": 1
+  },
+  "schemaVersion": "gruff-perf.v1",
+  "source": {
+    "artifact": {
+      "kind": "fresh-binary",
+      "sha256": "d0820e6cf9a7a73dba5b671d8a78ec3a48a69be059bc009dda1d70e94a5f90f0"
+    },
+    "gitCommit": "5900e2bb5ee60847e417a50cef16a68802c50bb0",
+    "gitDirty": true,
+    "harnessSha256": "617f74856ceee649a7ad40a5314c3c095cf9d2293d5d7e43460594fa11c4c8d3",
+    "runtimeSource": {
+      "digest": "63e3c4dfc4a713e819b7e58b0d989df9ffe0cbfeefd92b992449a4788f76c0d9",
+      "fileCount": 271,
+      "includedPaths": [
+        "cmd/gruff-go",
+        "internal",
+        "go.mod"
+      ]
+    },
+    "toolVersion": "gruff-go 0.5.0"
+  }
+}

@@ -93,6 +93,9 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if _, err := fmt.Fprint(writer, header); err != nil {
 		return err
 	}
+	if err := writeTextDiagnostics(writer, report.Diagnostics); err != nil {
+		return err
+	}
 	if gitignored := countGitignored(report.Paths.Skipped); gitignored > 0 {
 		if _, err := fmt.Fprintf(writer, "  ignored by .gitignore: %d\n", gitignored); err != nil {
 			return err
@@ -119,6 +122,15 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 		return err
 	}
 	if err := writeTopOffenders(writer, score.TopOffender, top); err != nil {
+		return err
+	}
+	// summary applies sensitive exclusions, so it owes the same audit line
+	// analyse prints: a surface that filters may never filter in silence
+	// (FAMILY-CONTRACT.md section 13a, "Where the audit must appear"). The
+	// shared writeTextSuppressions keeps the wording identical across the two
+	// surfaces, and it lands below the canonical Composite/Findings block as a
+	// permitted extension line (section 1).
+	if err := writeTextSuppressions(writer, report.Suppressions); err != nil {
 		return err
 	}
 	if err := writeSummaryBaseline(writer, report.Baseline); err != nil {
@@ -190,11 +202,13 @@ func writeSummaryBaseline(writer io.Writer, summary analysis.BaselineSummary) er
 // use `analyse --format=json` or `analyse --format=summary-json`.
 func WriteSummaryV01JSON(writer io.Writer, report analysis.Report) error {
 	payload := struct {
-		SchemaVersion string             `json:"schemaVersion"`
-		Pillars       []PillarSummaryRow `json:"pillars"`
+		SchemaVersion string                `json:"schemaVersion"`
+		Pillars       []PillarSummaryRow    `json:"pillars"`
+		Diagnostics   []analysis.Diagnostic `json:"diagnostics,omitempty"`
 	}{
 		SchemaVersion: SummarySchemaVersion,
 		Pillars:       BuildPillarSummaryRows(report),
+		Diagnostics:   report.Diagnostics,
 	}
 	return WriteJSON(writer, payload)
 }

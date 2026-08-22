@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/baseline"
+	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
 	"github.com/blundergoat/gruff-go/internal/diff"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -35,6 +36,12 @@ type Options struct {
 	Registry rule.Registry
 	// IgnorePaths lists path patterns suppressed from discovery, merged on top of gitignore handling.
 	IgnorePaths []string
+	// SensitiveExclusions carries the project's validated sensitiveExclusions
+	// entries; each removes the sensitive-data findings its scope claims and is
+	// counted into the report's suppression audit.
+	SensitiveExclusions []SensitiveExclusion
+	// DeepScanBudget bounds AST-backed analysis after source extension classification.
+	DeepScanBudget DeepScanBudget
 	// IncludeIgnored disables gitignore and metadata directory pruning when true.
 	IncludeIgnored bool
 	// ReportAllSkippedInputs reports explicit input paths that are all skipped as
@@ -55,6 +62,14 @@ type Options struct {
 	// BaselineShow renders the unchanged/resolved baseline detail arrays and the
 	// human-readable baseline-status section; counts are reported regardless.
 	BaselineShow bool
+}
+
+// DeepScanBudget is the effective paired limit after defaults, config, and CLI precedence.
+type DeepScanBudget struct {
+	Enabled  bool
+	MaxLines int
+	MaxBytes int
+	Override string
 }
 
 // Analyze runs discovery, parsing, and rules against the configured root.
@@ -100,14 +115,14 @@ func Analyze(opts Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	units, parseDiagnostics := parser.Parse(discovery.Files)
+	units, parseDiagnostics := parser.ParseWithBudget(discovery.Files, parserBudget(opts.DeepScanBudget))
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
 	projectUnits := units
 	if !sameSourceFileSet(discovery.Files, projectFiles) {
 		var projectParseDiagnostics []parser.Diagnostic
-		projectUnits, projectParseDiagnostics = parser.Parse(projectFiles)
+		projectUnits, projectParseDiagnostics = parser.ParseWithBudget(projectFiles, parserBudget(opts.DeepScanBudget))
 		// A sibling pulled in only for package context can strip evidence a
 		// project rule depends on (an unparsed caller makes a used symbol look
 		// dead), so surface its parse/read failures rather than letting them
@@ -120,6 +135,9 @@ func Analyze(opts Options) (Report, error) {
 	registry := opts.Registry
 	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
 	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
+	// Excluded before baseline and diff so a suppressed finding is absent from
+	// scoring, exit codes, and baseline classification alike.
+	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
@@ -136,6 +154,7 @@ func Analyze(opts Options) (Report, error) {
 		Format:          opts.Format,
 		FailOn:          opts.FailOn,
 		IncludeIgnored:  opts.IncludeIgnored,
+		Suppressions:    suppressions,
 		Scanned:         scannedPaths(discovery.Files),
 		Skipped:         skippedPaths(discovery.Skipped),
 		Missing:         discovery.Missing,
@@ -180,7 +199,25 @@ func normalizeOptions(opts Options) Options {
 	if opts.ChangedScope == "" {
 		opts.ChangedScope = "symbol"
 	}
+	if opts.DeepScanBudget.Override == "" {
+		opts.DeepScanBudget = DeepScanBudget{
+			Enabled:  true,
+			MaxLines: cfgpkg.DefaultDeepScanMaxLines,
+			MaxBytes: cfgpkg.DefaultDeepScanMaxBytes,
+			Override: "default",
+		}
+	}
 	return opts
+}
+
+// parserBudget projects the effective analysis option into the parser package's narrow contract.
+func parserBudget(budget DeepScanBudget) parser.DeepScanBudget {
+	return parser.DeepScanBudget{
+		Enabled:  budget.Enabled,
+		MaxLines: budget.MaxLines,
+		MaxBytes: budget.MaxBytes,
+		Override: budget.Override,
+	}
 }
 
 // diagnosticsFromDiscovery converts missing paths into discovery diagnostics.
@@ -202,13 +239,24 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 // descriptive error severity.
 func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	diagnostics := []Diagnostic{}
-	for _, item := range parseDiagnostics {
+	for _, parseDiagnostic := range parseDiagnostics {
+		stage := "parse"
+		severity := finding.SeverityError
+		var invalidatesRun *bool
+		if parseDiagnostic.NonFatal {
+			stage = "analysis"
+			severity = finding.SeverityAdvisory
+			value := false
+			invalidatesRun = &value
+		}
 		diagnostics = append(diagnostics, Diagnostic{
-			Stage:    "parse",
-			Message:  item.Message,
-			File:     item.File,
-			Location: parserLocation(item),
-			Severity: finding.SeverityError,
+			DiagnosticType: parseDiagnostic.Type,
+			Stage:          stage,
+			Message:        parseDiagnostic.Message,
+			File:           parseDiagnostic.File,
+			Location:       parserLocation(parseDiagnostic),
+			Severity:       severity,
+			InvalidatesRun: invalidatesRun,
 		})
 	}
 	return diagnostics

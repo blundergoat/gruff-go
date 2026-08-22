@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,6 +117,7 @@ type scanRunOptions struct {
 	includeIgnored    bool
 	diffBase          string
 	reportInteractive bool
+	deepScanBudget    string
 }
 
 // buildScanOptions merges dashboard defaults with form state into runScan inputs.
@@ -172,6 +174,7 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 		includeIgnored:    includeIgnored,
 		diffBase:          diffBase,
 		reportInteractive: state.ReportInteractive == "1" || opts.ReportInteractive,
+		deepScanBudget:    opts.DeepScanBudget,
 	}
 }
 
@@ -181,21 +184,23 @@ func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, err
 	if err != nil {
 		return analysis.Report{}, err
 	}
-	registry, ignorePaths, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig)
+	registry, ignorePaths, sensitiveExclusions, deepScanBudget, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig, scanOpts.deepScanBudget)
 	if err != nil {
 		return analysis.Report{}, fmt.Errorf("config: %w", err)
 	}
 	return analysis.Analyze(analysis.Options{
-		Context:        ctx,
-		Root:           root,
-		Paths:          scanOpts.paths,
-		Format:         "html",
-		FailOn:         scanOpts.failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		BaselinePath:   scanOpts.baselinePath,
-		DiffBase:       scanOpts.diffBase,
-		IncludeIgnored: scanOpts.includeIgnored,
+		Context:             ctx,
+		Root:                root,
+		Paths:               scanOpts.paths,
+		Format:              "html",
+		FailOn:              scanOpts.failOn,
+		Registry:            registry,
+		IgnorePaths:         ignorePaths,
+		SensitiveExclusions: sensitiveExclusions,
+		DeepScanBudget:      deepScanBudget,
+		BaselinePath:        scanOpts.baselinePath,
+		DiffBase:            scanOpts.diffBase,
+		IncludeIgnored:      scanOpts.includeIgnored,
 	})
 }
 
@@ -207,21 +212,74 @@ func dashboardRoot(root string) (string, error) {
 	return filepath.Abs(root)
 }
 
-// dashboardRegistry loads project config and returns the configured rule registry.
-func dashboardRegistry(root, configPath string, noConfig bool) (rule.Registry, []string, error) {
+// dashboardRegistry loads project config and returns the configured rule
+// registry, the discovery ignore patterns, and the sensitive exclusions the
+// scan must honour.
+func dashboardRegistry(root, configPath string, noConfig bool, override string) (rule.Registry, []string, []analysis.SensitiveExclusion, analysis.DeepScanBudget, error) {
 	defaults := rule.Defaults()
 	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, nil, analysis.DeepScanBudget{}, err
+	}
+	deepScanBudget, err := dashboardDeepScanBudget(loaded.Config, override)
+	if err != nil {
+		return rule.Registry{}, nil, nil, analysis.DeepScanBudget{}, err
 	}
 	if loaded.Path == "" {
-		return defaults, nil, nil
+		return defaults, nil, nil, deepScanBudget, nil
 	}
 	registry, err := rule.DefaultsConfigured(loaded.Config.RuleOptions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, nil, nil, analysis.DeepScanBudget{}, err
 	}
-	return registry, loaded.Config.IgnorePaths, nil
+	return registry, loaded.Config.IgnorePaths, dashboardSensitiveExclusions(loaded.Config), deepScanBudget, nil
+}
+
+// dashboardDeepScanBudget mirrors CLI-over-config precedence for dashboard requests.
+func dashboardDeepScanBudget(cfg cfgpkg.Config, override string) (analysis.DeepScanBudget, error) {
+	budget := analysis.DeepScanBudget{Enabled: true, MaxLines: cfgpkg.DefaultDeepScanMaxLines, MaxBytes: cfgpkg.DefaultDeepScanMaxBytes, Override: "default"}
+	if cfg.DeepScanBudget.Enabled != nil || cfg.DeepScanBudget.MaxLines != nil || cfg.DeepScanBudget.MaxBytes != nil {
+		budget.Override = "config"
+		if cfg.DeepScanBudget.Enabled != nil {
+			budget.Enabled = *cfg.DeepScanBudget.Enabled
+		}
+		if cfg.DeepScanBudget.MaxLines != nil {
+			budget.MaxLines = *cfg.DeepScanBudget.MaxLines
+		}
+		if cfg.DeepScanBudget.MaxBytes != nil {
+			budget.MaxBytes = *cfg.DeepScanBudget.MaxBytes
+		}
+	}
+	if override == "" {
+		return budget, nil
+	}
+	if override == "off" {
+		budget.Enabled = false
+		budget.Override = "cli"
+		return budget, nil
+	}
+	linesRaw, bytesRaw, ok := strings.Cut(override, ":")
+	maxLines, linesErr := strconv.Atoi(linesRaw)
+	maxBytes, bytesErr := strconv.Atoi(bytesRaw)
+	if !ok || strings.Contains(bytesRaw, ":") || linesErr != nil || bytesErr != nil || maxLines <= 0 || maxBytes <= 0 {
+		return analysis.DeepScanBudget{}, fmt.Errorf("--deep-scan-budget must be two positive integers as LINES:BYTES, or off")
+	}
+	return analysis.DeepScanBudget{Enabled: true, MaxLines: maxLines, MaxBytes: maxBytes, Override: "cli"}, nil
+}
+
+// dashboardSensitiveExclusions converts the loaded config's validated section 13a
+// entries into analysis-side scopes for the dashboard's own scan.
+func dashboardSensitiveExclusions(cfg cfgpkg.Config) []analysis.SensitiveExclusion {
+	out := make([]analysis.SensitiveExclusion, 0, len(cfg.SensitiveExclusions))
+	for _, entry := range cfg.SensitiveExclusions {
+		out = append(out, analysis.SensitiveExclusion{
+			Rule:   entry.Rule,
+			Path:   entry.Path,
+			Symbol: entry.Symbol,
+			Reason: entry.Reason,
+		})
+	}
+	return out
 }
 
 // splitPaths breaks a comma-separated path query value into trimmed entries.

@@ -45,6 +45,20 @@ func TestHookCapabilitiesAdvertiseContract(t *testing.T) {
 	}
 }
 
+// TestHookPublishesBoundedDeepScanDiagnostic keeps the degradation visible without a fatal exit.
+func TestHookPublishesBoundedDeepScanDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\nfunc main() {}\n")
+	t.Chdir(root)
+	payload, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--deep-scan-budget", "1:1", "main.go")
+	if code != 0 {
+		t.Fatalf("hook exit = %d, want 0", code)
+	}
+	if len(payload.Diagnostics) != 1 || payload.Diagnostics[0].Type != "bounded-deep-scan" || payload.Diagnostics[0].InvalidatesRun == nil || *payload.Diagnostics[0].InvalidatesRun {
+		t.Fatalf("diagnostics = %#v, want one non-fatal bounded-deep-scan", payload.Diagnostics)
+	}
+}
+
 // TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual covers B1 and B2.
 func TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual(t *testing.T) {
 	root := t.TempDir()

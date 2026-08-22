@@ -49,9 +49,24 @@ func resolveHookChanged(scanContext context.Context, projectRoot string, scanned
 	}
 }
 
+// hookBaseScan groups the scan policy the git-base run shares with the primary
+// hook run: the configured registry, the discovery ignore patterns, and the
+// sensitive exclusions. Grouped rather than passed individually so the base
+// resolver keeps a reviewable parameter list.
+type hookBaseScan struct {
+	// registry is the config-resolved rule registry both runs execute.
+	registry rule.Registry
+	// ignoredPathPatterns are the discovery ignore globs both runs apply.
+	ignoredPathPatterns []string
+	// sensitiveExclusions are the section 13a scopes both runs suppress.
+	sensitiveExclusions []analysis.SensitiveExclusion
+	// deepScanBudget keeps base-tree and current-tree analysis under identical cost policy.
+	deepScanBudget analysis.DeepScanBudget
+}
+
 // resolveHookFindingBaseline loads the user's new-only base from a baseline or git.
 // Empty success means no base was requested; errors retain existing hook handling.
-func resolveHookFindingBaseline(scanContext context.Context, projectRoot string, hookFlags hookFlagValues, ruleRegistry rule.Registry, ignoredPathPatterns []string) (hookFindingBaseline, error) {
+func resolveHookFindingBaseline(scanContext context.Context, projectRoot string, hookFlags hookFlagValues, scan hookBaseScan) (hookFindingBaseline, error) {
 	// An explicit baseline takes precedence over any git-derived hook base.
 	if hookFlags.baselinePath != "" {
 		return hookFindingBaselineFromFile(projectRoot, hookFlags.baselinePath)
@@ -72,13 +87,15 @@ func resolveHookFindingBaseline(scanContext context.Context, projectRoot string,
 	}
 	defer cleanupBaseProject()
 	baseAnalysisReport, err := analysis.Analyze(analysis.Options{
-		Root:           baseProjectRoot,
-		Paths:          hookFlags.paths,
-		Format:         "json",
-		FailOn:         finding.FailThresholdNone,
-		Registry:       ruleRegistry,
-		IgnorePaths:    ignoredPathPatterns,
-		IncludeIgnored: hookFlags.includeIgnored,
+		Root:                baseProjectRoot,
+		Paths:               hookFlags.paths,
+		Format:              "json",
+		FailOn:              finding.FailThresholdNone,
+		Registry:            scan.registry,
+		IgnorePaths:         scan.ignoredPathPatterns,
+		SensitiveExclusions: scan.sensitiveExclusions,
+		DeepScanBudget:      scan.deepScanBudget,
+		IncludeIgnored:      hookFlags.includeIgnored,
 	})
 	// Analysis failures stop the prior base from being treated as complete.
 	if err != nil {

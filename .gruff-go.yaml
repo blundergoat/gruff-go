@@ -39,6 +39,19 @@ allowlists:
     - JSON
   secretPreviews: []
 
+# Sensitive-data exclusions. Each entry suppresses one sensitive-data rule in
+# one project-relative file and requires a written reason. A symbol narrows the
+# scope further. Message- and value-matching keys are rejected, and entries are
+# written by hand: no reported marker or preview is ever turned into one for you.
+# Every entry is counted in the report's suppressions array, zero matches included.
+#
+# sensitiveExclusions:
+#   - rule: sensitive-data.aws-access-key
+#     path: internal/rule/testdata/aws_sample.env
+#     symbol: Fixtures.AWSSample
+#     reason: Synthetic key used by the loader fixture; not a live credential.
+sensitiveExclusions: []
+
 # Selection narrows the active rule set. Empty lists keep the default
 # selection (every rule below whose `enabled` is true).
 selection:

@@ -6,8 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
+	"github.com/blundergoat/gruff-go/internal/analysis"
+	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
@@ -38,6 +41,7 @@ type analyseFlagValues struct {
 	editorLink           string
 	reportInteractive    bool
 	includeIgnored       bool
+	deepScanBudget       string
 }
 
 // analyseFlagPointers keeps the registered analyse flag values together so the
@@ -63,6 +67,7 @@ type analyseFlagPointers struct {
 	editorLink           *string
 	reportInteractive    *bool
 	includeIgnored       *bool
+	deepScanBudget       *string
 }
 
 // analyseFlagHasSeparateValue identifies analyse flags whose value is the next token.
@@ -77,7 +82,7 @@ func analyseFlagHasSeparateValue(flagArgument string) bool {
 	case "format", "min-severity", "fail-on", "config", "baseline",
 		"generate-baseline", "diff-base", "diff", "since", "changed-ranges",
 		"changed-scope", "include-rules", "exclude-rules", "include-pillars",
-		"exclude-pillars", "report-editor-link":
+		"exclude-pillars", "report-editor-link", "deep-scan-budget":
 		return true
 	default:
 		// Boolean and unknown flags do not reserve the next token during the help pre-scan.
@@ -160,6 +165,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudget := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	return analyseFlagPointers{
 		format:               format,
 		minSeverity:          &minSeverity,
@@ -181,6 +187,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 		editorLink:           editorLink,
 		reportInteractive:    reportInteractive,
 		includeIgnored:       includeIgnored,
+		deepScanBudget:       deepScanBudget,
 	}
 }
 
@@ -209,11 +216,53 @@ func (values analyseFlagPointers) values(diffPatch []byte, minSeverityExplicit b
 		editorLink:           *values.editorLink,
 		reportInteractive:    *values.reportInteractive,
 		includeIgnored:       *values.includeIgnored,
+		deepScanBudget:       *values.deepScanBudget,
 	}
 	if parsed.noBaseline {
 		parsed.baselinePath = ""
 	}
 	return parsed
+}
+
+// resolveDeepScanBudget applies CLI-over-config precedence to the atomic paired bound.
+func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudget, error) {
+	budget := analysis.DeepScanBudget{
+		Enabled:  true,
+		MaxLines: cfgpkg.DefaultDeepScanMaxLines,
+		MaxBytes: cfgpkg.DefaultDeepScanMaxBytes,
+		Override: "default",
+	}
+	configured := cfg.DeepScanBudget.Enabled != nil || cfg.DeepScanBudget.MaxLines != nil || cfg.DeepScanBudget.MaxBytes != nil
+	if configured {
+		budget.Override = "config"
+		if cfg.DeepScanBudget.Enabled != nil {
+			budget.Enabled = *cfg.DeepScanBudget.Enabled
+		}
+		if cfg.DeepScanBudget.MaxLines != nil {
+			budget.MaxLines = *cfg.DeepScanBudget.MaxLines
+		}
+		if cfg.DeepScanBudget.MaxBytes != nil {
+			budget.MaxBytes = *cfg.DeepScanBudget.MaxBytes
+		}
+	}
+	if raw == "" {
+		return budget, nil
+	}
+	if raw == "off" {
+		budget.Enabled = false
+		budget.Override = "cli"
+		return budget, nil
+	}
+	linesRaw, bytesRaw, ok := strings.Cut(raw, ":")
+	if !ok || strings.Contains(bytesRaw, ":") {
+		return analysis.DeepScanBudget{}, fmt.Errorf("--deep-scan-budget must be two positive integers as LINES:BYTES, or off")
+	}
+	maxLines, linesErr := strconv.Atoi(linesRaw)
+	maxBytes, bytesErr := strconv.Atoi(bytesRaw)
+	if linesErr != nil || bytesErr != nil || maxLines <= 0 || maxBytes <= 0 {
+		return analysis.DeepScanBudget{}, fmt.Errorf("--deep-scan-budget must be two positive integers as LINES:BYTES, or off")
+	}
+	return analysis.DeepScanBudget{Enabled: true, MaxLines: maxLines, MaxBytes: maxBytes, Override: "cli"}, nil
 }
 
 // generateBaselineState projects analyse flags relevant to baseline generation.

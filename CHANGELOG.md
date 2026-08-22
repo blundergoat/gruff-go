@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- **BREAKING: default scans use the family fallback policy** - Non-VCS fallbacks now defer to any governing `.gitignore`, committed control metadata stays scannable, and explicit supported files bypass Git and fallback exclusions. Use `paths.ignore` for project-only exclusions; VCS internals remain blocked even with `--include-ignored`.
+- **Sensitive-data findings can be excluded, with a reason** - A new top-level `sensitiveExclusions` section in `.gruff-go.yaml` suppresses one sensitive-data rule in one project-relative file. `reason` is required, `symbol` optionally narrows the scope, and message- or value-matching keys are rejected, so a suppression can never be written against a secret's own text. Entries are authored by hand: no reported marker or preview is ever converted into one.
+- **Every exclusion is counted** - `analyse --format json` publishes a `suppressions` array with one row per entry - `{index, rule, paths, symbol, reason, suppressed}` - including entries that matched nothing, and the text output prints a `suppressed findings:` total. A suppressed finding leaves the score and the exit code but never the audit.
+- **`summary` counts its suppressions out loud** - `summary --format text` already applied `sensitiveExclusions` but published no audit; it now prints the same `suppressed findings:` total `analyse` does, below the composite block. `summary --format json` still filters without a count, because the `gruff.summary.v2` envelope has no suppression field yet.
+- **A malformed exclusion breaks the build** - A wildcard, pillar, unknown, or non-sensitive rule; an absolute, escaping, or glob path; a message-, value-, or preview-matching key; a blank reason; or two entries claiming one scope each exits `2` with a `config:` diagnostic naming the entry index and the offending key.
+- **The config parser accepts mapping list items** - `.gruff-go.yaml` now parses dash-introduced `key: value` items, which `sensitiveExclusions` needs. A quoted list item stays a scalar, so existing string lists are unchanged.
+
 ## v0.5.0 - 2026-08-16
 
 Sharper security and sensitive-data rules, secret previews redacted by default, a composite that scores every pillar, and baselines that match one-to-one. Three breaking changes: `size.file-length` moves to error severity at 1000 lines, fatal diagnostics exit `2`, and commands reject positional arguments they never used.

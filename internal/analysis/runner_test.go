@@ -86,6 +86,34 @@ func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	}
 }
 
+// TestAnalyzeBoundedDeepScanRetainsTextRules drops AST-derived function evidence without dropping the file.
+func TestAnalyzeBoundedDeepScanRetainsTextRules(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{findingRule{}, functionDeclarationRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := Analyze(Options{
+		Registry:       registry,
+		FailOn:         finding.FailThresholdNone,
+		DeepScanBudget: DeepScanBudget{Enabled: true, MaxLines: 1, MaxBytes: 10_000, Override: "cli"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.ExitCode != 0 || report.Summary.FilesScanned != 1 {
+		t.Fatalf("summary = %#v, want one analysed file and clean non-fatal exit", report.Summary)
+	}
+	if !containsRuleID(report.Findings, "size.file-length") || containsRuleID(report.Findings, "test.function-declaration") {
+		t.Fatalf("findings = %#v, want text-level rule only", report.Findings)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].DiagnosticType != "bounded-deep-scan" || report.Diagnostics[0].InvalidatesRun == nil || *report.Diagnostics[0].InvalidatesRun {
+		t.Fatalf("diagnostics = %#v, want one visible non-fatal degradation", report.Diagnostics)
+	}
+}
+
 // TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence confirms
 // that composite findings (carrying an underlyingFingerprints metadata slice)
 // are dropped when none of their underlying fingerprints survive the diff

@@ -20,6 +20,12 @@ import (
 // SchemaVersion identifies the supported config document contract.
 const SchemaVersion = "gruff-go.config.v0.1"
 
+// DefaultDeepScanMaxLines and DefaultDeepScanMaxBytes bound expensive Go syntax analysis.
+const (
+	DefaultDeepScanMaxLines = 20_000
+	DefaultDeepScanMaxBytes = 2_000_000
+)
+
 // defaultConfigFiles lists auto-discovered config files in precedence order.
 var defaultConfigFiles = []string{".gruff-go.yaml"}
 
@@ -33,6 +39,8 @@ type Config struct {
 	// optional per ADR-010; the absence of a key falls back to
 	// finding.DefaultFailThresholdFor(cmd).
 	MinimumSeverity map[string]string `json:"minimumSeverity,omitempty"`
+	// DeepScanBudget bounds AST-backed analysis after .go source classification.
+	DeepScanBudget DeepScanBudgetConfig `json:"deepScanBudget,omitempty"`
 	// Select restricts the active rule set to the listed rule IDs (or aliases).
 	Select []string `json:"select,omitempty"`
 	// ExcludeRules disables the named rule IDs even when they would otherwise run.
@@ -45,6 +53,11 @@ type Config struct {
 	Rules map[string]RuleConfig `json:"rules,omitempty"`
 	// SensitiveData carries policy for the sensitive-data.* rule family.
 	SensitiveData SensitiveDataConfig `json:"sensitiveData,omitempty"`
+	// SensitiveExclusions suppresses individual sensitive-data findings by exact
+	// rule ID and project-relative path, each with a required written rationale.
+	// Deliberately separate from Select/ExcludeRules so the ban on message- and
+	// value-matching keys is structural (FAMILY-CONTRACT.md section 13a).
+	SensitiveExclusions []SensitiveExclusion `json:"sensitiveExclusions,omitempty"`
 	// Paths nests path-scoped policy (currently the canonical `ignore` list).
 	Paths PathsConfig `json:"paths,omitempty"`
 	// Allowlists nests project-wide allowlists folded into top-level fields by Normalized.
@@ -53,6 +66,13 @@ type Config struct {
 	Selection SelectionConfig `json:"selection,omitempty"`
 	// MinimumGoVersion documents the minimum Go toolchain version this config supports.
 	MinimumGoVersion string `json:"minimumGoVersion,omitempty"`
+}
+
+// DeepScanBudgetConfig carries optional user overrides; pointers preserve omitted values.
+type DeepScanBudgetConfig struct {
+	Enabled  *bool `json:"enabled,omitempty"`
+	MaxLines *int  `json:"maxLines,omitempty"`
+	MaxBytes *int  `json:"maxBytes,omitempty"`
 }
 
 // RuleConfig stores per-rule overrides from `.gruff-go.yaml`.
@@ -103,6 +123,52 @@ type SensitiveDataConfig struct {
 	// PreviewAllowlist is the legacy alias for paths authorized to receive fixed
 	// category or connection-scheme markers; empty and nonmatching lists fully mask.
 	PreviewAllowlist []string `json:"previewAllowlist,omitempty"`
+}
+
+// SensitiveExclusion is one ratified sensitive-data suppression scope: exactly
+// one rule, exactly one project-relative path, an optional symbol narrowing,
+// and the rationale a reviewer reads in place of the suppressed finding.
+// The four fields below are the whole key set an entry may carry. Every other
+// key - notably message_contains, messageContains, value and preview - is a
+// fatal configuration error, so value-based suppression cannot re-enter this
+// section under a new name (FAMILY-CONTRACT.md section 13a).
+type SensitiveExclusion struct {
+	// Rule is the exact sensitive-data rule ID this entry suppresses.
+	Rule string `json:"rule"`
+	// Path is the project-relative display path the entry is scoped to.
+	Path string `json:"path"`
+	// Symbol narrows the scope to findings carrying that exact symbol; empty matches any.
+	Symbol string `json:"symbol,omitempty"`
+	// Reason is the required rationale published in the report's suppression audit row.
+	Reason string `json:"reason"`
+	// UnsupportedKeys records the keys this entry carried outside the four above,
+	// so validation can name the offender together with the entry index. Never
+	// serialised: it is decode state, not configuration.
+	UnsupportedKeys []string `json:"-"`
+}
+
+// UnmarshalJSON decodes one entry while collecting keys outside the closed set
+// rather than failing on the first one. The shared decoder's DisallowUnknownFields
+// reports such a key without the entry index, and section 13a requires the
+// diagnostic to name both.
+func (entry *SensitiveExclusion) UnmarshalJSON(data []byte) error {
+	raw := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	targets := map[string]*string{"rule": &entry.Rule, "path": &entry.Path, "symbol": &entry.Symbol, "reason": &entry.Reason}
+	for key, value := range raw {
+		target, supported := targets[key]
+		if !supported {
+			entry.UnsupportedKeys = append(entry.UnsupportedKeys, key)
+			continue
+		}
+		if err := json.Unmarshal(value, target); err != nil {
+			return fmt.Errorf("sensitiveExclusions entry key %q must be a string", key)
+		}
+	}
+	slices.Sort(entry.UnsupportedKeys)
+	return nil
 }
 
 // Loaded returns parsed config together with the file path that supplied it.
@@ -270,6 +336,7 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 	}
 	cfg = cfg.Normalized()
 	checks := []func() error{
+		func() error { return validateDeepScanBudget(cfg.DeepScanBudget) },
 		func() error { return validateRuleIDs("selected", cfg.Select, byID) },
 		func() error { return validateRuleIDs("excluded", cfg.ExcludeRules, byID) },
 		func() error { return validatePatterns("ignorePaths", cfg.IgnorePaths) },
@@ -279,6 +346,7 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 		},
 		func() error { return validateRuleConfig(cfg.Rules, byID) },
 		func() error { return validateSelection(cfg.Selection) },
+		func() error { return validateSensitiveExclusions(cfg.SensitiveExclusions, byID) },
 		func() error { return validateMinimumSeverity(cfg.MinimumSeverity) },
 	}
 	return runChecks(checks)
@@ -403,7 +471,23 @@ func (cfg Config) Normalized() Config {
 	cfg.IgnorePaths = sortedCopy(cfg.IgnorePaths)
 	cfg.AcceptedAbbreviations = sortedCopy(cfg.AcceptedAbbreviations)
 	cfg.SensitiveData.PreviewAllowlist = sortedCopy(cfg.SensitiveData.PreviewAllowlist)
+	cfg.SensitiveExclusions = normalizedSensitiveExclusions(cfg.SensitiveExclusions)
 	return cfg
+}
+
+// normalizedSensitiveExclusions rewrites each entry's path into the same
+// project-relative display form a finding carries, so the caller's working
+// directory cannot change which findings an entry claims. Order is preserved:
+// the entry index is user-visible in both diagnostics and audit rows.
+func normalizedSensitiveExclusions(entries []SensitiveExclusion) []SensitiveExclusion {
+	if len(entries) == 0 {
+		return entries
+	}
+	out := append([]SensitiveExclusion(nil), entries...)
+	for index := range out {
+		out[index].Path = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(out[index].Path)), "./")
+	}
+	return out
 }
 
 // mergeStringLists appends gruff-family aliases to their legacy top-level

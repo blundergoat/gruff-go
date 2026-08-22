@@ -22,6 +22,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	// Default comes from DefaultFailThresholdFor("summary"); precedence below
 	// lets minimumSeverity.summary in .gruff-go.yaml override it (ADR-010).
 	minSeverity := string(finding.DefaultFailThresholdFor("summary"))
@@ -52,13 +53,20 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	deepScanBudget, err := resolveDeepScanBudget(*deepScanBudgetRaw, cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          flags.Args(),
-		Format:         *format,
-		FailOn:         failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: *includeIgnored,
+		Paths:               flags.Args(),
+		Format:              *format,
+		FailOn:              failOn,
+		Registry:            registry,
+		IgnorePaths:         ignorePaths,
+		SensitiveExclusions: sensitiveExclusionsFor(cfg),
+		DeepScanBudget:      deepScanBudget,
+		IncludeIgnored:      *includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)

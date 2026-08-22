@@ -14,12 +14,22 @@ import (
 // It combines visible findings with changed-scope, ignored-path, analyzer, and
 // configuration context so the user can understand what the hook considered.
 type hookReport struct {
-	ContractVersion string          `json:"contractVersion"`
-	Analyzer        hookAnalyzer    `json:"analyzer"`
-	Findings        []hookFinding   `json:"findings"`
-	Suppressed      hookSuppressed  `json:"suppressed"`
-	Ignored         hookIgnored     `json:"ignored"`
-	Config          hookConfigState `json:"config"`
+	ContractVersion string           `json:"contractVersion"`
+	Analyzer        hookAnalyzer     `json:"analyzer"`
+	Findings        []hookFinding    `json:"findings"`
+	Diagnostics     []hookDiagnostic `json:"diagnostics"`
+	Suppressed      hookSuppressed   `json:"suppressed"`
+	Ignored         hookIgnored      `json:"ignored"`
+	Config          hookConfigState  `json:"config"`
+}
+
+// hookDiagnostic projects a runtime diagnostic into the gruff.hook.v1 field vocabulary.
+type hookDiagnostic struct {
+	Type           string `json:"type"`
+	Message        string `json:"message"`
+	File           string `json:"file,omitempty"`
+	Line           int    `json:"line,omitempty"`
+	InvalidatesRun *bool  `json:"invalidatesRun,omitempty"`
 }
 
 // hookSuppressed reports findings dropped only by changed-region scope.
@@ -80,10 +90,34 @@ func buildHookReport(analysisReport analysis.Report, ruleDefinitions []rule.Defi
 		ContractVersion: hookContractVersion,
 		Analyzer:        hookAnalyzer{Name: analysisReport.Tool.Name, Version: analysisReport.Tool.Version},
 		Findings:        visibleFindings,
+		Diagnostics:     hookDiagnostics(analysisReport.Diagnostics),
 		Suppressed:      hookSuppressed{Count: changedScopeSuppressed},
 		Ignored:         hookIgnored{Paths: hookIgnoredPaths(analysisReport.Paths.Skipped)},
 		Config:          hookConfigState{SchemaOK: true, Error: nil},
 	}
+}
+
+// hookDiagnostics retains non-fatal budget notes in-band without changing hook exit semantics.
+func hookDiagnostics(diagnostics []analysis.Diagnostic) []hookDiagnostic {
+	out := make([]hookDiagnostic, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		label := diagnostic.DiagnosticType
+		if label == "" {
+			label = diagnostic.Stage
+		}
+		line := 0
+		if diagnostic.Location != nil {
+			line = diagnostic.Location.Line
+		}
+		out = append(out, hookDiagnostic{
+			Type:           label,
+			Message:        diagnostic.Message,
+			File:           diagnostic.File,
+			Line:           line,
+			InvalidatesRun: diagnostic.InvalidatesRun,
+		})
+	}
+	return out
 }
 
 // hookIgnoredPaths converts scan skips into explanations for the user's agent.

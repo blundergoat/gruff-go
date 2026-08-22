@@ -127,9 +127,11 @@ func (r HighEntropyStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []findin
 				Message:  "high-entropy string literal detected",
 				File:     unit.File.Path,
 				Location: &finding.Location{Line: lineNumber + 1},
+				// The configured thresholds already tell a reviewer why this fired; the token's own
+				// entropy is a statistic computed from the matched characters and is forbidden in
+				// serialized output by FAMILY-CONTRACT section 5.
 				Metadata: map[string]any{
 					"preview": r.previews.format(unit.File.Path, previewEntropy, token),
-					"entropy": math.Round(shannonEntropy(token)*100) / 100,
 				},
 			})
 		}

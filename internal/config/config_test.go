@@ -421,6 +421,8 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 		{name: "unknown minimumSeverity command", yaml: "minimumSeverity:\n  not-a-command: warning\n", want: `minimumSeverity has unknown command "not-a-command"`},
 		{name: "legacy minimumSeverity value", yaml: "minimumSeverity:\n  analyse: medium\n", want: `minimumSeverity.analyse: unknown threshold "medium"`},
 		{name: "rejected off-switch alias", yaml: "minimumSeverity:\n  report: never\n", want: `minimumSeverity.report: unknown threshold "never"`},
+		{name: "zero deep scan lines", yaml: "deepScanBudget:\n  maxLines: 0\n", want: "deepScanBudget.maxLines must be a positive integer"},
+		{name: "negative deep scan bytes", yaml: "deepScanBudget:\n  maxBytes: -1\n", want: "deepScanBudget.maxBytes must be a positive integer"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

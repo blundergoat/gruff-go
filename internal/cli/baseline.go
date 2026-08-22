@@ -24,6 +24,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
@@ -31,28 +32,37 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "baseline requires --out")
 		return 2
 	}
-	registry, ignorePaths, _, err := configuredRegistry(*configPath, *noConfig)
+	registry, ignorePaths, cfg, err := configuredRegistry(*configPath, *noConfig)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
+	deepScanBudget, err := resolveDeepScanBudget(*deepScanBudgetRaw, cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	return writeBaselineFromScan(baselineScanOptions{
-		paths:          flags.Args(),
-		outPath:        *outPath,
-		registry:       registry,
-		ignorePaths:    ignorePaths,
-		includeIgnored: *includeIgnored,
+		paths:               flags.Args(),
+		outPath:             *outPath,
+		registry:            registry,
+		ignorePaths:         ignorePaths,
+		includeIgnored:      *includeIgnored,
+		sensitiveExclusions: sensitiveExclusionsFor(cfg),
+		deepScanBudget:      deepScanBudget,
 	}, stdout, stderr)
 }
 
 // baselineScanOptions groups the inputs shared by the baseline command and the
 // analyse-side baseline generator.
 type baselineScanOptions struct {
-	paths          []string
-	outPath        string
-	registry       rule.Registry
-	ignorePaths    []string
-	includeIgnored bool
+	paths               []string
+	outPath             string
+	registry            rule.Registry
+	ignorePaths         []string
+	includeIgnored      bool
+	sensitiveExclusions []analysis.SensitiveExclusion
+	deepScanBudget      analysis.DeepScanBudget
 }
 
 // writeBaselineFromScan runs a full scan with no suppression or diff filtering,
@@ -60,18 +70,20 @@ type baselineScanOptions struct {
 // is a setup artifact, so current findings do not make this command fail.
 func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) int {
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          opts.paths,
-		Format:         "json",
-		FailOn:         finding.FailThresholdError,
-		Registry:       opts.registry,
-		IgnorePaths:    opts.ignorePaths,
-		IncludeIgnored: opts.includeIgnored,
+		Paths:               opts.paths,
+		Format:              "json",
+		FailOn:              finding.FailThresholdError,
+		Registry:            opts.registry,
+		IgnorePaths:         opts.ignorePaths,
+		SensitiveExclusions: opts.sensitiveExclusions,
+		DeepScanBudget:      opts.deepScanBudget,
+		IncludeIgnored:      opts.includeIgnored,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	if len(analysisReport.Diagnostics) > 0 {
+	if analysisReport.Summary.ExitCode == 2 {
 		if err := report.WriteText(stderr, analysisReport); err != nil {
 			fmt.Fprintln(stderr, err)
 		}

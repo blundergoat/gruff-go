@@ -50,6 +50,38 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
+// TestDeepScanBudgetCLIOverridesConfig verifies paired CLI precedence and explicit disablement.
+func TestDeepScanBudgetCLIOverridesConfig(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "// Package main is a budget fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  enabled: true\n  maxLines: 1\n  maxBytes: 1\n")
+	t.Chdir(root)
+
+	run := func(arguments ...string) analysis.Report {
+		t.Helper()
+		var out, errOut bytes.Buffer
+		if code := Main(arguments, &out, &errOut); code != 0 {
+			t.Fatalf("%v exit = %d, stderr = %s", arguments, code, errOut.String())
+		}
+		var reportData analysis.Report
+		if err := json.Unmarshal(out.Bytes(), &reportData); err != nil {
+			t.Fatal(err)
+		}
+		return reportData
+	}
+
+	configured := run("analyse", "--format", "json", "--fail-on", "none", "main.go")
+	if len(configured.Diagnostics) != 1 || !strings.Contains(configured.Diagnostics[0].Message, "override=config") {
+		t.Fatalf("configured diagnostics = %#v", configured.Diagnostics)
+	}
+	for _, override := range []string{"100:10000", "off"} {
+		reportData := run("analyse", "--format", "json", "--fail-on", "none", "--deep-scan-budget", override, "main.go")
+		if len(reportData.Diagnostics) != 0 {
+			t.Fatalf("override %q diagnostics = %#v, want none", override, reportData.Diagnostics)
+		}
+	}
+}
+
 // TestAnalyseChangedRangesFailOnNoneExitsZero checks that a changed-ranges scan
 // with --fail-on none exits 0 and still reports suppressedCount in the JSON.
 func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {

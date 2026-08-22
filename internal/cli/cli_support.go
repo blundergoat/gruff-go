@@ -41,6 +41,22 @@ func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []stri
 	return registry, cfg.IgnorePaths, cfg, nil
 }
 
+// sensitiveExclusionsFor converts the loaded config's validated section 13a
+// entries into the analysis-side scopes. The config package owns every rule,
+// path, key, and rationale check, so this is a shape change only.
+func sensitiveExclusionsFor(cfg cfgpkg.Config) []analysis.SensitiveExclusion {
+	out := make([]analysis.SensitiveExclusion, 0, len(cfg.SensitiveExclusions))
+	for _, entry := range cfg.SensitiveExclusions {
+		out = append(out, analysis.SensitiveExclusion{
+			Rule:   entry.Rule,
+			Path:   entry.Path,
+			Symbol: entry.Symbol,
+			Reason: entry.Reason,
+		})
+	}
+	return out
+}
+
 // supportedAnalysisFormat reports whether format names a known analyse output.
 func supportedAnalysisFormat(format string) bool {
 	switch format {

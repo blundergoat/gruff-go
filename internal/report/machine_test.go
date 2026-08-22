@@ -5,6 +5,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -66,6 +67,49 @@ func TestMachineReportFormats(t *testing.T) {
 	}
 	if !strings.Contains(github.String(), "::warning file=main.go,line=12,title=size.file-length::too long") {
 		t.Fatalf("github output = %s", github.String())
+	}
+}
+
+// TestBoundedDeepScanDiagnosticReachesEveryRenderer protects the visible degradation contract.
+func TestBoundedDeepScanDiagnosticReachesEveryRenderer(t *testing.T) {
+	nonFatal := false
+	diagnostic := analysis.Diagnostic{
+		DiagnosticType: "bounded-deep-scan",
+		Stage:          "analysis",
+		File:           "main.go",
+		Location:       &finding.Location{Line: 1},
+		Message:        "path=main.go; lines=2; bytes=30; maxLines=1; maxBytes=20; override=cli",
+		Severity:       finding.SeverityAdvisory,
+		InvalidatesRun: &nonFatal,
+	}
+	reportData := analysis.NewReport(analysis.ReportInput{
+		Root: "/repo", Inputs: []string{"main.go"}, Format: "json", FailOn: finding.FailThresholdNone,
+		Scanned: []string{"main.go"}, Diagnostics: []analysis.Diagnostic{diagnostic}, Definitions: defaultDefinitions(),
+	})
+	renderers := []struct {
+		name   string
+		render func(io.Writer) error
+	}{
+		{name: "json", render: func(writer io.Writer) error { return WriteJSON(writer, reportData) }},
+		{name: "summary-json", render: func(writer io.Writer) error { return WriteSummaryJSON(writer, reportData) }},
+		{name: "summary-v2", render: func(writer io.Writer) error { return WriteSummaryV01JSON(writer, reportData) }},
+		{name: "text", render: func(writer io.Writer) error { return WriteText(writer, reportData) }},
+		{name: "summary-text", render: func(writer io.Writer) error { return WriteSummaryText(writer, reportData, SummaryOptions{}) }},
+		{name: "html", render: func(writer io.Writer) error { return WriteHTML(writer, reportData, HTMLOptions{}) }},
+		{name: "markdown", render: func(writer io.Writer) error { return WriteMarkdown(writer, reportData) }},
+		{name: "github", render: func(writer io.Writer) error { return WriteGitHub(writer, reportData) }},
+		{name: "sarif", render: func(writer io.Writer) error { return WriteSARIF(writer, reportData) }},
+	}
+	for _, renderer := range renderers {
+		t.Run(renderer.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderer.render(&output); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(output.String(), "bounded-deep-scan") || !strings.Contains(output.String(), "override=cli") {
+				t.Fatalf("%s omitted the diagnostic: %s", renderer.name, output.String())
+			}
+		})
 	}
 }
 

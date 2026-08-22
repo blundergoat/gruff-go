@@ -15,6 +15,10 @@ func TestResolveExitCode(t *testing.T) {
 	if got := ResolveExitCode([]Diagnostic{{Message: "bad"}}, nil, finding.FailThresholdWarning); got != 2 {
 		t.Fatalf("diagnostic exit = %d, want 2", got)
 	}
+	nonFatal := false
+	if got := ResolveExitCode([]Diagnostic{{Message: "bounded", InvalidatesRun: &nonFatal}}, nil, finding.FailThresholdWarning); got != 0 {
+		t.Fatalf("non-fatal diagnostic exit = %d, want 0", got)
+	}
 	findings := []finding.Finding{{Severity: finding.SeverityWarning}}
 	if got := ResolveExitCode(nil, findings, finding.FailThresholdWarning); got != 1 {
 		t.Fatalf("finding exit = %d, want 1", got)

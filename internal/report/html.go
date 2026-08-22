@@ -121,7 +121,7 @@ func (r htmlRenderer) diagnostics() string {
 	builder.WriteString(`<div class="diagnostic-list">`)
 	for _, diagnostic := range r.report.Diagnostics {
 		builder.WriteString(`<div class="diagnostic">`)
-		fmt.Fprintf(&builder, `<span class="diagnostic-type">%s</span>`, esc(diagnostic.Stage))
+		fmt.Fprintf(&builder, `<span class="diagnostic-type">%s</span>`, esc(diagnosticLabel(diagnostic)))
 		fmt.Fprintf(&builder, `<span class="diagnostic-message">%s</span>`, esc(diagnostic.Message))
 		if diagnostic.File != "" {
 			location := diagnostic.File

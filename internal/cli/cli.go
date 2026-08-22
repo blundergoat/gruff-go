@@ -168,13 +168,20 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	deepScanBudget, err := resolveDeepScanBudget(values.deepScanBudget, cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	if values.generateBaselinePath != "" {
 		return writeBaselineFromScan(baselineScanOptions{
-			paths:          flags.Args(),
-			outPath:        values.generateBaselinePath,
-			registry:       registry,
-			ignorePaths:    ignorePaths,
-			includeIgnored: values.includeIgnored,
+			paths:               flags.Args(),
+			outPath:             values.generateBaselinePath,
+			registry:            registry,
+			ignorePaths:         ignorePaths,
+			includeIgnored:      values.includeIgnored,
+			sensitiveExclusions: sensitiveExclusionsFor(cfg),
+			deepScanBudget:      deepScanBudget,
 		}, stdout, stderr)
 	}
 	displayFilter, err := parseDisplayFilter(values.includeRules, values.excludeRules, values.includePillars, values.excludePillars, registry.Definitions())
@@ -188,6 +195,8 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		FailOn:                 failOn,
 		Registry:               registry,
 		IgnorePaths:            ignorePaths,
+		SensitiveExclusions:    sensitiveExclusionsFor(cfg),
+		DeepScanBudget:         deepScanBudget,
 		IncludeIgnored:         values.includeIgnored,
 		ReportAllSkippedInputs: true,
 		BaselinePath:           values.baselinePath,

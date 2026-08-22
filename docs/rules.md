@@ -1044,6 +1044,12 @@ assignment and entropy findings stay `[redacted]` even when allowlisted. The
 allowlist never suppresses a finding and never authorizes credential or
 identifier payload bytes.
 
+**Sensitive-data suppression.** A `sensitive-data.*` finding is suppressed only
+by a hand-written `sensitiveExclusions` entry naming one rule, one
+project-relative path, and a reason - see
+[Configuration](configuration.md#sensitiveexclusions). Every entry is counted in
+the report's `suppressions` array, so an accepted suppression stays reviewable.
+
 ### `sensitive-data.anthropic-api-key`
 
 - **Pillar:** sensitive-data
@@ -1166,7 +1172,7 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only authorizes the marker `[redacted:jwt]`; it exposes no JWT segment bytes and does not suppress findings.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, add a `sensitiveExclusions` entry naming the rule, the file, and why - see [Configuration](configuration.md#sensitiveexclusions). `allowlists.secretPreviews` only authorizes the marker `[redacted:jwt]`; it exposes no JWT segment bytes and does not suppress findings.
 
 ### `sensitive-data.npm-token`
 

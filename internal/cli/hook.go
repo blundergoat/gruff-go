@@ -28,6 +28,7 @@ type hookFlagValues struct {
 	diffPatch      []byte
 	baselinePath   string
 	includeIgnored bool
+	deepScanBudget string
 	paths          []string
 }
 
@@ -58,7 +59,7 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	ruleRegistry, ignoredPathPatterns, _, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig)
+	ruleRegistry, ignoredPathPatterns, hookConfig, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig)
 	// Invalid project config is returned in-band so the agent can explain it.
 	if err != nil {
 		// A secondary JSON write failure leaves no usable hook contract for the user.
@@ -67,14 +68,18 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          hookFlags.paths,
-		Format:         "json",
-		FailOn:         finding.FailThresholdNone,
-		Registry:       ruleRegistry,
-		IgnorePaths:    ignoredPathPatterns,
-		IncludeIgnored: hookFlags.includeIgnored,
-	})
+	deepScanBudget, err := resolveDeepScanBudget(hookFlags.deepScanBudget, hookConfig)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	hookScan := hookBaseScan{
+		registry:            ruleRegistry,
+		ignoredPathPatterns: ignoredPathPatterns,
+		sensitiveExclusions: sensitiveExclusionsFor(hookConfig),
+		deepScanBudget:      deepScanBudget,
+	}
+	analysisReport, err := analyzeHook(hookFlags, hookScan)
 	// Pipeline failures mean the user's requested project could not be analyzed.
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -94,7 +99,7 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
 		changedScopeEnabled = false
 	}
-	findingBaseline, err := resolveHookFindingBaseline(scanContext, projectRoot, hookFlags, ruleRegistry, ignoredPathPatterns)
+	findingBaseline, err := resolveHookFindingBaseline(scanContext, projectRoot, hookFlags, hookScan)
 	// Genuine baseline failures stay fatal; missing initial git history degrades safely.
 	if err != nil {
 		// Non-git baseline failures cannot produce a trustworthy new-only result.
@@ -118,6 +123,20 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// analyzeHook runs the primary tree with the same scan policy used for a git-base comparison.
+func analyzeHook(hookFlags hookFlagValues, scan hookBaseScan) (analysis.Report, error) {
+	return analysis.Analyze(analysis.Options{
+		Paths:               hookFlags.paths,
+		Format:              "json",
+		FailOn:              finding.FailThresholdNone,
+		Registry:            scan.registry,
+		IgnorePaths:         scan.ignoredPathPatterns,
+		SensitiveExclusions: scan.sensitiveExclusions,
+		DeepScanBudget:      scan.deepScanBudget,
+		IncludeIgnored:      hookFlags.includeIgnored,
+	})
+}
+
 // parseHookFlags validates hook options and retains positional scan paths in the returned values.
 // It writes usage errors to stderr; false tells runHook to stop before analysis.
 func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues, bool) {
@@ -132,6 +151,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 	diffMode := flagSet.String("diff", "", "changed-region/new-only source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
 	baselinePath := flagSet.String("baseline", "", "baseline file to apply for stable-identity new-only")
 	includeIgnored := flagSet.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudget := flagSet.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
 	// Invalid flag syntax is already explained to the user through stderr.
 	if err := parseCommandArguments(flagSet, normalizedArguments); err != nil {
@@ -152,6 +172,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 		diffPatch:      diffPatch,
 		baselinePath:   *baselinePath,
 		includeIgnored: *includeIgnored,
+		deepScanBudget: *deepScanBudget,
 		paths:          flagSet.Args(),
 	}, true
 }
@@ -172,7 +193,7 @@ func hookFlagHasSeparateValue(flagArgument string) bool {
 	}
 	// These are the hook's non-Boolean flags; every other supported flag is self-contained.
 	switch strings.TrimLeft(flagArgument, "-") {
-	case "format", "config", "changed-ranges", "diff", "baseline":
+	case "format", "config", "changed-ranges", "diff", "baseline", "deep-scan-budget":
 		return true
 	default:
 		// Boolean and unknown flags do not reserve the next token during the help pre-scan.
@@ -187,6 +208,7 @@ func hookConfigErrorReport(configError error) hookReport {
 		ContractVersion: hookContractVersion,
 		Analyzer:        hookAnalyzer{Name: "gruff-go", Version: toolVersion},
 		Findings:        []hookFinding{},
+		Diagnostics:     []hookDiagnostic{},
 		Suppressed:      hookSuppressed{},
 		Ignored:         hookIgnored{Paths: []hookIgnoredPath{}},
 		Config:          hookConfigState{SchemaOK: false, Error: &message},
