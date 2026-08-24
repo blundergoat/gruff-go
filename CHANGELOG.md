@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- **Precision limits are available for every medium-confidence rule** - `list-rules --format json` now gives each medium-confidence rule a concrete false-positive shape and mitigation, without changing detector behavior, defaults, scoring, or analysis JSON.
 - **BREAKING: default scans use the family fallback policy** - Non-VCS fallbacks now defer to any governing `.gitignore`, committed control metadata stays scannable, and explicit supported files bypass Git and fallback exclusions. Use `paths.ignore` for project-only exclusions; VCS internals remain blocked even with `--include-ignored`.
 - **Sensitive-data findings can be excluded, with a reason** - A new top-level `sensitiveExclusions` section in `.gruff-go.yaml` suppresses one sensitive-data rule in one project-relative file. `reason` is required, `symbol` optionally narrows the scope, and message- or value-matching keys are rejected, so a suppression can never be written against a secret's own text. Entries are authored by hand: no reported marker or preview is ever converted into one.
 - **Every exclusion is counted** - `analyse --format json` publishes a `suppressions` array with one row per entry - `{index, rule, paths, symbol, reason, suppressed}` - including entries that matched nothing, and the text output prints a `suppressed findings:` total. A suppressed finding leaves the score and the exit code but never the audit.

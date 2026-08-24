@@ -218,6 +218,7 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	var catalogue struct {
 		Rules []struct {
 			ID                  string `json:"id"`
+			Confidence          string `json:"confidence"`
 			FalsePositiveShapes []struct {
 				Shape      string `json:"shape"`
 				Mitigation string `json:"mitigation"`
@@ -227,27 +228,20 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	if err := json.Unmarshal(listOut.Bytes(), &catalogue); err != nil {
 		t.Fatalf("invalid list-rules json: %v", err)
 	}
-	rulesMissingPrecisionGuidance := map[string]bool{
-		"naming.acronym-case":       true,
-		"security.shell-command":    true,
-		"size.parameter-count":      true,
-		"test-quality.skipped-test": true,
-	}
-	// Check each touched rule exactly as a catalogue user would find it by stable ID.
+	precisionRuleCount := 0
+	// Check every medium- or low-confidence rule exactly as a catalogue user sees it.
 	for _, listedRule := range catalogue.Rules {
-		// Unrelated catalogue rows are outside this cross-port precision pass.
-		if !rulesMissingPrecisionGuidance[listedRule.ID] {
+		if listedRule.Confidence != "medium" && listedRule.Confidence != "low" {
 			continue
 		}
+		precisionRuleCount++
 		// Empty guidance would not help a user decide whether to edit or scope the rule.
 		if len(listedRule.FalsePositiveShapes) == 0 || listedRule.FalsePositiveShapes[0].Shape == "" || listedRule.FalsePositiveShapes[0].Mitigation == "" {
 			t.Fatalf("%s false-positive guidance = %#v", listedRule.ID, listedRule.FalsePositiveShapes)
 		}
-		delete(rulesMissingPrecisionGuidance, listedRule.ID)
 	}
-	// Any remaining ID means users cannot discover that rule's precision boundary.
-	if len(rulesMissingPrecisionGuidance) != 0 {
-		t.Fatalf("list-rules omitted false-positive guidance for %#v", rulesMissingPrecisionGuidance)
+	if len(catalogue.Rules) != 83 || precisionRuleCount != 46 {
+		t.Fatalf("list-rules counts = %d total, %d medium/low; want 83 and 46", len(catalogue.Rules), precisionRuleCount)
 	}
 
 	var missingOut, missingErr bytes.Buffer

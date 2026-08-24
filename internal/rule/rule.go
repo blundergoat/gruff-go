@@ -309,6 +309,7 @@ func CompareFindings(a, b finding.Finding) int {
 
 // addDefinition validates and deduplicates one rule definition.
 func addDefinition(definition Definition, seen map[string]struct{}, definitions *[]Definition) (Definition, error) {
+	definition = withReviewedFalsePositiveShapes(definition)
 	if err := definition.Validate(); err != nil {
 		return Definition{}, err
 	}
