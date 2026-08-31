@@ -189,7 +189,14 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
+	projectRoot, err := projectRootFromTargets(flags.Args())
+	// The caller named targets in unrelated projects, so there is no single root to report paths against.
+	if err != nil {
+		fmt.Fprintf(stderr, "project root: %v\n", err)
+		return 2
+	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
+		Root:                   projectRoot,
 		Paths:                  flags.Args(),
 		Format:                 values.format,
 		FailOn:                 failOn,
@@ -219,11 +226,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	return analysisReport.Summary.ExitCode
 }
 
-// resolveFailOn applies the ADR-010 precedence rule for any CLI consumer:
-// explicit CLI flag wins, otherwise the matching minimumSeverity.<cmd> config
-// entry, otherwise the binary default from DefaultFailThresholdFor. Returns
-// (threshold, ok); on parse failure prints the error to stderr and returns
-// (zero-value, false) so the caller can `return 2`.
+// resolveFailOn decides which severity makes the command exit non-zero, following ADR-010 precedence:
+//
+//   - an explicit CLI flag wins;
+//   - otherwise the matching minimumSeverity.<cmd> entry in the project config;
+//   - otherwise the binary default from DefaultFailThresholdFor.
+//
+// Returns (threshold, ok). A value the user mistyped prints the error to stderr and returns ok=false, so the caller exits 2.
 func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd string, stderr io.Writer) (finding.FailThreshold, bool) {
 	resolved := rawValue
 	if !flagExplicit {
@@ -239,12 +248,11 @@ func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd st
 	return parsed, true
 }
 
-// checkMinSeverityFlag detects whether --min-severity / --fail-on was passed
-// explicitly on the FlagSet, and early-validates the raw value when explicit so
-// the user sees flag-syntax errors before any config load. Returns (explicit,
-// ok); on parse failure prints to stderr and returns (_, false). Shared by
-// runAnalyse / runSummary / runReport so the detection + early-validate block
-// lives in one place.
+// checkMinSeverityFlag reports whether --min-severity or --fail-on was typed on the command line, and validates the value
+// straight away when it was, so a mistyped severity is rejected before any config file is read.
+//
+// Returns (explicit, ok); a bad value prints to stderr and returns ok=false.
+// Shared by runAnalyse, runSummary, and runReport so this detection lives in one place.
 func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer) (bool, bool) {
 	explicit := false
 	flags.Visit(func(f *flag.Flag) {
