@@ -1,7 +1,7 @@
 gruff-go 0.5.0 analyse
 Composite: A (99.00 / 100)
 Findings: 1 total · 0 error · 1 warning · 0 advisory
-schema: gruff.analysis.v2
+schema: gruff.analysis.v3
 files: 1 scanned, 0 skipped
 score coverage: complexity
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.

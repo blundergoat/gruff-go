@@ -11,8 +11,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
 // TestPathCommandsAcceptFlagsAfterPaths verifies flag placement does not change output or exit status.
@@ -105,13 +103,13 @@ func TestDoubleDashPreservesLeadingDashPaths(t *testing.T) {
 			if exitCode != 0 {
 				t.Fatalf("analyse -- %s exit = %d, stderr=%s stdout=%s", projectPath, exitCode, stderr.String(), stdout.String())
 			}
-			var scanReport analysis.Report
+			var scanReport machineAnalysisReport
 			if err := json.Unmarshal(stdout.Bytes(), &scanReport); err != nil {
 				t.Fatalf("decode analysis JSON: %v\n%s", err, stdout.String())
 			}
 			expectedScannedPath := projectPath + "/main.go"
-			if !slices.Contains(scanReport.Paths.Scanned, expectedScannedPath) {
-				t.Fatalf("scanned paths = %#v, want %s", scanReport.Paths.Scanned, expectedScannedPath)
+			if !slices.Contains(scanReport.Paths.Extensions.Go.Paths.Scanned, expectedScannedPath) {
+				t.Fatalf("scanned paths = %#v, want %s", scanReport.Paths.Extensions.Go.Paths.Scanned, expectedScannedPath)
 			}
 		})
 	}

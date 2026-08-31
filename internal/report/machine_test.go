@@ -49,7 +49,7 @@ func TestMachineReportFormats(t *testing.T) {
 	}
 	if !strings.Contains(sarif.String(), `"gruffFingerprint": "abc123"`) ||
 		!strings.Contains(sarif.String(), `"ruleIndex":`) ||
-		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff.analysis.v2"`) {
+		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff.analysis.v3"`) {
 		t.Fatalf("sarif output missing contract fields = %s", sarif.String())
 	}
 
@@ -57,7 +57,11 @@ func TestMachineReportFormats(t *testing.T) {
 	if err := WriteSummaryJSON(&summary, report); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.String(), `"findingsCount": 1`) || strings.Contains(summary.String(), `"findings": [`) {
+	var summaryPayload map[string]any
+	if err := json.Unmarshal(summary.Bytes(), &summaryPayload); err != nil {
+		t.Fatalf("invalid summary json: %v\n%s", err, summary.String())
+	}
+	if summaryPayload["schemaVersion"] != analysis.SummarySchemaVersion || summaryPayload["findings"] != nil {
 		t.Fatalf("summary output = %s", summary.String())
 	}
 
@@ -92,7 +96,7 @@ func TestBoundedDeepScanDiagnosticReachesEveryRenderer(t *testing.T) {
 	}{
 		{name: "json", render: func(writer io.Writer) error { return WriteJSON(writer, reportData) }},
 		{name: "summary-json", render: func(writer io.Writer) error { return WriteSummaryJSON(writer, reportData) }},
-		{name: "summary-v2", render: func(writer io.Writer) error { return WriteSummaryV01JSON(writer, reportData) }},
+		{name: "summary-v3", render: func(writer io.Writer) error { return WriteSummaryV01JSON(writer, reportData) }},
 		{name: "text", render: func(writer io.Writer) error { return WriteText(writer, reportData) }},
 		{name: "summary-text", render: func(writer io.Writer) error { return WriteSummaryText(writer, reportData, SummaryOptions{}) }},
 		{name: "html", render: func(writer io.Writer) error { return WriteHTML(writer, reportData, HTMLOptions{}) }},

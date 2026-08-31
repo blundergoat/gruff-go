@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
 // TestAnalyseBaselineUnchangedOnlyExitsZero verifies reviewed debt remains
@@ -107,11 +105,11 @@ func generateUserBaseline(t *testing.T, baselinePath string, sourcePaths ...stri
 
 // runBaselineGateAnalyse executes analyse and decodes its JSON even when a
 // user-facing finding correctly produces exit 1.
-func runBaselineGateAnalyse(t *testing.T, commandArguments ...string) (analysis.Report, int) {
+func runBaselineGateAnalyse(t *testing.T, commandArguments ...string) (machineAnalysisReport, int) {
 	t.Helper()
 	var standardOutput, standardError bytes.Buffer
 	exitCode := Main(commandArguments, &standardOutput, &standardError)
-	var report analysis.Report
+	var report machineAnalysisReport
 	// Valid gate journeys must always return parseable report JSON.
 	if err := json.Unmarshal(standardOutput.Bytes(), &report); err != nil {
 		t.Fatalf("analyse %v JSON: %v\nstdout=%s\nstderr=%s", commandArguments, err, standardOutput.String(), standardError.String())

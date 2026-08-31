@@ -5,6 +5,9 @@
 package analysis
 
 import (
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -14,7 +17,11 @@ import (
 )
 
 // SchemaVersion identifies the stable cross-port analysis report schema.
-const SchemaVersion = "gruff.analysis.v2"
+const SchemaVersion = "gruff.analysis.v3"
+
+// SummarySchemaVersion identifies the strict projection of SchemaVersion that
+// omits only the per-finding array.
+const SummarySchemaVersion = "gruff.summary.v3"
 
 // Diagnostic describes an operationally fatal, non-finding failure encountered
 // while building a report.
@@ -252,7 +259,7 @@ type ReportInput struct {
 func NewReport(input ReportInput) Report {
 	scanned := nonNilStrings(input.Scanned)
 	skipped := nonNilSkipped(input.Skipped)
-	ignoredPaths := configIgnoredPaths(skipped)
+	ignoredPaths := ignoredPathProjection(skipped)
 	missing := nonNilStrings(input.Missing)
 	diagnostics := nonNilDiagnostics(input.Diagnostics)
 	findings := nonNilFindings(input.Findings)
@@ -402,16 +409,11 @@ func SortReport(report *Report) {
 	})
 }
 
-// configIgnoredPaths extracts the bare path list expected by cross-port
-// consumers from detailed skipped entries. Only config paths.ignore exclusions
-// are listed; git/default/generated skips remain available in paths.skipped.
-func configIgnoredPaths(skipped []SkippedPath) []string {
+// ignoredPathProjection extracts the exact bare-path projection of detailed exclusions.
+func ignoredPathProjection(skipped []SkippedPath) []string {
 	seen := map[string]struct{}{}
 	out := []string{}
 	for _, item := range skipped {
-		if item.Source != "config" && item.Reason != "config-ignore" {
-			continue
-		}
 		if _, ok := seen[item.Path]; ok {
 			continue
 		}
@@ -464,4 +466,458 @@ func countPillar(findings []finding.Finding) map[string]int {
 		counts[string(item.Pillar)]++
 	}
 	return counts
+}
+
+// MarshalJSON exposes only the canonical v3 machine envelope. Internal report
+// fields remain available to human, SARIF, hook, and scoring code without
+// becoming accidental top-level JSON aliases.
+func (report Report) MarshalJSON() ([]byte, error) {
+	payload, err := report.MachineEnvelope()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(payload)
+}
+
+// MachineEnvelope projects the internal report into the family v3 contract.
+func (report Report) MachineEnvelope() (map[string]any, error) {
+	parts, err := report.buildMachineEnvelopeParts()
+	if err != nil {
+		return nil, err
+	}
+	payload := report.machineBaseEnvelope(parts)
+	if err := report.addMachineOptionalSections(payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+// machineEnvelopeParts groups normalized path-bearing sections until the
+// canonical payload is ready to assemble.
+type machineEnvelopeParts struct {
+	inputs       []string
+	findings     []finding.Finding
+	diagnostics  []map[string]any
+	paths        map[string]any
+	suppressions []map[string]any
+	score        map[string]any
+}
+
+// buildMachineEnvelopeParts normalizes every path-bearing section before the
+// report is assembled.
+func (report Report) buildMachineEnvelopeParts() (machineEnvelopeParts, error) {
+	inputs, err := machinePaths(report.Run.WorkingDirectory, report.Run.Inputs)
+	if err != nil {
+		return machineEnvelopeParts{}, fmt.Errorf("run inputs: %w", err)
+	}
+	findings, err := machineFindings(report.Run.WorkingDirectory, report.Findings)
+	if err != nil {
+		return machineEnvelopeParts{}, err
+	}
+	diagnostics, err := machineDiagnostics(report.Run.WorkingDirectory, report.Diagnostics)
+	if err != nil {
+		return machineEnvelopeParts{}, err
+	}
+	paths, err := report.machinePathPayload()
+	if err != nil {
+		return machineEnvelopeParts{}, err
+	}
+	suppressions, err := machineSuppressions(report.Run.WorkingDirectory, report.Suppressions)
+	if err != nil {
+		return machineEnvelopeParts{}, err
+	}
+	score, err := machineScore(report.Run.WorkingDirectory, report.Score)
+	if err != nil {
+		return machineEnvelopeParts{}, err
+	}
+	return machineEnvelopeParts{
+		inputs:       inputs,
+		findings:     findings,
+		diagnostics:  diagnostics,
+		paths:        paths,
+		suppressions: suppressions,
+		score:        score,
+	}, nil
+}
+
+// machineBaseEnvelope assembles the required v3 sections from normalized
+// values without adding feature-specific optional sections.
+func (report Report) machineBaseEnvelope(parts machineEnvelopeParts) map[string]any {
+	run := map[string]any{
+		"failOn":      report.Run.FailOn,
+		"format":      report.Run.Format,
+		"inputs":      parts.inputs,
+		"projectRoot": ".",
+	}
+	if report.Run.IncludeIgnored {
+		run["includeIgnored"] = true
+	}
+	severity := report.Summary.CountsBySeverity
+	summary := map[string]any{
+		"analysedFiles": report.Summary.FilesScanned,
+		"diagnostics":   len(report.Diagnostics),
+		"exitCode":      report.Summary.ExitCode,
+		"findings": map[string]int{
+			"advisory": severity[string(finding.SeverityAdvisory)],
+			"warning":  severity[string(finding.SeverityWarning)],
+			"error":    severity[string(finding.SeverityError)],
+			"total":    report.Summary.FindingsCount,
+		},
+		"findingsByPillar": report.Summary.CountsByPillar,
+		"ignoredPaths":     len(report.Paths.IgnoredPaths),
+		"missingPaths":     len(report.Paths.Missing),
+		"skippedFiles":     len(report.Paths.Skipped),
+		"extensions": map[string]any{
+			"go": map[string]any{
+				"summary": map[string]any{
+					"parserMode":         report.Summary.ParserMode,
+					"typeLoadingEnabled": report.Summary.TypeLoadingEnabled,
+				},
+			},
+		},
+	}
+	if report.SuppressedCount != nil {
+		summary["suppressedFindings"] = *report.SuppressedCount
+	}
+	payload := map[string]any{
+		"schemaVersion": SchemaVersion,
+		"tool":          report.Tool,
+		"run":           run,
+		"summary":       summary,
+		"score":         parts.score,
+		"diagnostics":   parts.diagnostics,
+		"findings":      parts.findings,
+		"paths":         parts.paths,
+		"suppressions":  parts.suppressions,
+	}
+	return payload
+}
+
+// addMachineOptionalSections attaches native sections only when their source
+// feature was active for this run.
+func (report Report) addMachineOptionalSections(payload map[string]any) error {
+	baseline, ok, err := report.machineBaseline()
+	if err != nil {
+		return err
+	}
+	if ok {
+		payload["baseline"] = baseline
+	}
+	diff, ok, err := report.machineDiff()
+	if err != nil {
+		return err
+	}
+	if ok {
+		payload["diff"] = diff
+	}
+	if report.DisplayFilter.Applied {
+		displayFilter := map[string]any{
+			"applied":        true,
+			"excludePillars": nonNilStrings(report.DisplayFilter.ExcludePillars),
+			"excludeRules":   nonNilStrings(report.DisplayFilter.ExcludeRules),
+			"hiddenFindings": report.DisplayFilter.HiddenFindings,
+			"includePillars": nonNilStrings(report.DisplayFilter.IncludePillars),
+			"includeRules":   nonNilStrings(report.DisplayFilter.IncludeRules),
+		}
+		if report.DisplayFilter.Caveat != "" {
+			displayFilter["caveat"] = report.DisplayFilter.Caveat
+		}
+		payload["displayFilter"] = displayFilter
+	}
+	if len(report.Rules) > 0 {
+		payload["extensions"] = map[string]any{
+			"go": map[string]any{
+				"topLevel": map[string]any{"rules": report.Rules},
+			},
+		}
+	}
+	return nil
+}
+
+// MachineSummary returns the sole permitted compact projection: v3 analysis
+// without findings and with its summary schema identifier.
+func (report Report) MachineSummary() (map[string]any, error) {
+	payload, err := report.MachineEnvelope()
+	if err != nil {
+		return nil, err
+	}
+	delete(payload, "findings")
+	payload["schemaVersion"] = SummarySchemaVersion
+	return payload, nil
+}
+
+// machinePathPayload projects analysed, skipped, ignored, and missing paths
+// into the canonical v3 path section.
+func (report Report) machinePathPayload() (map[string]any, error) {
+	ignored, err := machinePaths(report.Run.WorkingDirectory, report.Paths.IgnoredPaths)
+	if err != nil {
+		return nil, fmt.Errorf("ignored paths: %w", err)
+	}
+	missing, err := machinePaths(report.Run.WorkingDirectory, report.Paths.Missing)
+	if err != nil {
+		return nil, fmt.Errorf("missing paths: %w", err)
+	}
+	scanned, err := machinePaths(report.Run.WorkingDirectory, report.Paths.Scanned)
+	if err != nil {
+		return nil, fmt.Errorf("scanned paths: %w", err)
+	}
+	details := make([]map[string]any, 0, len(report.Paths.Skipped))
+	for _, skipped := range report.Paths.Skipped {
+		path, pathErr := machinePath(report.Run.WorkingDirectory, skipped.Path)
+		if pathErr != nil {
+			return nil, fmt.Errorf("skipped path: %w", pathErr)
+		}
+		detail := map[string]any{"path": path, "reason": skipped.Reason, "source": skipped.Source}
+		if skipped.Pattern != "" {
+			detail["pattern"] = skipped.Pattern
+		}
+		details = append(details, detail)
+	}
+	return map[string]any{
+		"analysedFiles": report.Summary.FilesScanned,
+		"details":       details,
+		"ignoredPaths":  ignored,
+		"missingPaths":  missing,
+		"extensions": map[string]any{
+			"go": map[string]any{
+				"paths": map[string]any{"scanned": scanned},
+			},
+		},
+	}, nil
+}
+
+// machineBaseline projects an applied baseline while preserving its native
+// matching results and optional detail lists.
+func (report Report) machineBaseline() (map[string]any, bool, error) {
+	if !report.Baseline.Applied {
+		return nil, false, nil
+	}
+	payload := map[string]any{
+		"applied":            true,
+		"entries":            report.Baseline.Entries,
+		"newFindings":        report.Baseline.NewFindings,
+		"resolvedFindings":   report.Baseline.ResolvedFindings,
+		"staleEntries":       report.Baseline.StaleEntries,
+		"suppressedFindings": report.Baseline.SuppressedFindings,
+		"unchangedFindings":  report.Baseline.UnchangedFindings,
+	}
+	if report.Baseline.Path != "" {
+		path, err := machinePath(report.Run.WorkingDirectory, report.Baseline.Path)
+		if err != nil {
+			return nil, false, fmt.Errorf("baseline path: %w", err)
+		}
+		payload["path"] = path
+	}
+	if report.Baseline.Show {
+		unchanged, err := machineFindings(report.Run.WorkingDirectory, report.Baseline.Unchanged)
+		if err != nil {
+			return nil, false, err
+		}
+		resolved := make([]BaselineEntry, len(report.Baseline.Resolved))
+		copy(resolved, report.Baseline.Resolved)
+		for index := range resolved {
+			path, err := machinePath(report.Run.WorkingDirectory, resolved[index].File)
+			if err != nil {
+				return nil, false, fmt.Errorf("resolved baseline path: %w", err)
+			}
+			resolved[index].File = path
+		}
+		payload["unchanged"] = unchanged
+		payload["resolved"] = resolved
+	}
+	return payload, true, nil
+}
+
+// machineDiff projects active changed-region metadata without recalculating
+// the native diff result.
+func (report Report) machineDiff() (map[string]any, bool, error) {
+	if !report.Diff.Enabled {
+		return nil, false, nil
+	}
+	changedFiles, err := machinePaths(report.Run.WorkingDirectory, report.Diff.ChangedFiles)
+	if err != nil {
+		return nil, false, fmt.Errorf("diff paths: %w", err)
+	}
+	payload := map[string]any{
+		"base":             report.Diff.Base,
+		"changedFileCount": len(changedFiles),
+		"changedFiles":     changedFiles,
+		"enabled":          true,
+		"filteredFindings": report.Diff.FilteredFindings,
+	}
+	if report.Diff.Caveat != "" {
+		payload["caveat"] = report.Diff.Caveat
+	}
+	return payload, true, nil
+}
+
+// machineFindings copies findings and normalizes only their serialized paths,
+// preserving every native identity field.
+func machineFindings(root string, values []finding.Finding) ([]finding.Finding, error) {
+	out := make([]finding.Finding, len(values))
+	copy(out, values)
+	for index := range out {
+		path, err := machinePath(root, out[index].File)
+		if err != nil {
+			return nil, fmt.Errorf("finding path: %w", err)
+		}
+		out[index].File = path
+	}
+	return out, nil
+}
+
+// machineDiagnostics projects native run diagnostics in their existing order.
+func machineDiagnostics(root string, values []Diagnostic) ([]map[string]any, error) {
+	out := make([]map[string]any, 0, len(values))
+	for _, diagnostic := range values {
+		payload, err := machineDiagnostic(root, diagnostic)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, payload)
+	}
+	return out, nil
+}
+
+// machineDiagnostic projects one diagnostic and keeps native-only location
+// detail under the Go extension namespace.
+func machineDiagnostic(root string, diagnostic Diagnostic) (map[string]any, error) {
+	diagnosticType := diagnostic.DiagnosticType
+	if diagnosticType == "" {
+		diagnosticType = diagnostic.Stage
+	}
+	if diagnosticType == "" {
+		diagnosticType = "analysis"
+	}
+	payload := map[string]any{
+		"type":           diagnosticType,
+		"message":        diagnostic.Message,
+		"invalidatesRun": diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun,
+	}
+	if diagnostic.File != "" {
+		path, err := machinePath(root, diagnostic.File)
+		if err != nil {
+			return nil, fmt.Errorf("diagnostic path: %w", err)
+		}
+		payload["file"] = path
+	}
+	if diagnostic.Stage != "" {
+		payload["stage"] = diagnostic.Stage
+	}
+	if diagnostic.Severity != "" {
+		payload["severity"] = diagnostic.Severity
+	}
+	addMachineDiagnosticLocation(payload, diagnostic.Location)
+	return payload, nil
+}
+
+// addMachineDiagnosticLocation attaches available line data to the core
+// diagnostic and preserves richer coordinates as a Go extension.
+func addMachineDiagnosticLocation(payload map[string]any, source *finding.Location) {
+	if source == nil {
+		return
+	}
+	location := map[string]int{}
+	if source.Line > 0 {
+		payload["line"] = source.Line
+		location["line"] = source.Line
+	}
+	if source.Column > 0 {
+		location["column"] = source.Column
+	}
+	if source.EndLine > 0 {
+		location["endLine"] = source.EndLine
+	}
+	if len(location) > 0 {
+		payload["extensions"] = map[string]any{
+			"go": map[string]any{"diagnostic": map[string]any{"location": location}},
+		}
+	}
+}
+
+// machineSuppressions normalizes suppression scopes while preserving audit
+// counts and user-supplied reasons.
+func machineSuppressions(root string, values []SuppressionSummary) ([]map[string]any, error) {
+	out := make([]map[string]any, 0, len(values))
+	for _, suppression := range values {
+		paths, err := machinePaths(root, suppression.Paths)
+		if err != nil {
+			return nil, fmt.Errorf("suppression paths: %w", err)
+		}
+		payload := map[string]any{
+			"index":      suppression.Index,
+			"rule":       suppression.Rule,
+			"paths":      paths,
+			"reason":     suppression.Reason,
+			"suppressed": suppression.Suppressed,
+		}
+		if suppression.Symbol != nil && *suppression.Symbol != "" {
+			payload["symbol"] = *suppression.Symbol
+		}
+		out = append(out, payload)
+	}
+	return out, nil
+}
+
+// machineScore normalizes offender paths without changing any score produced
+// by the native scoring engine.
+func machineScore(root string, score scoring.Score) (map[string]any, error) {
+	topOffenders := make([]scoring.FileScore, len(score.TopOffender))
+	copy(topOffenders, score.TopOffender)
+	for index := range topOffenders {
+		path, err := machinePath(root, topOffenders[index].File)
+		if err != nil {
+			return nil, fmt.Errorf("score path: %w", err)
+		}
+		topOffenders[index].File = path
+	}
+	return map[string]any{
+		"composite":                   map[string]any{"grade": score.Grade, "score": score.Composite},
+		"pillars":                     score.PillarDetails,
+		"topOffenders":                topOffenders,
+		"coverage":                    score.Coverage,
+		"complexityDistribution":      score.ComplexityDistribution,
+		"complexityDistributionScope": score.ComplexityDistributionScope,
+	}, nil
+}
+
+// machinePaths converts an ordered path list to project-relative POSIX form.
+func machinePaths(root string, values []string) ([]string, error) {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		path, err := machinePath(root, value)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, path)
+	}
+	return out, nil
+}
+
+// machinePath converts one path to project-relative POSIX form and rejects
+// values outside the report root.
+func machinePath(root, value string) (string, error) {
+	if value == "" {
+		return "", fmt.Errorf("empty path is not portable")
+	}
+	if len(value) >= 2 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' {
+		return "", fmt.Errorf("Windows drive path %q is outside the project contract", value)
+	}
+	cleaned := filepath.Clean(value)
+	if filepath.IsAbs(cleaned) {
+		base := root
+		if base == "" {
+			return "", fmt.Errorf("absolute path %q has no project root", value)
+		}
+		relative, err := filepath.Rel(base, cleaned)
+		if err != nil {
+			return "", fmt.Errorf("path %q cannot be made project-relative: %w", value, err)
+		}
+		cleaned = relative
+	}
+	portable := filepath.ToSlash(cleaned)
+	if portable == ".." || strings.HasPrefix(portable, "../") || strings.HasPrefix(portable, "/") || strings.Contains(portable, "\\") {
+		return "", fmt.Errorf("path %q is outside the project root", value)
+	}
+	return portable, nil
 }

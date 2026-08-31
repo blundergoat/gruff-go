@@ -14,26 +14,9 @@ import (
 
 // WriteSummaryJSON writes the scan-level JSON contract without the heavier per-finding payload.
 func WriteSummaryJSON(writer io.Writer, report analysis.Report) error {
-	payload := struct {
-		SchemaVersion string                        `json:"schemaVersion"`
-		Tool          analysis.Tool                 `json:"tool"`
-		Run           analysis.RunMetadata          `json:"run"`
-		Summary       analysis.Summary              `json:"summary"`
-		Baseline      analysis.BaselineSummary      `json:"baseline"`
-		Diff          analysis.DiffSummary          `json:"diff"`
-		DisplayFilter analysis.DisplayFilterSummary `json:"displayFilter"`
-		Score         any                           `json:"score"`
-		Diagnostics   []analysis.Diagnostic         `json:"diagnostics"`
-	}{
-		SchemaVersion: report.SchemaVersion,
-		Tool:          report.Tool,
-		Run:           report.Run,
-		Summary:       report.Summary,
-		Baseline:      report.Baseline,
-		Diff:          report.Diff,
-		DisplayFilter: report.DisplayFilter,
-		Score:         report.Score,
-		Diagnostics:   report.Diagnostics,
+	payload, err := report.MachineSummary()
+	if err != nil {
+		return err
 	}
 	return WriteJSON(writer, payload)
 }

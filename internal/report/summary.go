@@ -18,11 +18,11 @@ import (
 )
 
 // SummarySchemaVersion identifies the shared cross-port summary digest contract.
-// All five gruff-* ports emit the same `gruff.summary.v2` shape (7-column pillar
+// All five gruff-* ports emit the same `gruff.summary.v3` shape (7-column pillar
 // block sourced from BuildPillarSummaryRows); the bare prefix reflects that it
 // is the canonical schema rather than a per-port one. Distinct from the analysis
 // report schema so the summary digest can evolve independently.
-const SummarySchemaVersion = "gruff.summary.v2"
+const SummarySchemaVersion = analysis.SummarySchemaVersion
 
 // summaryPillarOrder enumerates every pillar surfaced in the summary digest. It
 // mirrors the spec's canonical pillar list and intentionally excludes the
@@ -42,7 +42,7 @@ var summaryPillarOrder = []finding.Pillar{
 }
 
 // PillarSummaryRow is a single per-pillar entry in the summary digest. It is
-// serialised into the gruff.summary.v2 JSON payload and rendered into the
+// serialised into the gruff.summary.v3 JSON payload and rendered into the
 // canonical text Pillars block.
 type PillarSummaryRow struct {
 	// Pillar is the canonical pillar name (e.g. "documentation").
@@ -196,19 +196,13 @@ func writeSummaryBaseline(writer io.Writer, summary analysis.BaselineSummary) er
 	return err
 }
 
-// WriteSummaryV01JSON writes the gruff.summary.v2 digest payload used by the
-// `summary --format=json` command. The payload is intentionally smaller than
-// the analysis schema: callers that need the full per-finding report should
-// use `analyse --format=json` or `analyse --format=summary-json`.
+// WriteSummaryV01JSON writes the canonical v3 analysis projection used by the
+// `summary --format=json` command. The legacy function name remains internal so
+// callers do not select a second summary implementation.
 func WriteSummaryV01JSON(writer io.Writer, report analysis.Report) error {
-	payload := struct {
-		SchemaVersion string                `json:"schemaVersion"`
-		Pillars       []PillarSummaryRow    `json:"pillars"`
-		Diagnostics   []analysis.Diagnostic `json:"diagnostics,omitempty"`
-	}{
-		SchemaVersion: SummarySchemaVersion,
-		Pillars:       BuildPillarSummaryRows(report),
-		Diagnostics:   report.Diagnostics,
+	payload, err := report.MachineSummary()
+	if err != nil {
+		return err
 	}
 	return WriteJSON(writer, payload)
 }

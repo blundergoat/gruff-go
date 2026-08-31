@@ -13,7 +13,58 @@ import (
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
+	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/rule"
+	"github.com/blundergoat/gruff-go/internal/scoring"
 )
+
+// machineAnalysisReport mirrors the v3 JSON surface tests consume. The runtime
+// analysis.Report remains the richer internal model and is not a wire decoder.
+type machineAnalysisReport struct {
+	SchemaVersion string `json:"schemaVersion"`
+	Summary       struct {
+		AnalysedFiles      int  `json:"analysedFiles"`
+		ExitCode           int  `json:"exitCode"`
+		SuppressedFindings *int `json:"suppressedFindings"`
+		Findings           struct {
+			Total int `json:"total"`
+		} `json:"findings"`
+	} `json:"summary"`
+	Baseline      analysis.BaselineSummary      `json:"baseline"`
+	Diff          analysis.DiffSummary          `json:"diff"`
+	DisplayFilter analysis.DisplayFilterSummary `json:"displayFilter"`
+	Diagnostics   []struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"diagnostics"`
+	Findings []finding.Finding `json:"findings"`
+	Score    struct {
+		Composite struct {
+			Score int    `json:"score"`
+			Grade string `json:"grade"`
+		} `json:"composite"`
+		Pillars []scoring.PillarDetail `json:"pillars"`
+	} `json:"score"`
+	Paths struct {
+		IgnoredPaths []string               `json:"ignoredPaths"`
+		MissingPaths []string               `json:"missingPaths"`
+		Details      []analysis.SkippedPath `json:"details"`
+		Extensions   struct {
+			Go struct {
+				Paths struct {
+					Scanned []string `json:"scanned"`
+				} `json:"paths"`
+			} `json:"go"`
+		} `json:"extensions"`
+	} `json:"paths"`
+	Extensions struct {
+		Go struct {
+			TopLevel struct {
+				Rules []rule.Definition `json:"rules"`
+			} `json:"topLevel"`
+		} `json:"go"`
+	} `json:"extensions"`
+}
 
 // TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output.
 func TestAnalyseTextAndJSON(t *testing.T) {
@@ -33,17 +84,17 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "."}, &jsonOut, &jsonErr); code != 0 {
 		t.Fatalf("json exit = %d, stderr = %s", code, jsonErr.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(jsonOut.Bytes(), &parsed); err != nil {
 		t.Fatalf("invalid json: %v\n%s", err, jsonOut.String())
 	}
 	if parsed.SchemaVersion != analysis.SchemaVersion {
 		t.Fatalf("schema = %q, want %q", parsed.SchemaVersion, analysis.SchemaVersion)
 	}
-	if parsed.Summary.FilesScanned != 1 {
-		t.Fatalf("files scanned = %d, want 1", parsed.Summary.FilesScanned)
+	if parsed.Summary.AnalysedFiles != 1 {
+		t.Fatalf("files scanned = %d, want 1", parsed.Summary.AnalysedFiles)
 	}
-	for _, definition := range parsed.Rules {
+	for _, definition := range parsed.Extensions.Go.TopLevel.Rules {
 		if definition.Capability != "parser" {
 			t.Fatalf("rule %s capability = %q, want parser", definition.ID, definition.Capability)
 		}
@@ -57,13 +108,13 @@ func TestDeepScanBudgetCLIOverridesConfig(t *testing.T) {
 	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  enabled: true\n  maxLines: 1\n  maxBytes: 1\n")
 	t.Chdir(root)
 
-	run := func(arguments ...string) analysis.Report {
+	run := func(arguments ...string) machineAnalysisReport {
 		t.Helper()
 		var out, errOut bytes.Buffer
 		if code := Main(arguments, &out, &errOut); code != 0 {
 			t.Fatalf("%v exit = %d, stderr = %s", arguments, code, errOut.String())
 		}
-		var reportData analysis.Report
+		var reportData machineAnalysisReport
 		if err := json.Unmarshal(out.Bytes(), &reportData); err != nil {
 			t.Fatal(err)
 		}
@@ -93,11 +144,11 @@ func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "--changed-ranges", "3-3", "complex.go"}, &out, &errOut); code != 0 {
 		t.Fatalf("changed-ranges analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.SuppressedCount == nil {
+	if parsed.Summary.SuppressedFindings == nil {
 		t.Fatalf("suppressedCount missing from changed-region JSON: %s", out.String())
 	}
 }
@@ -183,15 +234,15 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "."}, &second, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("second exit = %d", code)
 	}
-	var firstReport, secondReport analysis.Report
+	var firstReport, secondReport machineAnalysisReport
 	if err := json.Unmarshal(first.Bytes(), &firstReport); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(second.Bytes(), &secondReport); err != nil {
 		t.Fatal(err)
 	}
-	if firstReport.Paths.Scanned[0] != "a.go" || firstReport.Paths.Scanned[1] != "b.go" {
-		t.Fatalf("scanned paths not sorted: %#v", firstReport.Paths.Scanned)
+	if firstReport.Paths.Extensions.Go.Paths.Scanned[0] != "a.go" || firstReport.Paths.Extensions.Go.Paths.Scanned[1] != "b.go" {
+		t.Fatalf("scanned paths not sorted: %#v", firstReport.Paths.Extensions.Go.Paths.Scanned)
 	}
 	if first.String() != second.String() {
 		t.Fatalf("json output changed between runs:\nfirst:\n%s\nsecond:\n%s", first.String(), second.String())
@@ -270,7 +321,7 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	if strings.Contains(out.String(), `"falsePositiveShapes"`) {
 		t.Fatalf("analysis JSON unexpectedly contains catalogue-only guidance: %s", out.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +332,7 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	if finding.RuleID != "complexity.cyclomatic" || finding.Fingerprint == "" || finding.Remediation == "" {
 		t.Fatalf("finding = %#v, want complete complexity finding", finding)
 	}
-	if parsed.Score.Composite >= 100 || parsed.Score.Grade == "" || len(parsed.Score.Pillars) != 1 {
+	if parsed.Score.Composite.Score >= 100 || parsed.Score.Composite.Grade == "" || len(parsed.Score.Pillars) != 1 {
 		t.Fatalf("score = %#v, want penalized score", parsed.Score)
 	}
 }
@@ -312,11 +363,11 @@ rules:
 	if code := Main([]string{"analyse", "--format", "json", "--baseline", "baseline.json", "complex.go"}, &analysisOut, &analysisErr); code != 0 {
 		t.Fatalf("baseline analyse exit = %d, stderr = %s, stdout = %s", code, analysisErr.String(), analysisOut.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(analysisOut.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.FindingsCount != 0 {
+	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.Findings.Total != 0 {
 		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
 	}
 }
@@ -344,11 +395,11 @@ func TestAnalyseGenerateBaselineWritesUsableBaseline(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "--baseline", "baseline.json", "complex.go"}, &analysisOut, &analysisErr); code != 0 {
 		t.Fatalf("baseline analyse exit = %d, stderr = %s, stdout = %s", code, analysisErr.String(), analysisOut.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(analysisOut.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.FindingsCount != 0 {
+	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.Findings.Total != 0 {
 		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
 	}
 }
@@ -439,11 +490,11 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "--exclude-rules", "complexity.cyclomatic", "complex.go"}, &out, &errOut); code != 1 {
 		t.Fatalf("exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if len(parsed.Findings) != 0 || parsed.Summary.FindingsCount != 1 || parsed.DisplayFilter.HiddenFindings != 1 {
+	if len(parsed.Findings) != 0 || parsed.Summary.Findings.Total != 1 || parsed.DisplayFilter.HiddenFindings != 1 {
 		t.Fatalf("findings = %#v summary = %#v display = %#v", parsed.Findings, parsed.Summary, parsed.DisplayFilter)
 	}
 }

@@ -101,24 +101,23 @@ func (f Finding) ComputeStableIdentity() string {
 	return hex.EncodeToString(hasher.Sum(nil))[:16]
 }
 
-// MarshalJSON emits the canonical flat finding shape while retaining the legacy
-// nested location object for one release.
+// MarshalJSON emits the canonical v3 finding shape. Unknown optional spans are
+// omitted, while file-level findings use line 1 as their stable file anchor.
 func (f Finding) MarshalJSON() ([]byte, error) {
 	payload := struct {
 		RuleID           string         `json:"ruleId"`
 		Message          string         `json:"message"`
 		File             string         `json:"file"`
-		Line             *int           `json:"line"`
-		EndLine          *int           `json:"endLine"`
-		Column           *int           `json:"column"`
-		Location         *Location      `json:"location,omitempty"`
-		Symbol           *string        `json:"symbol"`
+		Line             int            `json:"line"`
+		EndLine          *int           `json:"endLine,omitempty"`
+		Column           *int           `json:"column,omitempty"`
+		Symbol           *string        `json:"symbol,omitempty"`
 		Severity         Severity       `json:"severity"`
 		Pillar           Pillar         `json:"pillar"`
 		SecondaryPillars []Pillar       `json:"secondaryPillars"`
 		Tier             string         `json:"tier"`
 		Confidence       Confidence     `json:"confidence"`
-		Remediation      *string        `json:"remediation"`
+		Remediation      string         `json:"remediation"`
 		Fingerprint      string         `json:"fingerprint"`
 		StableIdentity   string         `json:"stableIdentity"`
 		Metadata         map[string]any `json:"metadata"`
@@ -126,22 +125,30 @@ func (f Finding) MarshalJSON() ([]byte, error) {
 		RuleID:           f.RuleID,
 		Message:          f.Message,
 		File:             f.File,
-		Line:             locationInt(f.Location, func(location Location) int { return location.Line }),
+		Line:             canonicalLine(f.Location),
 		EndLine:          locationInt(f.Location, func(location Location) int { return location.EndLine }),
 		Column:           locationInt(f.Location, func(location Location) int { return location.Column }),
-		Location:         f.Location,
 		Symbol:           nonEmptyString(f.Symbol),
 		Severity:         f.Severity,
 		Pillar:           f.Pillar,
 		SecondaryPillars: nonNilPillars(f.SecondaryPillars),
 		Tier:             f.resolvedTier(),
 		Confidence:       f.Confidence,
-		Remediation:      nonEmptyString(f.Remediation),
+		Remediation:      f.Remediation,
 		Fingerprint:      f.Fingerprint,
 		StableIdentity:   f.resolvedStableIdentity(),
-		Metadata:         nonNilMetadata(f.Metadata),
+		Metadata:         canonicalMetadata(f.Metadata, f.Location),
 	}
 	return json.Marshal(payload)
+}
+
+// canonicalLine returns the scanner line when known and the first line for a
+// file-level finding, whose subject is the file rather than a source span.
+func canonicalLine(location *Location) int {
+	if location == nil || location.Line <= 0 {
+		return 1
+	}
+	return location.Line
 }
 
 // resolvedTier returns the finding tier, defaulting old in-memory findings to v0.1.
@@ -189,9 +196,14 @@ func nonNilPillars(values []Pillar) []Pillar {
 }
 
 // nonNilMetadata serializes absent metadata as an empty canonical object.
-func nonNilMetadata(values map[string]any) map[string]any {
-	if values == nil {
-		return map[string]any{}
+func canonicalMetadata(values map[string]any, location *Location) map[string]any {
+	out := make(map[string]any, len(values)+1)
+	for key, value := range values {
+		out[key] = value
 	}
-	return values
+	out["locationPrecision"] = "line-only"
+	if location != nil && location.Column > 0 {
+		out["locationPrecision"] = "scanner-pinpointed"
+	}
+	return out
 }

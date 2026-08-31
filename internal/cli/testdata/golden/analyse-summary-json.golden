@@ -1,63 +1,1410 @@
 {
-  "schemaVersion": "gruff.analysis.v2",
-  "tool": {
-    "name": "gruff-go",
-    "version": "0.5.0"
+  "diagnostics": [],
+  "extensions": {
+    "go": {
+      "topLevel": {
+        "rules": [
+          {
+            "id": "complexity.cognitive",
+            "title": "Cognitive complexity",
+            "description": "Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
+            "pillar": "complexity",
+            "severity": "warning",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "maxComplexity": 25
+            },
+            "tags": [
+              "metric"
+            ],
+            "remediation": "Flatten nested branches, return early, or extract cohesive helper functions."
+          },
+          {
+            "id": "complexity.cyclomatic",
+            "title": "Cyclomatic complexity",
+            "description": "Flags Go functions whose branch count exceeds the default cyclomatic threshold.",
+            "pillar": "complexity",
+            "severity": "warning",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "maxComplexity": 20
+            },
+            "remediation": "Split independent decisions or move branches into named helpers."
+          },
+          {
+            "id": "complexity.nesting-depth",
+            "title": "Nesting depth",
+            "description": "Flags functions whose maximum control-flow nesting depth exceeds the configured threshold. Function literals reset the count.",
+            "pillar": "complexity",
+            "severity": "warning",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "maxDepth": 5
+            },
+            "remediation": "Extract nested branches into named helpers or return early on guard conditions."
+          },
+          {
+            "id": "dead-code.empty-block",
+            "title": "Empty control-flow block",
+            "description": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code.",
+            "pillar": "dead-code",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "remediation": "Remove the empty block or add the intended implementation."
+          },
+          {
+            "id": "dead-code.unreachable-code",
+            "title": "Unreachable code",
+            "description": "Flags statements that appear after return, panic, break, continue, or goto in the same block.",
+            "pillar": "dead-code",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "control-flow"
+            ],
+            "remediation": "Remove the unreachable statement or move it before the terminating control-flow statement."
+          },
+          {
+            "id": "dead-code.unused-private-const",
+            "title": "Unused private const",
+            "description": "Flags package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Iota groups, multi-name const specs, test files, generated files, vendor paths, and reflection-heavy packages are excluded.",
+            "pillar": "dead-code",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "candidate",
+              "cross-file",
+              "dead-code"
+            ],
+            "remediation": "Delete the constant if it is abandoned, or leave the candidate rule opt-in where grouped constants or build tags make parser-only certainty too weak."
+          },
+          {
+            "id": "dead-code.unused-private-function",
+            "title": "Unused private function",
+            "description": "Flags package-private (lowercase-leading) top-level functions whose names are not referenced anywhere else in the same parsed package. Methods, init, main, and packages that import reflect are excluded so the rule stays precision-first.",
+            "pillar": "dead-code",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "cross-file",
+              "dead-code"
+            ],
+            "remediation": "Delete the function, export it if other packages need it, or confirm it is only used through reflection or build-tag-gated code paths and suppress the finding locally."
+          },
+          {
+            "id": "dead-code.unused-private-type",
+            "title": "Unused private type",
+            "description": "Flags package-private top-level types whose names are not referenced anywhere else in the same parsed package. Generated, test, vendor, and reflection-heavy packages are excluded so the parser-only candidate stays precision-first.",
+            "pillar": "dead-code",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "candidate",
+              "cross-file",
+              "dead-code"
+            ],
+            "remediation": "Delete the type if it is abandoned, or enable the rule only after confirming generated, reflective, and build-tagged references are not part of the package contract."
+          },
+          {
+            "id": "dead-code.unused-private-var",
+            "title": "Unused private var",
+            "description": "Flags package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, registration tables, blank identifiers, vendor paths, and reflection-heavy packages are excluded.",
+            "pillar": "dead-code",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "candidate",
+              "cross-file",
+              "dead-code"
+            ],
+            "remediation": "Delete the variable if it is abandoned, or keep the rule opt-in until parser-only evidence can prove indirect registration use is not involved."
+          },
+          {
+            "id": "dependency.go-mod-local-replace",
+            "title": "Local go.mod replace directive",
+            "description": "Flags go.mod replace directives that redirect a dependency to a local filesystem path (./…, ../…, or an absolute path). Local replacements do not reproduce for other clones or CI and usually indicate in-progress local development that should not ship.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "dependency",
+              "security",
+              "supply-chain"
+            ],
+            "remediation": "Remove the local replace before shipping and depend on a published module version, or vendor the dependency explicitly."
+          },
+          {
+            "id": "dependency.go-mod-remote-replace",
+            "title": "Remote go.mod replace directive",
+            "description": "Flags go.mod replace directives that redirect a dependency to a different remote module path or version. Remote replacements silently swap a dependency's source and should be reviewed as a supply-chain decision.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "dependency",
+              "security",
+              "supply-chain"
+            ],
+            "remediation": "Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible."
+          },
+          {
+            "id": "design.hotspot-file",
+            "title": "Hotspot file",
+            "description": "Emits score-neutral composite triage when a file has findings across multiple quality pillars.",
+            "pillar": "design",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "minFindings": 3,
+              "minPillars": 2
+            },
+            "tags": [
+              "composite"
+            ],
+            "remediation": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit."
+          },
+          {
+            "id": "docs.comment-rubric",
+            "title": "Comment rubric",
+            "description": "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "minPackageCommentLines": 1
+            },
+            "options": {
+              "excludePaths": [],
+              "ignoreTests": false,
+              "includePaths": [],
+              "minWordsBeyondSymbol": 0,
+              "requireConstComments": false,
+              "requireFunctionComments": false,
+              "requireInterfaceComments": false,
+              "requireNamedTypeComments": false,
+              "requirePackageSummary": false,
+              "requireStructComments": false,
+              "requireVarComments": false
+            },
+            "tags": [
+              "comments",
+              "documentation",
+              "rubric"
+            ],
+            "remediation": "Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When minWordsBeyondSymbol is set, the comment must add at least that many tokens beyond the symbol's own identifier tokens; replace name-restatement summaries with substantive context."
+          },
+          {
+            "id": "docs.config-field-comment",
+            "title": "Config field comment",
+            "description": "Flags exported fields on struct types in configured includePaths that have no useful doc comment. Embedded and unexported fields are out of scope.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "options": {
+              "excludePaths": [],
+              "includePaths": []
+            },
+            "tags": [
+              "comments",
+              "documentation",
+              "struct-fields"
+            ],
+            "remediation": "Add a doc comment to every exported field of structs declared in the configured includePaths."
+          },
+          {
+            "id": "docs.exported-symbol-comment",
+            "title": "Exported symbol comment",
+            "description": "Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "options": {
+              "ignoreInternalPackages": true
+            },
+            "remediation": "Add a Go-style doc comment that begins with the symbol name."
+          },
+          {
+            "id": "docs.package-comment",
+            "title": "Package comment",
+            "description": "Flags Go packages that do not have a package-level comment in any file.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "remediation": "Add a package comment that explains the package responsibility."
+          },
+          {
+            "id": "docs.suppression-without-rationale",
+            "title": "Suppression without rationale",
+            "description": "Flags nolint and nosec suppression comments that do not explain why the suppression is intentional.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "comments",
+              "documentation"
+            ],
+            "remediation": "Add a short reason after the suppression, such as `-- false positive because ...` or `// tracked in ISSUE-123`."
+          },
+          {
+            "id": "maintainability.context-todo-production",
+            "title": "Context TODO in production",
+            "description": "Flags context.TODO calls in production files where cancellation ownership should be explicit.",
+            "pillar": "maintainability",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "context"
+            ],
+            "remediation": "Accept a caller-provided context or use a documented bootstrap context where cancellation is intentionally unavailable."
+          },
+          {
+            "id": "maintainability.defer-in-loop",
+            "title": "Defer in loop",
+            "description": "Flags defer statements directly inside loops, where cleanup is delayed until the enclosing function returns.",
+            "pillar": "maintainability",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "lifecycle"
+            ],
+            "remediation": "Move the loop body into a helper function or close the resource explicitly before the next iteration."
+          },
+          {
+            "id": "maintainability.ignored-error",
+            "title": "Ignored error",
+            "description": "Flags error-looking values that are assigned directly to the blank identifier.",
+            "pillar": "maintainability",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "errors"
+            ],
+            "remediation": "Handle the error, return it to the caller, or document why ignoring it is safe."
+          },
+          {
+            "id": "maintainability.log-fatal-library",
+            "title": "Library fatal exit",
+            "description": "Flags log.Fatal and os.Exit calls outside command entrypoints and tests.",
+            "pillar": "maintainability",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "errors",
+              "lifecycle"
+            ],
+            "remediation": "Return an error to the caller and let command/bootstrap code decide whether to terminate the process."
+          },
+          {
+            "id": "maintainability.loop-variable-address",
+            "title": "Range variable address escapes",
+            "description": "Flags storing, returning, or appending the address of a range variable copy.",
+            "pillar": "maintainability",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "loops"
+            ],
+            "remediation": "Take the address of the indexed collection element, or copy the value into a deliberately scoped variable before storing its address."
+          },
+          {
+            "id": "maintainability.production-panic",
+            "title": "Production panic",
+            "description": "Flags direct literal panic calls in non-test, non-main production code.",
+            "pillar": "maintainability",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "errors"
+            ],
+            "remediation": "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code."
+          },
+          {
+            "id": "modernisation.ioutil-deprecated",
+            "title": "Deprecated ioutil API",
+            "description": "Flags calls to io/ioutil APIs that have direct io or os replacements in modern Go.",
+            "pillar": "modernisation",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "options": {
+              "minimumGoVersion": "1.16"
+            },
+            "tags": [
+              "go-style"
+            ],
+            "remediation": "Replace io/ioutil calls with the matching io or os package API."
+          },
+          {
+            "id": "naming.acronym-case",
+            "title": "Acronym case",
+            "description": "Flags identifiers that spell configured Go initialisms with mixed casing.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "options": {
+              "acronyms": [
+                "HTTP",
+                "URL",
+                "JSON",
+                "ID",
+                "XML",
+                "API",
+                "JWT",
+                "AWS",
+                "OAUTH",
+                "CSS",
+                "HTML",
+                "YAML",
+                "SARIF",
+                "ASCII",
+                "SQL",
+                "CLI",
+                "TCP",
+                "UDP",
+                "TLS",
+                "SSL",
+                "DNS",
+                "IP",
+                "GPU",
+                "CPU",
+                "OS"
+              ],
+              "allow": []
+            },
+            "tags": [
+              "go-style",
+              "naming"
+            ],
+            "remediation": "Use Go's canonical all-caps initialism spelling within identifiers, such as userID and parseURL."
+          },
+          {
+            "id": "naming.contextual-generic",
+            "title": "Contextual generic name",
+            "description": "Flags generic range variables and accumulator names only when surrounding context is large enough that the name loses meaning.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "minBodyLines": 15,
+              "minFunctionLines": 50
+            },
+            "options": {
+              "accumulatorNames": [
+                "out",
+                "result"
+              ],
+              "genericNames": [
+                "item",
+                "value",
+                "entry",
+                "elem",
+                "v"
+              ],
+              "requireMultiple": true
+            },
+            "tags": [
+              "naming"
+            ],
+            "remediation": "Rename long-loop values and long-function accumulators to describe the data role they carry."
+          },
+          {
+            "id": "naming.get-prefix",
+            "title": "Get prefix",
+            "description": "Flags receiver accessor methods that use a Get prefix instead of a direct noun phrase.",
+            "pillar": "modernisation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "options": {
+              "excludeNames": [],
+              "excludePaths": []
+            },
+            "tags": [
+              "go-style",
+              "naming"
+            ],
+            "remediation": "Rename accessor-style methods from GetThing to Thing unless parameters make the lookup action explicit."
+          },
+          {
+            "id": "naming.identifier-quality",
+            "title": "Identifier quality",
+            "description": "Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "options": {
+              "placeholderNames": [
+                "foo",
+                "bar",
+                "baz",
+                "tmp",
+                "temp",
+                "obj",
+                "todo",
+                "thing",
+                "stuff"
+              ]
+            },
+            "tags": [
+              "naming"
+            ],
+            "remediation": "Rename the identifier to something that names its role, or remove it if it is no longer needed."
+          },
+          {
+            "id": "naming.misspelling",
+            "title": "Misspelled identifier or comment",
+            "description": "Flags identifiers, doc comments, and struct tags containing common programming misspellings.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "options": {
+              "extra": {},
+              "ignore": []
+            },
+            "tags": [
+              "naming"
+            ],
+            "remediation": "Replace the misspelled token with the suggested correction. Use the `ignore` option for project-specific terms that look like misspellings but are intentional (proper nouns, vendor-specific terms)."
+          },
+          {
+            "id": "naming.negated-boolean",
+            "title": "Negated boolean",
+            "description": "Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "options": {
+              "allowList": [
+                "NoOp",
+                "Notify",
+                "Notice",
+                "Now",
+                "NoCopy",
+                "Notation",
+                "Notebook",
+                "NoConfig",
+                "NoBaseline",
+                "NoInteraction"
+              ],
+              "prefixes": [
+                "No",
+                "Not",
+                "Disable",
+                "Disallow",
+                "Without",
+                "Suppress"
+              ],
+              "scope": "exported"
+            },
+            "tags": [
+              "go-style",
+              "naming"
+            ],
+            "remediation": "Rename to the positive form (e.g. Skip… instead of No…) so call sites read without double negation."
+          },
+          {
+            "id": "naming.package-stutter",
+            "title": "Package stutter",
+            "description": "Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry).",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "options": {
+              "allowStutter": [
+                "Config",
+                "Finding"
+              ]
+            },
+            "tags": [
+              "go-style",
+              "naming"
+            ],
+            "remediation": "Rename the identifier to remove the package-name prefix so call sites read `config.Options` instead of `config.ConfigOptions`. Use `allowStutter` for single-noun stutter the community accepts (Config, Finding)."
+          },
+          {
+            "id": "naming.package-underscore",
+            "title": "Package name contains underscore",
+            "description": "Flags Go package names that use underscores instead of short lowercase words.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "go-style"
+            ],
+            "remediation": "Rename the package to a short lowercase name without underscores."
+          },
+          {
+            "id": "naming.receiver-consistency",
+            "title": "Receiver consistency",
+            "description": "Flags methods on the same type that use inconsistent receiver names or pointer/value forms.",
+            "pillar": "naming",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "options": {
+              "allowMixed": [],
+              "inspectGroup": "both"
+            },
+            "tags": [
+              "go-style",
+              "naming"
+            ],
+            "remediation": "Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form."
+          },
+          {
+            "id": "security.archive-path-traversal",
+            "title": "Archive path traversal",
+            "description": "Flags archive extraction paths built from entry names without an obvious containment check.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "archive",
+              "security"
+            ],
+            "remediation": "Clean the joined path and verify it stays within the extraction root before creating files."
+          },
+          {
+            "id": "security.github-actions-broad-permissions",
+            "title": "Broad workflow permissions",
+            "description": "Flags workflows that grant blanket write access with `permissions: write-all` or a bare `permissions: write`. Scoped grants such as `permissions:` with `contents: write` underneath are not flagged.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "ci",
+              "github-actions",
+              "security"
+            ],
+            "remediation": "Grant the least-privilege permission scopes the workflow needs (for example `contents: read`) instead of blanket write access."
+          },
+          {
+            "id": "security.github-actions-pull-request-target",
+            "title": "Risky pull_request_target workflow",
+            "description": "Flags workflows triggered by pull_request_target that also check out or run code. pull_request_target runs with repository secrets in the context of a fork's pull request, so executing PR-controlled code can leak secrets. Candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "ci",
+              "github-actions",
+              "security"
+            ],
+            "remediation": "Use pull_request for untrusted contributions, or keep pull_request_target jobs free of fork-controlled checkout and execution."
+          },
+          {
+            "id": "security.github-actions-remote-shell",
+            "title": "Remote script piped to shell in workflow",
+            "description": "Flags workflow run steps that download a remote script with curl/wget/Invoke-WebRequest and pipe it into a shell (for example `curl … | bash`), which executes unreviewed remote code in CI.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "ci",
+              "github-actions",
+              "security"
+            ],
+            "remediation": "Download the script to a file, verify its checksum, and review it before executing rather than piping a remote download directly into a shell."
+          },
+          {
+            "id": "security.github-actions-secrets-in-pr",
+            "title": "Secrets in pull-request workflow",
+            "description": "Flags workflows triggered by pull_request or pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. Candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "ci",
+              "github-actions",
+              "security"
+            ],
+            "remediation": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
+          },
+          {
+            "id": "security.github-actions-unpinned-action",
+            "title": "Unpinned GitHub Actions action",
+            "description": "Flags third-party GitHub Actions referenced by a mutable branch ref (for example @main or @master), which can be repointed to new code without review. Version-shaped tags (@v4, @v4.1.0) and full 40-character commit-SHA pins pass, and first-party actions/* and github/* are exempt.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "ci",
+              "github-actions",
+              "security"
+            ],
+            "remediation": "Pin third-party actions to a release tag or a full commit SHA instead of a branch ref so the referenced code cannot change underneath you."
+          },
+          {
+            "id": "security.http-client-no-timeout",
+            "title": "HTTP client without timeout",
+            "description": "Flags http.Client composite literals in production files that do not set Timeout.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "http",
+              "security"
+            ],
+            "remediation": "Set http.Client.Timeout or use a shared client whose timeout ownership is explicit."
+          },
+          {
+            "id": "security.http-server-no-timeout",
+            "title": "HTTP server without timeout",
+            "description": "Flags production http.Server literals and ListenAndServe helpers that do not set explicit timeout controls.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "http",
+              "security"
+            ],
+            "remediation": "Configure ReadHeaderTimeout, ReadTimeout, or WriteTimeout on http.Server and call ListenAndServe on that server value."
+          },
+          {
+            "id": "security.insecure-random-secret",
+            "title": "Insecure random secret",
+            "description": "Flags math/rand use when the result is assigned to or returned from token, nonce, session, password, key, or other secret-looking contexts.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "random",
+              "security"
+            ],
+            "remediation": "Use crypto/rand for security-sensitive random values and keep math/rand for sampling, tests, and simulations."
+          },
+          {
+            "id": "security.open-redirect-candidate",
+            "title": "Open redirect candidate",
+            "description": "Flags request-derived values passed to http.Redirect or a Location header without a nearby allowlist or validation check (possible open redirect). Uses bounded same-function evidence and candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "http",
+              "redirect",
+              "security"
+            ],
+            "remediation": "Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations."
+          },
+          {
+            "id": "security.path-traversal-file-access",
+            "title": "Path traversal in file access",
+            "description": "Flags request-derived values passed to filesystem or file-serving sinks without nearby filepath.Rel, IsLocal, basename, or containment evidence (possible path traversal). Uses bounded same-function evidence and candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "filesystem",
+              "path-traversal",
+              "security"
+            ],
+            "remediation": "Constrain request-derived paths with filepath.Clean plus a containment check (filepath.Rel/IsLocal) or reduce them to a basename before opening files."
+          },
+          {
+            "id": "security.permissive-file-mode",
+            "title": "Permissive file mode",
+            "description": "Flags os file and directory calls that use world-writable or overly permissive literal modes.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "filesystem",
+              "security"
+            ],
+            "remediation": "Use the least permissive mode needed, such as 0600 for private files, 0644 for public files, or 0755 for directories."
+          },
+          {
+            "id": "security.request-body-without-limit",
+            "title": "Request body read without limit",
+            "description": "Flags io.ReadAll-style reads of http.Request.Body in production handlers without nearby MaxBytesReader or LimitReader evidence.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "http",
+              "security"
+            ],
+            "remediation": "Wrap request bodies with http.MaxBytesReader or io.LimitReader before reading them fully."
+          },
+          {
+            "id": "security.request-controlled-url",
+            "title": "Request-controlled request URL",
+            "description": "Flags request-derived values passed as the URL of an outbound net/http request without an affirmative destination allowlist or validation check (possible SSRF). Uses bounded same-function evidence and candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "http",
+              "security",
+              "ssrf"
+            ],
+            "remediation": "Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching."
+          },
+          {
+            "id": "security.sensitive-data-logging",
+            "title": "Sensitive data in logging",
+            "description": "Flags logging and print calls whose arguments are credential-bearing: secret-named identifiers, secret-named environment reads, or request auth headers and cookies. Static text-only messages and redaction-wrapped values are ignored. Candidate wording, bounded same-function evidence.",
+            "pillar": "security",
+            "secondaryPillars": [
+              "sensitive-data"
+            ],
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "logging",
+              "security",
+              "sensitive-data"
+            ],
+            "remediation": "Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential."
+          },
+          {
+            "id": "security.shell-command",
+            "title": "Shell command execution",
+            "description": "Flags exec.Command calls that invoke a shell interpreter with command strings.",
+            "pillar": "security",
+            "secondaryPillars": [
+              "sensitive-data"
+            ],
+            "severity": "warning",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "security"
+            ],
+            "remediation": "Call the target executable directly and pass arguments without shell interpretation."
+          },
+          {
+            "id": "security.sql-string-query",
+            "title": "SQL string query construction",
+            "description": "Flags SQL execution calls whose query argument is constructed with string formatting or concatenation.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "security",
+              "sql"
+            ],
+            "remediation": "Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text."
+          },
+          {
+            "id": "security.template-injection-xss",
+            "title": "Template injection / reflected XSS",
+            "description": "Flags text/template rendered into an HTTP response, html/template HTML/JS/URL/CSS conversions of request-derived values, and raw writes of request-derived data on an HTML content type. html/template auto-escaping and html.EscapeString are treated as safe. Candidate wording, bounded same-function evidence.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "http",
+              "security",
+              "xss"
+            ],
+            "remediation": "Render HTML with html/template so output is auto-escaped, or escape request-derived values with html.EscapeString before writing them to the response."
+          },
+          {
+            "id": "security.tls-insecure-config",
+            "title": "TLS insecure config",
+            "description": "Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.",
+            "pillar": "security",
+            "severity": "warning",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "security",
+              "tls"
+            ],
+            "remediation": "Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions."
+          },
+          {
+            "id": "security.unsafe-deserialization",
+            "title": "Unsafe deserialization",
+            "description": "Flags decoding of request-controlled input via encoding/gob or gopkg.in/yaml, which over-trust their payload. Decoding a concrete typed struct from a trusted local source is not flagged. Uses bounded same-function evidence and candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "deserialization",
+              "security"
+            ],
+            "remediation": "Decode untrusted input into a concrete typed struct with a vetted format (such as encoding/json with a size limit) rather than gob or unrestricted YAML."
+          },
+          {
+            "id": "security.weak-crypto",
+            "title": "Weak crypto primitive",
+            "description": "Flags MD5/SHA1 in security-looking contexts, direct DES/RC4 construction, and RSA key generation below 2048 bits.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "crypto",
+              "security"
+            ],
+            "remediation": "Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits."
+          },
+          {
+            "id": "security.xxe-candidate",
+            "title": "XML external entity candidate",
+            "description": "Flags xml.Decoder configurations that populate a custom entity map, which re-enables entity resolution (possible XXE). The Go standard library encoding/xml does not expand external entities by default, so a plain decoder is not flagged. Candidate wording.",
+            "pillar": "security",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "security",
+              "xml",
+              "xxe"
+            ],
+            "remediation": "Leave xml.Decoder.Entity unset so encoding/xml's safe default applies, or validate and constrain any custom entity map fed from untrusted input."
+          },
+          {
+            "id": "sensitive-data.anthropic-api-key",
+            "title": "Anthropic API key literal",
+            "description": "Flags Anthropic API keys (sk-ant- prefix) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Revoke the key in the Anthropic console, then load credentials from a secret manager."
+          },
+          {
+            "id": "sensitive-data.aws-access-key",
+            "title": "AWS access key id",
+            "description": "Flags AWS access key identifiers (AKIA...) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them."
+          },
+          {
+            "id": "sensitive-data.connection-string",
+            "title": "Connection string with embedded password",
+            "description": "Flags database/queue connection URLs that embed a username and password in the URI.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings."
+          },
+          {
+            "id": "sensitive-data.gcp-service-account",
+            "title": "GCP service-account JSON key",
+            "description": "Flags files containing both a `\"type\": \"service_account\"` marker and a PEM private-key header - the documented shape of a GCP service-account JSON key file. Fires independently of sensitive-data.private-key, so a real key file produces two findings.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity."
+          },
+          {
+            "id": "sensitive-data.github-token",
+            "title": "GitHub token literal",
+            "description": "Flags GitHub personal-access, OAuth, user-to-server, server-to-server, and refresh tokens (gh[pousr]_ prefix) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Revoke the token, then load credentials from a secret manager or environment-specific runtime configuration."
+          },
+          {
+            "id": "sensitive-data.gitlab-token",
+            "title": "GitLab token literal",
+            "description": "Flags GitLab personal, trigger, runner, and application tokens (glpat-, glptt-, glrt-, gloas-) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Revoke the token in GitLab, then load credentials from a secret manager or environment-specific runtime configuration."
+          },
+          {
+            "id": "sensitive-data.google-api-key",
+            "title": "Google API key literal",
+            "description": "Flags Google API keys (AIza prefix plus 35 base64url characters) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager."
+          },
+          {
+            "id": "sensitive-data.high-entropy-string",
+            "title": "High-entropy string",
+            "description": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview.",
+            "pillar": "sensitive-data",
+            "severity": "warning",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "thresholds": {
+              "entropy": 4.5,
+              "minLength": 20
+            },
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
+          },
+          {
+            "id": "sensitive-data.jwt-token",
+            "title": "JWT token literal",
+            "description": "Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control."
+          },
+          {
+            "id": "sensitive-data.npm-token",
+            "title": "npm token literal",
+            "description": "Flags npm access tokens (npm_ and npm_pat_ prefixes) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Revoke the token in npm, then load credentials from a secret manager or environment-specific runtime configuration."
+          },
+          {
+            "id": "sensitive-data.phi-pattern",
+            "title": "PHI pattern",
+            "description": "Flags protected health information identifiers (US Social Security numbers, Medicare beneficiary identifiers, and label-anchored medical record numbers) embedded in source or text files. Opt-in; emits only a redacted preview.",
+            "pillar": "sensitive-data",
+            "severity": "warning",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "phi",
+              "secrets"
+            ],
+            "remediation": "Remove the identifier from source; use synthetic fixture data and load or store real PHI only in HIPAA-compliant systems. Mask or tokenise PHI before it reaches logs or reports."
+          },
+          {
+            "id": "sensitive-data.pii-pattern",
+            "title": "PII pattern",
+            "description": "Flags personally identifiable information (email addresses, phone numbers, and Luhn-valid payment card numbers) embedded in source or text files. Opt-in; emits only a redacted preview. Government/health identifiers are covered by sensitive-data.phi-pattern.",
+            "pillar": "sensitive-data",
+            "severity": "warning",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "pii",
+              "secrets"
+            ],
+            "remediation": "Remove the identifier from source; use synthetic fixture data or load real values from runtime configuration. Mask or tokenise PII before it reaches logs or reports."
+          },
+          {
+            "id": "sensitive-data.private-key",
+            "title": "Embedded private key",
+            "description": "Flags PEM-encoded private keys embedded directly in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Remove the key and load it from a secret manager or environment-specific runtime configuration."
+          },
+          {
+            "id": "sensitive-data.secret-pattern",
+            "title": "Secret-like literal",
+            "description": "Flags high-risk secret-like key/value assignments in Go and text/config files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "remediation": "Move secrets to a secret manager or environment-specific runtime configuration."
+          },
+          {
+            "id": "sensitive-data.slack-token",
+            "title": "Slack token literal",
+            "description": "Flags Slack bot, user, app, and refresh tokens (xox[bpar]- prefix) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Revoke the token in Slack's app management console, then load credentials from a secret manager."
+          },
+          {
+            "id": "sensitive-data.stripe-key",
+            "title": "Stripe live key literal",
+            "description": "Flags Stripe secret, publishable, and restricted live-environment keys ((sk|pk|rk)_live_ prefix) embedded in source or text files.",
+            "pillar": "sensitive-data",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "secrets"
+            ],
+            "remediation": "Roll the key in the Stripe dashboard, then load credentials from a secret manager."
+          },
+          {
+            "id": "size.file-length",
+            "title": "File length",
+            "description": "Flags Go files whose substantive line count (blank and comment-only lines are free) exceeds the threshold.",
+            "pillar": "size",
+            "severity": "error",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "maxLines": 1000
+            },
+            "remediation": "Split the file by responsibility or move focused behavior into smaller files."
+          },
+          {
+            "id": "size.function-length",
+            "title": "Function length",
+            "description": "Flags Go functions that exceed the default line-count threshold.",
+            "pillar": "size",
+            "severity": "warning",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "maxLines": 80
+            },
+            "remediation": "Extract cohesive helper functions or split independent branches."
+          },
+          {
+            "id": "size.parameter-count",
+            "title": "Parameter count",
+            "description": "Flags functions and methods whose parameter list exceeds the configured maximum, excluding the method receiver.",
+            "pillar": "size",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "thresholds": {
+              "maxParameters": 8
+            },
+            "remediation": "Group related parameters into a struct, accept an options type, or split the function."
+          },
+          {
+            "id": "test-quality.empty-test",
+            "title": "Empty test",
+            "description": "Flags Go test functions whose body contains no executable statements.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Add an assertion that exercises the behaviour the test name claims, or remove the empty test."
+          },
+          {
+            "id": "test-quality.fatal-in-goroutine",
+            "title": "Fatal call in goroutine",
+            "description": "Flags t.Fatal, t.Fatalf, and t.FailNow calls inside goroutines where they do not stop the parent test safely.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Report the error back to the parent goroutine and fail the test from the parent with t.Fatal or t.Fatalf."
+          },
+          {
+            "id": "test-quality.helper-missing-t-helper",
+            "title": "Test helper missing t.Helper",
+            "description": "Flags non-test helper functions that accept testing.TB, *testing.T, or *testing.B and can fail the test but never call Helper.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Call t.Helper() at the start of the helper so failures report the caller's line."
+          },
+          {
+            "id": "test-quality.no-failure-path",
+            "title": "Test cannot fail",
+            "description": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.).",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Add an assertion or document why the test cannot fail."
+          },
+          {
+            "id": "test-quality.parallel-range-capture",
+            "title": "Parallel subtest captures range variable",
+            "description": "Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics."
+          },
+          {
+            "id": "test-quality.skipped-test",
+            "title": "Skipped test",
+            "description": "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Remove the skip or document and track the condition outside the test body."
+          },
+          {
+            "id": "test-quality.sleep-in-test",
+            "title": "Sleep in test",
+            "description": "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "flake",
+              "tests"
+            ],
+            "remediation": "Replace time.Sleep with channel/WaitGroup synchronisation, polling against an observable condition, or a fake clock that advances deterministically."
+          },
+          {
+            "id": "test-quality.static-analysis-redundant-test",
+            "title": "Static-analysis-redundant test candidate",
+            "description": "Flags Go unit-test assertions whose main evidence is a parser-visible static code-shape fact rather than runtime behaviour.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "tags": [
+              "candidate",
+              "tests"
+            ],
+            "remediation": "Remove the redundant assertion if it is the only behaviour under test, or replace it with an assertion about runtime behaviour or meaningful values."
+          },
+          {
+            "id": "test-quality.tempdir-misuse",
+            "title": "Test temp dir misuse",
+            "description": "Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.",
+            "pillar": "test-quality",
+            "severity": "advisory",
+            "confidence": "high",
+            "capability": "parser",
+            "defaultEnabled": true,
+            "tags": [
+              "tests"
+            ],
+            "remediation": "Use t.TempDir() for per-test isolation and automatic cleanup."
+          }
+        ]
+      }
+    }
+  },
+  "paths": {
+    "analysedFiles": 1,
+    "details": [],
+    "extensions": {
+      "go": {
+        "paths": {
+          "scanned": [
+            "complex.go"
+          ]
+        }
+      }
+    },
+    "ignoredPaths": [],
+    "missingPaths": []
   },
   "run": {
-    "workingDirectory": "<WORKDIR>",
+    "failOn": "advisory",
+    "format": "summary-json",
     "inputs": [
       "complex.go"
     ],
-    "format": "summary-json",
-    "failOn": "advisory"
+    "projectRoot": "."
   },
-  "summary": {
-    "filesScanned": 1,
-    "filesSkipped": 0,
-    "diagnosticsCount": 0,
-    "findingsCount": 1,
-    "countsBySeverity": {
-      "advisory": 0,
-      "error": 0,
-      "warning": 1
-    },
-    "countsByPillar": {
-      "complexity": 1
-    },
-    "exitCode": 1,
-    "parserMode": "parser-only",
-    "typeLoadingEnabled": false
-  },
-  "baseline": {
-    "applied": false,
-    "entries": 0,
-    "suppressedFindings": 0,
-    "staleEntries": 0,
-    "newFindings": 0,
-    "unchangedFindings": 0,
-    "resolvedFindings": 0
-  },
-  "diff": {
-    "enabled": false,
-    "changedFiles": [],
-    "filteredFindings": 0
-  },
-  "displayFilter": {
-    "applied": false,
-    "includeRules": [],
-    "excludeRules": [],
-    "includePillars": [],
-    "excludePillars": [],
-    "hiddenFindings": 0
-  },
+  "schemaVersion": "gruff.summary.v3",
   "score": {
-    "composite": 99,
-    "grade": "A",
-    "pillars": {
-      "complexity": 92
+    "complexityDistribution": {
+      "1-5": 0,
+      "11-15": 0,
+      "16-20": 0,
+      "21+": 1,
+      "6-10": 0
     },
-    "pillarDetails": [
+    "complexityDistributionScope": "finding-only",
+    "composite": {
+      "grade": "A",
+      "score": 99
+    },
+    "coverage": {
+      "contributingPillars": [
+        "complexity"
+      ],
+      "caveat": "Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage."
+    },
+    "pillars": [
       {
         "pillar": "complexity",
         "score": 92,
@@ -69,12 +1416,6 @@
         "penalty": 8
       }
     ],
-    "coverage": {
-      "contributingPillars": [
-        "complexity"
-      ],
-      "caveat": "Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage."
-    },
     "topOffenders": [
       {
         "file": "complex.go",
@@ -83,15 +1424,36 @@
         "grade": "A",
         "maxCyclomatic": 22
       }
-    ],
-    "complexityDistribution": {
-      "1-5": 0,
-      "11-15": 0,
-      "16-20": 0,
-      "21+": 1,
-      "6-10": 0
-    },
-    "complexityDistributionScope": "finding-only"
+    ]
   },
-  "diagnostics": []
+  "summary": {
+    "analysedFiles": 1,
+    "diagnostics": 0,
+    "exitCode": 1,
+    "extensions": {
+      "go": {
+        "summary": {
+          "parserMode": "parser-only",
+          "typeLoadingEnabled": false
+        }
+      }
+    },
+    "findings": {
+      "advisory": 0,
+      "error": 0,
+      "total": 1,
+      "warning": 1
+    },
+    "findingsByPillar": {
+      "complexity": 1
+    },
+    "ignoredPaths": 0,
+    "missingPaths": 0,
+    "skippedFiles": 0
+  },
+  "suppressions": [],
+  "tool": {
+    "name": "gruff-go",
+    "version": "0.5.0"
+  }
 }

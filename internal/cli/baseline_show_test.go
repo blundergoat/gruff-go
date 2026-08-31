@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
 // seedResolvableBaseline baselines complex.go, then injects a bogus entry that
@@ -55,13 +53,13 @@ func seedResolvableBaseline(t *testing.T, root string) int {
 }
 
 // runAnalyseReport runs analyse with the given args and decodes the JSON report.
-func runAnalyseReport(t *testing.T, args ...string) analysis.Report {
+func runAnalyseReport(t *testing.T, args ...string) machineAnalysisReport {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	if code := Main(args, &out, &errOut); code != 0 {
 		t.Fatalf("analyse %v exit = %d, stderr = %s", args, code, errOut.String())
 	}
-	var report analysis.Report
+	var report machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("unmarshal %v: %v\n%s", args, err, out.String())
 	}
