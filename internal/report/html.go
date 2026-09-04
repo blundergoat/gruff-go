@@ -58,7 +58,7 @@ func (r htmlRenderer) render() string {
 	builder.WriteString(`<head>` + "\n")
 	builder.WriteString(`<meta charset="UTF-8">` + "\n")
 	builder.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1.0">` + "\n")
-	fmt.Fprintf(&builder, "<title>%s</title>\n", esc(fmt.Sprintf("gruff-go inspection report - %s", r.report.Score.Grade)))
+	fmt.Fprintf(&builder, "<title>%s</title>\n", esc(fmt.Sprintf("gruff-go inspection report - %s", gradeOrNA(r.report.Score.Grade))))
 	builder.WriteString(`<style>`)
 	builder.WriteString(reportCSS)
 	if len(r.report.Diagnostics) > 0 {
@@ -138,12 +138,12 @@ func (r htmlRenderer) diagnostics() string {
 
 // verdict renders the headline grade stamp and severity counts.
 func (r htmlRenderer) verdict() string {
-	composite := r.report.Score.Composite
-	gradeLetter := r.report.Score.Grade
-	if gradeLetter == "" {
-		gradeLetter = "n/a"
+	gradeLetter := gradeOrNA(r.report.Score.Grade)
+	// A run that evaluated nothing shows no number in the stamp, so an empty scan cannot read as perfect.
+	scoreText := "not evaluated"
+	if r.report.Score.Composite != nil {
+		scoreText = fmt.Sprintf("%.2f / 100", *r.report.Score.Composite)
 	}
-	scoreText := fmt.Sprintf("%d / 100", composite)
 	tier := tierClass(gradeLetter)
 
 	counts := severityCounts(r.report)
@@ -245,7 +245,7 @@ func (r htmlRenderer) offenderRow(file scoring.FileScore) string {
 	fmt.Fprintf(&builder, `<td class="file-path">%s</td>`, r.locationMarkup(file.File, 0))
 	fmt.Fprintf(&builder, `<td class="num">%s</td>`, esc(optionalInt(file.MaxCyclomatic)))
 	fmt.Fprintf(&builder, `<td class="num">%d</td>`, file.Findings)
-	fmt.Fprintf(&builder, `<td class="num">%d</td>`, file.Penalty)
+	fmt.Fprintf(&builder, `<td class="num">%.2f</td>`, file.Score)
 	fmt.Fprintf(&builder, `<td class="num"><span class="grade-pill %s">%s</span></td>`, esc(tier), esc(file.Grade))
 	builder.WriteString(`</tr>`)
 	return builder.String()

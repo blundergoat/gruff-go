@@ -40,8 +40,8 @@ type machineAnalysisReport struct {
 	Findings []finding.Finding `json:"findings"`
 	Score    struct {
 		Composite struct {
-			Score int    `json:"score"`
-			Grade string `json:"grade"`
+			Score float64 `json:"score"`
+			Grade string  `json:"grade"`
 		} `json:"composite"`
 		Pillars []scoring.PillarDetail `json:"pillars"`
 	} `json:"score"`
@@ -332,8 +332,16 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	if finding.RuleID != "complexity.cyclomatic" || finding.Fingerprint == "" || finding.Remediation == "" {
 		t.Fatalf("finding = %#v, want complete complexity finding", finding)
 	}
-	if parsed.Score.Composite.Score >= 100 || parsed.Score.Composite.Grade == "" || len(parsed.Score.Pillars) != 1 {
-		t.Fatalf("score = %#v, want penalized score", parsed.Score)
+	// Every rule-backed pillar now carries a row, so the finding-bearing count is read from the rows
+	// themselves rather than from the length of a list that used to hold only penalised pillars.
+	findingBearing := 0
+	for _, pillar := range parsed.Score.Pillars {
+		if pillar.Findings > 0 {
+			findingBearing++
+		}
+	}
+	if parsed.Score.Composite.Score >= 100 || parsed.Score.Composite.Grade == "" || findingBearing != 1 {
+		t.Fatalf("score = %#v, want penalized score in exactly one pillar", parsed.Score)
 	}
 }
 

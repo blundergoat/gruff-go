@@ -258,10 +258,10 @@ type sarifResult struct {
 type sarifRunProperties struct {
 	// GruffSchemaVersion echoes the gruff-go report schema version.
 	GruffSchemaVersion string `json:"gruffSchemaVersion"`
-	// Score is the composite quality score for the run.
-	Score int `json:"score"`
-	// Grade is the letter grade derived from Score.
-	Grade string `json:"grade"`
+	// Score is the composite quality score for the run, null when nothing was evaluated.
+	Score *float64 `json:"score"`
+	// Grade is the letter grade derived from Score, null whenever Score is.
+	Grade *string `json:"grade"`
 }
 
 // sarifLocation wraps a physical location reference for a SARIF result.

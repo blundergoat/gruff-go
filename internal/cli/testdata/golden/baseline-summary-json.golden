@@ -1396,6 +1396,7 @@
   },
   "schemaVersion": "gruff.summary.v3",
   "score": {
+    "clusters": [],
     "complexityDistribution": {
       "1-5": 0,
       "11-15": 0,
@@ -1412,7 +1413,144 @@
       "contributingPillars": [],
       "caveat": "No score-impacting findings; the score reflects configured parser rules and thresholds, not exhaustive semantic proof."
     },
-    "pillars": [],
+    "evaluatedFiles": 1,
+    "pillars": [
+      {
+        "pillar": "complexity",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "dead-code",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "design",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "documentation",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "maintainability",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "modernisation",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "naming",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "security",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "sensitive-data",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "size",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "test-quality",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      }
+    ],
+    "ruleAttribution": [],
+    "scoredPillars": [
+      "complexity",
+      "dead-code",
+      "design",
+      "documentation",
+      "maintainability",
+      "modernisation",
+      "naming",
+      "security",
+      "sensitive-data",
+      "size",
+      "test-quality"
+    ],
     "topOffenders": []
   },
   "summary": {

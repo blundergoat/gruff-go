@@ -160,7 +160,10 @@ func writeTextFindings(writer io.Writer, findings []finding.Finding) error {
 		if item.Location != nil && item.Location.Line > 0 {
 			location = fmt.Sprintf(":%d", item.Location.Line)
 		}
-		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s: %s\n", item.Severity, item.File, location, item.RuleID, item.Message); err != nil {
+		// FAMILY-CONTRACT section 1 made the rs/ts dash-line the family canon at this break:
+		// `- [severity] file:line ruleId - message`. gruff-go emitted a colon-separated indented
+		// line, so a reader moving between ports met a different shape for the same information.
+		if _, err := fmt.Fprintf(writer, "- [%s] %s%s %s - %s\n", item.Severity, item.File, location, item.RuleID, item.Message); err != nil {
 			return err
 		}
 	}

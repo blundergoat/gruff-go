@@ -350,13 +350,21 @@ func requireSARIFSecondaryPillars(t *testing.T, properties map[string]any) {
 }
 
 // requireSARIFRunProperties asserts run-level properties carry the schema version, grade, and score.
-func requireSARIFRunProperties(t *testing.T, properties sarifRunProperties, wantScore int) {
+// Both grade and score are nullable so a run that evaluated nothing reports null rather than a
+// perfect SARIF score; the caller passes the report's own composite, whichever of the two it is.
+func requireSARIFRunProperties(t *testing.T, properties sarifRunProperties, wantScore *float64) {
 	t.Helper()
-	if properties.GruffSchemaVersion != analysis.SchemaVersion || properties.Grade == "" {
+	if properties.GruffSchemaVersion != analysis.SchemaVersion || properties.Grade == nil || *properties.Grade == "" {
 		t.Fatalf("run properties not preserved: %#v", properties)
 	}
-	if properties.Score != wantScore {
-		t.Fatalf("run score = %d, want %d", properties.Score, wantScore)
+	if wantScore == nil {
+		if properties.Score != nil {
+			t.Fatalf("run score = %v, want null when nothing was evaluated", *properties.Score)
+		}
+		return
+	}
+	if properties.Score == nil || *properties.Score != *wantScore {
+		t.Fatalf("run score = %v, want %v", properties.Score, *wantScore)
 	}
 }
 

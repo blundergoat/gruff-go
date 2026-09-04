@@ -63,14 +63,23 @@ func TestBuildPillarSummaryRowsCleanScan(t *testing.T) {
 	}
 }
 
+// pillarDetail fills in the nullable score and grade the ratified contract publishes, so a fixture
+// can state its counts as a plain literal without repeating the address dance for two pointers.
+func pillarDetail(base scoring.PillarDetail, score float64, grade string) scoring.PillarDetail {
+	base.Applicable = true
+	base.Score = &score
+	base.Grade = &grade
+	return base
+}
+
 // TestBuildPillarSummaryRowsMergesPillarDetails confirms PillarDetail entries
 // override the default zero rows and that rows sort by findings DESC.
 func TestBuildPillarSummaryRowsMergesPillarDetails(t *testing.T) {
 	report := analysis.Report{
 		Score: scoring.Score{
 			PillarDetails: []scoring.PillarDetail{
-				{Pillar: "complexity", Score: 70, Grade: "C", Findings: 2, Advisory: 0, Warning: 2, Error: 0, Penalty: 30},
-				{Pillar: "documentation", Score: 0, Grade: "F", Findings: 5, Advisory: 4, Warning: 1, Error: 0, Penalty: 200},
+				pillarDetail(scoring.PillarDetail{Pillar: "complexity", Findings: 2, Warning: 2, Penalty: 30}, 70, "C"),
+				pillarDetail(scoring.PillarDetail{Pillar: "documentation", Findings: 5, Advisory: 4, Warning: 1, Penalty: 200}, 51, "F"),
 			},
 		},
 	}

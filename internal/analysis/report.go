@@ -7,6 +7,7 @@ package analysis
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -294,7 +295,7 @@ func NewReport(input ReportInput) Report {
 		Diff:            input.Diff,
 		SuppressedCount: input.SuppressedCount,
 		Suppressions:    nonNilSuppressions(input.Suppressions),
-		Score:           scoring.Calculate(findings, ruleBackedPillars(definitions)...),
+		Score:           scoring.Calculate(findings, evaluatedFileCount(scanned, diagnostics), ruleBackedPillars(definitions)...),
 		Rules:           definitions,
 		Paths: Paths{
 			Scanned:      scanned,
@@ -316,6 +317,31 @@ func nonNilSuppressions(summaries []SuppressionSummary) []SuppressionSummary {
 		return []SuppressionSummary{}
 	}
 	return summaries
+}
+
+// evaluatedFileCount returns the ratified scoring denominator: Go source files that survived the
+// ignore rules and actually parsed. A file that failed to parse reached no rule, so counting it
+// would divide real findings by files nothing was ever evaluated in, and an all-unparsable scan
+// would report a perfect grade — which is exactly the outcome the applicability contract forbids.
+// This is deliberately not len(Paths.Scanned), which also counts raw-text inputs such as README.md.
+func evaluatedFileCount(scanned []string, diagnostics []Diagnostic) int {
+	failed := map[string]struct{}{}
+	// One file can emit several parse diagnostics, so path identity keeps the exclusion file-based.
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Stage == "parse" && diagnostic.File != "" {
+			failed[diagnostic.File] = struct{}{}
+		}
+	}
+	count := 0
+	for _, scannedPath := range scanned {
+		if _, unparsed := failed[scannedPath]; unparsed {
+			continue
+		}
+		if strings.EqualFold(path.Ext(scannedPath), ".go") {
+			count++
+		}
+	}
+	return count
 }
 
 // ruleBackedPillars returns each primary area represented in the rule catalogue.
@@ -873,6 +899,10 @@ func machineScore(root string, score scoring.Score) (map[string]any, error) {
 	}
 	return map[string]any{
 		"composite":                   map[string]any{"grade": score.Grade, "score": score.Composite},
+		"evaluatedFiles":              score.EvaluatedFiles,
+		"scoredPillars":               score.ScoredPillars,
+		"clusters":                    score.Clusters,
+		"ruleAttribution":             score.RuleAttribution,
 		"pillars":                     score.PillarDetails,
 		"topOffenders":                topOffenders,
 		"coverage":                    score.Coverage,

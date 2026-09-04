@@ -58,7 +58,12 @@ func writeMarkdownHeader(writer io.Writer, report analysis.Report) error {
 		return err
 	}
 	grade := gradeOrNA(report.Score.Grade)
-	if _, err := fmt.Fprintf(writer, "Composite: **%s (%.2f / 100)**\n", grade, float64(report.Score.Composite)); err != nil {
+	// A run that evaluated nothing renders no number, matching the text and machine views.
+	if report.Score.Composite == nil {
+		if _, err := fmt.Fprintf(writer, "Composite: **n/a (nothing evaluated)**\n"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintf(writer, "Composite: **%s (%.2f / 100)**\n", grade, *report.Score.Composite); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(writer, "**Schema:** `%s`\n", report.SchemaVersion); err != nil {

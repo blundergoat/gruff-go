@@ -1386,6 +1386,18 @@
   },
   "schemaVersion": "gruff.summary.v3",
   "score": {
+    "clusters": [
+      {
+        "file": "expansion.go",
+        "symbol": "Wide",
+        "ruleIds": [
+          "complexity.nesting-depth",
+          "size.parameter-count"
+        ],
+        "findings": 2,
+        "weight": 4
+      }
+    ],
     "complexityDistribution": {
       "1-5": 0,
       "11-15": 0,
@@ -1395,8 +1407,8 @@
     },
     "complexityDistributionScope": "finding-only",
     "composite": {
-      "grade": "A",
-      "score": 99
+      "grade": "B",
+      "score": 87.33
     },
     "coverage": {
       "contributingPillars": [
@@ -1405,44 +1417,167 @@
         "size"
       ]
     },
+    "evaluatedFiles": 1,
     "pillars": [
       {
         "pillar": "complexity",
-        "score": 96,
-        "grade": "A",
+        "applicable": true,
+        "score": 52.38,
+        "grade": "F",
         "findings": 1,
         "advisory": 0,
         "warning": 1,
         "error": 0,
-        "penalty": 4
+        "penalty": 2
+      },
+      {
+        "pillar": "dead-code",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "design",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
       },
       {
         "pillar": "documentation",
-        "score": 99,
-        "grade": "A",
+        "applicable": true,
+        "score": 55.88,
+        "grade": "F",
         "findings": 1,
         "advisory": 1,
         "warning": 0,
         "error": 0,
-        "penalty": 1
+        "penalty": 0.75
+      },
+      {
+        "pillar": "maintainability",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "modernisation",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "naming",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "security",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
+      },
+      {
+        "pillar": "sensitive-data",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
       },
       {
         "pillar": "size",
-        "score": 96,
-        "grade": "A",
+        "applicable": true,
+        "score": 52.38,
+        "grade": "F",
         "findings": 1,
         "advisory": 1,
         "warning": 0,
         "error": 0,
-        "penalty": 4
+        "penalty": 2
+      },
+      {
+        "pillar": "test-quality",
+        "applicable": true,
+        "score": 100,
+        "grade": "A",
+        "findings": 0,
+        "advisory": 0,
+        "warning": 0,
+        "error": 0,
+        "penalty": 0
       }
+    ],
+    "ruleAttribution": [
+      {
+        "ruleId": "complexity.nesting-depth",
+        "findings": 1,
+        "weight": 2
+      },
+      {
+        "ruleId": "docs.exported-symbol-comment",
+        "findings": 1,
+        "weight": 0.75
+      },
+      {
+        "ruleId": "size.parameter-count",
+        "findings": 1,
+        "weight": 2
+      }
+    ],
+    "scoredPillars": [
+      "complexity",
+      "dead-code",
+      "design",
+      "documentation",
+      "maintainability",
+      "modernisation",
+      "naming",
+      "security",
+      "sensitive-data",
+      "size",
+      "test-quality"
     ],
     "topOffenders": [
       {
         "file": "expansion.go",
-        "penalty": 9,
+        "penalty": 4.75,
         "findings": 3,
-        "grade": "A"
+        "score": 51.03,
+        "grade": "F"
       }
     ]
   },
