@@ -41,6 +41,17 @@ type Finding struct {
 	Fingerprint string `json:"fingerprint"`
 	// StableIdentity is the line-insensitive identity used by external diff tooling.
 	StableIdentity string `json:"stableIdentity,omitempty"`
+	// SymbolOrdinal is the 1-based rank of this finding's declaration among
+	// same-named symbols in File, assigned after analysis. It separates two
+	// functions of one name for the baseline identity and is never serialised:
+	// the v3 finding shape is frozen and the ordinal lives inside the identity.
+	SymbolOrdinal int `json:"-"`
+	// BaselineStatus is what an applied baseline made of this finding: "new", "collision" or "notEligible".
+	// It is empty when no baseline ran, and it never reaches the JSON envelope.
+	BaselineStatus string `json:"-"`
+	// DeclarationPosition is the line the ordinal was derived from. Two findings
+	// sharing an identity but not a position are a collision the baseline reports.
+	DeclarationPosition int `json:"-"`
 }
 
 // WithFingerprint returns a copy of the finding with identity fields populated.

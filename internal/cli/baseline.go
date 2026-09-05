@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/baseline"
@@ -21,7 +22,9 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("baseline", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	outPath := flags.String("out", "", "baseline output path")
+	migratePath := flags.String("migrate", "", "0.5 baseline to migrate; its reviewed findings are re-identified from the current scan and written to --out, and the original is left untouched")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
+	force := flags.Bool("force", false, "overwrite a 0.5 baseline at the default path; without it a generate that would destroy the retreat path is refused")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
@@ -45,6 +48,8 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	return writeBaselineFromScan(baselineScanOptions{
 		paths:               flags.Args(),
 		outPath:             *outPath,
+		migratePath:         *migratePath,
+		force:               *force,
 		registry:            registry,
 		ignorePaths:         ignorePaths,
 		includeIgnored:      *includeIgnored,
@@ -56,8 +61,13 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 // baselineScanOptions groups the inputs shared by the baseline command and the
 // analyse-side baseline generator.
 type baselineScanOptions struct {
-	paths               []string
-	outPath             string
+	paths   []string
+	outPath string
+	// migratePath names a 0.5 baseline whose reviewed findings are carried into
+	// the v3 file at outPath; empty means generate from the scan alone.
+	migratePath string
+	// force overwrites a 0.5 baseline at the default path instead of refusing.
+	force               bool
 	registry            rule.Registry
 	ignorePaths         []string
 	includeIgnored      bool
@@ -89,7 +99,29 @@ func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) i
 		}
 		return 2
 	}
-	if err := baseline.Write(opts.outPath, baseline.FromFindings(analysisReport.Findings)); err != nil {
+	// A migration re-identifies the findings the 0.5 rows covered from this scan
+	// and writes them beside the original, which stays byte-identical.
+	if opts.migratePath != "" {
+		result, err := baseline.Migrate(opts.migratePath, opts.outPath, analysisReport.Findings, time.Now().UTC())
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		fmt.Fprintf(stdout, "baseline: migrated %d reviewed findings from %s into %d entries at %s; %d sensitive findings counted, not baselined; original preserved\n",
+			result.Accepted, opts.migratePath, result.Occurrences, opts.outPath, result.Sensitive)
+		return 0
+	}
+	// A generate at the shared default path never destroys a 0.5 baseline by accident; --force is the way to mean it.
+	if err := baseline.RequireOverwritableDefaultPath(opts.outPath, opts.force); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	baselineFile, err := baseline.FromFindings(analysisReport.Findings)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	if err := baseline.Write(opts.outPath, baselineFile); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}

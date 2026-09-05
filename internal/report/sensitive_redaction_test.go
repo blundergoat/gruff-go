@@ -152,14 +152,21 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		t.Fatalf("finding carries raw secret: %s", encodedFinding)
 	}
 
-	baselineFile := baseline.FromFindings(reportData.Findings)
+	baselineFile, err := baseline.FromFindings(reportData.Findings)
+	if err != nil {
+		t.Fatalf("build baseline: %v", err)
+	}
 	baselineJSON, err := baseline.Marshal(baselineFile)
 	if err != nil {
 		t.Fatalf("marshal baseline: %v", err)
 	}
-	applyResult := baseline.Apply(reportData.Findings, baselineFile)
-	if applyResult.SuppressedFindings != 1 || len(applyResult.Findings) != 0 {
-		t.Fatalf("baseline apply = %#v, want one suppressed finding", applyResult)
+	applyResult, err := baseline.Apply(reportData.Findings, baselineFile)
+	if err != nil {
+		t.Fatalf("apply baseline: %v", err)
+	}
+	// A secret is never baseline-eligible: it is counted, never stored as an entry, and never hidden on the next run.
+	if applyResult.NotEligibleFindings != 1 || applyResult.SuppressedFindings != 0 || len(applyResult.Findings) != 1 || len(baselineFile.Occurrences) != 0 {
+		t.Fatalf("baseline apply = %#v, want the sensitive finding counted and still visible", applyResult)
 	}
 
 	artifacts := map[string]string{

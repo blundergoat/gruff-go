@@ -29,7 +29,12 @@ func (hookBaseline hookFindingBaseline) newFindings(currentFindings []finding.Fi
 	if !hookBaseline.enabled {
 		return currentFindings
 	}
-	return baseline.Apply(currentFindings, hookBaseline.file).Findings
+	result, err := baseline.Apply(currentFindings, hookBaseline.file)
+	// A baseline that cannot be applied hides nothing; a hook shows every finding rather than guess at what was reviewed.
+	if err != nil {
+		return currentFindings
+	}
+	return result.Findings
 }
 
 // resolveHookChanged computes changed lines used for hook location attribution.
@@ -101,7 +106,7 @@ func resolveHookFindingBaseline(scanContext context.Context, projectRoot string,
 	if err != nil {
 		return hookFindingBaseline{}, err
 	}
-	return hookFindingBaselineFromFindings(baseAnalysisReport.Findings), nil
+	return hookFindingBaselineFromFindings(baseAnalysisReport.Findings)
 }
 
 // hookFindingBaselineFromFile loads modern or legacy entries without reshaping.
@@ -121,9 +126,14 @@ func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingB
 }
 
 // hookFindingBaselineFromFindings converts a git-base scan to baseline entries.
-// FromFindings supplies deterministic ordering and contract-stable identities.
-func hookFindingBaselineFromFindings(priorFindings []finding.Finding) hookFindingBaseline {
-	return hookFindingBaseline{enabled: true, file: baseline.FromFindings(priorFindings)}
+// FromFindings supplies deterministic ordering and the ratified line-free identity.
+func hookFindingBaselineFromFindings(priorFindings []finding.Finding) (hookFindingBaseline, error) {
+	file, err := baseline.FromFindings(priorFindings)
+	// A prior finding that cannot be identified means no base can be trusted.
+	if err != nil {
+		return hookFindingBaseline{}, err
+	}
+	return hookFindingBaseline{enabled: true, file: file}, nil
 }
 
 // hookBaseTreeish selects the prior git tree used for user-facing new-only results.

@@ -2378,7 +2378,7 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "adb30add240e33eb"
+            "gruffFingerprint": "b9d935091dd9d1a7"
           },
           "properties": {
             "confidence": "medium",
@@ -2430,7 +2430,7 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "d8293925f32a0f34"
+            "gruffFingerprint": "cdadcb949b3186bb"
           },
           "properties": {
             "confidence": "high",
@@ -2465,7 +2465,7 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "470a3d967e37e18b"
+            "gruffFingerprint": "187ba8ccbfc9a4f6"
           },
           "properties": {
             "confidence": "medium",
@@ -2501,7 +2501,7 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "6c2b61fff900ee69"
+            "gruffFingerprint": "74a29309929b95c9"
           },
           "properties": {
             "confidence": "high",

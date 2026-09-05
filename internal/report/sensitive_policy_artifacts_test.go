@@ -217,7 +217,11 @@ func renderSensitiveArtifacts(t *testing.T, reportData analysis.Report) map[stri
 		t.Fatal(err)
 	}
 	artifacts["analysis-findings"] = string(findingJSON)
-	baselineJSON, err := baseline.Marshal(baseline.FromFindings(reportData.Findings))
+	baselineFile, err := baseline.FromFindings(reportData.Findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineJSON, err := baseline.Marshal(baselineFile)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,21 +27,23 @@ type analyseFlagValues struct {
 	baselinePath         string
 	noBaseline           bool
 	generateBaselinePath string
-	diffBase             string
-	diffMode             string
-	since                string
-	diffPatch            []byte
-	changedRanges        string
-	changedScope         string
-	baselineShow         bool
-	includeRules         string
-	excludeRules         string
-	includePillars       string
-	excludePillars       string
-	editorLink           string
-	reportInteractive    bool
-	includeIgnored       bool
-	deepScanBudget       string
+	// force overwrites a 0.5 baseline at the shared default path instead of refusing.
+	force             bool
+	diffBase          string
+	diffMode          string
+	since             string
+	diffPatch         []byte
+	changedRanges     string
+	changedScope      string
+	baselineShow      bool
+	includeRules      string
+	excludeRules      string
+	includePillars    string
+	excludePillars    string
+	editorLink        string
+	reportInteractive bool
+	includeIgnored    bool
+	deepScanBudget    string
 }
 
 // analyseFlagPointers keeps the registered analyse flag values together so the
@@ -55,6 +57,7 @@ type analyseFlagPointers struct {
 	noBaseline           *bool
 	baselineShow         *bool
 	generateBaselinePath *string
+	force                *bool
 	diffBase             *string
 	diffMode             *string
 	since                *string
@@ -153,6 +156,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 	noBaseline := flags.Bool("no-baseline", false, "do not apply any baseline; overrides --baseline")
 	baselineShow := flags.Bool("baseline-show", false, "render the unchanged and resolved baseline sets (counts are always reported)")
 	generateBaselinePath := flags.String("generate-baseline", "", "write current findings to a baseline file and exit cleanly")
+	force := flags.Bool("force", false, "overwrite a 0.5 baseline at the default path; without it a generate that would destroy the retreat path is refused")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
 	diffMode := flags.String("diff", "", "changed-region source: working-tree, staged, unstaged, base ref, or - for unified diff on stdin")
 	since := flags.String("since", "", "git base ref for changed-region filtering")
@@ -175,6 +179,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 		noBaseline:           noBaseline,
 		baselineShow:         baselineShow,
 		generateBaselinePath: generateBaselinePath,
+		force:                force,
 		diffBase:             diffBase,
 		diffMode:             diffMode,
 		since:                since,
@@ -202,6 +207,7 @@ func (values analyseFlagPointers) values(diffPatch []byte, minSeverityExplicit b
 		baselinePath:         *values.baselinePath,
 		noBaseline:           *values.noBaseline,
 		generateBaselinePath: *values.generateBaselinePath,
+		force:                *values.force,
 		diffBase:             *values.diffBase,
 		diffMode:             *values.diffMode,
 		since:                *values.since,

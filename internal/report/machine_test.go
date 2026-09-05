@@ -47,7 +47,12 @@ func TestMachineReportFormats(t *testing.T) {
 	if parsed["version"] != "2.1.0" || !strings.Contains(sarif.String(), `"ruleId": "size.file-length"`) {
 		t.Fatalf("sarif output = %s", sarif.String())
 	}
-	if !strings.Contains(sarif.String(), `"gruffFingerprint": "abc123"`) ||
+	// Code scanning groups alerts by the ratified durable identity, not by the line-bearing fingerprint.
+	identity, err := item.ComputeBaselineIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sarif.String(), `"gruffFingerprint": "`+identity+`"`) ||
 		!strings.Contains(sarif.String(), `"ruleIndex":`) ||
 		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff.analysis.v3"`) {
 		t.Fatalf("sarif output missing contract fields = %s", sarif.String())
@@ -145,7 +150,7 @@ func TestWriteSARIFContract(t *testing.T) {
 	requireSARIFResultIdentity(t, result, item)
 	requireSARIFRuleIndex(t, result, run.Tool.Driver.Rules)
 	requireNoRawSARIFResultKeys(t, rawSARIFResult(t, out, 0), "codeFlows", "threadFlows", "fixes")
-	requireSARIFFingerprints(t, result.PartialFingerprints, item.Fingerprint)
+	requireSARIFFingerprints(t, result.PartialFingerprints, baselineIdentityOf(t, item))
 	requireSARIFLocation(t, result.Locations, "pkg/main.go", *item.Location)
 	requireSARIFResultProperties(t, result.Properties, item)
 	requireSARIFRunProperties(t, run.Properties, report.Score.Composite)
@@ -279,6 +284,20 @@ func requireNoRawSARIFResultKeys(t *testing.T, result map[string]any, keys ...st
 			t.Fatalf("unexpected SARIF %s in result: %#v", key, result[key])
 		}
 	}
+}
+
+// baselineIdentityOf returns the ratified durable identity a SARIF result must publish for one finding.
+//
+// Code scanning groups alerts by it, so a hand-built finding is ranked the way the analysis pipeline
+// would have ranked it before the identity is computed.
+func baselineIdentityOf(t *testing.T, item finding.Finding) string {
+	t.Helper()
+	ranked := finding.EnsureSymbolOrdinals([]finding.Finding{item})
+	identity, err := ranked[0].ComputeBaselineIdentity()
+	if err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	return identity
 }
 
 // requireSARIFFingerprints asserts the gruffFingerprint key carries the finding fingerprint and no stale aliases exist.
@@ -421,8 +440,8 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 	if _, exists := rawResult["ruleIndex"]; exists {
 		t.Fatalf("raw ruleIndex key present for missing rule: %#v", rawResult["ruleIndex"])
 	}
-	if got := result.PartialFingerprints["gruffFingerprint"]; got != item.Fingerprint {
-		t.Fatalf("gruffFingerprint = %q, want %q", got, item.Fingerprint)
+	if got, want := result.PartialFingerprints["gruffFingerprint"], baselineIdentityOf(t, item); got != want {
+		t.Fatalf("gruffFingerprint = %q, want %q", got, want)
 	}
 	if len(result.Locations) != 1 || result.Locations[0].PhysicalLocation.ArtifactLocation.URI != "custom/missing.go" {
 		t.Fatalf("location not well-formed: %#v", result.Locations)

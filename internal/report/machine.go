@@ -323,58 +323,86 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 	return out
 }
 
+// sarifPartialFingerprints projects one finding into the fingerprints GitHub code scanning groups alerts by.
+//
+// gruffFingerprint is the ratified durable identity and nothing else, so an alert survives a line move and a
+// second declaration of one name opens its own alert. A sensitive finding has no identity at all and therefore
+// contributes no fingerprints: publishing one would give a secret a stable name in a system gruff does not control.
+func sarifPartialFingerprints(findingItem finding.Finding) map[string]string {
+	identity, err := findingItem.ComputeBaselineIdentity()
+	if err != nil {
+		// A finding that cannot be named durably is published without a fingerprint rather than with a guessed one.
+		return nil
+	}
+	return map[string]string{"gruffFingerprint": identity}
+}
+
 // sarifResults converts findings into SARIF results, indexing each entry into the driver rule list.
-// When baselineApplied is true, every emitted result is the surviving "new" set
-// (suppressed unchanged findings are not rendered), so each carries baselineState "new".
+// When baselineApplied is true, a result the baseline classified as new carries baselineState "new";
+// a collision or a sensitive finding does not, because neither was freshly introduced.
 func sarifResults(findings []finding.Finding, definitions []rule.Definition, baselineApplied bool) []sarifResult {
 	ruleIndices := map[string]int{}
 	for index, definition := range definitions {
 		ruleIndices[definition.ID] = index
 	}
-	out := make([]sarifResult, 0, len(findings))
+	// A direct API caller can hand over findings the analysis pipeline never ranked; ranking them here by
+	// line keeps every ordinary result fingerprinted rather than silently publishing one without a name.
+	findings = finding.EnsureSymbolOrdinals(findings)
+	results := make([]sarifResult, 0, len(findings))
 	for _, findingItem := range findings {
-		result := sarifResult{
-			RuleID:  findingItem.RuleID,
-			Level:   sarifLevel(findingItem.Severity),
-			Message: sarifText{Text: findingItem.Message},
-			Locations: []sarifLocation{{
-				PhysicalLocation: sarifPhysicalLocation{
-					ArtifactLocation: sarifArtifactLocation{URI: sarifURI(findingItem.File)},
-					Region:           sarifRegionFromFinding(findingItem),
-				},
-			}},
-			PartialFingerprints: map[string]string{"gruffFingerprint": findingItem.Fingerprint},
-			Properties: map[string]any{
-				"confidence":  findingItem.Confidence,
-				"fingerprint": findingItem.Fingerprint,
-				"pillar":      findingItem.Pillar,
-				"severity":    findingItem.Severity,
-			},
-		}
-		if ruleIndex, ok := ruleIndices[findingItem.RuleID]; ok {
-			result.RuleIndex = &ruleIndex
-		}
-		if len(findingItem.SecondaryPillars) > 0 {
-			result.Properties["secondaryPillars"] = findingItem.SecondaryPillars
-		}
-		if findingItem.Symbol != "" {
-			result.Properties["symbol"] = findingItem.Symbol
-		}
-		if findingItem.Remediation != "" {
-			result.Properties["remediation"] = findingItem.Remediation
-		}
-		if len(findingItem.Metadata) > 0 {
-			result.Properties["metadata"] = findingItem.Metadata
-		}
-		if baselineApplied {
-			// Emitted results are the surviving "new" set - suppressed (unchanged)
-			// findings are not rendered as SARIF results (ADR-012), so every result
-			// here is new relative to the baseline. SARIF 2.1.0 §3.27.25.
-			result.BaselineState = "new"
-		}
-		out = append(out, result)
+		results = append(results, sarifResultFor(findingItem, ruleIndices, baselineApplied))
 	}
-	return out
+	return results
+}
+
+// sarifResultFor projects one finding into the SARIF result a code-scanning reader sees.
+func sarifResultFor(findingItem finding.Finding, ruleIndices map[string]int, baselineApplied bool) sarifResult {
+	result := sarifResult{
+		RuleID:  findingItem.RuleID,
+		Level:   sarifLevel(findingItem.Severity),
+		Message: sarifText{Text: findingItem.Message},
+		Locations: []sarifLocation{{
+			PhysicalLocation: sarifPhysicalLocation{
+				ArtifactLocation: sarifArtifactLocation{URI: sarifURI(findingItem.File)},
+				Region:           sarifRegionFromFinding(findingItem),
+			},
+		}},
+		PartialFingerprints: sarifPartialFingerprints(findingItem),
+		Properties:          sarifResultProperties(findingItem),
+	}
+	if ruleIndex, ok := ruleIndices[findingItem.RuleID]; ok {
+		result.RuleIndex = &ruleIndex
+	}
+	// Only a finding the baseline classified as new is new relative to it. A collision and a sensitive
+	// finding are permanently unsuppressable rather than freshly introduced, so neither carries the state;
+	// a reader would otherwise see a long-standing secret as though it had just appeared. SARIF 2.1.0 §3.27.25.
+	if baselineApplied && findingItem.BaselineStatus == "new" {
+		result.BaselineState = "new"
+	}
+	return result
+}
+
+// sarifResultProperties carries the gruff-owned fields a reader needs beside the SARIF-standard ones.
+func sarifResultProperties(findingItem finding.Finding) map[string]any {
+	properties := map[string]any{
+		"confidence":  findingItem.Confidence,
+		"fingerprint": findingItem.Fingerprint,
+		"pillar":      findingItem.Pillar,
+		"severity":    findingItem.Severity,
+	}
+	if len(findingItem.SecondaryPillars) > 0 {
+		properties["secondaryPillars"] = findingItem.SecondaryPillars
+	}
+	if findingItem.Symbol != "" {
+		properties["symbol"] = findingItem.Symbol
+	}
+	if findingItem.Remediation != "" {
+		properties["remediation"] = findingItem.Remediation
+	}
+	if len(findingItem.Metadata) > 0 {
+		properties["metadata"] = findingItem.Metadata
+	}
+	return properties
 }
 
 // sarifRegionFromFinding produces a SARIF region from a finding location, or nil when the line is unknown.

@@ -148,10 +148,11 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	if code := Main([]string{"baseline", "--no-config", "--out", "baseline.json", "long.go"}, &baselineOut, &baselineErr); code != 0 {
 		t.Fatalf("baseline exit = %d, stderr = %s", code, baselineErr.String())
 	}
+	// The measured length never enters the identity, so a file that grew stays hidden behind its reviewed entry.
 	writeFile(t, root, "long.go", hookLongFixture(1012))
 	baselined, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "--baseline", "baseline.json", "long.go")
 	if findHookFinding(baselined, "size.file-length") != nil {
-		t.Fatalf("baseline new-only re-surfaced grown file-length finding: %#v", baselined.Findings)
+		t.Fatalf("baseline new-only re-surfaced a grown file-length finding: %#v", baselined.Findings)
 	}
 
 	writeFile(t, root, "short.go", hookLongFixture(1000))
@@ -177,13 +178,14 @@ func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 	writeFile(t, root, "long.go", hookLongFixture(1010))
 	hookRunGit(t, root, "add", "long.go")
 	hookRunGit(t, root, "commit", "-q", "-m", "long baseline")
+	// A grown file states a new length in its message, and the length never enters the identity, so it stays hidden.
 	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "long.go")
 	if code != 0 {
 		t.Fatalf("grown diff hook exit = %d", code)
 	}
 	if findHookFinding(grown, "size.file-length") != nil {
-		t.Fatalf("diff new-only re-surfaced existing file-length finding: %#v", grown.Findings)
+		t.Fatalf("diff new-only re-surfaced an existing file-length finding: %#v", grown.Findings)
 	}
 
 	writeFile(t, root, "short.go", hookLongFixture(1000))

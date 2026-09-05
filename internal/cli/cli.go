@@ -182,6 +182,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 			includeIgnored:      values.includeIgnored,
 			sensitiveExclusions: sensitiveExclusionsFor(cfg),
 			deepScanBudget:      deepScanBudget,
+			force:               values.force,
 		}, stdout, stderr)
 	}
 	displayFilter, err := parseDisplayFilter(values.includeRules, values.excludeRules, values.includePillars, values.excludePillars, registry.Definitions())

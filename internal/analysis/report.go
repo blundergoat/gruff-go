@@ -130,6 +130,10 @@ type Summary struct {
 type BaselineSummary struct {
 	// Applied is true when a baseline file was successfully loaded and used.
 	Applied bool `json:"applied"`
+	// Generated is true when this run wrote the baseline rather than compared against one.
+	Generated bool `json:"generated"`
+	// Source is how the path was chosen: "explicit" when the user named it, "default" when it was discovered.
+	Source string `json:"source"`
 	// Path is the project-relative location of the baseline file, if applied.
 	Path string `json:"path,omitempty"`
 	// Entries is the total number of suppression entries declared in the baseline file.
@@ -152,15 +156,19 @@ type BaselineSummary struct {
 	Show bool `json:"-"`
 }
 
-// BaselineEntry is a report-shaped resolved baseline entry: a finding identity
-// (rule, file, fingerprint) with no live location, fixed since the baseline.
+// BaselineEntry is a report-shaped resolved baseline entry: a reviewed identity
+// with no live location whose recorded count exceeds what the run found.
 type BaselineEntry struct {
 	// RuleID is the rule whose finding was resolved.
 	RuleID string `json:"ruleId"`
 	// File is the repo-relative path the resolved finding targeted.
 	File string `json:"file"`
-	// Fingerprint is the stable identity hash of the resolved finding.
-	Fingerprint string `json:"fingerprint"`
+	// Identity is the ratified line-free identity of the resolved occurrence.
+	Identity string `json:"identity"`
+	// Subject is the identity's subject, so a reader sees what was reviewed.
+	Subject string `json:"subject,omitempty"`
+	// Count is how many reviewed occurrences of Identity are no longer present.
+	Count int `json:"count"`
 }
 
 // DiffSummary records changed-line filtering applied to findings.

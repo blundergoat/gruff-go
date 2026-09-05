@@ -135,6 +135,9 @@ func Analyze(opts Options) (Report, error) {
 	registry := opts.Registry
 	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
 	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
+	// The baseline identity separates same-named declarations by ordinal, which
+	// only the parsed units can rank; assigning here reaches analyse and hook alike.
+	findings = finding.AssignSymbolOrdinals(findings, declarationPositionFor(units))
 	// Excluded before baseline and diff so a suppressed finding is absent from
 	// scoring, exit codes, and baseline classification alike.
 	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
@@ -277,6 +280,8 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 		loadPath = filepath.Join(root, loadPath)
 	}
 	baselineSummary.Path = displayPath
+	// A user reads how the path was chosen, so an auto-discovered baseline is never mistaken for one they named.
+	baselineSummary.Source = baselineSource(baselinePath)
 	file, err := baseline.Load(loadPath)
 	if err != nil {
 		diagnostics = append(diagnostics, Diagnostic{
@@ -292,14 +297,37 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	// Load succeeds keeps a missing or invalid baseline from labelling every
 	// emitted result baselineState:"new" as though it had been compared against a
 	// real baseline (the load failure is already surfaced as an error diagnostic).
+	result, err := baseline.Apply(findings, file)
+	// A foreign baseline or an unidentifiable finding is refused before matching;
+	// applying it would report every entry resolved and invite a destructive regenerate.
+	if err != nil {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:    "baseline",
+			Message:  err.Error(),
+			File:     displayPath,
+			Severity: finding.SeverityError,
+		})
+		return findings, baselineSummary, diagnostics
+	}
 	baselineSummary.Applied = true
-	result := baseline.Apply(findings, file)
 	baselineSummary.Entries = result.Entries
 	baselineSummary.SuppressedFindings = result.SuppressedFindings
 	baselineSummary.StaleEntries = result.StaleEntries
-	baselineSummary.NewFindings = result.NewCount()
+	// newFindings is the gated set the exit code fails on: new, collision, and not-eligible findings alike.
+	// The envelope's baseline container admits no new keys yet, so the finer split surfaces once the schema can name it.
+	baselineSummary.NewFindings = result.GatedCount()
 	baselineSummary.UnchangedFindings = result.UnchangedCount()
 	baselineSummary.ResolvedFindings = result.ResolvedCount()
+	// Every collision is reported by name, so the user can see which identity could not separate two declarations.
+	for _, collision := range result.Collisions {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:          "baseline",
+			Message:        fmt.Sprintf("collision: identity %s covers %d declarations of %s for rule %s in %s; none is suppressed", collision.Identity, len(collision.Subjects), strings.Join(collision.Subjects, ", "), collision.RuleID, collision.Path),
+			File:           collision.Path,
+			Severity:       finding.SeverityWarning,
+			InvalidatesRun: new(bool),
+		})
+	}
 	// Detail arrays are populated only under --baseline-show; counts always emit.
 	// Gating population (not just rendering) keeps the default JSON payload free of
 	// the unchanged/resolved arrays regardless of omitempty subtleties.
@@ -308,16 +336,80 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 		baselineSummary.Unchanged = result.Unchanged
 		baselineSummary.Resolved = reportBaselineEntries(result.Resolved)
 	}
-	return result.Findings, baselineSummary, diagnostics
+	return stampBaselineStatuses(findings, result), baselineSummary, diagnostics
+}
+
+// stampBaselineStatuses labels each surviving finding with what the baseline made of it.
+//
+// SARIF publishes baselineState "new" for a genuinely new finding only: a collision and a sensitive
+// finding are permanently unsuppressable rather than freshly introduced, and stamping them "new" would
+// tell a code-scanning reader that a long-standing secret had just appeared.
+func stampBaselineStatuses(currentFindings []finding.Finding, result baseline.ApplyResult) []finding.Finding {
+	statusByFinding := map[string]string{}
+	for index, status := range result.Statuses {
+		if index < len(currentFindings) {
+			statusByFinding[currentFindings[index].Fingerprint] = string(status)
+		}
+	}
+	stamped := make([]finding.Finding, 0, len(result.Findings))
+	for _, gatedFinding := range result.Findings {
+		gatedFinding.BaselineStatus = statusByFinding[gatedFinding.Fingerprint]
+		stamped = append(stamped, gatedFinding)
+	}
+	return stamped
+}
+
+// DefaultBaselineFileName is the one filename every port writes and auto-discovers.
+const DefaultBaselineFileName = "gruff-baseline.json"
+
+// baselineSource names how this run's baseline path was chosen, for the report a user reads.
+func baselineSource(baselinePath string) string {
+	if filepath.Base(baselinePath) == DefaultBaselineFileName {
+		return "default"
+	}
+	return "explicit"
 }
 
 // reportBaselineEntries projects baseline resolved entries onto the report shape.
-func reportBaselineEntries(entries []baseline.Entry) []BaselineEntry {
+func reportBaselineEntries(entries []baseline.ResolvedEntry) []BaselineEntry {
 	out := make([]BaselineEntry, 0, len(entries))
 	for _, entry := range entries {
-		out = append(out, BaselineEntry{RuleID: entry.RuleID, File: entry.File, Fingerprint: entry.Fingerprint})
+		out = append(out, BaselineEntry{RuleID: entry.RuleID, File: entry.Path, Identity: entry.Identity, Subject: entry.Subject, Count: entry.Count})
 	}
 	return out
+}
+
+// declarationPositionFor maps a symbol-bearing finding to the line its declaration begins on, using the parsed function spans.
+//
+// A finding inside a function body shares that function's position, so two findings on one declaration share an ordinal.
+// A finding on no known declaration keeps its own line as its position.
+func declarationPositionFor(units []parser.Unit) func(finding.Finding) int {
+	functionsByFile := map[string][]parser.Function{}
+	for _, unit := range units {
+		functionsByFile[unit.File.Path] = unit.Functions
+	}
+	return func(item finding.Finding) int {
+		line := 1
+		if item.Location != nil && item.Location.Line > 0 {
+			line = item.Location.Line
+		}
+		for _, function := range functionsByFile[item.File] {
+			if !symbolNamesFunction(item.Symbol, function.Name) || line < function.Line || line > max(function.Line, function.EndLine) {
+				continue
+			}
+			return function.Line
+		}
+		return line
+	}
+}
+
+// symbolNamesFunction accepts the parser's receiver-qualified name and the unqualified name a rule may emit for the same declaration.
+func symbolNamesFunction(symbol, functionName string) bool {
+	if symbol == functionName {
+		return true
+	}
+	_, unqualified, found := strings.Cut(functionName, ".")
+	return found && symbol == unqualified
 }
 
 // resolveChangedScope computes the changed-line set for the requested diff mode.

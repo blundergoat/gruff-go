@@ -7,7 +7,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/blundergoat/gruff-go/internal/baseline"
 )
 
 // seedResolvableBaseline baselines complex.go, then injects a bogus entry that
@@ -24,24 +28,22 @@ func seedResolvableBaseline(t *testing.T, root string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	type entry struct {
-		RuleID      string `json:"ruleId"`
-		File        string `json:"file"`
-		Fingerprint string `json:"fingerprint"`
-	}
-	var file struct {
-		SchemaVersion string  `json:"schemaVersion"`
-		Findings      []entry `json:"findings"`
-	}
-	if err := json.Unmarshal(raw, &file); err != nil {
+	file, err := baseline.Parse(raw)
+	if err != nil {
 		t.Fatal(err)
 	}
-	baselined := len(file.Findings)
+	baselined := 0
+	for _, occurrence := range file.Occurrences {
+		baselined += occurrence.Count
+	}
 	if baselined == 0 {
 		t.Fatal("baseline captured no findings; fixture cannot prove unchanged state")
 	}
-	file.Findings = append(file.Findings, entry{RuleID: "size.file-length", File: "deleted.go", Fingerprint: "deadbeefdeadbeef"})
-	patched, err := json.Marshal(file)
+	// A reviewed identity for a file that no longer exists is what resolves.
+	// It is inserted in identity order so the file stays valid.
+	file.Occurrences = append(file.Occurrences, baseline.Occurrence{Identity: "deadbeefdeadbeef", Count: 1, RuleID: "size.file-length", Path: "deleted.go"})
+	slices.SortFunc(file.Occurrences, func(left, right baseline.Occurrence) int { return strings.Compare(left.Identity, right.Identity) })
+	patched, err := baseline.Marshal(file)
 	if err != nil {
 		t.Fatal(err)
 	}
