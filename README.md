@@ -166,7 +166,6 @@ paths:
 
 allowlists:
   acceptedAbbreviations: ["ID", "HTTP", "JSON", "AST"]
-  secretPreviews: [] # authorize fixed category/scheme markers; payload stays hidden
 
 selection:
   excludeRules: []

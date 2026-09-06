@@ -129,9 +129,9 @@ func writeRenderHeader(buf *bytes.Buffer) {
 }
 
 // writeRenderScaffolds writes the paths/allowlists/selection sections. When
-// opts.Existing supplies values for paths.ignore, acceptedAbbreviations, or
-// secretPreviews, those lists are emitted in place of the empty defaults so
-// regenerate-with-merge preserves project-wide allowlists.
+// opts.Existing supplies values for paths.ignore or acceptedAbbreviations, those
+// lists are emitted in place of the empty defaults so regenerate-with-merge
+// preserves project-wide allowlists.
 func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "# Discovery reads .gitignore first. paths.ignore is only for committed")
 	fmt.Fprintln(buf, "# metadata, fixtures, or generated artifacts that should stay out of scans")

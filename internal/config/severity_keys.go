@@ -93,16 +93,35 @@ func validateSeverityFloor(floor SeverityFloor) error {
 	return nil
 }
 
-// refuseSecretPreviews rejects a configuration that still carries the removed preview allowlist.
+// refuseRemovedPreviewKeys rejects a configuration that still carries the removed preview allowlist under either
+// of its pre-0.6.0 spellings, allowlists.secretPreviews or sensitiveData.previewAllowlist.
 //
 // Section 5 makes every category marker unconditional and zero-payload, so the key gates nothing. Leaving it accepted
 // would tell a reader their redaction is configured when it is not, which is worse than having no key at all.
-func refuseSecretPreviews(cfg Config) error {
+func refuseRemovedPreviewKeys(data []byte) error {
+	var sections map[string]json.RawMessage
+	// Anything that is not an object is left for the strict decoder to describe; there is no key to refuse in it.
+	if err := json.Unmarshal(data, &sections); err != nil {
+		return nil
+	}
 	// Presence is the test, not content: an empty list reads as configured redaction just as a populated one does.
-	if cfg.Allowlists.SecretPreviews != nil || cfg.SensitiveData.PreviewAllowlist != nil {
+	if sectionHasKey(sections["allowlists"], "secretPreviews") || sectionHasKey(sections["sensitiveData"], "previewAllowlist") {
 		return fmt.Errorf("allowlists.secretPreviews is removed in 0.6.0: FAMILY-CONTRACT.md section 5 makes category " +
 			"markers unconditional, so the key authorises nothing; delete it from the configuration")
 	}
-
 	return nil
+}
+
+// sectionHasKey reports whether a raw config section is an object carrying the named key, whatever its value.
+func sectionHasKey(section json.RawMessage, key string) bool {
+	// A missing or non-object section cannot carry the key; the strict decoder reports its shape separately.
+	if section == nil {
+		return false
+	}
+	var entries map[string]json.RawMessage
+	if err := json.Unmarshal(section, &entries); err != nil {
+		return false
+	}
+	_, present := entries[key]
+	return present
 }

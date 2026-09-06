@@ -1102,14 +1102,14 @@ Each finding's metadata records the `entity-map` evidence.
 
 **Known precision limit.** A custom XML entity map containing only fixed local entities still matches the decoder configuration heuristic. Leave Decoder.Entity unset where possible, or validate the fixed map before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
-**Sensitive-data preview policy.** Every `sensitive-data.*` detector uses one
-deny-by-default policy. Empty and nonmatching `allowlists.secretPreviews` emit
-only `[redacted]`; matching paths may emit fixed markers such as
-`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:jwt]`,
-`[redacted:email]`, or `[redacted:ssn]`. Connection findings may additionally
-name only the matched scheme (`[redacted:connection-string:postgres]`). Generic
-assignment and entropy findings stay `[redacted]` even when allowlisted. The
-allowlist never suppresses a finding and never authorizes credential or
+**Sensitive-data marker policy.** Every `sensitive-data.*` detector emits one
+zero-payload marker, unconditionally. A detector that classified its match emits
+a fixed marker such as `[redacted:aws-access-key]`, `[redacted:private-key]`,
+`[redacted:jwt]`, `[redacted:email]`, or `[redacted:ssn]`; a connection finding
+may additionally name only the matched scheme
+(`[redacted:connection-string:postgres]`). Generic assignment and entropy
+findings stay `[redacted]`, because they classify nothing. Nothing configures a
+marker, and no marker exposes credential or
 identifier payload bytes.
 
 **Sensitive-data suppression.** A `sensitive-data.*` finding is suppressed only
@@ -1244,7 +1244,7 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, add a `sensitiveExclusions` entry naming the rule, the file, and why - see [Configuration](configuration.md#sensitiveexclusions). `allowlists.secretPreviews` only authorizes the marker `[redacted:jwt]`; it exposes no JWT segment bytes and does not suppress findings.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, add a `sensitiveExclusions` entry naming the rule, the file, and why - see [Configuration](configuration.md#sensitiveexclusions). The marker `[redacted:jwt]` is emitted unconditionally: it exposes no JWT segment bytes, and no configuration suppresses a sensitive-data finding.
 
 **Known precision limit.** A syntactically valid sample, expired, or test JWT is indistinguishable from a live token literal. Use a non-token placeholder or load the fixture from an approved secure test source. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
@@ -1322,7 +1322,7 @@ Flags high-risk secret-like literal assignments in Go source and text/config fil
 
 All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
 
-Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret previews remain `[redacted]` for every path; `allowlists.secretPreviews` never suppresses findings.
+Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret markers remain `[redacted]` for every path, and no configuration suppresses a sensitive-data finding except a reviewed `sensitiveExclusions` entry.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
 

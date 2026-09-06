@@ -32,7 +32,6 @@ paths:
 
 allowlists:
   acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
-  secretPreviews: []          # authorise fixed category/scheme markers; never payload bytes
 
 sensitiveExclusions: []       # suppress one sensitive-data rule in one file, with a written reason
 
@@ -124,34 +123,21 @@ allowlists:
 
 Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/learning-loop/footguns/setup.md` for the cross-port consumer matrix.
 
-### `allowlists.secretPreviews`
+### Sensitive-data markers are not configurable
 
-Path globs that authorise additional non-secret structure in sensitive-data
-preview metadata. Authorisation is deny-by-default: an empty list and a path
-that does not match both emit the constant `[redacted]`. A matching path may
-emit only a fixed category marker (for example `[redacted:aws-access-key]`,
-`[redacted:private-key]`, `[redacted:email]`, or `[redacted:ssn]`) or a
-connection marker containing only its already-public scheme (for example
-`[redacted:connection-string:postgres]`). Generic and entropy findings stay
-`[redacted]` even on matching paths.
+A sensitive-data finding carries a marker, never a payload: the bare `[redacted]`, a fixed category such as
+`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:email]` or `[redacted:ssn]`, or a connection
+marker naming only its already-public scheme (`[redacted:connection-string:postgres]`). Generic-assignment and
+entropy findings are always `[redacted]`, because they classify nothing the user can act on.
 
-No state exposes provider payload characters, JWT segments, private-key body or
-header bytes, connection user/password/host/path/query, or PII/PHI identifier
-characters. Primary and secondary GCP previews are authorised independently by
-the same path decision and render as `[redacted:gcp-service-account]` plus
-`[redacted:private-key]` only on a match.
+gruff-go emits the most specific marker its detector already classified, on every path and under every
+configuration. FAMILY-CONTRACT.md section 5 ratifies that: every marker is zero-payload by construction, so gating
+one behind configuration bought no confidentiality. The 0.5 key `allowlists.secretPreviews` is therefore removed,
+and a configuration carrying it — even as an empty list — is refused with that explanation rather than silently
+ignored. `gruff-go migrate-config` deletes it.
 
-This is an output-control allowlist only: it does not suppress findings, change
-scoring, or mark sample secrets as safe. Use `selection.excludeRules`,
-`paths.ignore`, or an inline suppression when a finding should intentionally be
-hidden.
-
-```yaml
-allowlists:
-  secretPreviews:
-    - "docs/**"
-    - "internal/rule/testdata/**"
-```
+No marker exposes provider payload characters, JWT segments, private-key bytes, connection user, password, host,
+path or query, or PII/PHI identifier characters. GCP primary and secondary fields are marked independently.
 
 ### `sensitiveExclusions`
 
@@ -213,8 +199,8 @@ the offending key, and exits `2`:
 - `reason` missing, empty, or whitespace-only.
 - A second entry repeating an earlier entry's `rule`, `path`, and `symbol`, because two entries claiming one scope would split the audit count arbitrarily.
 
-`allowlists.secretPreviews` is unrelated: it controls marker text and never
-suppresses anything.
+Sensitive-data markers are unrelated to suppression: they control display text
+only, and nothing configures them.
 
 ### `selection`
 

@@ -1,15 +1,15 @@
-// Package rule owns the deny-by-default preview policy shared by every
-// sensitive-data detector.
+// Package rule owns the marker vocabulary shared by every sensitive-data detector: the closed set of
+// zero-payload markers FAMILY-CONTRACT.md section 5 ratifies, emitted unconditionally.
 package rule
 
 import (
 	"strings"
 )
 
-// redactedPreview is the only preview emitted without explicit path authorization.
+// redactedPreview is the bare marker, emitted whenever the detector classifies nothing more specific.
 const redactedPreview = "[redacted]"
 
-// sensitivePreviewCategory is the closed formatter vocabulary for authorized paths.
+// sensitivePreviewCategory is the closed formatter vocabulary; nothing outside it can reach a marker.
 type sensitivePreviewCategory string
 
 // previewGeneric is the fully masked generic-assignment category.
@@ -93,8 +93,8 @@ func personalDataPreviewCategory(category string) sensitivePreviewCategory {
 	}
 }
 
-// sensitivePreviewPolicy authorizes category detail for repository-relative paths.
-// Its zero value is intentionally deny-by-default.
+// sensitivePreviewPolicy formats the marker for one classified match. It carries no state because section 5
+// leaves nothing to configure: the most specific classified marker is emitted on every path.
 type sensitivePreviewPolicy struct{}
 
 // newSensitivePreviewPolicy returns the one policy every scan uses.

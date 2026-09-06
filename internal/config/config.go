@@ -53,8 +53,6 @@ type Config struct {
 	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
 	// Rules holds per-rule overrides for enablement, thresholds, severity, and options.
 	Rules map[string]RuleConfig `json:"rules,omitempty"`
-	// SensitiveData carries policy for the sensitive-data.* rule family.
-	SensitiveData SensitiveDataConfig `json:"sensitiveData,omitempty"`
 	// SensitiveExclusions suppresses individual sensitive-data findings by exact
 	// rule ID and project-relative path, each with a required written rationale.
 	// Deliberately separate from Select/ExcludeRules so the ban on message- and
@@ -101,10 +99,6 @@ type PathsConfig struct {
 type AllowlistsConfig struct {
 	// AcceptedAbbreviations is the gruff-family alias folded into Config.AcceptedAbbreviations.
 	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
-	// SecretPreviews is refused rather than read, and kept as raw JSON so an empty list is still detected. Section 5
-	// makes category markers unconditional, so from 0.6.0 the key authorises nothing; a configuration carrying it is
-	// telling the user something untrue about their redaction, whatever it lists.
-	SecretPreviews json.RawMessage `json:"secretPreviews,omitempty"`
 }
 
 // SelectionConfig stores rule and pillar allowlist/denylist policy.
@@ -119,13 +113,6 @@ type SelectionConfig struct {
 	ExcludePillars []string `json:"excludePillars,omitempty"`
 	// ExcludeRules is the gruff-family alias for the top-level ExcludeRules field.
 	ExcludeRules []string `json:"excludeRules,omitempty"`
-}
-
-// SensitiveDataConfig stores sensitive-data rule preview exceptions.
-type SensitiveDataConfig struct {
-	// PreviewAllowlist is the removed pre-0.6.0 spelling of allowlists.secretPreviews, kept as raw JSON only so its
-	// presence can be refused with the section 5 explanation rather than ignored.
-	PreviewAllowlist json.RawMessage `json:"previewAllowlist,omitempty"`
 }
 
 // SensitiveExclusion is one ratified sensitive-data suppression scope: exactly
@@ -315,6 +302,11 @@ func decodeConfigPayloadPermissive(data []byte, definitions []rule.Definition) (
 // Config without running structural validation. Shared by the strict and
 // permissive load paths so the two cannot drift on decode behaviour.
 func decodeConfigUnvalidated(data []byte) (Config, error) {
+	// The removed preview key is refused before the strict decoder sees it, so a 0.5 user reads the section 5
+	// explanation rather than an unknown-field error that looks like a typo.
+	if err := refuseRemovedPreviewKeys(data); err != nil {
+		return Config{}, err
+	}
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -344,7 +336,6 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 		func() error { return validateRuleIDs("excluded", cfg.ExcludeRules, byID) },
 		func() error { return validatePatterns("ignorePaths", cfg.IgnorePaths) },
 		func() error { return validateAbbreviations(cfg.AcceptedAbbreviations) },
-		func() error { return refuseSecretPreviews(cfg) },
 		func() error { return validateRuleConfig(cfg.Rules, byID) },
 		func() error { return validateSelection(cfg.Selection) },
 		func() error { return validateSensitiveExclusions(cfg.SensitiveExclusions, byID) },
