@@ -31,6 +31,10 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
+	// --min-severity inverts rather than disappears here too: this command gates on it exactly as analyse did.
+	if refuseMinSeverity(flags, stderr) {
+		return 2
+	}
 	if *format != "text" && *format != "json" {
 		fmt.Fprintf(stderr, "unsupported format %q (want text or json)\n", *format)
 		return 2

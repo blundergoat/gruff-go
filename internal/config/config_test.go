@@ -32,9 +32,6 @@ rules:
       maxLines: 120
   size.function-length:
     enabled: false
-sensitiveData:
-  previewAllowlist:
-    - testdata/**
 `), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +57,6 @@ paths:
 allowlists:
   acceptedAbbreviations:
     - ID
-  secretPreviews:
-    - 'testdata/**'
 selection:
   rules:
     - dead-code.empty-block
@@ -94,9 +89,6 @@ rules:
 	if len(options.AcceptedAbbreviations) != 1 || options.AcceptedAbbreviations[0] != "ID" {
 		t.Fatalf("accepted abbreviations = %#v, want normalized ID", options.AcceptedAbbreviations)
 	}
-	if len(options.SensitiveDataPreviewAllowlist) != 1 || options.SensitiveDataPreviewAllowlist[0] != "testdata/**" {
-		t.Fatalf("secret preview allowlist = %#v, want normalized testdata pattern", options.SensitiveDataPreviewAllowlist)
-	}
 }
 
 // TestParseMergesLegacyAndGruffShapeLists verifies gruff-family aliases extend
@@ -107,16 +99,12 @@ select: [size.file-length]
 excludeRules: [complexity.cyclomatic]
 ignorePaths: ['legacy/**']
 acceptedAbbreviations: [HTTP]
-sensitiveData:
-  previewAllowlist: ['legacy-secrets/**']
 paths:
   ignore:
     - 'nested/**'
 allowlists:
   acceptedAbbreviations:
     - ID
-  secretPreviews:
-    - 'nested-secrets/**'
 selection:
   rules:
     - dead-code.empty-block
@@ -137,9 +125,6 @@ selection:
 	}
 	if got, want := strings.Join(cfg.AcceptedAbbreviations, ","), "HTTP,ID"; got != want {
 		t.Fatalf("accepted abbreviations = %q, want %q", got, want)
-	}
-	if got, want := strings.Join(cfg.SensitiveData.PreviewAllowlist, ","), "legacy-secrets/**,nested-secrets/**"; got != want {
-		t.Fatalf("secret preview allowlist = %q, want %q", got, want)
 	}
 }
 
@@ -406,7 +391,7 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 		{name: "backslash ignore", yaml: "paths:\n  ignore:\n    - 'pkg\\*.go'\n", want: "slash separators"},
 		{name: "mid-pattern recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/generated.go'\n", want: "one ** as a trailing recursive suffix"},
 		{name: "multiple recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/**'\n", want: "one ** as a trailing recursive suffix"},
-		{name: "invalid preview path", yaml: "allowlists:\n  secretPreviews:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
+		{name: "invalid ignore path", yaml: "paths:\n  ignore:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
 		{name: "blank abbreviation", yaml: "acceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
 		{name: "unknown threshold on parameter-count", yaml: "rules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
 		{name: "invalid threshold on nesting-depth", yaml: "rules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
@@ -418,9 +403,13 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 		{name: "unknown option on get prefix", yaml: "rules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
 		{name: "unknown option on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
 		{name: "unknown threshold on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
-		{name: "unknown minimumSeverity command", yaml: "minimumSeverity:\n  not-a-command: warning\n", want: `minimumSeverity has unknown command "not-a-command"`},
-		{name: "legacy minimumSeverity value", yaml: "minimumSeverity:\n  analyse: medium\n", want: `minimumSeverity.analyse: unknown threshold "medium"`},
-		{name: "rejected off-switch alias", yaml: "minimumSeverity:\n  report: never\n", want: `minimumSeverity.report: unknown threshold "never"`},
+		{name: "unknown failOn command", yaml: "failOn:\n  not-a-command: warning\n", want: `failOn has unknown command "not-a-command"`},
+		{name: "legacy failOn value", yaml: "failOn:\n  analyse: medium\n", want: `failOn.analyse: unknown threshold "medium"`},
+		{name: "rejected off-switch alias", yaml: "failOn:\n  report: never\n", want: `failOn.report: unknown threshold "never"`},
+		{name: "pre-0.6.0 gate spelling", yaml: "minimumSeverity:\n  analyse: error\n", want: "move the per-command exit gate to failOn"},
+		{name: "display floor outside the vocabulary", yaml: "minimumSeverity: medium\n", want: `minimumSeverity "medium" is not a severity`},
+		{name: "removed preview allowlist", yaml: "allowlists:\n  secretPreviews: []\n", want: "allowlists.secretPreviews is removed in 0.6.0"},
+		{name: "removed preview allowlist legacy spelling", yaml: "sensitiveData:\n  previewAllowlist: []\n", want: "section 5 makes category"},
 		{name: "zero deep scan lines", yaml: "deepScanBudget:\n  maxLines: 0\n", want: "deepScanBudget.maxLines must be a positive integer"},
 		{name: "negative deep scan bytes", yaml: "deepScanBudget:\n  maxBytes: -1\n", want: "deepScanBudget.maxBytes must be a positive integer"},
 	}
@@ -434,13 +423,13 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 	}
 }
 
-// TestParseAcceptsMinimumSeverityBlock confirms the four canonical command keys
+// TestParseAcceptsFailOnBlock confirms the four canonical command keys
 // + the four canonical FailThreshold values round-trip through Parse without
-// validation errors. Locks the ADR-010 contract surface.
-func TestParseAcceptsMinimumSeverityBlock(t *testing.T) {
+// validation errors. Locks the ADR-010 contract surface under the family's gate key.
+func TestParseAcceptsFailOnBlock(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   analyse: advisory
   summary: warning
   report: none
@@ -456,25 +445,47 @@ minimumSeverity:
 		"dashboard": "error",
 	}
 	for cmd, expected := range want {
-		if got := cfg.MinimumSeverity[cmd]; got != expected {
-			t.Errorf("MinimumSeverity[%q] = %q, want %q", cmd, got, expected)
+		if got := cfg.FailOn[cmd]; got != expected {
+			t.Errorf("FailOn[%q] = %q, want %q", cmd, got, expected)
 		}
 	}
 }
 
-// TestParseAcceptsNoneInMinimumSeverity confirms `none` is a valid value -
+// TestParseAcceptsNoneInFailOn confirms `none` is a valid value -
 // regression guard for the off-switch sentinel that distinguishes
 // FailThreshold from Severity.
-func TestParseAcceptsNoneInMinimumSeverity(t *testing.T) {
+func TestParseAcceptsNoneInFailOn(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   analyse: none
 `), defaultDefinitions())
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if got := cfg.MinimumSeverity["analyse"]; got != "none" {
-		t.Errorf("MinimumSeverity[analyse] = %q, want \"none\"", got)
+	if got := cfg.FailOn["analyse"]; got != "none" {
+		t.Errorf("FailOn[analyse] = %q, want \"none\"", got)
+	}
+}
+
+// TestParseReadsScalarKeysTheFamilyRatified covers the two shapes the family contract introduced: a bare failOn that
+// gates every command, and a scalar minimumSeverity that only decides what a report shows.
+func TestParseReadsScalarKeysTheFamilyRatified(t *testing.T) {
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+failOn: error
+minimumSeverity: warning
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	for _, command := range []string{"analyse", "summary", "report", "dashboard"} {
+		if got := cfg.FailOn[command]; got != "error" {
+			t.Errorf("FailOn[%q] = %q, want error from the bare form", command, got)
+		}
+	}
+	floor, configured := cfg.MinimumSeverity.Severity()
+	if !configured || floor != "warning" {
+		t.Errorf("display floor = %q configured=%t, want warning", floor, configured)
 	}
 }

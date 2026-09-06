@@ -26,10 +26,9 @@ paths:
     # opt-in detectors never flag their own deliberate test vectors.
     - internal/rule/sensitive_expansion_test.go
 
-# Project-wide allowlists and preview controls.
-# acceptedAbbreviations relax naming.acronym-case; secretPreviews authorizes
-# fixed category/scheme markers only. Empty/nonmatching paths stay [redacted].
-# This preview control never suppresses sensitive-data findings.
+# Project-wide allowlists.
+# acceptedAbbreviations relax naming.acronym-case. Sensitive-data markers are
+# unconditional and carry no payload, so nothing configures them.
 allowlists:
   acceptedAbbreviations:
     - AST
@@ -37,7 +36,6 @@ allowlists:
     - HTTP
     - ID
     - JSON
-  secretPreviews: []
 
 # Sensitive-data exclusions. Each entry suppresses one sensitive-data rule in
 # one project-relative file and requires a written reason. A symbol narrows the

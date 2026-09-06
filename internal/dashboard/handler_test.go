@@ -108,7 +108,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	if metadata.ExitCode != 1 {
 		t.Fatalf("metadata exitCode = %d, want 1", metadata.ExitCode)
 	}
-	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity warning ignored/complex.go"
+	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --fail-on warning ignored/complex.go"
 	if metadata.Command != wantCommand {
 		t.Fatalf("metadata command = %q, want %q", metadata.Command, wantCommand)
 	}
@@ -315,20 +315,20 @@ func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 	}
 }
 
-// TestDefaultStatePicksUpMinimumSeverityFromConfig asserts ADR-010 precedence
-// when no server CLI flag is set: defaultState reads minimumSeverity.dashboard
-// from the project config so the rendered form default reflects what the
-// project committed, not the binary default.
-func TestDefaultStatePicksUpMinimumSeverityFromConfig(t *testing.T) {
+// TestDefaultStatePicksUpFailOnFromConfig asserts ADR-010 precedence when no
+// server CLI flag is set: defaultState reads failOn.dashboard from the project
+// config so the rendered form default reflects what the project committed, not
+// the binary default.
+func TestDefaultStatePicksUpFailOnFromConfig(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   dashboard: error
 `)
 	state := defaultState(Options{ProjectRoot: project})
 	if state.FailOn != "error" {
-		t.Fatalf("defaultState.FailOn = %q, want %q (from config minimumSeverity.dashboard)", state.FailOn, "error")
+		t.Fatalf("defaultState.FailOn = %q, want %q (from config failOn.dashboard)", state.FailOn, "error")
 	}
 }
 
@@ -345,7 +345,7 @@ func TestDefaultStateFallsBackToBinaryDefaultWithoutConfig(t *testing.T) {
 }
 
 // TestDefaultStateServerFlagBeatsConfig asserts that opts.FailOn (the
-// --min-severity flag passed when starting the dashboard) wins over any
+// --fail-on flag passed when starting the dashboard) wins over any
 // minimumSeverity.dashboard config entry, matching ADR-010's precedence rule.
 func TestDefaultStateServerFlagBeatsConfig(t *testing.T) {
 	project := t.TempDir()
@@ -381,7 +381,7 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 		"--baseline baseline.json",
 		"--diff-base HEAD",
 		"--include-ignored",
-		"--min-severity high",
+		"--fail-on high",
 		"src",
 		"internal",
 	} {

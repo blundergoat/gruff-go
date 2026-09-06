@@ -28,18 +28,26 @@ type analyseFlagValues struct {
 	noBaseline           bool
 	generateBaselinePath string
 	// force overwrites a 0.5 baseline at the shared default path instead of refusing.
-	force             bool
-	diffBase          string
-	diffMode          string
-	since             string
-	diffPatch         []byte
-	changedRanges     string
-	changedScope      string
-	baselineShow      bool
-	includeRules      string
-	excludeRules      string
-	includePillars    string
-	excludePillars    string
+	force         bool
+	diffBase      string
+	diffMode      string
+	since         string
+	diffPatch     []byte
+	changedRanges string
+	changedScope  string
+	baselineShow  bool
+	// showRules and its three siblings are the family display filters; the plural spellings feed the same fields.
+	showRules   string
+	hideRules   string
+	showPillars string
+	hidePillars string
+	// includeRules and its siblings select what executes, which moves the score as well as the report.
+	includeRules   string
+	excludeRules   string
+	includePillars string
+	excludePillars string
+	// gates carries the two exit gates the family contract adds to this port.
+	gates             familyGateValues
 	editorLink        string
 	reportInteractive bool
 	includeIgnored    bool
@@ -63,10 +71,21 @@ type analyseFlagPointers struct {
 	since                *string
 	changedRanges        *string
 	changedScope         *string
+	showRules            *string
+	hideRules            *string
+	showPillars          *string
+	hidePillars          *string
 	includeRules         *string
 	excludeRules         *string
 	includePillars       *string
 	excludePillars       *string
+	runRules             *string
+	skipRules            *string
+	runPillars           *string
+	skipPillars          *string
+	minConfidence        *string
+	failOnNew            *bool
+	scanTimeout          *string
 	editorLink           *string
 	reportInteractive    *bool
 	includeIgnored       *bool
@@ -82,10 +101,13 @@ func analyseFlagHasSeparateValue(flagArgument string) bool {
 	}
 	// These are analyse's non-Boolean flags; every other supported flag is self-contained.
 	switch strings.TrimLeft(flagArgument, "-") {
-	case "format", "min-severity", "fail-on", "config", "baseline",
+	case "include-rule", "exclude-rule", "include-pillar", "exclude-pillar",
+		"format", "min-severity", "fail-on", "config", "baseline",
 		"generate-baseline", "diff-base", "diff", "since", "changed-ranges",
 		"changed-scope", "include-rules", "exclude-rules", "include-pillars",
-		"exclude-pillars", "report-editor-link", "deep-scan-budget":
+		"exclude-pillars", "report-editor-link", "deep-scan-budget",
+		"show-rule", "hide-rule", "show-pillar", "hide-pillar",
+		"min-confidence", "scan-timeout":
 		return true
 	default:
 		// Boolean and unknown flags do not reserve the next token during the help pre-scan.
@@ -103,6 +125,13 @@ func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagS
 	if err := parseCommandArguments(flagSet, normalizedArguments); err != nil {
 		return flagSet, analyseFlagValues{}, false
 	}
+	// --min-severity inverts rather than disappears, so the run stops before producing a verdict under semantics the
+	// user did not ask for. The wording is ratified in gruff-spec/fixtures/cli/locked-v05-min-severity.v1.json.
+	if refuseMinSeverity(flagSet, stderr) {
+		return flagSet, analyseFlagValues{}, false
+	}
+	// The plural display selectors behave identically under their family names, so they warn and keep working.
+	warnSupersededSpellings(flagSet, stderr)
 	// Unsupported output, editor-link, or changed-scope values are command-usage errors.
 	if !validateAnalyseEnums(*registeredFlags.format, *registeredFlags.editorLink, *registeredFlags.changedScope, stderr) {
 		return flagSet, analyseFlagValues{}, false
@@ -127,7 +156,14 @@ func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagS
 	if !severityValid {
 		return flagSet, analyseFlagValues{}, false
 	}
-	return flagSet, registeredFlags.values(diffPatch, minimumSeverityExplicit), true
+	gates, gatesValid := parseFamilyGates(*registeredFlags.minConfidence, *registeredFlags.failOnNew, stderr)
+	// A confidence floor the user mistyped would silently become no floor at all.
+	if !gatesValid {
+		return flagSet, analyseFlagValues{}, false
+	}
+	parsed := registeredFlags.values(diffPatch, minimumSeverityExplicit)
+	parsed.gates = gates
+	return flagSet, parsed, true
 }
 
 // newAnalyseFlagSet creates the analyse flag parser with GNU-style usage text.
@@ -162,10 +198,21 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 	since := flags.String("since", "", "git base ref for changed-region filtering")
 	changedRanges := flags.String("changed-ranges", "", "explicit changed line ranges such as 3-3,8-10")
 	changedScope := flags.String("changed-scope", "symbol", "changed-region scope: symbol or hunk")
-	includeRules := flags.String("include-rules", "", "comma-separated rule IDs to display")
-	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
-	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
-	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
+	showRules := flags.String("show-rule", "", "comma-separated rule IDs to display; never changes execution or the score")
+	hideRules := flags.String("hide-rule", "", "comma-separated rule IDs to hide from display")
+	showPillars := flags.String("show-pillar", "", "comma-separated pillars to display")
+	hidePillars := flags.String("hide-pillar", "", "comma-separated pillars to hide from display")
+	minConfidence := flags.String("min-confidence", "", "lowest confidence that reaches the exit gate: low, medium, or high")
+	failOnNew := flags.Bool("fail-on-new", false, "exit 1 when any finding is new against the applied baseline")
+	scanTimeout := flags.String("scan-timeout", "", "accepted for cross-port compatibility; not implemented in gruff-go")
+	runRules := flags.String("include-rule", "", "comma-separated rule IDs to run; changes execution, so the score and any generated baseline move with it")
+	skipRules := flags.String("exclude-rule", "", "comma-separated rule IDs not to run")
+	runPillars := flags.String("include-pillar", "", "comma-separated pillars to run; changes execution, not just display")
+	skipPillars := flags.String("exclude-pillar", "", "comma-separated pillars not to run")
+	includeRules := flags.String("include-rules", "", "superseded by --show-rule; comma-separated rule IDs to display")
+	excludeRules := flags.String("exclude-rules", "", "superseded by --hide-rule; comma-separated rule IDs to hide from display")
+	includePillars := flags.String("include-pillars", "", "superseded by --show-pillar; comma-separated pillars to display")
+	excludePillars := flags.String("exclude-pillars", "", "superseded by --hide-pillar; comma-separated pillars to hide from display")
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
@@ -185,10 +232,21 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 		since:                since,
 		changedRanges:        changedRanges,
 		changedScope:         changedScope,
+		showRules:            showRules,
+		hideRules:            hideRules,
+		showPillars:          showPillars,
+		hidePillars:          hidePillars,
 		includeRules:         includeRules,
 		excludeRules:         excludeRules,
 		includePillars:       includePillars,
 		excludePillars:       excludePillars,
+		minConfidence:        minConfidence,
+		failOnNew:            failOnNew,
+		scanTimeout:          scanTimeout,
+		runRules:             runRules,
+		skipRules:            skipRules,
+		runPillars:           runPillars,
+		skipPillars:          skipPillars,
 		editorLink:           editorLink,
 		reportInteractive:    reportInteractive,
 		includeIgnored:       includeIgnored,
@@ -215,10 +273,14 @@ func (values analyseFlagPointers) values(diffPatch []byte, minSeverityExplicit b
 		changedRanges:        *values.changedRanges,
 		changedScope:         *values.changedScope,
 		baselineShow:         *values.baselineShow,
-		includeRules:         *values.includeRules,
-		excludeRules:         *values.excludeRules,
-		includePillars:       *values.includePillars,
-		excludePillars:       *values.excludePillars,
+		showRules:            firstNonEmpty(*values.showRules, *values.includeRules),
+		hideRules:            firstNonEmpty(*values.hideRules, *values.excludeRules),
+		showPillars:          firstNonEmpty(*values.showPillars, *values.includePillars),
+		hidePillars:          firstNonEmpty(*values.hidePillars, *values.excludePillars),
+		includeRules:         *values.runRules,
+		excludeRules:         *values.skipRules,
+		includePillars:       *values.runPillars,
+		excludePillars:       *values.skipPillars,
 		editorLink:           *values.editorLink,
 		reportInteractive:    *values.reportInteractive,
 		includeIgnored:       *values.includeIgnored,
@@ -274,15 +336,17 @@ func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudg
 // generateBaselineState projects analyse flags relevant to baseline generation.
 func (values analyseFlagValues) generateBaselineState() generateBaselineFlagState {
 	return generateBaselineFlagState{
-		baselinePath:   values.baselinePath,
-		diffBase:       values.diffBase,
-		diffMode:       values.diffMode,
-		since:          values.since,
-		changedRanges:  values.changedRanges,
-		includeRules:   values.includeRules,
-		excludeRules:   values.excludeRules,
-		includePillars: values.includePillars,
-		excludePillars: values.excludePillars,
+		baselinePath:  values.baselinePath,
+		diffBase:      values.diffBase,
+		diffMode:      values.diffMode,
+		since:         values.since,
+		changedRanges: values.changedRanges,
+		// The family fields, because values() merges the superseded plural spellings into them. Reading the plural
+		// fields here would let --include-rules generate a baseline from a filtered view of the findings.
+		includeRules:   values.showRules,
+		excludeRules:   values.hideRules,
+		includePillars: values.showPillars,
+		excludePillars: values.hidePillars,
 	}
 }
 
@@ -314,4 +378,16 @@ func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
 	default:
 		return nil
 	}
+}
+
+// firstNonEmpty returns the family spelling when the user gave one, and the superseded spelling otherwise.
+//
+// Both write the same display filter, so a command line mixing them keeps the family value rather than concatenating
+// two lists the user never meant to combine.
+func firstNonEmpty(familyValue, supersededValue string) string {
+	if familyValue != "" {
+		return familyValue
+	}
+
+	return supersededValue
 }

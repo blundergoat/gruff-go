@@ -120,7 +120,7 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 // rules, so per ADR-007/ADR-009 they stay out of default scans until a project
 // enables them, rather than riding at an inflated severity to dodge the gate.
 func defaultSensitiveDataUnitRules(config Config) []UnitRule {
-	previews := newSensitivePreviewPolicy(config.SensitiveDataPreviewAllowlist)
+	previews := newSensitivePreviewPolicy()
 	return []UnitRule{
 		SensitiveDataRule{previews: previews},
 		PrivateKeyRule{previews: previews},

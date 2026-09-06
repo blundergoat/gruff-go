@@ -255,11 +255,11 @@ func Parse(baselineJSON []byte) (File, error) {
 	if err := json.Unmarshal(baselineJSON, &probe); err != nil {
 		return File{}, err
 	}
-	if probe.SchemaVersion == LegacySchemaVersion {
-		return File{}, fmt.Errorf("baseline schemaVersion %q is a 0.5 baseline; migrate it to a separate file with `gruff-go baseline --migrate <legacy path> --out <new path>` (the original is preserved)", probe.SchemaVersion)
-	}
+	// Any other schemaVersion is a pre-0.6 baseline, whether it names this port's own 0.5 token or the family's.
+	// Every one of them takes the same route forward, so every one of them is told about it rather than only the token
+	// this port happened to write.
 	if probe.SchemaVersion != SchemaVersion {
-		return File{}, fmt.Errorf("unsupported schemaVersion %q; expected %q", probe.SchemaVersion, SchemaVersion)
+		return File{}, fmt.Errorf("baseline schemaVersion %q is not %q; migrate it to a separate file with `gruff-go baseline --migrate-baseline <old path> --out <new path>` (the original is preserved)", probe.SchemaVersion, SchemaVersion)
 	}
 	var baselineFile File
 	decoder := json.NewDecoder(bytes.NewReader(baselineJSON))

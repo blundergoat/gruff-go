@@ -323,7 +323,7 @@ func displayCommand(state report.DashboardState, opts Options) string {
 		args = append(args, "--include-ignored")
 	}
 	if state.FailOn != "" {
-		args = append(args, "--min-severity", state.FailOn)
+		args = append(args, "--fail-on", state.FailOn)
 	}
 	paths := splitPaths(state.Paths)
 	args = append(args, paths...)

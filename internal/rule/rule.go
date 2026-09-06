@@ -47,9 +47,6 @@ type Config struct {
 	Severities map[string]finding.Severity
 	// Options carries per-rule non-numeric overrides keyed by rule ID then option name.
 	Options map[string]map[string]any
-	// SensitiveDataPreviewAllowlist lists paths authorized for fixed category or
-	// connection-scheme preview markers. Empty and nonmatching lists fully mask.
-	SensitiveDataPreviewAllowlist []string
 	// AcceptedAbbreviations lists project-specific abbreviations the acronym-case rule should tolerate.
 	AcceptedAbbreviations []string
 }

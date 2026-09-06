@@ -33,12 +33,14 @@ var defaultConfigFiles = []string{".gruff-go.yaml"}
 type Config struct {
 	// SchemaVersion identifies the gruff-go config schema this file targets.
 	SchemaVersion string `json:"schemaVersion,omitempty"`
-	// MinimumSeverity sets the per-command exit-code threshold. Keys are
-	// command names (analyse, summary, report, dashboard); values are
-	// FailThreshold strings (advisory, warning, error, none). Additive
-	// optional per ADR-010; the absence of a key falls back to
-	// finding.DefaultFailThresholdFor(cmd).
-	MinimumSeverity map[string]string `json:"minimumSeverity,omitempty"`
+	// MinimumSeverity is the display floor: the lowest severity a report shows. It never changes an exit code, a
+	// score, or a baseline. Before 0.6.0 this key was the per-command exit gate, which is why the map form is refused
+	// rather than reinterpreted.
+	MinimumSeverity SeverityFloor `json:"minimumSeverity,omitempty"`
+	// FailOn sets the per-command exit-code threshold that minimumSeverity used to carry. Keys are command names
+	// (analyse, summary, report, dashboard); values are FailThreshold strings (advisory, warning, error, none). A bare
+	// string applies to every command. Absent keys fall back to finding.DefaultFailThresholdFor(cmd).
+	FailOn CommandThresholds `json:"failOn,omitempty"`
 	// DeepScanBudget bounds AST-backed analysis after .go source classification.
 	DeepScanBudget DeepScanBudgetConfig `json:"deepScanBudget,omitempty"`
 	// Select restricts the active rule set to the listed rule IDs (or aliases).
@@ -99,9 +101,10 @@ type PathsConfig struct {
 type AllowlistsConfig struct {
 	// AcceptedAbbreviations is the gruff-family alias folded into Config.AcceptedAbbreviations.
 	AcceptedAbbreviations []string `json:"acceptedAbbreviations,omitempty"`
-	// SecretPreviews lists paths authorized for fixed sensitive-data category or
-	// connection-scheme markers. It never authorizes matched payload bytes.
-	SecretPreviews []string `json:"secretPreviews,omitempty"`
+	// SecretPreviews is refused rather than read, and kept as raw JSON so an empty list is still detected. Section 5
+	// makes category markers unconditional, so from 0.6.0 the key authorises nothing; a configuration carrying it is
+	// telling the user something untrue about their redaction, whatever it lists.
+	SecretPreviews json.RawMessage `json:"secretPreviews,omitempty"`
 }
 
 // SelectionConfig stores rule and pillar allowlist/denylist policy.
@@ -120,9 +123,9 @@ type SelectionConfig struct {
 
 // SensitiveDataConfig stores sensitive-data rule preview exceptions.
 type SensitiveDataConfig struct {
-	// PreviewAllowlist is the legacy alias for paths authorized to receive fixed
-	// category or connection-scheme markers; empty and nonmatching lists fully mask.
-	PreviewAllowlist []string `json:"previewAllowlist,omitempty"`
+	// PreviewAllowlist is the removed pre-0.6.0 spelling of allowlists.secretPreviews, kept as raw JSON only so its
+	// presence can be refused with the section 5 explanation rather than ignored.
+	PreviewAllowlist json.RawMessage `json:"previewAllowlist,omitempty"`
 }
 
 // SensitiveExclusion is one ratified sensitive-data suppression scope: exactly
@@ -341,13 +344,12 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 		func() error { return validateRuleIDs("excluded", cfg.ExcludeRules, byID) },
 		func() error { return validatePatterns("ignorePaths", cfg.IgnorePaths) },
 		func() error { return validateAbbreviations(cfg.AcceptedAbbreviations) },
-		func() error {
-			return validatePatterns("sensitiveData.previewAllowlist", cfg.SensitiveData.PreviewAllowlist)
-		},
+		func() error { return refuseSecretPreviews(cfg) },
 		func() error { return validateRuleConfig(cfg.Rules, byID) },
 		func() error { return validateSelection(cfg.Selection) },
 		func() error { return validateSensitiveExclusions(cfg.SensitiveExclusions, byID) },
-		func() error { return validateMinimumSeverity(cfg.MinimumSeverity) },
+		func() error { return validateSeverityFloor(cfg.MinimumSeverity) },
+		func() error { return validateCommandThresholds("failOn", cfg.FailOn) },
 	}
 	return runChecks(checks)
 }
@@ -368,12 +370,11 @@ func (cfg Config) RuleOptions() rule.Config {
 // newRuleOptions seeds registry options with project-wide config knobs.
 func newRuleOptions(cfg Config) rule.Config {
 	return rule.Config{
-		Enabled:                       map[string]bool{},
-		Thresholds:                    map[string]map[string]float64{},
-		Severities:                    map[string]finding.Severity{},
-		Options:                       map[string]map[string]any{},
-		SensitiveDataPreviewAllowlist: cfg.SensitiveData.PreviewAllowlist,
-		AcceptedAbbreviations:         cfg.AcceptedAbbreviations,
+		Enabled:               map[string]bool{},
+		Thresholds:            map[string]map[string]float64{},
+		Severities:            map[string]finding.Severity{},
+		Options:               map[string]map[string]any{},
+		AcceptedAbbreviations: cfg.AcceptedAbbreviations,
 	}
 }
 
@@ -457,9 +458,6 @@ func (cfg Config) Normalized() Config {
 	if len(cfg.Allowlists.AcceptedAbbreviations) > 0 {
 		cfg.AcceptedAbbreviations = mergeStringLists(cfg.AcceptedAbbreviations, cfg.Allowlists.AcceptedAbbreviations)
 	}
-	if len(cfg.Allowlists.SecretPreviews) > 0 {
-		cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)
-	}
 	if len(cfg.Selection.Rules) > 0 {
 		cfg.Select = mergeStringLists(cfg.Select, cfg.Selection.Rules)
 	}
@@ -470,7 +468,6 @@ func (cfg Config) Normalized() Config {
 	cfg.ExcludeRules = sortedCopy(cfg.ExcludeRules)
 	cfg.IgnorePaths = sortedCopy(cfg.IgnorePaths)
 	cfg.AcceptedAbbreviations = sortedCopy(cfg.AcceptedAbbreviations)
-	cfg.SensitiveData.PreviewAllowlist = sortedCopy(cfg.SensitiveData.PreviewAllowlist)
 	cfg.SensitiveExclusions = normalizedSensitiveExclusions(cfg.SensitiveExclusions)
 	return cfg
 }

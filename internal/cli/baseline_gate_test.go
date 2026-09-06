@@ -58,7 +58,7 @@ func TestAnalyseBaselineSeverityFloorStillApplies(t *testing.T) {
 	generateUserBaseline(t, "baseline.json", "reviewed.go")
 	writeFile(t, projectRoot, "new.go", complexFixture())
 
-	report, exitCode := runBaselineGateAnalyse(t, "analyse", "--format", "json", "--min-severity", "error", "--baseline", "baseline.json", ".")
+	report, exitCode := runBaselineGateAnalyse(t, "analyse", "--format", "json", "--fail-on", "error", "--baseline", "baseline.json", ".")
 	// A new warning remains visible but cannot cross the configured error floor.
 	if exitCode != 0 || report.Summary.ExitCode != 0 || len(report.Findings) != 1 {
 		t.Fatalf("exit/report/findings = %d/%d/%d, want 0/0/1", exitCode, report.Summary.ExitCode, len(report.Findings))

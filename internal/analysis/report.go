@@ -239,6 +239,10 @@ type ReportInput struct {
 	// FailOn is the resolved threshold that maps to exit code 1. FailThreshold
 	// rather than Severity so None ("never fail on findings") is representable.
 	FailOn finding.FailThreshold
+	// MinConfidence is the lowest confidence that reaches the exit gate, independent of severity.
+	MinConfidence finding.Confidence
+	// FailOnNew exits 1 for any finding the applied baseline classifies as new, whatever its severity.
+	FailOnNew bool
 	// IncludeIgnored is true when the run intentionally crossed .gitignore boundaries.
 	IncludeIgnored bool
 	// Scanned is the project-relative file list that survived discovery filtering.
@@ -412,17 +416,64 @@ func nonNilDefinitions(values []rule.Definition) []rule.Definition {
 // ResolveExitCode returns the CLI exit code implied by diagnostics and findings.
 // The None sentinel disables only the finding gate; any diagnostic still exits 2.
 func ResolveExitCode(diagnostics []Diagnostic, findings []finding.Finding, failOn finding.FailThreshold) int {
+	return ResolveGatedExitCode(diagnostics, findings, ExitGate{FailOn: failOn, MinConfidence: finding.ConfidenceLow})
+}
+
+// ExitGate carries the three dimensions the family contract lets a user gate on.
+//
+// Severity and confidence are independent floors: a finding reaches the gate only by clearing both, so neither alone
+// decides the exit code. FailOnNew adds the baseline dimension, which is about review state rather than urgency.
+type ExitGate struct {
+	// FailOn is the lowest severity that reaches the gate.
+	FailOn finding.FailThreshold
+	// MinConfidence is the lowest confidence that reaches it, independent of severity.
+	MinConfidence finding.Confidence
+	// FailOnNew exits 1 for any finding the applied baseline classifies as new, whatever its severity.
+	FailOnNew bool
+}
+
+// ResolveGatedExitCode decides the exit code under the full family gate.
+//
+// A run that could not complete still outranks everything: a diagnostic that invalidates the run exits 2 before any
+// finding is weighed, because a partial scan's verdict is not a verdict.
+func ResolveGatedExitCode(diagnostics []Diagnostic, findings []finding.Finding, gate ExitGate) int {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
 			return 2
 		}
 	}
+
 	for _, item := range findings {
-		if failOn.IsTriggeredBy(item.Severity) {
+		// The baseline dimension is independent of both floors: a new finding gates whatever its severity.
+		if gate.FailOnNew && item.BaselineStatus == "new" {
+			return 1
+		}
+
+		if gate.FailOn.IsTriggeredBy(item.Severity) && confidenceReachesFloor(item.Confidence, gate.MinConfidence) {
 			return 1
 		}
 	}
+
 	return 0
+}
+
+// confidenceRankOf orders the three confidence levels, ranking anything unrecognised highest.
+//
+// An unrated finding must not slip under a gate, so the safe default is the value that always reaches it.
+func confidenceRankOf(confidence finding.Confidence) int {
+	switch confidence {
+	case finding.ConfidenceLow:
+		return 0
+	case finding.ConfidenceMedium:
+		return 1
+	default:
+		return 2
+	}
+}
+
+// confidenceReachesFloor reports whether one finding's confidence clears the gate's floor.
+func confidenceReachesFloor(findingConfidence, floor finding.Confidence) bool {
+	return confidenceRankOf(findingConfidence) >= confidenceRankOf(floor)
 }
 
 // SortReport orders report collections for deterministic output.

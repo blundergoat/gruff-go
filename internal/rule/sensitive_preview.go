@@ -4,8 +4,6 @@ package rule
 
 import (
 	"strings"
-
-	"github.com/blundergoat/gruff-go/internal/pathfilter"
 )
 
 // redactedPreview is the only preview emitted without explicit path authorization.
@@ -97,21 +95,22 @@ func personalDataPreviewCategory(category string) sensitivePreviewCategory {
 
 // sensitivePreviewPolicy authorizes category detail for repository-relative paths.
 // Its zero value is intentionally deny-by-default.
-type sensitivePreviewPolicy struct {
-	allowlist []string
+type sensitivePreviewPolicy struct{}
+
+// newSensitivePreviewPolicy returns the one policy every scan uses.
+//
+// It carries no state: FAMILY-CONTRACT.md section 5 makes markers unconditional, because every marker is zero-payload
+// by construction, so gating one behind configuration bought no confidentiality and produced cross-port divergence.
+func newSensitivePreviewPolicy() sensitivePreviewPolicy {
+	return sensitivePreviewPolicy{}
 }
 
-// newSensitivePreviewPolicy isolates the configured allowlist from later mutation.
-func newSensitivePreviewPolicy(allowlist []string) sensitivePreviewPolicy {
-	return sensitivePreviewPolicy{allowlist: append([]string(nil), allowlist...)}
-}
-
-// format returns a full mask unless path is explicitly authorized. Authorized
-// routes return only a fixed category marker or the already-public connection scheme.
-func (p sensitivePreviewPolicy) format(path string, category sensitivePreviewCategory, raw string) string {
-	if len(p.allowlist) == 0 || !pathfilter.MatchesAny(p.allowlist, path) {
-		return redactedPreview
-	}
+// format returns the most specific marker the detector already classified, and a bare mask otherwise.
+//
+// The path is unused and kept in the signature because every caller has one, and a marker that varied by path is
+// exactly what section 5 removed.
+func (p sensitivePreviewPolicy) format(_ string, category sensitivePreviewCategory, raw string) string {
+	// A generic or entropy match names no class the user can act on, so it stays the bare marker.
 	if category == previewGeneric || category == previewEntropy {
 		return redactedPreview
 	}

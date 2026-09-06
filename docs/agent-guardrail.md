@@ -44,7 +44,7 @@ changed region with the diff-aware flags - `--diff`, `--since`,
 recipes. Feed the findings back to the agent and re-run until clean.
 
 Agent harnesses that consume `gruff-go hook --format json --diff ...` receive the
-stable `gruff.hook.v1` payload. In a new git repository with no commits yet,
+stable `gruff.hook.v2` payload. In a new git repository with no commits yet,
 `--diff HEAD` cannot resolve a base; hook mode writes an actionable stderr
 diagnostic and falls back to scanning the requested paths without diff/new-only
 filtering rather than dropping the JSON contract.

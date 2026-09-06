@@ -22,7 +22,8 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("baseline", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	outPath := flags.String("out", "", "baseline output path")
-	migratePath := flags.String("migrate", "", "0.5 baseline to migrate; its reviewed findings are re-identified from the current scan and written to --out, and the original is left untouched")
+	migrateBaselinePath := flags.String("migrate-baseline", "", "0.5 baseline to migrate; its reviewed findings are re-identified from the current scan and written to --out, and the original is left untouched")
+	migratePath := flags.String("migrate", "", "superseded spelling of --migrate-baseline; identical behaviour")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	force := flags.Bool("force", false, "overwrite a 0.5 baseline at the default path; without it a generate that would destroy the retreat path is refused")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
@@ -31,6 +32,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
+	warnSupersededSpellings(flags, stderr)
 	if *outPath == "" {
 		fmt.Fprintln(stderr, "baseline requires --out")
 		return 2
@@ -48,7 +50,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 	return writeBaselineFromScan(baselineScanOptions{
 		paths:               flags.Args(),
 		outPath:             *outPath,
-		migratePath:         *migratePath,
+		migratePath:         firstNonEmpty(*migrateBaselinePath, *migratePath),
 		force:               *force,
 		registry:            registry,
 		ignorePaths:         ignorePaths,

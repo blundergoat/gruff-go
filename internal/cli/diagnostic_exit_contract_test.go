@@ -126,7 +126,7 @@ func TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures(t *testing
 
 // diagnosticCommandArgs builds a scan command with flags before its path.
 func diagnosticCommandArgs(command, threshold, path string, extra ...string) []string {
-	args := []string{command, "--no-config", "--format", "json", "--min-severity", threshold}
+	args := []string{command, "--no-config", "--format", "json", "--fail-on", threshold}
 	args = append(args, extra...)
 	return append(args, path)
 }

@@ -8,10 +8,16 @@ import (
 	"strings"
 )
 
-// commandDescription pairs a subcommand name with its short help text.
-type commandDescription struct {
+// commandEntry is one subcommand as every public surface sees it: the usage screen, the shell completion script,
+// and the per-command flag list. Keeping the three views in one place is what stops a command being registered in
+// the dispatch and missing from completion, which is how check-ignore and migrate-config went unadvertised.
+//
+// An empty description means the name is an alias and the usage screen does not list it; an empty usage means the
+// command takes no flags worth a per-command screen.
+type commandEntry struct {
 	name        string
 	description string
+	usage       string
 }
 
 // optionDescription pairs a flag name with its short help text.
@@ -20,20 +26,23 @@ type optionDescription struct {
 	description string
 }
 
-// commandList enumerates the subcommands shown in the top-level usage screen.
-var commandList = []commandDescription{
-	{"analyse", "Run the rule registry over the supplied paths and emit a report."},
-	{"baseline", "Write a JSON baseline of current findings for use with --baseline."},
-	{"check-ignore", "Report whether paths.ignore / gitignore would exclude given paths, and why."},
-	{"completion", "Dump a shell completion script."},
-	{"dashboard", "Serve the local gruff-go dashboard."},
-	{"help", "Display help for a command, or the command list if none is given."},
-	{"hook", "Emit the gruff.hook.v1 agent-hook JSON contract for edited regions."},
-	{"init", "Generate a default .gruff-go.yaml mirroring the built-in registry defaults."},
-	{"list", "List the available commands."},
-	{"list-rules", "List gruff rule metadata."},
-	{"report", "Render a gruff report to stdout or a file."},
-	{"summary", "Print a compact digest of a scan: score, per-pillar counts, top rules and offenders."},
+// commandCatalogue is the one list of subcommands gruff-go ships, in the order the usage screen prints them.
+// Every entry must have a case in the dispatch switch in cli.go, and every case must have an entry here.
+var commandCatalogue = []commandEntry{
+	{name: "analyse", description: "Run the rule registry over the supplied paths and emit a report.", usage: "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--show-rule ids] [--hide-rule ids] [--show-pillar names] [--hide-pillar names] [--include-rule ids] [--exclude-rule ids] [--include-pillar names] [--exclude-pillar names] [--min-confidence low|medium|high] [--fail-on-new] [--scan-timeout duration (accepted for cross-port compatibility)] [--include-ignored] [path ...]"},
+	{name: "analyze", usage: "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--show-rule ids] [--hide-rule ids] [--show-pillar names] [--hide-pillar names] [--include-rule ids] [--exclude-rule ids] [--include-pillar names] [--exclude-pillar names] [--min-confidence low|medium|high] [--fail-on-new] [--scan-timeout duration (accepted for cross-port compatibility)] [--include-ignored] [path ...]"},
+	{name: "baseline", description: "Write a JSON baseline of current findings for use with --baseline.", usage: "--out path [--migrate-baseline path] [--force] [--config path|--no-config] [--deep-scan-budget lines:bytes|off] [--include-ignored] [path ...]"},
+	{name: "check-ignore", description: "Report whether paths.ignore / gitignore would exclude given paths, and why.", usage: "[--format text|json] [--config path|--no-config] [--include-ignored] <path> ..."},
+	{name: "completion", description: "Dump a shell completion script.", usage: "[bash|zsh|fish]"},
+	{name: "dashboard", description: "Serve the local gruff-go dashboard.", usage: "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--deep-scan-budget lines:bytes|off] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]"},
+	{name: "help", description: "Display help for a command, or the command list if none is given."},
+	{name: "hook", description: "Emit the gruff.hook.v2 agent-hook JSON contract for edited regions.", usage: "[--format json] [--capabilities] [--config path|--no-config] [--deep-scan-budget lines:bytes|off] [--changed-ranges ranges] [--diff ref|working-tree|staged|unstaged|-] [--baseline path] [--fail-on severity] [--min-confidence low|medium|high] [--fail-on-new] [--fail-on-diagnostics] [--include-ignored] [path ...]"},
+	{name: "init", description: "Generate a default .gruff-go.yaml mirroring the built-in registry defaults.", usage: "[--force [--reset]]"},
+	{name: "list", description: "List the available commands."},
+	{name: "list-rules", description: "List gruff rule metadata.", usage: "[--format text|json] [--config path|--no-config]"},
+	{name: "migrate-config", description: "Rewrite a 0.5 config for the current schema, writing the result to a different file.", usage: "--config path --output path [--dry-run]"},
+	{name: "report", description: "Render a gruff report to stdout or a file.", usage: "[--format html|json] [--output path] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity|--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]"},
+	{name: "summary", description: "Print a compact digest of a scan: score, per-pillar counts, top rules and offenders.", usage: "[--format text|json] [--top N] [--fail-on severity|--min-severity severity] [--deep-scan-budget lines:bytes|off] [--config path|--no-config] [--include-ignored] [path ...]"},
 }
 
 // globalOptions enumerates the cross-command flags shown in the usage screen.
@@ -62,8 +71,11 @@ func usage(writer io.Writer, style ansiStyler) {
 	fmt.Fprintln(writer, "  gruff-go [--version] [-q|--quiet|--silent] [-n|--no-interaction] [--ansi|--no-ansi] [-v|--verbose] <command> [options] [arguments]")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, style.yellow("Available commands:"))
-	for _, cmd := range commandList {
-		fmt.Fprintf(writer, "  %s  %s\n", padCommandName(style.green(cmd.name), cmd.name), cmd.description)
+	for _, entry := range commandCatalogue {
+		// An entry with no description is an alias the usage screen deliberately does not repeat.
+		if entry.description != "" {
+			fmt.Fprintf(writer, "  %s  %s\n", padCommandName(style.green(entry.name), entry.name), entry.description)
+		}
 	}
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, style.yellow("Global options:"))
@@ -86,19 +98,20 @@ func helpForCommand(name string, stdout, stderr io.Writer, stdoutStyle, stderrSt
 	return 0
 }
 
-// commandUsages maps each subcommand to its concrete usage flag list.
-var commandUsages = map[string]string{
-	"analyse":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"analyze":      "[--format text|json|summary-json|sarif|github|html|markdown] [--fail-on severity|--min-severity severity] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path|--no-baseline|--generate-baseline path] [--baseline-show] [--changed-ranges ranges|--since ref|--diff mode] [--changed-scope symbol|hunk] [--diff-base ref] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"baseline":     "--out path [--config path|--no-config] [--deep-scan-budget lines:bytes|off] [--include-ignored] [path ...]",
-	"check-ignore": "[--format text|json] [--config path|--no-config] [--include-ignored] <path> ...",
-	"completion":   "[bash|zsh|fish]",
-	"hook":         "[--format json] [--capabilities] [--config path|--no-config] [--deep-scan-budget lines:bytes|off] [--changed-ranges ranges] [--diff ref|working-tree|staged|unstaged|-] [--baseline path] [--include-ignored] [path ...]",
-	"init":         "[--force [--reset]]",
-	"list-rules":   "[--format text|json] [--config path|--no-config]",
-	"summary":      "[--format text|json] [--top N] [--fail-on severity|--min-severity severity] [--deep-scan-budget lines:bytes|off] [--config path|--no-config] [--include-ignored] [path ...]",
-	"report":       "[--format html|json] [--output path] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity|--min-severity severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]",
-	"dashboard":    "[--host host] [--port port] [--scan-timeout seconds] [--project path] [--paths csv] [--config path|--no-config] [--deep-scan-budget lines:bytes|off] [--baseline path|--no-baseline] [--diff] [--include-ignored] [--fail-on severity] [--report-interactive] [--report-editor-link none|vscode|phpstorm] [--allow-public]",
+// commandUsages maps each subcommand that has a per-command flag list to it, derived from the catalogue so a new
+// command cannot reach the dispatch with a usage screen nobody wrote.
+var commandUsages = buildCommandUsages()
+
+// buildCommandUsages collects the catalogue entries that carry a flag list.
+func buildCommandUsages() map[string]string {
+	usages := make(map[string]string, len(commandCatalogue))
+	for _, entry := range commandCatalogue {
+		// A command with no flags of its own has no usage screen, and an empty line would read as a missing one.
+		if entry.usage != "" {
+			usages[entry.name] = entry.usage
+		}
+	}
+	return usages
 }
 
 // writeCommandHelp renders the stable one-line command usage. It intentionally

@@ -153,10 +153,10 @@ var minimumSeverityCommands = map[string]struct{}{
 	"dashboard": {},
 }
 
-// validateMinimumSeverity rejects unknown command keys and unknown FailThreshold
+// validateCommandThresholds rejects unknown command keys and unknown FailThreshold
 // values. Deterministic iteration: map keys are sorted before reporting so the
 // first-error returned by runChecks is stable across runs.
-func validateMinimumSeverity(entries map[string]string) error {
+func validateCommandThresholds(label string, entries CommandThresholds) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -168,11 +168,11 @@ func validateMinimumSeverity(entries map[string]string) error {
 	sortStringSlice(sortedKeys)
 	for _, cmd := range sortedKeys {
 		if _, ok := minimumSeverityCommands[cmd]; !ok {
-			return fmt.Errorf("minimumSeverity has unknown command %q", cmd)
+			return fmt.Errorf("%s has unknown command %q", label, cmd)
 		}
 		value := entries[cmd]
 		if _, err := finding.ParseFailThreshold(value); err != nil {
-			return fmt.Errorf("minimumSeverity.%s: %s", cmd, err.Error())
+			return fmt.Errorf("%s.%s: %s", label, cmd, err.Error())
 		}
 	}
 	return nil

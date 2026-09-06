@@ -32,6 +32,10 @@ type Options struct {
 	// FailThreshold (not Severity) so callers can express "never fail on findings" via
 	// finding.FailThresholdNone.
 	FailOn finding.FailThreshold
+	// MinConfidence is the lowest confidence that reaches the exit gate, independent of severity.
+	MinConfidence finding.Confidence
+	// FailOnNew exits 1 for any finding the applied baseline classifies as new, whatever its severity.
+	FailOnNew bool
 	// Registry supplies the rules invoked against parsed units.
 	Registry rule.Registry
 	// IgnorePaths lists path patterns suppressed from discovery, merged on top of gitignore handling.
@@ -111,24 +115,9 @@ func Analyze(opts Options) (Report, error) {
 	// they are parsed.
 	changed, diffSummary, diagnostics := resolveChangedScope(ctx, root, discovery.Files, diagnostics, opts)
 
-	projectFiles, err := projectContextFiles(root, opts, discovery.Files)
+	units, projectUnits, parseDiagnostics, err := parseWithProjectContext(ctx, root, opts, discovery)
 	if err != nil {
 		return Report{}, err
-	}
-	units, parseDiagnostics := parser.ParseWithBudget(discovery.Files, parserBudget(opts.DeepScanBudget))
-	if err := ctx.Err(); err != nil {
-		return Report{}, err
-	}
-	projectUnits := units
-	if !sameSourceFileSet(discovery.Files, projectFiles) {
-		var projectParseDiagnostics []parser.Diagnostic
-		projectUnits, projectParseDiagnostics = parser.ParseWithBudget(projectFiles, parserBudget(opts.DeepScanBudget))
-		// A sibling pulled in only for package context can strip evidence a
-		// project rule depends on (an unparsed caller makes a used symbol look
-		// dead), so surface its parse/read failures rather than letting them
-		// drive a silent false positive. Primary-file diagnostics are reported
-		// below, so only the context-only entries are added here.
-		parseDiagnostics = append(parseDiagnostics, contextOnlyParseDiagnostics(projectParseDiagnostics, discovery.Files)...)
 	}
 	diagnostics = append(diagnostics, diagnosticsFromDiscovery(discovery.Missing)...)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
@@ -156,6 +145,8 @@ func Analyze(opts Options) (Report, error) {
 		Inputs:          inputsOrDefault(opts.Paths),
 		Format:          opts.Format,
 		FailOn:          opts.FailOn,
+		MinConfidence:   opts.MinConfidence,
+		FailOnNew:       opts.FailOnNew,
 		IncludeIgnored:  opts.IncludeIgnored,
 		Suppressions:    suppressions,
 		Scanned:         scannedPaths(discovery.Files),
@@ -631,4 +622,35 @@ func parserLocation(item parser.Diagnostic) *finding.Location {
 		return nil
 	}
 	return &finding.Location{Line: item.Line, Column: item.Column}
+}
+
+// parseWithProjectContext parses the discovered files, plus any package siblings a project rule needs to be right.
+//
+// The two unit sets are returned separately because only the discovered files are reportable: a sibling is read to
+// prove a symbol is used, never to be scanned in its own right.
+func parseWithProjectContext(ctx context.Context, root string, opts Options, discovery source.Result) ([]parser.Unit, []parser.Unit, []parser.Diagnostic, error) {
+	projectFiles, err := projectContextFiles(root, opts, discovery.Files)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	units, parseDiagnostics := parser.ParseWithBudget(discovery.Files, parserBudget(opts.DeepScanBudget))
+
+	if err := ctx.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	projectUnits := units
+
+	// A sibling pulled in only for package context can strip evidence a project rule depends on (an unparsed caller
+	// makes a used symbol look dead), so surface its parse and read failures rather than letting them drive a silent
+	// false positive. Primary-file diagnostics are reported by the caller, so only context-only entries are added here.
+	if !sameSourceFileSet(discovery.Files, projectFiles) {
+		var projectParseDiagnostics []parser.Diagnostic
+
+		projectUnits, projectParseDiagnostics = parser.ParseWithBudget(projectFiles, parserBudget(opts.DeepScanBudget))
+		parseDiagnostics = append(parseDiagnostics, contextOnlyParseDiagnostics(projectParseDiagnostics, discovery.Files)...)
+	}
+
+	return units, projectUnits, parseDiagnostics, nil
 }

@@ -20,12 +20,36 @@ import (
 type hookFindingBaseline struct {
 	enabled bool
 	file    baseline.File
+	// path is the project-relative baseline the user named, empty for a baseline derived from git history.
+	path string
+}
+
+// runBaseline reports which baseline classified this run, for the audit block a consumer reads before trusting it.
+//
+// A suppressed finding is only explicable if the consumer can see what suppressed it, so an applied baseline names both
+// its schema and its file.
+func (hookBaseline hookFindingBaseline) runBaseline() hookRunBaseline {
+	// Without a baseline there is nothing to name, and the contract asks for null rather than an empty string.
+	if !hookBaseline.enabled {
+		return hookRunBaseline{}
+	}
+
+	schemaVersion := baseline.SchemaVersion
+	applied := hookRunBaseline{Applied: true, SchemaVersion: &schemaVersion}
+
+	// A git-derived base has no file the user can open, so its path stays null rather than naming a temporary export.
+	if hookBaseline.path != "" {
+		path := hookBaseline.path
+		applied.Path = &path
+	}
+
+	return applied
 }
 
 // newFindings classifies the complete current slice through baseline.Apply.
 // Disabled input returns every finding because the user selected no prior base.
 func (hookBaseline hookFindingBaseline) newFindings(currentFindings []finding.Finding) []finding.Finding {
-	// Without a baseline or git base, every current finding remains hook-visible.
+	// Without a baseline or git base, every current finding remains hook-visible and none carries a status.
 	if !hookBaseline.enabled {
 		return currentFindings
 	}
@@ -34,7 +58,30 @@ func (hookBaseline hookFindingBaseline) newFindings(currentFindings []finding.Fi
 	if err != nil {
 		return currentFindings
 	}
-	return result.Findings
+	return stampHookBaselineStatuses(currentFindings, result)
+}
+
+// stampHookBaselineStatuses records on each surviving finding what the baseline made of it.
+//
+// A consumer that cannot see why a finding survived cannot tell a genuinely new problem from one the baseline could not
+// identify, so the status travels with the finding rather than only in a count.
+func stampHookBaselineStatuses(currentFindings []finding.Finding, result baseline.ApplyResult) []finding.Finding {
+	statusByFingerprint := map[string]string{}
+
+	for index, status := range result.Statuses {
+		if index < len(currentFindings) {
+			statusByFingerprint[currentFindings[index].Fingerprint] = string(status)
+		}
+	}
+
+	stamped := make([]finding.Finding, 0, len(result.Findings))
+
+	for _, survivor := range result.Findings {
+		survivor.BaselineStatus = statusByFingerprint[survivor.Fingerprint]
+		stamped = append(stamped, survivor)
+	}
+
+	return stamped
 }
 
 // resolveHookChanged computes changed lines used for hook location attribution.
@@ -122,7 +169,7 @@ func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingB
 	if err != nil {
 		return hookFindingBaseline{}, err
 	}
-	return hookFindingBaseline{enabled: true, file: baselineFile}, nil
+	return hookFindingBaseline{enabled: true, file: baselineFile, path: filepath.ToSlash(baselinePath)}, nil
 }
 
 // hookFindingBaselineFromFindings converts a git-base scan to baseline entries.
