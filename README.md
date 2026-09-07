@@ -37,7 +37,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 
 ## Requirements
 
-- Go `1.25` or newer, matching [`go.mod`](go.mod).
+- Go `1.25` or newer, matching [`go.mod`](https://github.com/blundergoat/gruff-go/blob/main/go.mod).
 - Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
 - No runtime dependencies outside the Go standard library.
 
@@ -48,7 +48,7 @@ The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24
 Install as a project-pinned dev tool:
 
 ```bash
-go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
 go tool gruff-go init
 go tool gruff-go summary .
 ```
@@ -126,7 +126,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `html` | Self-contained inspection report. |
 | `markdown` | CI-ready Markdown summary for PR comments or job summaries. |
 
-`go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](docs/output-formats.md) for schema details and HTML flags.
+`go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/output-formats.md) for schema details and HTML flags.
 
 ## Exit Codes
 
@@ -136,7 +136,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `1` | At least one finding met `--min-severity`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--min-severity` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](docs/configuration.md#minimumseverity). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
+`--min-severity` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#minimumseverity). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
 
 ## CI Usage
 
@@ -152,7 +152,7 @@ SARIF upload jobs can use:
 go tool gruff-go analyse --format sarif --min-severity error . > gruff-go.sarif
 ```
 
-For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](docs/ci-integration.md) for GitHub Actions and GitLab examples.
+For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/ci-integration.md) for GitHub Actions and GitLab examples.
 
 ## Configuration
 
@@ -179,7 +179,7 @@ rules:
     enabled: true
 ```
 
-See [`docs/configuration.md`](docs/configuration.md) for the full schema and validation rules.
+See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md) for the full schema and validation rules.
 
 ## Rules And Pillars
 
@@ -199,7 +199,7 @@ The current checkout contains 83 rules across 11 pillars. 70 rules are enabled b
 | `size` | 3 |
 | `test-quality` | 9 |
 
-See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
+See [`docs/rules.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 
 `list-rules` reports the effective rule state after applying project config. Use `go tool gruff-go list-rules --no-config` to inspect built-in defaults.
 
@@ -238,7 +238,7 @@ go tool gruff-go dashboard --project .
 # Open http://127.0.0.1:8765/ in a browser.
 ```
 
-The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
+The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
 
 In polyglot repositories, `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
 
@@ -268,22 +268,22 @@ go vet ./...
 make check
 ```
 
-`make check` is the release gate together with a dogfood scan that must return grade A with zero findings on this repository. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for workflow and test conventions.
+`make check` is the release gate together with a dogfood scan that must return grade A with zero findings on this repository. Read [`CONTRIBUTING.md`](https://github.com/blundergoat/gruff-go/blob/main/CONTRIBUTING.md) for workflow and test conventions.
 
 ## Documentation
 
-[`docs/`](docs/README.md) indexes the full set. The most-used entries:
+[`docs/`](https://github.com/blundergoat/gruff-go/blob/main/docs/README.md) indexes the full set. The most-used entries:
 
-- [Agent guardrail](docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
-- [Configuration](docs/configuration.md)
-- [Output formats](docs/output-formats.md)
-- [Rules](docs/rules.md)
-- [Dashboard](docs/dashboard.md)
-- [CI integration](docs/ci-integration.md)
-- [Releasing](docs/releasing.md)
+- [Agent guardrail](https://github.com/blundergoat/gruff-go/blob/main/docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
+- [Configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md)
+- [Output formats](https://github.com/blundergoat/gruff-go/blob/main/docs/output-formats.md)
+- [Rules](https://github.com/blundergoat/gruff-go/blob/main/docs/rules.md)
+- [Dashboard](https://github.com/blundergoat/gruff-go/blob/main/docs/dashboard.md)
+- [CI integration](https://github.com/blundergoat/gruff-go/blob/main/docs/ci-integration.md)
+- [Releasing](https://github.com/blundergoat/gruff-go/blob/main/docs/releasing.md)
 - [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
+- [Contributing](https://github.com/blundergoat/gruff-go/blob/main/CONTRIBUTING.md)
+- [Security](https://github.com/blundergoat/gruff-go/blob/main/SECURITY.md)
 
 ## Author
 
