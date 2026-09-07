@@ -123,6 +123,9 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 			return nil, index, fmt.Errorf("duplicate YAML key %q: first defined at line %d, duplicated at line %d", key, firstLine, line.number)
 		}
 		firstLines[key] = line.number
+		if err := yamlFlowMappingError(fmt.Sprintf("key %q", key), valueText, line.number); err != nil {
+			return nil, index, err
+		}
 		if valueText != "" {
 			out[key] = parseYAMLScalar(valueText)
 			index++
@@ -159,6 +162,9 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 			return nil, index, fmt.Errorf("unexpected YAML list item at line %d", line.number)
 		}
 		valueText := strings.TrimSpace(strings.TrimPrefix(line.text, "- "))
+		if err := yamlFlowMappingError("list item", valueText, line.number); err != nil {
+			return nil, index, err
+		}
 		if !yamlListItemOpensMap(valueText) {
 			out = append(out, parseYAMLScalar(valueText))
 			index++
@@ -172,6 +178,22 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 		index = next
 	}
 	return out, index, nil
+}
+
+// yamlFlowMappingError names a flow mapping - `{}` or `{ignore: []}` - as the shape this parser
+// declines, so the refusal describes the user's file. Without it a flow mapping fell through
+// parseYAMLScalar as a plain string and failed later at unmarshal time, reporting an internal Go
+// struct field name that says nothing about what to write instead.
+func yamlFlowMappingError(subject string, valueText string, lineNumber int) error {
+	if !strings.HasPrefix(valueText, "{") {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s at line %d uses the YAML flow mapping %s, which this configuration parser does not read; write its entries as an indented block on the following lines, or omit the value entirely to leave the mapping empty",
+		subject,
+		lineNumber,
+		valueText,
+	)
 }
 
 // yamlListItemOpensMap reports whether a list item's text starts a mapping
