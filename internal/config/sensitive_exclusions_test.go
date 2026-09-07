@@ -33,6 +33,7 @@ func parseSensitiveExclusions(t *testing.T, body string) (Config, error) {
 // hand-rolled YAML parser accepted only scalar list items before this section.
 func TestSensitiveExclusionsAcceptsRatifiedShape(t *testing.T) {
 	body := strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"sensitiveExclusions:",
 		"  - rule: " + awsExclusionRule,
 		"    path: " + awsExclusionPath,
@@ -70,6 +71,7 @@ func TestSensitiveExclusionsAcceptsRatifiedShape(t *testing.T) {
 // display path the finding carries regardless of how the user wrote it.
 func TestSensitiveExclusionsNormalizesPathToDisplayForm(t *testing.T) {
 	body := strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"sensitiveExclusions:",
 		"  - rule: " + awsExclusionRule,
 		"    path: ./" + awsExclusionPath,
@@ -177,7 +179,7 @@ func TestSensitiveExclusionsRejectsUnreviewableEntries(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			body := strings.Join(append([]string{"sensitiveExclusions:"}, testCase.entries...), "\n")
+			body := strings.Join(append([]string{"schemaVersion: gruff-go.config.v0.1", "sensitiveExclusions:"}, testCase.entries...), "\n")
 			_, err := parseSensitiveExclusions(t, body)
 			if err == nil {
 				t.Fatalf("%s was accepted; section 13a requires a fatal diagnostic", testCase.name)
@@ -196,6 +198,7 @@ func TestSensitiveExclusionsRejectsUnreviewableEntries(t *testing.T) {
 // diagnostic is the failing entry's own position, not always the first.
 func TestSensitiveExclusionsNameTheOffendingEntryIndex(t *testing.T) {
 	body := strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"sensitiveExclusions:",
 		"  - rule: " + awsExclusionRule,
 		"    path: " + awsExclusionPath,

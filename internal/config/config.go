@@ -322,7 +322,14 @@ func decodeConfigUnvalidated(data []byte) (Config, error) {
 
 // Validate checks schema, rule, threshold, option, path, and severity contracts.
 func (cfg Config) Validate(definitions []rule.Definition) error {
-	if cfg.SchemaVersion != "" && cfg.SchemaVersion != SchemaVersion {
+	// BREAKING, 2026-09-07: an absent schemaVersion is refused, matching gruff-php, gruff-py,
+	// gruff-rs and gruff-ts, which all exit 2 on such a file. gruff-go alone accepted it, so a
+	// configuration moved between ports got two different answers about the same file. `init`
+	// always writes the key, so only a hand-written config changes behaviour.
+	if cfg.SchemaVersion == "" {
+		return fmt.Errorf("config must include `schemaVersion: %s` at the top. Run `gruff-go init --force` to regenerate the config (your tuning is preserved)", SchemaVersion)
+	}
+	if cfg.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported schemaVersion %q; expected %q. Run `gruff-go init --force` to regenerate the config (your tuning is preserved)", cfg.SchemaVersion, SchemaVersion)
 	}
 	byID := map[string]rule.Definition{}

@@ -128,6 +128,7 @@ func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.
 
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.file-length:
     thresholds:

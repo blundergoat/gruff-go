@@ -109,6 +109,9 @@ func defaultRuleIDsSecurityOnward() []string {
 // defaultDisabledRuleIDs returns rules that ship opt-in because they enforce
 // house-style conventions or candidate checks that still need calibration.
 func defaultDisabledRuleIDs() map[string]bool {
+	// sensitive-data.high-entropy-string left this list on 2026-09-07, when the contract the
+	// operator ratified on 2026-09-02 landed: enabled by default in all five ports, because a
+	// secret scanner that is off by default finds no secrets.
 	return map[string]bool{
 		"dead-code.unused-private-const":              true,
 		"dead-code.unused-private-type":               true,
@@ -119,7 +122,6 @@ func defaultDisabledRuleIDs() map[string]bool {
 		"naming.package-stutter":                      true,
 		"naming.package-underscore":                   true,
 		"naming.receiver-consistency":                 true,
-		"sensitive-data.high-entropy-string":          true,
 		"sensitive-data.phi-pattern":                  true,
 		"sensitive-data.pii-pattern":                  true,
 		"test-quality.static-analysis-redundant-test": true,

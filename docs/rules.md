@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **83 rules** across **11 pillars**. **70 rules are enabled by default** and 13 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **83 rules** across **11 pillars**. **71 rules are enabled by default** and 12 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
 
@@ -82,7 +82,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | error | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
 | [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | error | parser | - | GitLab personal, trigger, runner, and application token literals. |
 | [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | error | parser | - | Google API key literals (`AIza…`). |
-| [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 20`, `entropy: 4.5` | Opt-in. Long high-entropy tokens no provider rule covers. |
+| [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 32`, `entropy: 4.2` | Long high-entropy tokens no provider rule covers. |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | error | parser | - | JWT-shaped literals (`eyJ…`). |
 | [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | error | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
 | [`sensitive-data.phi-pattern`](#sensitive-dataphi-pattern) | sensitive-data | warning | parser | - | Opt-in. US SSN, Medicare MBI, and labelled MRN identifiers. |
@@ -1221,8 +1221,8 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 
 - **Pillar:** sensitive-data
 - **Default severity:** warning
-- **Default-enabled:** no (opt-in)
-- **Threshold:** `minLength` (default `20`), `entropy` (default `4.5` bits/char)
+- **Default-enabled:** yes
+- **Threshold:** `minLength` (default `32`), `entropy` (default `4.2` bits/char)
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `secrets`

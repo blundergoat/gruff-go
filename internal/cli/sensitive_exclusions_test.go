@@ -41,6 +41,7 @@ func TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
 	writeFile(t, root, ".gruff-go.yaml", strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"sensitiveExclusions:",
 		"  - rule: sensitive-data.aws-access-key",
 		"    path: fixture.go",
@@ -99,6 +100,7 @@ func TestAnalyseRejectsValueMatchingExclusion(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
 	writeFile(t, root, ".gruff-go.yaml", strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"sensitiveExclusions:",
 		"  - rule: sensitive-data.aws-access-key",
 		"    path: fixture.go",
@@ -142,6 +144,7 @@ func TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
 	writeFile(t, root, ".gruff-go.yaml", strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"sensitiveExclusions:",
 		"  - rule: sensitive-data.aws-access-key",
 		"    path: fixture.go",

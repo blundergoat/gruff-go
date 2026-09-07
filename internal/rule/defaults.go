@@ -56,7 +56,6 @@ func defaultMaintainabilityUnitRules() []UnitRule {
 	return []UnitRule{
 		IgnoredErrorRule{},
 		ContextTODOProductionRule{},
-		ProductionPanicRule{},
 		DeferInLoopRule{},
 		LogFatalLibraryRule{},
 		LoopVariableAddressRule{},
@@ -183,7 +182,6 @@ func defaultTestQualityUnitRules() []UnitRule {
 		SkippedTestRule{},
 		EmptyTestRule{},
 		HelperMissingTHelperRule{},
-		NoFailurePathTestRule{},
 		ParallelRangeCaptureRule{},
 		FatalInGoroutineRule{},
 		TempDirMisuseRule{},
@@ -194,6 +192,12 @@ func defaultTestQualityUnitRules() []UnitRule {
 // defaultProjectRules builds the project-level rule slice from strict config.
 func defaultProjectRules(config Config) []ProjectRule {
 	return []ProjectRule{
+		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
+		// that boundary in whichever file owns the entry point, not the one that panics.
+		ProductionPanicRule{},
+		// Package-scoped since 2026-09-07: a failure helper in a sibling _test.go is
+		// still a failure helper, and reading one file at a time could not see it.
+		NoFailurePathTestRule{},
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
 		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},

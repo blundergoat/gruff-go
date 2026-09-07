@@ -350,6 +350,7 @@ func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, "config.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   complexity.cyclomatic:
     thresholds:
@@ -451,6 +452,7 @@ func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   complexity.cyclomatic:
     threshold: 100

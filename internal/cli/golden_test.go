@@ -51,6 +51,7 @@ func TestGoldenConfigLoading(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   complexity.cyclomatic:
     threshold: 100
@@ -97,6 +98,7 @@ func TestGoldenConfiguredExpansionRules(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "expansion.go", expansionFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.parameter-count:
     enabled: true
@@ -193,6 +195,7 @@ func Hot(a bool, b bool) {
 // threshold.
 func compositeConfig() string {
 	return `
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.function-length:
     threshold: 4
@@ -290,7 +293,7 @@ func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
-	writeFile(t, root, ".gruff-go.yaml", "paths:\n  ignore:\n    - secret.go\n")
+	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - secret.go\n")
 	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
 	writeFile(t, root, "secret.go", "// Package main is a test package.\npackage main\n")
 	t.Chdir(root)

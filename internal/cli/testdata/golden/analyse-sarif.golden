@@ -99,7 +99,7 @@
                 "text": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code."
               },
               "help": {
-                "text": "Remove the empty block or add the intended implementation."
+                "text": "Add the intended implementation, or leave a comment saying why the branch is deliberately empty."
               },
               "properties": {
                 "pillar": "dead-code",
@@ -1813,7 +1813,7 @@
                 "text": "High-entropy string"
               },
               "fullDescription": {
-                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview."
+                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview."
               },
               "help": {
                 "text": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
@@ -1823,13 +1823,13 @@
                 "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "secrets"
                 ],
                 "thresholds": {
-                  "entropy": 4.5,
-                  "minLength": 20
+                  "entropy": 4.2,
+                  "minLength": 32
                 }
               },
               "defaultConfiguration": {
@@ -2209,7 +2209,7 @@
                 "text": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.)."
               },
               "help": {
-                "text": "Add an assertion or document why the test cannot fail."
+                "text": "Add an assertion, or disable this rule for a package whose tests deliberately assert nothing."
               },
               "properties": {
                 "pillar": "test-quality",

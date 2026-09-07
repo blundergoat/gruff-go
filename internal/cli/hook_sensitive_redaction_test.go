@@ -46,8 +46,7 @@ func TestHookSensitivePreviewPolicy(t *testing.T) {
 
 // hookSensitiveConfig enables the three opt-in routes the fixture needs.
 func hookSensitiveConfig() string {
-	return "schemaVersion: gruff-go.config.v0.1\n" +
-		"rules:\n" +
+	return "schemaVersion: gruff-go.config.v0.1\nrules:\n" +
 		"  sensitive-data.high-entropy-string:\n    enabled: true\n" +
 		"  sensitive-data.pii-pattern:\n    enabled: true\n" +
 		"  sensitive-data.phi-pattern:\n    enabled: true\n"

@@ -51,6 +51,7 @@ rules:
 // TestParseYAMLGruffShape verifies the gruff-go YAML shape maps to rule options.
 func TestParseYAMLGruffShape(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 paths:
   ignore:
     - 'fixtures/**'
@@ -95,6 +96,7 @@ rules:
 // rather than replace legacy top-level list fields.
 func TestParseMergesLegacyAndGruffShapeLists(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 select: [size.file-length]
 excludeRules: [complexity.cyclomatic]
 ignorePaths: ['legacy/**']
@@ -132,7 +134,7 @@ selection:
 func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	root := t.TempDir()
 	definitions := defaultDefinitions()
-	writeConfig(t, root, ".gruff-go.yaml", "rules:\n  size.file-length:\n    enabled: true\n")
+	writeConfig(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: true\n")
 
 	loaded, err := LoadAuto(root, "", false, definitions)
 	if err != nil {
@@ -150,7 +152,7 @@ func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	root := t.TempDir()
 	definitions := defaultDefinitions()
-	writeConfig(t, root, "config.yaml", "rules:\n  size.file-length:\n    enabled: false\n")
+	writeConfig(t, root, "config.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: false\n")
 
 	loaded, err := LoadAuto(root, "", false, definitions)
 	if err != nil {
@@ -179,6 +181,7 @@ func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 // TestParseAcceptsExpansionRuleConfig covers expansion documentation and naming rule options.
 func TestParseAcceptsExpansionRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.parameter-count:
     enabled: true
@@ -314,6 +317,7 @@ func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 // TestParseAcceptsCompositeRuleConfig verifies composite design rules parse and validate.
 func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 rules:
   design.hotspot-file:
     enabled: true
@@ -339,6 +343,7 @@ rules:
 // TestParseAcceptsLegacyRuleIDAliases covers hyphenated and renamed legacy rule IDs.
 func TestParseAcceptsLegacyRuleIDAliases(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 selection:
   rules:
     - size-file-length
@@ -381,37 +386,37 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 		want string
 	}{
 		{name: "unknown top-level key", yaml: `unknown: true`, want: "unknown field"},
-		{name: "unknown selected rule", yaml: "select:\n  - missing-rule\n", want: "unknown selected rule"},
-		{name: "unknown rule", yaml: "rules:\n  missing-rule:\n    enabled: true\n", want: "unknown rule"},
-		{name: "unknown threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxBytes: 1\n", want: "unknown threshold"},
-		{name: "invalid threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
-		{name: "combined threshold forms", yaml: "rules:\n  size.file-length:\n    threshold: 100\n    thresholds:\n      maxLines: 120\n", want: "cannot combine threshold and thresholds"},
-		{name: "invalid ignore", yaml: "ignorePaths:\n  - ../outside\n", want: "must stay inside"},
-		{name: "Windows drive ignore", yaml: "paths:\n  ignore:\n    - 'C:/outside/*.go'\n", want: "Windows drive qualifier"},
-		{name: "backslash ignore", yaml: "paths:\n  ignore:\n    - 'pkg\\*.go'\n", want: "slash separators"},
-		{name: "mid-pattern recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/generated.go'\n", want: "one ** as a trailing recursive suffix"},
-		{name: "multiple recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/**'\n", want: "one ** as a trailing recursive suffix"},
-		{name: "invalid ignore path", yaml: "paths:\n  ignore:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
-		{name: "blank abbreviation", yaml: "acceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
-		{name: "unknown threshold on parameter-count", yaml: "rules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
-		{name: "invalid threshold on nesting-depth", yaml: "rules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
-		{name: "unknown threshold on hotspot", yaml: "rules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
-		{name: "unknown option on comment rubric", yaml: "rules:\n  docs.comment-rubric:\n    options:\n      requireEmoji: true\n", want: "unknown option"},
-		{name: "unknown threshold on comment rubric", yaml: "rules:\n  docs.comment-rubric:\n    thresholds:\n      minCommentVibes: 3\n", want: "unknown threshold"},
-		{name: "unknown option on acronym case", yaml: "rules:\n  naming.acronym-case:\n    options:\n      canonicalOnly: true\n", want: "unknown option"},
-		{name: "unknown option on receiver consistency", yaml: "rules:\n  naming.receiver-consistency:\n    options:\n      allowValue: true\n", want: "unknown option"},
-		{name: "unknown option on get prefix", yaml: "rules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
-		{name: "unknown option on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
-		{name: "unknown threshold on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
-		{name: "unknown failOn command", yaml: "failOn:\n  not-a-command: warning\n", want: `failOn has unknown command "not-a-command"`},
-		{name: "legacy failOn value", yaml: "failOn:\n  analyse: medium\n", want: `failOn.analyse: unknown threshold "medium"`},
-		{name: "rejected off-switch alias", yaml: "failOn:\n  report: never\n", want: `failOn.report: unknown threshold "never"`},
-		{name: "pre-0.6.0 gate spelling", yaml: "minimumSeverity:\n  analyse: error\n", want: "move the per-command exit gate to failOn"},
-		{name: "display floor outside the vocabulary", yaml: "minimumSeverity: medium\n", want: `minimumSeverity "medium" is not a severity`},
-		{name: "removed preview allowlist", yaml: "allowlists:\n  secretPreviews: []\n", want: "allowlists.secretPreviews is removed in 0.6.0"},
-		{name: "removed preview allowlist legacy spelling", yaml: "sensitiveData:\n  previewAllowlist: []\n", want: "section 5 makes category"},
-		{name: "zero deep scan lines", yaml: "deepScanBudget:\n  maxLines: 0\n", want: "deepScanBudget.maxLines must be a positive integer"},
-		{name: "negative deep scan bytes", yaml: "deepScanBudget:\n  maxBytes: -1\n", want: "deepScanBudget.maxBytes must be a positive integer"},
+		{name: "unknown selected rule", yaml: "schemaVersion: gruff-go.config.v0.1\nselect:\n  - missing-rule\n", want: "unknown selected rule"},
+		{name: "unknown rule", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  missing-rule:\n    enabled: true\n", want: "unknown rule"},
+		{name: "unknown threshold", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    thresholds:\n      maxBytes: 1\n", want: "unknown threshold"},
+		{name: "invalid threshold", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
+		{name: "combined threshold forms", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    threshold: 100\n    thresholds:\n      maxLines: 120\n", want: "cannot combine threshold and thresholds"},
+		{name: "invalid ignore", yaml: "schemaVersion: gruff-go.config.v0.1\nignorePaths:\n  - ../outside\n", want: "must stay inside"},
+		{name: "Windows drive ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'C:/outside/*.go'\n", want: "Windows drive qualifier"},
+		{name: "backslash ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'pkg\\*.go'\n", want: "slash separators"},
+		{name: "mid-pattern recursive ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'pkg/**/generated.go'\n", want: "one ** as a trailing recursive suffix"},
+		{name: "multiple recursive ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'pkg/**/**'\n", want: "one ** as a trailing recursive suffix"},
+		{name: "invalid ignore path", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
+		{name: "blank abbreviation", yaml: "schemaVersion: gruff-go.config.v0.1\nacceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
+		{name: "unknown threshold on parameter-count", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
+		{name: "invalid threshold on nesting-depth", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
+		{name: "unknown threshold on hotspot", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
+		{name: "unknown option on comment rubric", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    options:\n      requireEmoji: true\n", want: "unknown option"},
+		{name: "unknown threshold on comment rubric", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    thresholds:\n      minCommentVibes: 3\n", want: "unknown threshold"},
+		{name: "unknown option on acronym case", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.acronym-case:\n    options:\n      canonicalOnly: true\n", want: "unknown option"},
+		{name: "unknown option on receiver consistency", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.receiver-consistency:\n    options:\n      allowValue: true\n", want: "unknown option"},
+		{name: "unknown option on get prefix", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
+		{name: "unknown option on contextual generic", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
+		{name: "unknown threshold on contextual generic", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
+		{name: "unknown failOn command", yaml: "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  not-a-command: warning\n", want: `failOn has unknown command "not-a-command"`},
+		{name: "legacy failOn value", yaml: "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  analyse: medium\n", want: `failOn.analyse: unknown threshold "medium"`},
+		{name: "rejected off-switch alias", yaml: "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  report: never\n", want: `failOn.report: unknown threshold "never"`},
+		{name: "pre-0.6.0 gate spelling", yaml: "schemaVersion: gruff-go.config.v0.1\nminimumSeverity:\n  analyse: error\n", want: "move the per-command exit gate to failOn"},
+		{name: "display floor outside the vocabulary", yaml: "schemaVersion: gruff-go.config.v0.1\nminimumSeverity: medium\n", want: `minimumSeverity "medium" is not a severity`},
+		{name: "removed preview allowlist", yaml: "schemaVersion: gruff-go.config.v0.1\nallowlists:\n  secretPreviews: []\n", want: "allowlists.secretPreviews is removed in 0.6.0"},
+		{name: "removed preview allowlist legacy spelling", yaml: "schemaVersion: gruff-go.config.v0.1\nsensitiveData:\n  previewAllowlist: []\n", want: "section 5 makes category"},
+		{name: "zero deep scan lines", yaml: "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  maxLines: 0\n", want: "deepScanBudget.maxLines must be a positive integer"},
+		{name: "negative deep scan bytes", yaml: "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  maxBytes: -1\n", want: "deepScanBudget.maxBytes must be a positive integer"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

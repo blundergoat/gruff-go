@@ -68,7 +68,7 @@
             "confidence": "medium",
             "capability": "parser",
             "defaultEnabled": true,
-            "remediation": "Remove the empty block or add the intended implementation."
+            "remediation": "Add the intended implementation, or leave a comment saying why the branch is deliberately empty."
           },
           {
             "id": "dead-code.unreachable-code",
@@ -1071,15 +1071,15 @@
           {
             "id": "sensitive-data.high-entropy-string",
             "title": "High-entropy string",
-            "description": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview.",
+            "description": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview.",
             "pillar": "sensitive-data",
             "severity": "warning",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": false,
+            "defaultEnabled": true,
             "thresholds": {
-              "entropy": 4.5,
-              "minLength": 20
+              "entropy": 4.2,
+              "minLength": 32
             },
             "tags": [
               "secrets"
@@ -1293,7 +1293,7 @@
             "tags": [
               "tests"
             ],
-            "remediation": "Add an assertion or document why the test cannot fail."
+            "remediation": "Add an assertion, or disable this rule for a package whose tests deliberately assert nothing."
           },
           {
             "id": "test-quality.parallel-range-capture",
