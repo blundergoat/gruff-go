@@ -66,12 +66,47 @@ func toHookFinding(currentFinding finding.Finding, findingScope string, ruleDefi
 		Line:           startLine,
 		EndLine:        endLine,
 		Symbol:         nonEmptyHookString(currentFinding.Symbol),
+		SymbolOrdinal:  currentFinding.SymbolOrdinal,
 		Message:        currentFinding.Message,
 		Remediation:    remediation,
+		Confidence:     hookConfidence(currentFinding.Confidence),
+		BaselineStatus: nonEmptyHookString(currentFinding.BaselineStatus),
 		Metadata:       hookMetadata(currentFinding.RuleID, currentFinding.Metadata),
-		StableIdentity: currentFinding.ComputeContractStableIdentity(),
+		StableIdentity: hookStableIdentity(currentFinding),
 		Fingerprint:    currentFinding.Fingerprint,
 	}
+}
+
+// hookConfidence reports the confidence the gate will read for this finding.
+//
+// A rule this port has never rated would otherwise publish an empty string, which a consumer cannot compare against a
+// floor. The family contract fixes the answer: an unrated finding is high, so it can never slip under a gate.
+func hookConfidence(confidence finding.Confidence) finding.Confidence {
+	// Only the three ratified levels are meaningful; anything else, empty included, is treated as unrated.
+	if confidence.Valid() {
+		return confidence
+	}
+
+	return finding.ConfidenceHigh
+}
+
+// hookStableIdentity returns the ratified family identity, or null where the family refuses to give one.
+//
+// A sensitive-data finding is deliberately unidentifiable: a durable identity is exactly what would let a stored review
+// hide a secret. A finding this port cannot name is reported without an identity rather than with a guessed one.
+func hookStableIdentity(currentFinding finding.Finding) *string {
+	if !currentFinding.IsBaselineEligible() {
+		return nil
+	}
+
+	identity, err := currentFinding.ComputeBaselineIdentity()
+
+	// A symbol with no declaration ordinal lands here; publishing a partial identity would collide two declarations.
+	if err != nil {
+		return nil
+	}
+
+	return &identity
 }
 
 // hookRemediation guarantees actionable, non-empty guidance in hook JSON.
@@ -154,14 +189,18 @@ func hookLine(currentFinding finding.Finding) *int {
 	return &startLine
 }
 
-// hookEndLine returns the optional span end used by hook JSON consumers.
-// Nil means the user-facing finding identifies only its start line.
+// hookEndLine returns the span end every v2 finding carries.
+// A single-line finding repeats its start line, and a finding with no location at all reports null alongside its line.
 func hookEndLine(currentFinding finding.Finding) *int {
-	// A nil or non-positive end is omitted because there is no user-visible span.
-	if currentFinding.Location == nil || currentFinding.Location.EndLine <= 0 {
+	// Without a location there is no span to state, and line is null for the same reason.
+	if currentFinding.Location == nil || currentFinding.Location.Line <= 0 {
 		return nil
 	}
 	endLine := currentFinding.Location.EndLine
+	// An unset or reversed end means the finding occupies its start line alone, which the contract says to spell out.
+	if endLine < currentFinding.Location.Line {
+		endLine = currentFinding.Location.Line
+	}
 	return &endLine
 }
 
@@ -193,7 +232,16 @@ func compareHookFindings(leftFinding, rightFinding hookFinding) int {
 	if leftFinding.RuleID != rightFinding.RuleID {
 		return strings.Compare(leftFinding.RuleID, rightFinding.RuleID)
 	}
-	return strings.Compare(leftFinding.StableIdentity, rightFinding.StableIdentity)
+	return strings.Compare(hookIdentityValue(leftFinding.StableIdentity), hookIdentityValue(rightFinding.StableIdentity))
+}
+
+// hookIdentityValue provides a sortable empty string for the null identity a sensitive finding carries.
+func hookIdentityValue(identity *string) string {
+	// A sensitive finding is never given an identity, and it sorts before findings that have one.
+	if identity == nil {
+		return ""
+	}
+	return *identity
 }
 
 // hookSeverityRank maps the closed severity enum to descending priority.

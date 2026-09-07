@@ -69,7 +69,7 @@ func TestStableIdentityIsLineInsensitive(t *testing.T) {
 	}
 }
 
-// TestFindingJSONShape asserts findings emit the canonical flat shape plus legacy location.
+// TestFindingJSONShape asserts findings emit the strict canonical v3 shape.
 func TestFindingJSONShape(t *testing.T) {
 	item := Finding{
 		RuleID:     "complexity.cyclomatic",
@@ -94,9 +94,8 @@ func TestFindingJSONShape(t *testing.T) {
 	if payload["file"] != item.File || payload["line"] != float64(42) || payload["endLine"] != float64(78) || payload["column"] != float64(3) {
 		t.Fatalf("flat location fields = %#v", payload)
 	}
-	location, ok := payload["location"].(map[string]any)
-	if !ok || location["line"] != float64(42) || location["endLine"] != float64(78) || location["column"] != float64(3) {
-		t.Fatalf("legacy location = %#v", payload["location"])
+	if _, ok := payload["location"]; ok {
+		t.Fatalf("legacy location alias returned: %#v", payload["location"])
 	}
 	if payload["tier"] != DefaultTier || payload["stableIdentity"] != item.StableIdentity || payload["fingerprint"] != item.Fingerprint {
 		t.Fatalf("identity fields = %#v", payload)
@@ -106,7 +105,7 @@ func TestFindingJSONShape(t *testing.T) {
 		t.Fatalf("secondaryPillars = %#v, want []", payload["secondaryPillars"])
 	}
 	metadata, ok := payload["metadata"].(map[string]any)
-	if !ok || len(metadata) != 0 {
-		t.Fatalf("metadata = %#v, want {}", payload["metadata"])
+	if !ok || metadata["locationPrecision"] != "scanner-pinpointed" {
+		t.Fatalf("metadata = %#v, want scanner-pinpointed location precision", payload["metadata"])
 	}
 }

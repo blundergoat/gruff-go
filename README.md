@@ -96,11 +96,12 @@ Go's standard `flag` package stops parsing flags at the first non-flag argument.
 | Command | Purpose |
 | --- | --- |
 | `analyse` | Run rules over the supplied paths and emit a report. |
-| `hook` | Emit the `gruff.hook.v1` JSON contract for coding-agent changes. |
+| `hook` | Emit the `gruff.hook.v2` JSON contract for coding-agent changes. |
 | `summary` | Print a compact score, per-pillar counts, top rules, and top files. |
 | `report` | Render static HTML or JSON to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a baseline file. |
 | `init` | Generate a default `.gruff-go.yaml`. |
+| `migrate-config` | Rewrite a 0.5 config for the current schema, writing the result to a different file. |
 | `check-ignore` | Report whether `paths.ignore` / gitignore would exclude given paths, and why. |
 | `list-rules` | Print rule metadata as text or JSON. |
 | `dashboard` | Serve the local browser dashboard. |
@@ -165,7 +166,6 @@ paths:
 
 allowlists:
   acceptedAbbreviations: ["ID", "HTTP", "JSON", "AST"]
-  secretPreviews: [] # authorize fixed category/scheme markers; payload stays hidden
 
 selection:
   excludeRules: []

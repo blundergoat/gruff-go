@@ -3,6 +3,7 @@
 package rule
 
 import (
+	"go/ast"
 	"strings"
 	"unicode"
 
@@ -74,25 +75,88 @@ func suppressionFindingsFromGoComments(unit parser.Unit) []finding.Finding {
 
 // parsedComment is a normalized Go comment with source position.
 type parsedComment struct {
-	Text   string
-	Line   int
+	Text string
+	Line int
+	// Column is the 1-based column the comment starts at.
 	Column int
+	// InDocGroup marks a comment that documents the declaration below it rather than standing
+	// on its own. A doc comment explains what a function is; it is not a reason for suppressing
+	// a check inside it, so it never carries a rationale.
+	InDocGroup bool
+	// FreeStanding marks a comment that is the only thing on its line. A comment trailing code
+	// explains that code, so it cannot be read as the reason for a directive underneath it.
+	FreeStanding bool
 }
 
-// parsedComments normalizes Go comments while preserving file positions.
+// parsedComments normalizes Go comments while preserving file positions and whether each one
+// documents a declaration.
 func parsedComments(unit parser.Unit) []parsedComment {
+	docLines := declarationDocLines(unit)
+	sourceLines := strings.Split(unit.Source, "\n")
 	comments := []parsedComment{}
 	for _, group := range unit.AST.Comments {
 		for _, comment := range group.List {
 			position := unit.FileSet.Position(comment.Pos())
 			comments = append(comments, parsedComment{
-				Text:   cleanCommentText(comment.Text),
-				Line:   position.Line,
-				Column: position.Column,
+				Text:         cleanCommentText(comment.Text),
+				Line:         position.Line,
+				Column:       position.Column,
+				InDocGroup:   docLines[position.Line],
+				FreeStanding: commentStartsItsLine(sourceLines, position.Line, position.Column),
 			})
 		}
 	}
 	return comments
+}
+
+// declarationDocLines records every line occupied by a declaration's doc comment.
+//
+// The distinction matters because a doc group sits in exactly the position a rationale would:
+// directly above the thing it describes. Crediting it would let `// Execute runs the command.`
+// excuse a `//nolint` on the next line, which documents the function and says nothing about the
+// suppression.
+func declarationDocLines(unit parser.Unit) map[int]bool {
+	lines := map[int]bool{}
+	record := func(group *ast.CommentGroup) {
+		if group == nil {
+			return
+		}
+		for _, comment := range group.List {
+			lines[unit.FileSet.Position(comment.Pos()).Line] = true
+		}
+	}
+	record(unit.AST.Doc)
+	ast.Inspect(unit.AST, func(node ast.Node) bool {
+		switch current := node.(type) {
+		case *ast.FuncDecl:
+			record(current.Doc)
+		case *ast.GenDecl:
+			record(current.Doc)
+		case *ast.TypeSpec:
+			record(current.Doc)
+		case *ast.ValueSpec:
+			record(current.Doc)
+		case *ast.Field:
+			record(current.Doc)
+		}
+		return true
+	})
+	return lines
+}
+
+// commentStartsItsLine reports whether only whitespace precedes a comment on its source line.
+//
+// Positions are 1-based, and a malformed position simply fails closed: a comment this cannot
+// place is not credited as a rationale.
+func commentStartsItsLine(sourceLines []string, line int, column int) bool {
+	if line < 1 || line > len(sourceLines) || column < 1 {
+		return false
+	}
+	text := sourceLines[line-1]
+	if column-1 > len(text) {
+		return false
+	}
+	return strings.TrimSpace(text[:column-1]) == ""
 }
 
 // cleanCommentText strips Go comment delimiters from one parsed comment.
@@ -138,6 +202,41 @@ func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
 			continue
 		}
 		if absInt(comments[neighbor].Line-line) <= 1 && explicitRationaleComment(comments[neighbor].Text) {
+			return true
+		}
+	}
+	return contiguousCommentBlockExplains(comments, index)
+}
+
+// contiguousCommentBlockExplains reports whether a free-standing comment block immediately above
+// the directive explains it in prose.
+//
+// The `reason:` prefix is not required. Real code writes the explanation as ordinary sentences:
+// cobra's command.go carries two lines naming the analyser, the false positive and the upstream
+// issue, then trails the directive on the statement below. Demanding a keyword rejected that and
+// every comment like it, which is the one confirmed false positive this rule carries.
+//
+// Four things disqualify a neighbour: a gap in the lines, because a detached comment is about
+// something else; another directive, because one suppression cannot excuse another; a
+// declaration's doc group, which describes the declaration rather than the suppression; and a
+// comment trailing code, which explains that code. The last was measured: prometheus writes
+// `var pathBuf [4]Node // To reduce allocations during recursion.` directly above a
+// `//nolint:errcheck`, and that sentence is about the variable, not the suppression.
+func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
+	expected := comments[index].Line - 1
+	for cursor := index - 1; cursor >= 0; cursor-- {
+		candidate := comments[cursor]
+		if candidate.Line != expected {
+			return false
+		}
+		expected = candidate.Line - 1
+		if candidate.InDocGroup || !candidate.FreeStanding {
+			return false
+		}
+		if _, _, isDirective := suppressionDirectiveTail(candidate.Text); isDirective {
+			continue
+		}
+		if hasReasonWord(candidate.Text) {
 			return true
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/baseline"
+	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
 	"github.com/blundergoat/gruff-go/internal/diff"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -31,10 +32,20 @@ type Options struct {
 	// FailThreshold (not Severity) so callers can express "never fail on findings" via
 	// finding.FailThresholdNone.
 	FailOn finding.FailThreshold
+	// MinConfidence is the lowest confidence that reaches the exit gate, independent of severity.
+	MinConfidence finding.Confidence
+	// FailOnNew exits 1 for any finding the applied baseline classifies as new, whatever its severity.
+	FailOnNew bool
 	// Registry supplies the rules invoked against parsed units.
 	Registry rule.Registry
 	// IgnorePaths lists path patterns suppressed from discovery, merged on top of gitignore handling.
 	IgnorePaths []string
+	// SensitiveExclusions carries the project's validated sensitiveExclusions
+	// entries; each removes the sensitive-data findings its scope claims and is
+	// counted into the report's suppression audit.
+	SensitiveExclusions []SensitiveExclusion
+	// DeepScanBudget bounds AST-backed analysis after source extension classification.
+	DeepScanBudget DeepScanBudget
 	// IncludeIgnored disables gitignore and metadata directory pruning when true.
 	IncludeIgnored bool
 	// ReportAllSkippedInputs reports explicit input paths that are all skipped as
@@ -55,6 +66,14 @@ type Options struct {
 	// BaselineShow renders the unchanged/resolved baseline detail arrays and the
 	// human-readable baseline-status section; counts are reported regardless.
 	BaselineShow bool
+}
+
+// DeepScanBudget is the effective paired limit after defaults, config, and CLI precedence.
+type DeepScanBudget struct {
+	Enabled  bool
+	MaxLines int
+	MaxBytes int
+	Override string
 }
 
 // Analyze runs discovery, parsing, and rules against the configured root.
@@ -96,30 +115,21 @@ func Analyze(opts Options) (Report, error) {
 	// they are parsed.
 	changed, diffSummary, diagnostics := resolveChangedScope(ctx, root, discovery.Files, diagnostics, opts)
 
-	projectFiles, err := projectContextFiles(root, opts, discovery.Files)
+	units, projectUnits, parseDiagnostics, err := parseWithProjectContext(ctx, root, opts, discovery)
 	if err != nil {
 		return Report{}, err
-	}
-	units, parseDiagnostics := parser.Parse(discovery.Files)
-	if err := ctx.Err(); err != nil {
-		return Report{}, err
-	}
-	projectUnits := units
-	if !sameSourceFileSet(discovery.Files, projectFiles) {
-		var projectParseDiagnostics []parser.Diagnostic
-		projectUnits, projectParseDiagnostics = parser.Parse(projectFiles)
-		// A sibling pulled in only for package context can strip evidence a
-		// project rule depends on (an unparsed caller makes a used symbol look
-		// dead), so surface its parse/read failures rather than letting them
-		// drive a silent false positive. Primary-file diagnostics are reported
-		// below, so only the context-only entries are added here.
-		parseDiagnostics = append(parseDiagnostics, contextOnlyParseDiagnostics(projectParseDiagnostics, discovery.Files)...)
 	}
 	diagnostics = append(diagnostics, diagnosticsFromDiscovery(discovery.Missing)...)
 	diagnostics = append(diagnostics, diagnosticsFromParser(parseDiagnostics)...)
 	registry := opts.Registry
 	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
 	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
+	// The baseline identity separates same-named declarations by ordinal, which
+	// only the parsed units can rank; assigning here reaches analyse and hook alike.
+	findings = finding.AssignSymbolOrdinals(findings, declarationPositionFor(units))
+	// Excluded before baseline and diff so a suppressed finding is absent from
+	// scoring, exit codes, and baseline classification alike.
+	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
@@ -135,7 +145,10 @@ func Analyze(opts Options) (Report, error) {
 		Inputs:          inputsOrDefault(opts.Paths),
 		Format:          opts.Format,
 		FailOn:          opts.FailOn,
+		MinConfidence:   opts.MinConfidence,
+		FailOnNew:       opts.FailOnNew,
 		IncludeIgnored:  opts.IncludeIgnored,
+		Suppressions:    suppressions,
 		Scanned:         scannedPaths(discovery.Files),
 		Skipped:         skippedPaths(discovery.Skipped),
 		Missing:         discovery.Missing,
@@ -180,7 +193,25 @@ func normalizeOptions(opts Options) Options {
 	if opts.ChangedScope == "" {
 		opts.ChangedScope = "symbol"
 	}
+	if opts.DeepScanBudget.Override == "" {
+		opts.DeepScanBudget = DeepScanBudget{
+			Enabled:  true,
+			MaxLines: cfgpkg.DefaultDeepScanMaxLines,
+			MaxBytes: cfgpkg.DefaultDeepScanMaxBytes,
+			Override: "default",
+		}
+	}
 	return opts
+}
+
+// parserBudget projects the effective analysis option into the parser package's narrow contract.
+func parserBudget(budget DeepScanBudget) parser.DeepScanBudget {
+	return parser.DeepScanBudget{
+		Enabled:  budget.Enabled,
+		MaxLines: budget.MaxLines,
+		MaxBytes: budget.MaxBytes,
+		Override: budget.Override,
+	}
 }
 
 // diagnosticsFromDiscovery converts missing paths into discovery diagnostics.
@@ -202,13 +233,24 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 // descriptive error severity.
 func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
 	diagnostics := []Diagnostic{}
-	for _, item := range parseDiagnostics {
+	for _, parseDiagnostic := range parseDiagnostics {
+		stage := "parse"
+		severity := finding.SeverityError
+		var invalidatesRun *bool
+		if parseDiagnostic.NonFatal {
+			stage = "analysis"
+			severity = finding.SeverityAdvisory
+			value := false
+			invalidatesRun = &value
+		}
 		diagnostics = append(diagnostics, Diagnostic{
-			Stage:    "parse",
-			Message:  item.Message,
-			File:     item.File,
-			Location: parserLocation(item),
-			Severity: finding.SeverityError,
+			DiagnosticType: parseDiagnostic.Type,
+			Stage:          stage,
+			Message:        parseDiagnostic.Message,
+			File:           parseDiagnostic.File,
+			Location:       parserLocation(parseDiagnostic),
+			Severity:       severity,
+			InvalidatesRun: invalidatesRun,
 		})
 	}
 	return diagnostics
@@ -229,6 +271,8 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 		loadPath = filepath.Join(root, loadPath)
 	}
 	baselineSummary.Path = displayPath
+	// A user reads how the path was chosen, so an auto-discovered baseline is never mistaken for one they named.
+	baselineSummary.Source = baselineSource(baselinePath)
 	file, err := baseline.Load(loadPath)
 	if err != nil {
 		diagnostics = append(diagnostics, Diagnostic{
@@ -244,14 +288,37 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	// Load succeeds keeps a missing or invalid baseline from labelling every
 	// emitted result baselineState:"new" as though it had been compared against a
 	// real baseline (the load failure is already surfaced as an error diagnostic).
+	result, err := baseline.Apply(findings, file)
+	// A foreign baseline or an unidentifiable finding is refused before matching;
+	// applying it would report every entry resolved and invite a destructive regenerate.
+	if err != nil {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:    "baseline",
+			Message:  err.Error(),
+			File:     displayPath,
+			Severity: finding.SeverityError,
+		})
+		return findings, baselineSummary, diagnostics
+	}
 	baselineSummary.Applied = true
-	result := baseline.Apply(findings, file)
 	baselineSummary.Entries = result.Entries
 	baselineSummary.SuppressedFindings = result.SuppressedFindings
 	baselineSummary.StaleEntries = result.StaleEntries
-	baselineSummary.NewFindings = result.NewCount()
+	// newFindings is the gated set the exit code fails on: new, collision, and not-eligible findings alike.
+	// The envelope's baseline container admits no new keys yet, so the finer split surfaces once the schema can name it.
+	baselineSummary.NewFindings = result.GatedCount()
 	baselineSummary.UnchangedFindings = result.UnchangedCount()
 	baselineSummary.ResolvedFindings = result.ResolvedCount()
+	// Every collision is reported by name, so the user can see which identity could not separate two declarations.
+	for _, collision := range result.Collisions {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage:          "baseline",
+			Message:        fmt.Sprintf("collision: identity %s covers %d declarations of %s for rule %s in %s; none is suppressed", collision.Identity, len(collision.Subjects), strings.Join(collision.Subjects, ", "), collision.RuleID, collision.Path),
+			File:           collision.Path,
+			Severity:       finding.SeverityWarning,
+			InvalidatesRun: new(bool),
+		})
+	}
 	// Detail arrays are populated only under --baseline-show; counts always emit.
 	// Gating population (not just rendering) keeps the default JSON payload free of
 	// the unchanged/resolved arrays regardless of omitempty subtleties.
@@ -260,16 +327,80 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 		baselineSummary.Unchanged = result.Unchanged
 		baselineSummary.Resolved = reportBaselineEntries(result.Resolved)
 	}
-	return result.Findings, baselineSummary, diagnostics
+	return stampBaselineStatuses(findings, result), baselineSummary, diagnostics
+}
+
+// stampBaselineStatuses labels each surviving finding with what the baseline made of it.
+//
+// SARIF publishes baselineState "new" for a genuinely new finding only: a collision and a sensitive
+// finding are permanently unsuppressable rather than freshly introduced, and stamping them "new" would
+// tell a code-scanning reader that a long-standing secret had just appeared.
+func stampBaselineStatuses(currentFindings []finding.Finding, result baseline.ApplyResult) []finding.Finding {
+	statusByFinding := map[string]string{}
+	for index, status := range result.Statuses {
+		if index < len(currentFindings) {
+			statusByFinding[currentFindings[index].Fingerprint] = string(status)
+		}
+	}
+	stamped := make([]finding.Finding, 0, len(result.Findings))
+	for _, gatedFinding := range result.Findings {
+		gatedFinding.BaselineStatus = statusByFinding[gatedFinding.Fingerprint]
+		stamped = append(stamped, gatedFinding)
+	}
+	return stamped
+}
+
+// DefaultBaselineFileName is the one filename every port writes and auto-discovers.
+const DefaultBaselineFileName = "gruff-baseline.json"
+
+// baselineSource names how this run's baseline path was chosen, for the report a user reads.
+func baselineSource(baselinePath string) string {
+	if filepath.Base(baselinePath) == DefaultBaselineFileName {
+		return "default"
+	}
+	return "explicit"
 }
 
 // reportBaselineEntries projects baseline resolved entries onto the report shape.
-func reportBaselineEntries(entries []baseline.Entry) []BaselineEntry {
+func reportBaselineEntries(entries []baseline.ResolvedEntry) []BaselineEntry {
 	out := make([]BaselineEntry, 0, len(entries))
 	for _, entry := range entries {
-		out = append(out, BaselineEntry{RuleID: entry.RuleID, File: entry.File, Fingerprint: entry.Fingerprint})
+		out = append(out, BaselineEntry{RuleID: entry.RuleID, File: entry.Path, Identity: entry.Identity, Subject: entry.Subject, Count: entry.Count})
 	}
 	return out
+}
+
+// declarationPositionFor maps a symbol-bearing finding to the line its declaration begins on, using the parsed function spans.
+//
+// A finding inside a function body shares that function's position, so two findings on one declaration share an ordinal.
+// A finding on no known declaration keeps its own line as its position.
+func declarationPositionFor(units []parser.Unit) func(finding.Finding) int {
+	functionsByFile := map[string][]parser.Function{}
+	for _, unit := range units {
+		functionsByFile[unit.File.Path] = unit.Functions
+	}
+	return func(item finding.Finding) int {
+		line := 1
+		if item.Location != nil && item.Location.Line > 0 {
+			line = item.Location.Line
+		}
+		for _, function := range functionsByFile[item.File] {
+			if !symbolNamesFunction(item.Symbol, function.Name) || line < function.Line || line > max(function.Line, function.EndLine) {
+				continue
+			}
+			return function.Line
+		}
+		return line
+	}
+}
+
+// symbolNamesFunction accepts the parser's receiver-qualified name and the unqualified name a rule may emit for the same declaration.
+func symbolNamesFunction(symbol, functionName string) bool {
+	if symbol == functionName {
+		return true
+	}
+	_, unqualified, found := strings.Cut(functionName, ".")
+	return found && symbol == unqualified
 }
 
 // resolveChangedScope computes the changed-line set for the requested diff mode.
@@ -491,4 +622,35 @@ func parserLocation(item parser.Diagnostic) *finding.Location {
 		return nil
 	}
 	return &finding.Location{Line: item.Line, Column: item.Column}
+}
+
+// parseWithProjectContext parses the discovered files, plus any package siblings a project rule needs to be right.
+//
+// The two unit sets are returned separately because only the discovered files are reportable: a sibling is read to
+// prove a symbol is used, never to be scanned in its own right.
+func parseWithProjectContext(ctx context.Context, root string, opts Options, discovery source.Result) ([]parser.Unit, []parser.Unit, []parser.Diagnostic, error) {
+	projectFiles, err := projectContextFiles(root, opts, discovery.Files)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	units, parseDiagnostics := parser.ParseWithBudget(discovery.Files, parserBudget(opts.DeepScanBudget))
+
+	if err := ctx.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	projectUnits := units
+
+	// A sibling pulled in only for package context can strip evidence a project rule depends on (an unparsed caller
+	// makes a used symbol look dead), so surface its parse and read failures rather than letting them drive a silent
+	// false positive. Primary-file diagnostics are reported by the caller, so only context-only entries are added here.
+	if !sameSourceFileSet(discovery.Files, projectFiles) {
+		var projectParseDiagnostics []parser.Diagnostic
+
+		projectUnits, projectParseDiagnostics = parser.ParseWithBudget(projectFiles, parserBudget(opts.DeepScanBudget))
+		parseDiagnostics = append(parseDiagnostics, contextOnlyParseDiagnostics(projectParseDiagnostics, discovery.Files)...)
+	}
+
+	return units, projectUnits, parseDiagnostics, nil
 }

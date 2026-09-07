@@ -32,7 +32,8 @@ paths:
 
 allowlists:
   acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
-  secretPreviews: []          # authorise fixed category/scheme markers; never payload bytes
+
+sensitiveExclusions: []       # suppress one sensitive-data rule in one file, with a written reason
 
 selection:
   rules: []           # if non-empty, only these rule IDs run (allowlist)
@@ -87,7 +88,7 @@ The block is additive: omitting any key falls back to the binary default. Omitti
 
 ### `paths.ignore`
 
-A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), non-application metadata directories (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`), dependency caches (`vendor/`, `node_modules/`), and generated Go files whose leading comments contain both `generated` and `DO NOT EDIT`. The entries you add are layered on top.
+A list of additional path prefixes or globs to skip during discovery. VCS internals (`.git/`, `.hg/`, `.svn/`) are always blocked. When no `.gitignore` governs a candidate, the family fallback skips `.fleet/`, `.idea/`, `.vscode/`, `build/`, `coverage/`, `dist/`, `node_modules/`, and `vendor/` at any depth; any `.gitignore` from the scan root through the candidate's parent takes ownership of those non-VCS names. Committed control metadata such as `.agents/`, `.claude/`, `.codex/`, `.github/`, and `.goat-flow/` remains scannable unless Git or this config excludes it. Explicit supported files bypass Git and fallback exclusions, but never VCS internals or `paths.ignore`. Generated Go files whose leading comments contain both `generated` and `DO NOT EDIT` retain their existing generated-file handling.
 
 ```yaml
 paths:
@@ -101,7 +102,7 @@ Patterns are repository-relative slash paths; a leading `./` is normalised away.
 
 Config validation rejects empty or escaping patterns, POSIX-absolute paths, Windows drive-qualified or backslash-containing paths, malformed glob classes, and `**` anywhere except one trailing recursive suffix. General recursive-glob forms such as `**/*.go` and `pkg/**/generated.go` are not accepted.
 
-`paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and built-in default skips only; it never overrides config `paths.ignore`.
+`paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and non-VCS fallback skips only; it never overrides config `paths.ignore` or the VCS-internals boundary.
 
 In `analyse --format json`, config-ignored paths appear as bare strings under `paths.ignoredPaths` and as detailed objects under `paths.skipped[]` with `reason: "config-ignore"`, `source: "config"`, and the matching `pattern`. The bare list is nested under `paths` in gruff-go to match the Rust and TypeScript ports while preserving the detailed skip objects for existing consumers.
 
@@ -122,34 +123,84 @@ allowlists:
 
 Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/learning-loop/footguns/setup.md` for the cross-port consumer matrix.
 
-### `allowlists.secretPreviews`
+### Sensitive-data markers are not configurable
 
-Path globs that authorise additional non-secret structure in sensitive-data
-preview metadata. Authorisation is deny-by-default: an empty list and a path
-that does not match both emit the constant `[redacted]`. A matching path may
-emit only a fixed category marker (for example `[redacted:aws-access-key]`,
-`[redacted:private-key]`, `[redacted:email]`, or `[redacted:ssn]`) or a
-connection marker containing only its already-public scheme (for example
-`[redacted:connection-string:postgres]`). Generic and entropy findings stay
-`[redacted]` even on matching paths.
+A sensitive-data finding carries a marker, never a payload: the bare `[redacted]`, a fixed category such as
+`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:email]` or `[redacted:ssn]`, or a connection
+marker naming only its already-public scheme (`[redacted:connection-string:postgres]`). Generic-assignment and
+entropy findings are always `[redacted]`, because they classify nothing the user can act on.
 
-No state exposes provider payload characters, JWT segments, private-key body or
-header bytes, connection user/password/host/path/query, or PII/PHI identifier
-characters. Primary and secondary GCP previews are authorised independently by
-the same path decision and render as `[redacted:gcp-service-account]` plus
-`[redacted:private-key]` only on a match.
+gruff-go emits the most specific marker its detector already classified, on every path and under every
+configuration. FAMILY-CONTRACT.md section 5 ratifies that: every marker is zero-payload by construction, so gating
+one behind configuration bought no confidentiality. The 0.5 key `allowlists.secretPreviews` is therefore removed,
+and a configuration carrying it — even as an empty list — is refused with that explanation rather than silently
+ignored. `gruff-go migrate-config` deletes it.
 
-This is an output-control allowlist only: it does not suppress findings, change
-scoring, or mark sample secrets as safe. Use `selection.excludeRules`,
-`paths.ignore`, or an inline suppression when a finding should intentionally be
-hidden.
+No marker exposes provider payload characters, JWT segments, private-key bytes, connection user, password, host,
+path or query, or PII/PHI identifier characters. GCP primary and secondary fields are marked independently.
+
+### `sensitiveExclusions`
+
+The only way to suppress a sensitive-data finding. It is a separate top-level
+section rather than an option on `selection` or `rules` so the ban on matching a
+finding's message or value is structural: there is no key to add it back.
 
 ```yaml
-allowlists:
-  secretPreviews:
-    - "docs/**"
-    - "internal/rule/testdata/**"
+sensitiveExclusions:
+  - rule: sensitive-data.aws-access-key    # exactly one rule ID, sensitive-data pillar only
+    path: internal/rule/testdata/aws.env   # exactly one project-relative path
+    symbol: Fixtures.AWSSample             # optional; narrows the scope further
+    reason: Synthetic key used by the loader fixture; not a live credential.
 ```
+
+**Entries are written by hand.** No reported marker, preview, remediation, or
+matched value is ever converted into an exclusion for you, and none is ever
+copied into one. `reason` and `path` come from your configuration, so they are
+the only free text an exclusion publishes.
+
+**Scope.** An entry suppresses every occurrence of that one rule in that one
+file. The same rule in another file keeps reporting, and another rule in the
+same file keeps reporting. Adding `symbol` narrows the scope to findings
+carrying that exact symbol; no sensitive-data rule stamps a symbol today, so an
+entry carrying one correctly matches nothing.
+
+**An entry that matches nothing is not an error.** It reports `suppressed: 0`,
+so fixing the underlying problem never breaks your build.
+
+**Every entry is counted.** `analyse --format json` publishes one row per entry
+under `suppressions`, and both text surfaces that apply the exclusions -
+`analyse` and `summary` - print the same total:
+
+```json
+{"index": 0, "rule": "sensitive-data.aws-access-key", "paths": ["internal/rule/testdata/aws.env"], "symbol": null, "reason": "Synthetic key used by the loader fixture; not a live credential.", "suppressed": 2}
+```
+
+```text
+suppressed findings: 2 via sensitiveExclusions[0] sensitive-data.aws-access-key: 2 (Synthetic key used by the loader fixture; not a live credential.)
+```
+
+A suppressed finding leaves the finding list, the counts, the score, and the
+exit code, exactly like the baseline channel - but it is never invisible,
+because the audit row survives.
+
+`summary --format json` is the one exception: it applies the exclusions but
+publishes no count, because the `gruff.summary.v2` envelope has no suppression
+field yet. Use the text summary or `analyse --format json` for the audit.
+
+Each of the following is a fatal `config:` diagnostic naming the entry index and
+the offending key, and exits `2`:
+
+- `rule` missing, empty, or carrying a wildcard, glob, or regular-expression metacharacter.
+- `rule` naming a pillar or selector (`sensitive-data`, `sensitive-data.*`) rather than one rule ID.
+- `rule` naming an unknown rule ID.
+- `rule` naming a known rule ID outside the sensitive-data pillar.
+- `path` missing, empty, absolute, containing `..`, or containing a glob metacharacter.
+- Any key outside `rule`, `path`, `symbol`, and `reason` - in particular `message_contains`, `messageContains`, `value`, and `preview`.
+- `reason` missing, empty, or whitespace-only.
+- A second entry repeating an earlier entry's `rule`, `path`, and `symbol`, because two entries claiming one scope would split the audit count arbitrarily.
+
+Sensitive-data markers are unrelated to suppression: they control display text
+only, and nothing configures them.
 
 ### `selection`
 
@@ -238,7 +289,7 @@ If a rule ID doesn't exist, the loader rejects the file with `config: unknown ru
 
 ## Strict validation
 
-The built-in parser accepts the mapping and scalar-list shapes used by the schema above; mapping-valued list items are outside this intentionally small YAML subset. Mapping keys must be unique within their own scope at every nesting depth. The same key may appear in separate mappings, but a repeated key in one mapping fails instead of silently replacing its earlier value.
+The built-in parser accepts the mapping and scalar-list shapes used by the schema above, plus the dash-introduced mapping items `sensitiveExclusions` needs; anything richer is outside this intentionally small YAML subset. A quoted list item stays a scalar even when it contains a colon, so existing string lists are unaffected. Mapping keys must be unique within their own scope at every nesting depth. The same key may appear in separate mappings, but a repeated key in one mapping fails instead of silently replacing its earlier value.
 
 Duplicate-key diagnostics report only the parsed key and the original 1-based lines of its first and repeated definitions. Blank and comment-only lines still count toward those source line numbers. Neither duplicate diagnostics nor structural indentation/list/key errors echo the YAML value or raw source line, so a malformed secret-bearing configuration does not copy that value into stderr or hook output.
 
@@ -253,6 +304,7 @@ The loader rejects:
 - A rule config that combines `threshold` and `thresholds`.
 - Severity values outside `advisory / warning / error`. The pre-v0.2.0 names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected with `unknown severity "<name>"`.
 - Blank entries in `allowlists.acceptedAbbreviations`. Case is no longer enforced - the validator only rejects empty / whitespace-only entries.
+- Any `sensitiveExclusions` entry that breaks the rule, path, key-set, rationale, or uniqueness contract listed under that section above.
 
 Any of these failures emits a `config:` diagnostic and exits the scan with code `2`. Treat config errors as build breaks, not silent warnings.
 

@@ -33,15 +33,35 @@ func TestHookCapabilitiesAdvertiseContract(t *testing.T) {
 				t.Fatalf("capabilities json: %v\n%s", err, out.String())
 			}
 			if got.ContractVersion != hookContractVersion || !got.Supports.NewOnly || !got.Supports.ScopeField {
-				t.Fatalf("capabilities = %#v, want gruff.hook.v1 with newOnly/scope support", got)
+				t.Fatalf("capabilities = %#v, want gruff.hook.v2 with newOnly/scope support", got)
+			}
+			// v2 adds four advertisements, and each must be true of this port rather than merely present.
+			if !got.Supports.BaselineV3 || !got.Supports.ConfidenceGate || !got.Supports.DeepScanBudget || !got.Supports.Diagnostics {
+				t.Fatalf("capabilities = %#v, want the four gruff.hook.v2 additions advertised", got)
 			}
 			if got.Flags.ChangedRanges != "--changed-ranges" || got.Flags.Diff != "--diff" || got.Flags.Baseline != "--baseline" {
 				t.Fatalf("flags = %#v", got.Flags)
 			}
-			if got.FlagOrder != "flags-before-path" {
-				t.Fatalf("flagOrder = %q, want flags-before-path for Go flag parser", got.FlagOrder)
+			// TestFlagOrderDoesNotChangeBehaviour proves every command accepts flags after the path with identical
+			// exit and stdout, so the old flags-before-path advertisement told consumers something untrue.
+			if got.FlagOrder != "any" {
+				t.Fatalf("flagOrder = %q, want any; flag_order_test.go proves flags after the path behave identically", got.FlagOrder)
 			}
 		})
+	}
+}
+
+// TestHookPublishesBoundedDeepScanDiagnostic keeps the degradation visible without a fatal exit.
+func TestHookPublishesBoundedDeepScanDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\nfunc main() {}\n")
+	t.Chdir(root)
+	payload, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--deep-scan-budget", "1:1", "main.go")
+	if code != 0 {
+		t.Fatalf("hook exit = %d, want 0", code)
+	}
+	if len(payload.Diagnostics) != 1 || payload.Diagnostics[0].Type != "bounded-deep-scan" || payload.Diagnostics[0].InvalidatesRun == nil || *payload.Diagnostics[0].InvalidatesRun {
+		t.Fatalf("diagnostics = %#v, want one non-fatal bounded-deep-scan", payload.Diagnostics)
 	}
 }
 
@@ -98,8 +118,9 @@ func TestHookFindingFieldsMetadataEnumsAndAdvisoryExit(t *testing.T) {
 		if item.Remediation == "" {
 			t.Fatalf("%s remediation is empty", item.RuleID)
 		}
-		if item.StableIdentity == "" {
-			t.Fatalf("%s stableIdentity is empty", item.RuleID)
+		// A sensitive finding is deliberately given no identity; every other finding must carry the ratified one.
+		if item.StableIdentity == nil || *item.StableIdentity == "" {
+			t.Fatalf("%s stableIdentity is missing", item.RuleID)
 		}
 		if !validHookSeverity(item.Severity) || !validHookScope(item.Scope) {
 			t.Fatalf("finding has invalid enums: %#v", item)
@@ -123,8 +144,8 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "long.go")
 	grownSize := requireHookFinding(t, grown, "size.file-length")
-	if firstSize.StableIdentity != grownSize.StableIdentity {
-		t.Fatalf("stableIdentity changed with measured value: %q != %q", firstSize.StableIdentity, grownSize.StableIdentity)
+	if hookIdentityOf(t, firstSize) != hookIdentityOf(t, grownSize) {
+		t.Fatalf("stableIdentity changed with measured value: %q != %q", hookIdentityOf(t, firstSize), hookIdentityOf(t, grownSize))
 	}
 	if firstSize.Fingerprint == grownSize.Fingerprint {
 		t.Fatalf("fingerprint should remain allowed to move when message/count changes")
@@ -134,10 +155,11 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	if code := Main([]string{"baseline", "--no-config", "--out", "baseline.json", "long.go"}, &baselineOut, &baselineErr); code != 0 {
 		t.Fatalf("baseline exit = %d, stderr = %s", code, baselineErr.String())
 	}
+	// The measured length never enters the identity, so a file that grew stays hidden behind its reviewed entry.
 	writeFile(t, root, "long.go", hookLongFixture(1012))
 	baselined, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "--baseline", "baseline.json", "long.go")
 	if findHookFinding(baselined, "size.file-length") != nil {
-		t.Fatalf("baseline new-only re-surfaced grown file-length finding: %#v", baselined.Findings)
+		t.Fatalf("baseline new-only re-surfaced a grown file-length finding: %#v", baselined.Findings)
 	}
 
 	writeFile(t, root, "short.go", hookLongFixture(1000))
@@ -163,13 +185,14 @@ func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 	writeFile(t, root, "long.go", hookLongFixture(1010))
 	hookRunGit(t, root, "add", "long.go")
 	hookRunGit(t, root, "commit", "-q", "-m", "long baseline")
+	// A grown file states a new length in its message, and the length never enters the identity, so it stays hidden.
 	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "long.go")
 	if code != 0 {
 		t.Fatalf("grown diff hook exit = %d", code)
 	}
 	if findHookFinding(grown, "size.file-length") != nil {
-		t.Fatalf("diff new-only re-surfaced existing file-length finding: %#v", grown.Findings)
+		t.Fatalf("diff new-only re-surfaced an existing file-length finding: %#v", grown.Findings)
 	}
 
 	writeFile(t, root, "short.go", hookLongFixture(1000))
@@ -206,12 +229,12 @@ func TestHookReportsIgnoredPathsAndConfigErrors(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("invalid config exit = %d, want 2", code)
 	}
-	if invalid.Config.SchemaOK || invalid.Config.Error == nil || !strings.Contains(*invalid.Config.Error, "gruff-go init --force") {
+	if invalid.Config.SchemaOK || invalid.Config.Error == nil || !strings.Contains(invalid.Config.Error.Message, "gruff-go init --force") {
 		t.Fatalf("config state = %#v, want schemaOk false with remediation", invalid.Config)
 	}
 }
 
-// runHookReport executes the CLI and decodes gruff.hook.v1 JSON.
+// runHookReport executes the CLI and decodes gruff.hook.v2 JSON.
 func runHookReport(t *testing.T, args ...string) (hookReport, int) {
 	t.Helper()
 	payload, code, _ := runHookReportWithStderr(t, args...)
@@ -232,6 +255,20 @@ func runHookReportWithStderr(t *testing.T, args ...string) (hookReport, int, str
 		t.Fatalf("hook json %v: %v\nstdout=%s\nstderr=%s", args, err, out.String(), errOut.String())
 	}
 	return payload, code, errOut.String()
+}
+
+// hookIdentityOf reads the ratified identity a finding must carry, failing the test when it carries none.
+//
+// Only a sensitive finding is allowed a null identity, and no test here scans one, so a null is a defect rather than a
+// case to tolerate.
+func hookIdentityOf(t *testing.T, item hookFinding) string {
+	t.Helper()
+
+	if item.StableIdentity == nil {
+		t.Fatalf("%s carries no stableIdentity", item.RuleID)
+	}
+
+	return *item.StableIdentity
 }
 
 // requireHookFinding returns a named finding or fails the test.

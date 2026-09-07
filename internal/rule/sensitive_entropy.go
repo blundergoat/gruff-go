@@ -18,8 +18,11 @@ import (
 // (~1-3 bits/char) while still catching random base64/base64url secrets
 // (~5-6 bits/char). Both are tunable via rules.sensitive-data.high-entropy-string.
 const (
-	highEntropyMinLength      = 20
-	highEntropyMinBitsPerChar = 4.5
+	// Ratified by the operator on 2026-09-02 as one contract for all five ports: 32 characters
+	// and 4.2 bits per character. go shipped 20 and 4.5, which meant the same rule id carried a
+	// different bar in every port. 4.2 still sits above random hex, which caps at 4.0.
+	highEntropyMinLength      = 32
+	highEntropyMinBitsPerChar = 4.2
 )
 
 // entropyTokenPattern extracts maximal runs of secret-charset characters
@@ -80,21 +83,23 @@ func (r HighEntropyStringRule) minEntropy() float64 {
 	return r.Entropy
 }
 
-// Definition declares the sensitive-data.high-entropy-string rule. It ships
-// opt-in (DefaultEnabled:false) and at warning/medium because entropy is a
-// heuristic - it cannot prove a token is a live secret the way an exact provider
-// prefix can - so it stays out of default scans and below the error tier the
-// confirmed-token rules use.
+// Definition declares the sensitive-data.high-entropy-string rule.
+//
+// It ships enabled at warning severity and medium confidence, the contract the operator
+// ratified on 2026-09-02 for all five ports. Entropy is a heuristic and cannot prove a token is
+// a live secret the way an exact provider prefix can, so it stays below the error tier the
+// confirmed-token rules use; but a secret scanner that is off by default finds no secrets, which
+// is why it is no longer opt-in.
 func (r HighEntropyStringRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.high-entropy-string",
 		Title:          "High-entropy string",
-		Description:    "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview.",
+		Description:    "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview.",
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		Capability:     CapabilityParser,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Thresholds: map[string]float64{
 			"minLength": float64(r.minLength()),
 			"entropy":   r.minEntropy(),
@@ -127,9 +132,11 @@ func (r HighEntropyStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []findin
 				Message:  "high-entropy string literal detected",
 				File:     unit.File.Path,
 				Location: &finding.Location{Line: lineNumber + 1},
+				// The configured thresholds already tell a reviewer why this fired; the token's own
+				// entropy is a statistic computed from the matched characters and is forbidden in
+				// serialized output by FAMILY-CONTRACT section 5.
 				Metadata: map[string]any{
 					"preview": r.previews.format(unit.File.Path, previewEntropy, token),
-					"entropy": math.Round(shannonEntropy(token)*100) / 100,
 				},
 			})
 		}

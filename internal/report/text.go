@@ -23,10 +23,33 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextFindings(writer, report.Findings); err != nil {
 		return err
 	}
+	if err := writeTextSuppressions(writer, report.Suppressions); err != nil {
+		return err
+	}
 	if err := writeTextBaselineStatus(writer, report.Baseline); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintf(writer, "exit: %d\n", report.Summary.ExitCode)
+	return err
+}
+
+// writeTextSuppressions emits the family suppression total plus one clause per
+// configured sensitive exclusion, including entries that suppressed nothing, so
+// no accepted suppression is invisible on the human surface. Both text surfaces
+// that apply the exclusions - analyse here and summary in WriteSummaryText -
+// share this one writer, so the audit reads identically on either. A project
+// with no sensitiveExclusions writes nothing, leaving default output unchanged.
+func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSummary) error {
+	if len(summaries) == 0 {
+		return nil
+	}
+	total := 0
+	clauses := make([]string, 0, len(summaries))
+	for _, summary := range summaries {
+		total += summary.Suppressed
+		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, summary.Reason))
+	}
+	_, err := fmt.Fprintf(writer, "suppressed findings: %d via %s\n", total, strings.Join(clauses, "; "))
 	return err
 }
 
@@ -116,7 +139,7 @@ func writeTextDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) e
 		if diagnostic.Location != nil && diagnostic.Location.Line > 0 {
 			location = fmt.Sprintf(":%d", diagnostic.Location.Line)
 		}
-		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s\n", diagnostic.Stage, diagnostic.File, location, diagnostic.Message); err != nil {
+		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s\n", diagnosticLabel(diagnostic), diagnostic.File, location, diagnostic.Message); err != nil {
 			return err
 		}
 	}
@@ -137,7 +160,10 @@ func writeTextFindings(writer io.Writer, findings []finding.Finding) error {
 		if item.Location != nil && item.Location.Line > 0 {
 			location = fmt.Sprintf(":%d", item.Location.Line)
 		}
-		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s: %s\n", item.Severity, item.File, location, item.RuleID, item.Message); err != nil {
+		// FAMILY-CONTRACT section 1 made the rs/ts dash-line the family canon at this break:
+		// `- [severity] file:line ruleId - message`. gruff-go emitted a colon-separated indented
+		// line, so a reader moving between ports met a different shape for the same information.
+		if _, err := fmt.Fprintf(writer, "- [%s] %s%s %s - %s\n", item.Severity, item.File, location, item.RuleID, item.Message); err != nil {
 			return err
 		}
 	}

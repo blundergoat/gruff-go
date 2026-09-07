@@ -26,10 +26,9 @@ paths:
     # opt-in detectors never flag their own deliberate test vectors.
     - internal/rule/sensitive_expansion_test.go
 
-# Project-wide allowlists and preview controls.
-# acceptedAbbreviations relax naming.acronym-case; secretPreviews authorizes
-# fixed category/scheme markers only. Empty/nonmatching paths stay [redacted].
-# This preview control never suppresses sensitive-data findings.
+# Project-wide allowlists.
+# acceptedAbbreviations relax naming.acronym-case. Sensitive-data markers are
+# unconditional and carry no payload, so nothing configures them.
 allowlists:
   acceptedAbbreviations:
     - AST
@@ -37,7 +36,19 @@ allowlists:
     - HTTP
     - ID
     - JSON
-  secretPreviews: []
+
+# Sensitive-data exclusions. Each entry suppresses one sensitive-data rule in
+# one project-relative file and requires a written reason. A symbol narrows the
+# scope further. Message- and value-matching keys are rejected, and entries are
+# written by hand: no reported marker or preview is ever turned into one for you.
+# Every entry is counted in the report's suppressions array, zero matches included.
+#
+# sensitiveExclusions:
+#   - rule: sensitive-data.aws-access-key
+#     path: internal/rule/testdata/aws_sample.env
+#     symbol: Fixtures.AWSSample
+#     reason: Synthetic key used by the loader fixture; not a live credential.
+sensitiveExclusions: []
 
 # Selection narrows the active rule set. Empty lists keep the default
 # selection (every rule below whose `enabled` is true).

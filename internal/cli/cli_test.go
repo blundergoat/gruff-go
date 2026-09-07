@@ -13,7 +13,58 @@ import (
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
+	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/rule"
+	"github.com/blundergoat/gruff-go/internal/scoring"
 )
+
+// machineAnalysisReport mirrors the v3 JSON surface tests consume. The runtime
+// analysis.Report remains the richer internal model and is not a wire decoder.
+type machineAnalysisReport struct {
+	SchemaVersion string `json:"schemaVersion"`
+	Summary       struct {
+		AnalysedFiles      int  `json:"analysedFiles"`
+		ExitCode           int  `json:"exitCode"`
+		SuppressedFindings *int `json:"suppressedFindings"`
+		Findings           struct {
+			Total int `json:"total"`
+		} `json:"findings"`
+	} `json:"summary"`
+	Baseline      analysis.BaselineSummary      `json:"baseline"`
+	Diff          analysis.DiffSummary          `json:"diff"`
+	DisplayFilter analysis.DisplayFilterSummary `json:"displayFilter"`
+	Diagnostics   []struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"diagnostics"`
+	Findings []finding.Finding `json:"findings"`
+	Score    struct {
+		Composite struct {
+			Score float64 `json:"score"`
+			Grade string  `json:"grade"`
+		} `json:"composite"`
+		Pillars []scoring.PillarDetail `json:"pillars"`
+	} `json:"score"`
+	Paths struct {
+		IgnoredPaths []string               `json:"ignoredPaths"`
+		MissingPaths []string               `json:"missingPaths"`
+		Details      []analysis.SkippedPath `json:"details"`
+		Extensions   struct {
+			Go struct {
+				Paths struct {
+					Scanned []string `json:"scanned"`
+				} `json:"paths"`
+			} `json:"go"`
+		} `json:"extensions"`
+	} `json:"paths"`
+	Extensions struct {
+		Go struct {
+			TopLevel struct {
+				Rules []rule.Definition `json:"rules"`
+			} `json:"topLevel"`
+		} `json:"go"`
+	} `json:"extensions"`
+}
 
 // TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output.
 func TestAnalyseTextAndJSON(t *testing.T) {
@@ -33,19 +84,51 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "."}, &jsonOut, &jsonErr); code != 0 {
 		t.Fatalf("json exit = %d, stderr = %s", code, jsonErr.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(jsonOut.Bytes(), &parsed); err != nil {
 		t.Fatalf("invalid json: %v\n%s", err, jsonOut.String())
 	}
 	if parsed.SchemaVersion != analysis.SchemaVersion {
 		t.Fatalf("schema = %q, want %q", parsed.SchemaVersion, analysis.SchemaVersion)
 	}
-	if parsed.Summary.FilesScanned != 1 {
-		t.Fatalf("files scanned = %d, want 1", parsed.Summary.FilesScanned)
+	if parsed.Summary.AnalysedFiles != 1 {
+		t.Fatalf("files scanned = %d, want 1", parsed.Summary.AnalysedFiles)
 	}
-	for _, definition := range parsed.Rules {
+	for _, definition := range parsed.Extensions.Go.TopLevel.Rules {
 		if definition.Capability != "parser" {
 			t.Fatalf("rule %s capability = %q, want parser", definition.ID, definition.Capability)
+		}
+	}
+}
+
+// TestDeepScanBudgetCLIOverridesConfig verifies paired CLI precedence and explicit disablement.
+func TestDeepScanBudgetCLIOverridesConfig(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "// Package main is a budget fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  enabled: true\n  maxLines: 1\n  maxBytes: 1\n")
+	t.Chdir(root)
+
+	run := func(arguments ...string) machineAnalysisReport {
+		t.Helper()
+		var out, errOut bytes.Buffer
+		if code := Main(arguments, &out, &errOut); code != 0 {
+			t.Fatalf("%v exit = %d, stderr = %s", arguments, code, errOut.String())
+		}
+		var reportData machineAnalysisReport
+		if err := json.Unmarshal(out.Bytes(), &reportData); err != nil {
+			t.Fatal(err)
+		}
+		return reportData
+	}
+
+	configured := run("analyse", "--format", "json", "--fail-on", "none", "main.go")
+	if len(configured.Diagnostics) != 1 || !strings.Contains(configured.Diagnostics[0].Message, "override=config") {
+		t.Fatalf("configured diagnostics = %#v", configured.Diagnostics)
+	}
+	for _, override := range []string{"100:10000", "off"} {
+		reportData := run("analyse", "--format", "json", "--fail-on", "none", "--deep-scan-budget", override, "main.go")
+		if len(reportData.Diagnostics) != 0 {
+			t.Fatalf("override %q diagnostics = %#v, want none", override, reportData.Diagnostics)
 		}
 	}
 }
@@ -61,11 +144,11 @@ func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "--changed-ranges", "3-3", "complex.go"}, &out, &errOut); code != 0 {
 		t.Fatalf("changed-ranges analyse exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.SuppressedCount == nil {
+	if parsed.Summary.SuppressedFindings == nil {
 		t.Fatalf("suppressedCount missing from changed-region JSON: %s", out.String())
 	}
 }
@@ -151,15 +234,15 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "."}, &second, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("second exit = %d", code)
 	}
-	var firstReport, secondReport analysis.Report
+	var firstReport, secondReport machineAnalysisReport
 	if err := json.Unmarshal(first.Bytes(), &firstReport); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(second.Bytes(), &secondReport); err != nil {
 		t.Fatal(err)
 	}
-	if firstReport.Paths.Scanned[0] != "a.go" || firstReport.Paths.Scanned[1] != "b.go" {
-		t.Fatalf("scanned paths not sorted: %#v", firstReport.Paths.Scanned)
+	if firstReport.Paths.Extensions.Go.Paths.Scanned[0] != "a.go" || firstReport.Paths.Extensions.Go.Paths.Scanned[1] != "b.go" {
+		t.Fatalf("scanned paths not sorted: %#v", firstReport.Paths.Extensions.Go.Paths.Scanned)
 	}
 	if first.String() != second.String() {
 		t.Fatalf("json output changed between runs:\nfirst:\n%s\nsecond:\n%s", first.String(), second.String())
@@ -186,6 +269,7 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	var catalogue struct {
 		Rules []struct {
 			ID                  string `json:"id"`
+			Confidence          string `json:"confidence"`
 			FalsePositiveShapes []struct {
 				Shape      string `json:"shape"`
 				Mitigation string `json:"mitigation"`
@@ -195,27 +279,20 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	if err := json.Unmarshal(listOut.Bytes(), &catalogue); err != nil {
 		t.Fatalf("invalid list-rules json: %v", err)
 	}
-	rulesMissingPrecisionGuidance := map[string]bool{
-		"naming.acronym-case":       true,
-		"security.shell-command":    true,
-		"size.parameter-count":      true,
-		"test-quality.skipped-test": true,
-	}
-	// Check each touched rule exactly as a catalogue user would find it by stable ID.
+	precisionRuleCount := 0
+	// Check every medium- or low-confidence rule exactly as a catalogue user sees it.
 	for _, listedRule := range catalogue.Rules {
-		// Unrelated catalogue rows are outside this cross-port precision pass.
-		if !rulesMissingPrecisionGuidance[listedRule.ID] {
+		if listedRule.Confidence != "medium" && listedRule.Confidence != "low" {
 			continue
 		}
+		precisionRuleCount++
 		// Empty guidance would not help a user decide whether to edit or scope the rule.
 		if len(listedRule.FalsePositiveShapes) == 0 || listedRule.FalsePositiveShapes[0].Shape == "" || listedRule.FalsePositiveShapes[0].Mitigation == "" {
 			t.Fatalf("%s false-positive guidance = %#v", listedRule.ID, listedRule.FalsePositiveShapes)
 		}
-		delete(rulesMissingPrecisionGuidance, listedRule.ID)
 	}
-	// Any remaining ID means users cannot discover that rule's precision boundary.
-	if len(rulesMissingPrecisionGuidance) != 0 {
-		t.Fatalf("list-rules omitted false-positive guidance for %#v", rulesMissingPrecisionGuidance)
+	if len(catalogue.Rules) != 83 || precisionRuleCount != 46 {
+		t.Fatalf("list-rules counts = %d total, %d medium/low; want 83 and 46", len(catalogue.Rules), precisionRuleCount)
 	}
 
 	var missingOut, missingErr bytes.Buffer
@@ -244,7 +321,7 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	if strings.Contains(out.String(), `"falsePositiveShapes"`) {
 		t.Fatalf("analysis JSON unexpectedly contains catalogue-only guidance: %s", out.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
@@ -255,8 +332,16 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	if finding.RuleID != "complexity.cyclomatic" || finding.Fingerprint == "" || finding.Remediation == "" {
 		t.Fatalf("finding = %#v, want complete complexity finding", finding)
 	}
-	if parsed.Score.Composite >= 100 || parsed.Score.Grade == "" || len(parsed.Score.Pillars) != 1 {
-		t.Fatalf("score = %#v, want penalized score", parsed.Score)
+	// Every rule-backed pillar now carries a row, so the finding-bearing count is read from the rows
+	// themselves rather than from the length of a list that used to hold only penalised pillars.
+	findingBearing := 0
+	for _, pillar := range parsed.Score.Pillars {
+		if pillar.Findings > 0 {
+			findingBearing++
+		}
+	}
+	if parsed.Score.Composite.Score >= 100 || parsed.Score.Composite.Grade == "" || findingBearing != 1 {
+		t.Fatalf("score = %#v, want penalized score in exactly one pillar", parsed.Score)
 	}
 }
 
@@ -265,6 +350,7 @@ func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, "config.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   complexity.cyclomatic:
     thresholds:
@@ -286,11 +372,11 @@ rules:
 	if code := Main([]string{"analyse", "--format", "json", "--baseline", "baseline.json", "complex.go"}, &analysisOut, &analysisErr); code != 0 {
 		t.Fatalf("baseline analyse exit = %d, stderr = %s, stdout = %s", code, analysisErr.String(), analysisOut.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(analysisOut.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.FindingsCount != 0 {
+	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.Findings.Total != 0 {
 		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
 	}
 }
@@ -318,11 +404,11 @@ func TestAnalyseGenerateBaselineWritesUsableBaseline(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "--baseline", "baseline.json", "complex.go"}, &analysisOut, &analysisErr); code != 0 {
 		t.Fatalf("baseline analyse exit = %d, stderr = %s, stdout = %s", code, analysisErr.String(), analysisOut.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(analysisOut.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.FindingsCount != 0 {
+	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.Findings.Total != 0 {
 		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
 	}
 }
@@ -366,6 +452,7 @@ func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   complexity.cyclomatic:
     threshold: 100
@@ -413,11 +500,11 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	if code := Main([]string{"analyse", "--format", "json", "--exclude-rules", "complexity.cyclomatic", "complex.go"}, &out, &errOut); code != 1 {
 		t.Fatalf("exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
-	var parsed analysis.Report
+	var parsed machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if len(parsed.Findings) != 0 || parsed.Summary.FindingsCount != 1 || parsed.DisplayFilter.HiddenFindings != 1 {
+	if len(parsed.Findings) != 0 || parsed.Summary.Findings.Total != 1 || parsed.DisplayFilter.HiddenFindings != 1 {
 		t.Fatalf("findings = %#v summary = %#v display = %#v", parsed.Findings, parsed.Summary, parsed.DisplayFilter)
 	}
 }

@@ -263,3 +263,47 @@ func readFileToString(path string) (string, error) {
 	}
 	return string(data), nil
 }
+
+// TestCommandCatalogueReachesEverySurface verifies the one catalogue in help.go feeds the usage screen, the shell
+// completion script, and the per-command flag list, so a shipped command cannot be advertised by only some of them.
+func TestCommandCatalogueReachesEverySurface(t *testing.T) {
+	var usage, usageErr bytes.Buffer
+	if code := Main([]string{"help"}, &usage, &usageErr); code != 0 {
+		t.Fatalf("help exit = %d, stderr = %s", code, usageErr.String())
+	}
+	var completion, completionErr bytes.Buffer
+	if code := Main([]string{"completion", "bash"}, &completion, &completionErr); code != 0 {
+		t.Fatalf("completion exit = %d, stderr = %s", code, completionErr.String())
+	}
+
+	for _, entry := range commandCatalogue {
+		// Every name is completable, aliases included, because a user may type either spelling.
+		if !strings.Contains(completion.String(), entry.name) {
+			t.Errorf("completion script omits %q", entry.name)
+		}
+		// A described command is one the usage screen lists; an alias deliberately carries no description.
+		if entry.description != "" && !strings.Contains(usage.String(), entry.description) {
+			t.Errorf("usage screen omits %q", entry.name)
+		}
+		// A command with a flag list has a per-command help screen the dispatch can reach.
+		if entry.usage != "" {
+			var out, errBuf bytes.Buffer
+			if code := Main([]string{"help", entry.name}, &out, &errBuf); code != 0 {
+				t.Errorf("help %s exit = %d, stderr = %s", entry.name, code, errBuf.String())
+			}
+		}
+	}
+}
+
+// TestHookDescriptionNamesTheContractItEmits verifies the usage screen's hook line names the contract version the
+// hook actually advertises, which is the drift that left gruff.hook.v1 in the command listing after v2 shipped.
+func TestHookDescriptionNamesTheContractItEmits(t *testing.T) {
+	for _, entry := range commandCatalogue {
+		if entry.name != "hook" {
+			continue
+		}
+		if !strings.Contains(entry.description, hookContractVersion) {
+			t.Errorf("hook description = %q, want the emitted contract %q", entry.description, hookContractVersion)
+		}
+	}
+}

@@ -78,20 +78,19 @@ func TestRenderPreservesEveryDefaultEnabledRule(t *testing.T) {
 	}
 }
 
-// TestRenderPreservesExistingScaffoldTuning verifies that paths.ignore,
-// allowlists.acceptedAbbreviations, and allowlists.secretPreviews survive
-// a regenerate when supplied via RenderOptions.Existing. This is the core
-// safeguard that turns `gruff-go init --force` into a merge rather than a
-// clobber of project-wide tuning.
+// TestRenderPreservesExistingScaffoldTuning verifies that paths.ignore and
+// allowlists.acceptedAbbreviations survive a regenerate when supplied via
+// RenderOptions.Existing. This is the core safeguard that turns
+// `gruff-go init --force` into a merge rather than a clobber of project-wide
+// tuning.
 func TestRenderPreservesExistingScaffoldTuning(t *testing.T) {
 	definitions := defaultDefinitions()
 	existing := &Config{
 		IgnorePaths:           []string{".claude/**", "internal/rule/sensitive_test.go"},
 		AcceptedAbbreviations: []string{"ID", "HTTP"},
-		SensitiveData:         SensitiveDataConfig{PreviewAllowlist: []string{"testdata/**"}},
 	}
 	body := string(Render(definitions, RenderOptions{Existing: existing}))
-	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "- HTTP", "testdata/**"} {
+	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "- HTTP"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered body missing preserved value %q:\n%s", want, body)
 		}
@@ -117,18 +116,30 @@ func TestInitAcceptedAbbreviationsFamilySeed(t *testing.T) {
 	}
 }
 
-// TestRenderExplainsDenyByDefaultSecretPreviews keeps generated configuration
-// from implying that allowlisted paths may reveal matched credential bytes.
-func TestRenderExplainsDenyByDefaultSecretPreviews(t *testing.T) {
+// TestRenderOmitsTheRemovedSecretPreviewsKey keeps the generator from writing a key the loader now refuses.
+//
+// Section 5 made category markers unconditional, so a generated file offering to configure them would produce a
+// configuration that fails to load on the very port that wrote it.
+func TestRenderOmitsTheRemovedSecretPreviewsKey(t *testing.T) {
+	definitions := defaultDefinitions()
+	body := string(Render(definitions, RenderOptions{}))
+	if strings.Contains(body, "secretPreviews") {
+		t.Fatalf("rendered config still offers the removed secretPreviews key:\n%s", body)
+	}
+	if strings.Contains(body, "unconditional") == false {
+		t.Fatalf("rendered config does not explain that markers are unconditional:\n%s", body)
+	}
+	if _, err := Parse([]byte(body), definitions); err != nil {
+		t.Fatalf("generated config does not load on the port that wrote it: %v", err)
+	}
+}
+
+// TestRenderWritesBothSeverityKeys pins the split the family contract ratified: failOn gates, minimumSeverity displays.
+func TestRenderWritesBothSeverityKeys(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
-	for _, want := range []string{
-		"fixed category/scheme markers only",
-		"Empty/nonmatching paths stay [redacted]",
-		"never suppresses sensitive-data findings",
-		"secretPreviews: []",
-	} {
+	for _, want := range []string{"failOn:", "  analyse: advisory", "minimumSeverity: advisory", "failOn above is what gates a build"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("rendered config missing secret-preview guidance %q", want)
+			t.Fatalf("rendered config missing %q:\n%s", want, body)
 		}
 	}
 }

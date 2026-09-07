@@ -1,17 +1,15 @@
-// Package rule owns the deny-by-default preview policy shared by every
-// sensitive-data detector.
+// Package rule owns the marker vocabulary shared by every sensitive-data detector: the closed set of
+// zero-payload markers FAMILY-CONTRACT.md section 5 ratifies, emitted unconditionally.
 package rule
 
 import (
 	"strings"
-
-	"github.com/blundergoat/gruff-go/internal/pathfilter"
 )
 
-// redactedPreview is the only preview emitted without explicit path authorization.
+// redactedPreview is the bare marker, emitted whenever the detector classifies nothing more specific.
 const redactedPreview = "[redacted]"
 
-// sensitivePreviewCategory is the closed formatter vocabulary for authorized paths.
+// sensitivePreviewCategory is the closed formatter vocabulary; nothing outside it can reach a marker.
 type sensitivePreviewCategory string
 
 // previewGeneric is the fully masked generic-assignment category.
@@ -95,23 +93,24 @@ func personalDataPreviewCategory(category string) sensitivePreviewCategory {
 	}
 }
 
-// sensitivePreviewPolicy authorizes category detail for repository-relative paths.
-// Its zero value is intentionally deny-by-default.
-type sensitivePreviewPolicy struct {
-	allowlist []string
+// sensitivePreviewPolicy formats the marker for one classified match. It carries no state because section 5
+// leaves nothing to configure: the most specific classified marker is emitted on every path.
+type sensitivePreviewPolicy struct{}
+
+// newSensitivePreviewPolicy returns the one policy every scan uses.
+//
+// It carries no state: FAMILY-CONTRACT.md section 5 makes markers unconditional, because every marker is zero-payload
+// by construction, so gating one behind configuration bought no confidentiality and produced cross-port divergence.
+func newSensitivePreviewPolicy() sensitivePreviewPolicy {
+	return sensitivePreviewPolicy{}
 }
 
-// newSensitivePreviewPolicy isolates the configured allowlist from later mutation.
-func newSensitivePreviewPolicy(allowlist []string) sensitivePreviewPolicy {
-	return sensitivePreviewPolicy{allowlist: append([]string(nil), allowlist...)}
-}
-
-// format returns a full mask unless path is explicitly authorized. Authorized
-// routes return only a fixed category marker or the already-public connection scheme.
-func (p sensitivePreviewPolicy) format(path string, category sensitivePreviewCategory, raw string) string {
-	if len(p.allowlist) == 0 || !pathfilter.MatchesAny(p.allowlist, path) {
-		return redactedPreview
-	}
+// format returns the most specific marker the detector already classified, and a bare mask otherwise.
+//
+// The path is unused and kept in the signature because every caller has one, and a marker that varied by path is
+// exactly what section 5 removed.
+func (p sensitivePreviewPolicy) format(_ string, category sensitivePreviewCategory, raw string) string {
+	// A generic or entropy match names no class the user can act on, so it stays the bare marker.
 	if category == previewGeneric || category == previewEntropy {
 		return redactedPreview
 	}

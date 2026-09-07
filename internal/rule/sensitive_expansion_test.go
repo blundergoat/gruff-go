@@ -56,8 +56,14 @@ func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
 // TestHighEntropyStringSkipsNonSecretShapes verifies the detector stays quiet on
 // the identifier and structural shapes that look random but are not secrets.
 func TestHighEntropyStringSkipsNonSecretShapes(t *testing.T) {
+	// The sha256, sha384 and sha512 rows are the digest lengths the 2026-08-29 downstream report
+	// actually produced. The 40-character row already covered sha1; nothing covered the lengths
+	// the report complained about, so the claim that go handles them was untested.
 	cases := map[string]string{
 		"hex digest":  "d41d8cd98f00b204e9800998ecf8427ed41d8cd9",
+		"sha256":      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		"sha384":      "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+		"sha512":      "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
 		"uuid":        "550e8400-e29b-41d4-a716-446655440000",
 		"sri hash":    "sha256-47DEQpj8HBSaTImW1OD2tz6O5Kz9SzaQ1bln",
 		"import path": "github.com/blundergoat/gruff-go/internal/rule/sensitive",
@@ -202,5 +208,83 @@ func TestPHIOwnsSSNNotPII(t *testing.T) {
 	}
 	if got := (PHIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
 		t.Fatalf("PHI findings = %#v, want 1", got)
+	}
+}
+
+// TestHighEntropyStringDigestsSurviveALoweredThreshold asserts the other direction of the
+// contract: a content digest stays quiet even when the entropy bar is dropped below hex's
+// arithmetic ceiling.
+//
+// This matters because the family's shared answer to digest false positives is the 4.2 bar
+// itself, and a project may lower it. go does not rely on the bar alone: entropyHexPattern
+// excludes all-hex tokens outright, so the guarantee holds at any threshold. That is the part
+// M19 cites when deciding whether php needs the same shape guard.
+func TestHighEntropyStringDigestsSurviveALoweredThreshold(t *testing.T) {
+	// Construct the rule the way the registry does, with the entropy bar lowered below hex's
+	// arithmetic ceiling of 4.0.
+	rule := HighEntropyStringRule{MinLength: highEntropyMinLength, Entropy: 3.5}
+
+	digests := map[string]string{
+		"sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		"sha384": "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+		"sha512": "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
+	}
+	for name, value := range digests {
+		t.Run(name, func(t *testing.T) {
+			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
+			if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("findings = %#v, want 0 for %s at a lowered bar", got, name)
+			}
+		})
+	}
+
+	// The control: a genuinely random token still fires at both bars, so the guard above is a
+	// shape exclusion rather than the rule going quiet. randomSecretToken is used rather than an
+	// AWS-shaped key, because the entropy rule defers to the provider rules that own such a
+	// prefix and would report nothing for a reason unrelated to the threshold.
+	unit := sensitiveTextUnit("x.env", "v = \""+randomSecretToken+"\"\n")
+	if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("findings = %#v, want 1 at the lowered bar", got)
+	}
+	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("findings = %#v, want 1 at the default bar", got)
+	}
+}
+
+// TestHighEntropyStringContract pins the four axes the operator ratified on 2026-09-02 as one
+// contract for all five ports, plus the threshold pair that proves both bounds are honoured.
+//
+// Every axis is asserted because the defect this replaces was one rule id carrying five
+// different contracts: go alone shipped opt-in at 20 and 4.5 while php and rs shipped 32 and
+// 4.2, and three ports could not honour a configured entropy at all.
+func TestHighEntropyStringContract(t *testing.T) {
+	definition := HighEntropyStringRule{}.Definition()
+
+	if definition.Severity != finding.SeverityWarning {
+		t.Errorf("severity = %q, want warning", definition.Severity)
+	}
+	if definition.Confidence != finding.ConfidenceMedium {
+		t.Errorf("confidence = %q, want medium", definition.Confidence)
+	}
+	if !definition.DefaultEnabled {
+		t.Error("DefaultEnabled = false, want true: a secret scanner that is off by default finds no secrets")
+	}
+	if got := definition.Thresholds["minLength"]; got != 32 {
+		t.Errorf("minLength = %v, want 32", got)
+	}
+	if got := definition.Thresholds["entropy"]; got != 4.2 {
+		t.Errorf("entropy = %v, want 4.2", got)
+	}
+
+	// Both thresholds must be honoured, not merely published. A token below the length bar is
+	// silent at the default and reports once the bar is lowered to admit it.
+	short := "aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0eF"[:24]
+	unit := sensitiveTextUnit("x.env", "v = \""+short+"\"\n")
+	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+		t.Fatalf("findings = %#v, want 0 below the ratified minLength", got)
+	}
+	admitted := HighEntropyStringRule{MinLength: 20, Entropy: highEntropyMinBitsPerChar}
+	if got := admitted.AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("findings = %#v, want 1 once minLength admits the token", got)
 	}
 }

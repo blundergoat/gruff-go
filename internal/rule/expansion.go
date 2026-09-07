@@ -101,7 +101,11 @@ func (EmptyBlockRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Remediation:    "Remove the empty block or add the intended implementation.",
+		// "Remove the empty block" was dropped: the rule sees an empty body, not whether the
+		// surrounding branch is still needed, and deleting a branch on that advice can change
+		// behaviour. Since the narrowing of 2026-09-07 every reported block is a conditional
+		// arm, so the useful advice is to fill it in or say why it is empty.
+		Remediation: "Add the intended implementation, or leave a comment saying why the branch is deliberately empty.",
 	}
 }
 
@@ -114,6 +118,10 @@ func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
 		block, ok := node.(*ast.BlockStmt)
 		if !ok || len(block.List) != 0 || !isControlFlowBlock(unit.AST, block) {
+			return true
+		}
+		// A comment in the braces is the author documenting the emptiness.
+		if blockSpanHasComment(unit.AST, block) {
 			return true
 		}
 		position := unit.FileSet.Position(block.Lbrace)
@@ -394,7 +402,20 @@ func hasSkipDebtMarkerDelimiter(markerSuffix string) bool {
 	return unicode.IsSpace(nextRune)
 }
 
-// isControlFlowBlock reports whether the block is the body of an if/for/switch/select construct.
+// isControlFlowBlock reports whether an empty block is an unfinished body rather than a
+// construct whose emptiness is the point.
+//
+// Three constructs were removed from this predicate on 2026-09-07, each because its empty
+// form is a deliberate Go idiom rather than missing code:
+//
+//   - A `for` with a header does its work in that header. `for i := 0; advance(i); i++ {}`
+//     iterates deliberately with nothing in the body, so only a bare `for {}` still counts.
+//   - `for range ch {}` drains a channel, and `for range ticker.C {}` waits on one. The
+//     emptiness is the behaviour.
+//   - `select {}` blocks the goroutine forever, which is how a program parks its main.
+//
+// `if`, `switch` and type-switch bodies stay: an empty one of those is a branch that was
+// written and never filled in, which is what this rule exists to find.
 func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -405,19 +426,32 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 		case *ast.IfStmt:
 			found = current.Body == block
 		case *ast.ForStmt:
-			found = current.Body == block
-		case *ast.RangeStmt:
-			found = current.Body == block
+			// A header carries the loop's work; only a bare infinite loop has an empty body
+			// with nothing else to it.
+			found = current.Body == block && current.Init == nil && current.Cond == nil && current.Post == nil
 		case *ast.SwitchStmt:
 			found = current.Body == block
 		case *ast.TypeSwitchStmt:
-			found = current.Body == block
-		case *ast.SelectStmt:
 			found = current.Body == block
 		}
 		return !found
 	})
 	return found
+}
+
+// blockSpanHasComment reports whether any comment sits between the block's braces.
+//
+// A block written as `if err != nil { // handled upstream }` is documented, not unfinished:
+// the author said why it is empty. The Go parser already retains comments
+// (`internal/parser/parser.go`, search: `stdparser.ParseComments`), so this needs no parser
+// change and no second pass over the source.
+func blockSpanHasComment(file *ast.File, block *ast.BlockStmt) bool {
+	for _, group := range file.Comments {
+		if group.Pos() > block.Lbrace && group.End() < block.Rbrace {
+			return true
+		}
+	}
+	return false
 }
 
 // execCommandShellArgOffset reports whether call invokes os/exec Command or
