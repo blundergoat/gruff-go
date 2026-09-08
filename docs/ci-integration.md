@@ -43,7 +43,7 @@ Inside a PR, prefer `--since origin/main` to scope findings to the changed regio
 gruff-go analyse --since origin/main .
 ```
 
-`--diff-base <ref>` is the older name for the same base-ref scoping and still works, so existing pipelines need no change. New recipes should use `--since`, which sits alongside `--diff`, `--changed-ranges`, and `--changed-scope symbol|hunk`.
+`--diff-base <ref>` is the family-canonical spelling for base-ref scoping and gruff-go accepts it, so a pipeline written against another port needs no change here. `--since` is gruff-go's own spelling and is what the recipe above uses. Both sit alongside `--diff`, `--changed-ranges`, and `--changed-scope symbol|hunk`.
 
 Diff mode records a `"diff mode is changed-line scoped"` caveat in the report so consumers know the scan wasn't full-project.
 
@@ -214,10 +214,11 @@ repos:
 
 ## Threshold knobs
 
-The two flags that most CI configurations end up tuning:
+The one flag most CI configurations end up tuning:
 
 - `--fail-on` - the binary default is **per command**, not a single value: `advisory` for the gating commands (`analyse`, `summary`) and `none` for the artifact generators (`report`, `dashboard`). [`configuration.md`](configuration.md#failon) carries the authoritative table. `advisory` is the broadest gate: every finding can fail the run. `warning` narrows the gate to warning and error findings; `error` narrows it to error findings only; `none` disables finding-driven exit `1`. The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` and the per-command defaults were added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
-- `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter. The config key [`minimumSeverity`](configuration.md#minimumseverity) already carries that display floor, and never changes an exit code.
+
+Migrating from 0.5: `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter. The config key [`minimumSeverity`](configuration.md#minimumseverity) already carries that display floor, and never changes an exit code.
 
 ### `--fail-on=error` is not a security gate
 

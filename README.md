@@ -35,10 +35,12 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Severity gate | `--fail-on` with `advisory`, `warning`, `error`, `none` |
 | Dashboard | `127.0.0.1:8765` by default |
 
+The Release line row names the published package; the schema and severity-gate rows are what this checkout emits, and the move to the `v3` envelopes and the refusal of `--min-severity` land in `0.6.0`. [`CHANGELOG.md`](CHANGELOG.md) records every break under `[Unreleased]`, and [`UPGRADING.md`](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) states what each one costs and how to go back.
+
 ## Requirements
 
 - Go `1.25` or newer, matching [`go.mod`](https://github.com/blundergoat/gruff-go/blob/main/go.mod).
-- Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
+- Git only for changed-region scans (`--diff-base`, `--since`, or `--diff`).
 - No runtime dependencies outside the Go standard library.
 
 The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24` or newer. The binary itself requires Go `1.25+`, so that is the effective floor.
@@ -229,7 +231,7 @@ go tool gruff-go analyse --format json --since HEAD src/foo.go
 git diff | go tool gruff-go analyse --format json --diff -
 ```
 
-`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and reports the filtered count as `diff.filteredFindings` and `summary.suppressedFindings` when changed-region filtering is active. The older `--diff-base` flag remains supported as a base-ref alias.
+`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and reports the filtered count as `diff.filteredFindings` and `summary.suppressedFindings` when changed-region filtering is active. `--diff-base` is the family-canonical spelling of the same base-ref scoping; gruff-go accepts it and `--since` alike.
 
 Display filters such as `--show-pillar`, `--hide-rule`, and `--show-rule` reduce report noise without changing which rules execute.
 
@@ -246,7 +248,7 @@ In polyglot repositories, `gruff-go`, `gruff-php`, and `gruff-py` all default to
 
 ## Trust Boundary
 
-Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data previews are deny-by-default: empty or nonmatching preview allowlists emit `[redacted]`, while matching paths may emit only fixed category or connection-scheme markers—never reusable payload bytes.
+Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data findings carry a marker, never a payload: the bare `[redacted]`, a fixed category such as `[redacted:aws-access-key]`, or a connection marker naming only its already-public scheme. `gruff-go` emits the most specific marker its detector classified on every path and under every configuration; there is no preview allowlist to leave empty, nonmatching or matching, and no reusable payload bytes.
 
 ## Stability Contract
 

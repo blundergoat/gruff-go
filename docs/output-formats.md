@@ -18,7 +18,7 @@ score coverage: size
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
 complexity distribution: finding-only
 findings:
-  [warning] internal/foo/bar.go:42 complexity.cyclomatic: function cyclomatic complexity is 23, above threshold 20
+- [warning] internal/foo/bar.go:42 complexity.cyclomatic - function cyclomatic complexity is 23, above threshold 20
 exit: 1
 ```
 
@@ -48,12 +48,21 @@ gruff-go analyse --format json --fail-on none . > analysis.json
 
 Version 3 is the coordinated family machine contract. Paths are project-relative
 POSIX paths, `run.projectRoot` is `.`, and unavailable optional fields are
-omitted rather than encoded as `null`.
+omitted rather than encoded as `null` - except the scoring fields, which are
+published as `null` rather than dropped. `score.composite.score`,
+`score.composite.grade`, and each `score.pillars[].score` and
+`score.pillars[].grade` are `null` when the run evaluated nothing at all: an
+empty directory, or one whose every Go file failed to parse. A per-file row in
+`score.topOffenders` always carries a number and a letter, because a run that
+evaluated nothing produces no rows.
 
 The canonical top-level sections are `schemaVersion`, `tool`, `run`,
 `summary`, `score`, `diagnostics`, `findings`, `paths`, and
-`suppressions`. `baseline`, `diff`, `displayFilter`, and
-`extensions` appear only when their feature or Go-owned data is present.
+`suppressions`. `baseline`, `diff`, and `displayFilter` appear only when their
+feature is present. `extensions` sits at three levels - top level, inside
+`summary`, and inside `paths` - and gruff-go publishes Go-owned data at each one, so a
+consumer that reads only the top-level key misses two of them. The example below
+shows the top-level and `paths` keys; `summary.extensions` has the same shape.
 The important shared shape is:
 
 ```jsonc
@@ -82,7 +91,7 @@ The important shared shape is:
     "exitCode": 1
   },
   "score": {
-    "composite": { "score": 92, "grade": "A" },
+    "composite": { "score": 95.87, "grade": "A" },
     "pillars": [],
     "topOffenders": []
   },
@@ -90,7 +99,8 @@ The important shared shape is:
     "analysedFiles": 65,
     "ignoredPaths": [],
     "details": [],
-    "missingPaths": []
+    "missingPaths": [],
+    "extensions": { "go": { "paths": { "scanned": ["internal/foo/bar.go"] } } }
   },
   "diagnostics": [],
   "findings": [],
