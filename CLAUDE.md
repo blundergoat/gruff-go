@@ -15,7 +15,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 ## Autonomy Tiers
 **Always:** Read relevant project files before changing them. Run `make check` after touching Go source. Preserve existing user edits.
 
-**Ask First:** Before changing `package.json`, `package-lock.json`, `.goat-flow/hooks/`, `.goat-flow/config.yaml`, schema versions (`SchemaVersion` constants, `gruff-go.*.v0.1`), the rule registry's `Defaults()` policy, or anything that flips the dogfood `go run ./cmd/gruff-go analyse .` from grade A. State the intended edit, the files read, any matching footgun/lesson entries, and the rollback command. For breaking CLI/schema changes, also note the `CHANGELOG.md` entry that will record the break.
+**Ask First:** Before changing `package.json`, `package-lock.json`, `.goat-flow/hooks/`, `.goat-flow/config.yaml`, schema versions (`SchemaVersion` constants, `gruff-go.*.v0.1`, and the family-contracted `gruff.analysis.v3`, `gruff.summary.v3`, `gruff.baseline.v3` and `gruff.hook.v2`, whose shapes `FAMILY-CONTRACT.md` owns), the rule registry's `Defaults()` policy, or anything that flips the dogfood `go run ./cmd/gruff-go analyse .` from grade A. State the intended edit, the files read, any matching footgun/lesson entries, and the rollback command. For breaking CLI/schema changes, also note the `CHANGELOG.md` entry that will record the break.
 
 **Never:** Do not edit `node_modules/`, `.idea/`, `.git/`, or other agents' instruction surfaces (`AGENTS.md`, `.codex/`, `GEMINI.md`, `.gemini/`) unless the user explicitly widens scope. Do not bypass safety hooks (`--no-verify`, `--no-gpg-sign`).
 
