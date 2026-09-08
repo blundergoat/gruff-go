@@ -21,6 +21,13 @@ gruff-go analyse --no-config .
 
 ```yaml
 # .gruff-go.yaml
+schemaVersion: gruff-go.config.v0.1   # mandatory; a config without it exits 2
+
+deepScanBudget:       # above either bound, keep text-level rules and omit AST-backed deep analysis
+  enabled: true
+  maxLines: 20000
+  maxBytes: 2000000
+
 failOn:             # per-command exit-code gate; see ADR-010
   analyse: advisory # CI gating command - default `advisory` (fail on anything)
   summary: advisory # CI gating command - default `advisory`
@@ -184,7 +191,7 @@ under `suppressions`, and both text surfaces that apply the exclusions -
 `analyse` and `summary` - print the same total:
 
 ```json
-{"index": 0, "rule": "sensitive-data.aws-access-key", "paths": ["internal/rule/testdata/aws.env"], "symbol": null, "reason": "Synthetic key used by the loader fixture; not a live credential.", "suppressed": 2}
+{"index": 0, "rule": "sensitive-data.aws-access-key", "paths": ["internal/rule/testdata/aws.env"], "reason": "Synthetic key used by the loader fixture; not a live credential.", "suppressed": 2}
 ```
 
 ```text

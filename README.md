@@ -89,7 +89,7 @@ go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go dashboard --project .
 ```
 
-Go's standard `flag` package stops parsing flags at the first non-flag argument. Put every `--flag` before path arguments.
+Subcommands parse flags before, between, or after positional path arguments. Put `--` before a path that starts with a dash.
 
 ## Commands
 
@@ -159,6 +159,8 @@ For incremental rollout, generate a baseline first, commit it after review, then
 `gruff-go` auto-loads `.gruff-go.yaml` from the project root unless `--config <path>` or `--no-config` is supplied. Config validation fails closed on unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds.
 
 ```yaml
+schemaVersion: gruff-go.config.v0.1
+
 paths:
   ignore:
     - "vendor/"
@@ -183,7 +185,7 @@ See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/
 
 ## Rules And Pillars
 
-The current checkout contains 83 rules across 11 pillars. 71 rules are enabled by default; the 12 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the entropy/PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
+The current checkout contains 83 rules across 11 pillars. 71 rules are enabled by default; the 12 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
 
 | Pillar | Rules |
 | --- | ---: |

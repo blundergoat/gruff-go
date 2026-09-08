@@ -248,7 +248,7 @@ Controls how file:line references render in the report:
 - `vscode` - `<a href="vscode://file/{absPath}:{line}">` anchors. Clicking opens VS Code at the right line on a machine that has the editor installed.
 - `phpstorm` - `<a href="phpstorm://open?file={absPath}&line={line}">` anchors. Same idea for JetBrains.
 
-The absolute path is built relative to `--project` (when set) or the working directory at render time. The visible text always shows the project-relative path so it's portable; only the `href` carries the absolute path.
+The absolute path is built relative to the working directory at render time, or to the `dashboard` command's `--project` when the report is served from there. The visible text always shows the project-relative path so it's portable; only the `href` carries the absolute path.
 
 ### `--report-interactive`
 

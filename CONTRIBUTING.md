@@ -32,7 +32,7 @@ make check
 | Directory | Purpose |
 |-----------|---------|
 | `cmd/gruff-go/` | Thin executable entrypoint; the meat lives under `internal/`. |
-| `internal/cli/` | CLI parser; subcommand dispatch for `analyse`, `baseline`, `check-ignore`, `completion`, `dashboard`, `help`, `hook`, `init`, `list`, `list-rules`, `report`, `summary`; `analyze` aliases `analyse`. |
+| `internal/cli/` | CLI parser; subcommand dispatch for `analyse`, `baseline`, `check-ignore`, `completion`, `dashboard`, `help`, `hook`, `init`, `list`, `list-rules`, `migrate-config`, `report`, `summary`; `analyze` aliases `analyse`. |
 | `internal/source/` | File discovery; skips VCS, dependency caches, generated files. |
 | `internal/parser/` | Standard-library `go/parser` wrapper plus parse diagnostics. |
 | `internal/rule/` | Rule metadata, registry, dispatch, builtin rule pack. |
