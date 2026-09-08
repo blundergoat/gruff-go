@@ -24,15 +24,15 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.4.0` package line |
+| Release line | Published `0.5.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 83 rules across 11 pillars; 70 enabled by default |
+| Rule catalogue | 83 rules across 11 pillars; 71 enabled by default |
 | Primary config | `.gruff-go.yaml` |
-| Analysis schema | `gruff.analysis.v2` |
-| Baseline schema | `gruff-go.baseline.v0.1` |
-| Severity gate | `--min-severity` with `advisory`, `warning`, `error` |
+| Analysis schema | `gruff.analysis.v3` |
+| Baseline schema | `gruff.baseline.v3` |
+| Severity gate | `--fail-on` with `advisory`, `warning`, `error`, `none` |
 | Dashboard | `127.0.0.1:8765` by default |
 
 ## Requirements
@@ -77,10 +77,10 @@ go tool gruff-go summary .
 go tool gruff-go analyse .
 
 # Raise the failure floor while exploring an existing codebase.
-go tool gruff-go analyse --min-severity error .
+go tool gruff-go analyse --fail-on error .
 
 # Emit SARIF for code scanning.
-go tool gruff-go analyse --format sarif --min-severity error . > gruff.sarif
+go tool gruff-go analyse --format sarif --fail-on error . > gruff.sarif
 
 # Generate a fresh-start baseline.
 go tool gruff-go analyse --generate-baseline gruff-baseline.json .
@@ -119,7 +119,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | Format | Use it for |
 | --- | --- |
 | `text` | Human terminal output. |
-| `json` | Full `gruff.analysis.v2` report. |
+| `json` | Full `gruff.analysis.v3` report. |
 | `summary-json` | Compact CI digest without the full finding list. |
 | `sarif` | SARIF 2.1.0 for code scanning. |
 | `github` | GitHub Actions workflow annotations. |
@@ -132,24 +132,24 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | No finding met `--min-severity`, and no fatal diagnostic occurred. |
-| `1` | At least one finding met `--min-severity`. |
+| `0` | No finding met `--fail-on`, and no fatal diagnostic occurred. |
+| `1` | At least one finding met `--fail-on`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--min-severity` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#minimumseverity). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
+`--fail-on` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for moderate gating or `error` for the strict gate. **`--min-severity` is refused in 0.6.0**: it gated the exit code in 0.5 and returns in 0.7.0 with the family meaning, filtering which findings are displayed. Passing it to `analyse` or `summary` prints that break and names `--fail-on`.
 
 ## CI Usage
 
 Generic CI command:
 
 ```bash
-go tool gruff-go analyse --format github --min-severity warning .
+go tool gruff-go analyse --format github --fail-on warning .
 ```
 
 SARIF upload jobs can use:
 
 ```bash
-go tool gruff-go analyse --format sarif --min-severity error . > gruff-go.sarif
+go tool gruff-go analyse --format sarif --fail-on error . > gruff-go.sarif
 ```
 
 For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/ci-integration.md) for GitHub Actions and GitLab examples.
@@ -183,7 +183,7 @@ See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/
 
 ## Rules And Pillars
 
-The current checkout contains 83 rules across 11 pillars. 70 rules are enabled by default; the 13 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the entropy/PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
+The current checkout contains 83 rules across 11 pillars. 71 rules are enabled by default; the 12 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the entropy/PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
 
 | Pillar | Rules |
 | --- | ---: |
@@ -227,9 +227,9 @@ go tool gruff-go analyse --format json --since HEAD src/foo.go
 git diff | go tool gruff-go analyse --format json --diff -
 ```
 
-`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and adds `suppressedCount` when changed-region filtering is active. The older `--diff-base` flag remains supported as a base-ref alias.
+`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and reports the filtered count as `diff.filteredFindings` and `summary.suppressedFindings` when changed-region filtering is active. The older `--diff-base` flag remains supported as a base-ref alias.
 
-Display filters such as `--include-pillars`, `--exclude-rules`, and `--include-rules` reduce report noise without changing which rules execute.
+Display filters such as `--show-pillar`, `--hide-rule`, and `--show-rule` reduce report noise without changing which rules execute.
 
 ## Dashboard
 
@@ -272,7 +272,7 @@ make check
 
 ## Documentation
 
-[`docs/`](https://github.com/blundergoat/gruff-go/blob/main/docs/README.md) indexes the full set. The most-used entries:
+[Upgrading](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) covers what breaks between lines and how to go back. [`docs/`](https://github.com/blundergoat/gruff-go/blob/main/docs/README.md) indexes the full set. The most-used entries:
 
 - [Agent guardrail](https://github.com/blundergoat/gruff-go/blob/main/docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
 - [Configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md)

@@ -409,8 +409,19 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 // ruleListDefinition adds precision guidance to catalogue JSON.
 // Embedding keeps the existing metadata while analysis reports omit this field.
 // Users receive it only when they explicitly inspect the rule catalogue.
+//
+// Severity is renamed here rather than on rule.Definition because that struct is also embedded in the
+// analysis report's rule list (internal/analysis/report.go, search: `Rules []rule.Definition`). Retagging
+// it there would rename the field on a second machine surface the family never ratified.
+//
+// The suppression is a same-named empty field, not `json:"-"`. A `-` field is removed before encoding/json
+// resolves name conflicts, so it never competes with the promoted one and the inherited `severity` key
+// survives - measured, 83 of 83 rules kept it. A field at depth 0 carrying the same JSON name does win that
+// contest, and left at its zero value `omitempty` then drops it.
 type ruleListDefinition struct {
 	rule.Definition
+	Severity            finding.Severity          `json:"severity,omitempty"`
+	DefaultSeverity     finding.Severity          `json:"defaultSeverity"`
 	FalsePositiveShapes []rule.FalsePositiveShape `json:"falsePositiveShapes,omitempty"`
 }
 
@@ -422,6 +433,7 @@ func ruleListDefinitions(definitions []rule.Definition) []ruleListDefinition {
 	for _, definition := range definitions {
 		listedDefinitions = append(listedDefinitions, ruleListDefinition{
 			Definition:          definition,
+			DefaultSeverity:     definition.Severity,
 			FalsePositiveShapes: definition.FalsePositiveShapes,
 		})
 	}

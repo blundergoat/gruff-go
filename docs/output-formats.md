@@ -43,7 +43,7 @@ consumer needs the exact file set.
 Use `json` for automation. Full reports use `gruff.analysis.v3`:
 
 ```sh
-gruff-go analyse --format json --min-severity none . > analysis.json
+gruff-go analyse --format json --fail-on none . > analysis.json
 ```
 
 Version 3 is the coordinated family machine contract. Paths are project-relative
@@ -315,12 +315,12 @@ The chosen format does **not** change the exit code. All formats use:
 
 | Exit | Meaning |
 |------|---------|
-| `0` | No findings at or above `--min-severity` and no diagnostics. |
-| `1` | At least one finding at or above `--min-severity`. |
+| `0` | No findings at or above `--fail-on` and no diagnostics. |
+| `1` | At least one finding at or above `--fail-on`. |
 | `2` | Diagnostics (path missing, parse error, config error, baseline error, diff error) **or** invalid CLI input. |
 
-Set `--min-severity` to control where the line falls (default: `advisory`).
-The threshold applies only to findings: `--min-severity none` disables exit `1`,
+Set `--fail-on` to control where the line falls (default: `advisory`). `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter.
+The threshold applies only to findings: `--fail-on none` disables exit `1`,
 but it cannot hide a missing path, parse failure, baseline load failure, diff
 failure, invalid configuration, or invalid CLI input. Those failures always exit
 `2`. Analysis diagnostics retain severity `error` as descriptive output; the
@@ -338,5 +338,5 @@ analysis, or internal failures remain exit `2`.
 | `gruff.analysis.v3`      | `json` | `internal/analysis/report.go` |
 | `gruff.summary.v3`       | `summary-json`, `summary --format json` | `internal/analysis/report.go` |
 | `gruff-go.config.v0.1`   | `.gruff-go.yaml` config loader | `internal/config/config.go` |
-| `gruff-go.baseline.v0.1` | `baseline` subcommand | `internal/baseline/baseline.go` |
+| `gruff.baseline.v3` | `baseline` subcommand, `--generate-baseline` | `internal/baseline/baseline.go` |
 | `sarif-2.1.0`            | `sarif` | `internal/report/machine.go` |

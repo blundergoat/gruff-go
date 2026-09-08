@@ -21,11 +21,13 @@ gruff-go analyse --no-config .
 
 ```yaml
 # .gruff-go.yaml
-minimumSeverity:    # per-command exit-code threshold; see ADR-010
+failOn:             # per-command exit-code gate; see ADR-010
   analyse: advisory # CI gating command - default `advisory` (fail on anything)
   summary: advisory # CI gating command - default `advisory`
   report: none      # artifact generator - default `none` (never fail on findings)
   dashboard: none   # artifact generator - default `none`
+
+minimumSeverity: advisory   # display floor: lowest severity a report shows; never gates the exit code
 
 paths:
   ignore: []          # extra path prefixes/globs to skip; merged with built-in ignores
@@ -55,12 +57,12 @@ rules:
 
 ## Section reference
 
-### `minimumSeverity`
+### `failOn`
 
-Per-command exit-code threshold. Each key is a `gruff-go` subcommand that gates exit codes (`analyse`, `summary`, `report`, `dashboard`); each value is one of `advisory | warning | error | none`. `none` means "report findings, never exit 1" - useful for artifact-generation commands (`report`, `dashboard`) where the consumer wants the HTML/JSON output regardless of whether anything tripped a gate.
+Per-command exit-code gate. Each key is a `gruff-go` subcommand that gates exit codes (`analyse`, `summary`, `report`, `dashboard`); each value is one of `advisory | warning | error | none`. `none` means "report findings, never exit 1" - useful for artifact-generation commands (`report`, `dashboard`) where the consumer wants the HTML/JSON output regardless of whether anything tripped a gate.
 
 ```yaml
-minimumSeverity:
+failOn:
   analyse: warning      # default `advisory`: fail on anything
   summary: warning      # default `advisory`
   report: none          # default `none`: never fail on findings
@@ -70,7 +72,7 @@ minimumSeverity:
 **Precedence rule** (locked in [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md)):
 
 ```
-CLI flag (--min-severity / --fail-on)  >  minimumSeverity.<cmd>  >  binary default
+CLI flag (--fail-on)  >  failOn.<cmd>  >  binary default
 ```
 
 The binary defaults (when neither the CLI flag nor the config block supply a value) are:
@@ -85,6 +87,16 @@ The binary defaults (when neither the CLI flag nor the config block supply a val
 The block is additive: omitting any key falls back to the binary default. Omitting the entire block also works.
 
 `none` is the canonical off-switch value. Legacy 5-bucket names (`medium`, `low`, `critical`, `high`, `info`) and alternative off-switch names (`never`, `off`, `disabled`) are rejected at load time per the no-legacy-compat policy.
+
+### `minimumSeverity`
+
+The display floor: the lowest severity a rendered report shows. It takes one severity - `advisory`, `warning`, or `error` - and never changes an exit code, a score, or a baseline. Hidden findings are still counted, and `analyse --format json` reports the total under `displayFilter.hiddenFindings`. `none` is not a value here; disable a gate with `failOn.<cmd>: none`.
+
+```yaml
+minimumSeverity: warning   # keep advisory findings out of the rendered report
+```
+
+Through `0.5` this key carried the per-command exit gate as a map. That shape now exits `2` naming `failOn` as the key that gates the exit code; `gruff-go migrate-config` rewrites an older config.
 
 ### `paths.ignore`
 
@@ -104,7 +116,7 @@ Config validation rejects empty or escaping patterns, POSIX-absolute paths, Wind
 
 `paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and non-VCS fallback skips only; it never overrides config `paths.ignore` or the VCS-internals boundary.
 
-In `analyse --format json`, config-ignored paths appear as bare strings under `paths.ignoredPaths` and as detailed objects under `paths.skipped[]` with `reason: "config-ignore"`, `source: "config"`, and the matching `pattern`. The bare list is nested under `paths` in gruff-go to match the Rust and TypeScript ports while preserving the detailed skip objects for existing consumers.
+In `analyse --format json`, config-ignored paths appear as bare strings under `paths.ignoredPaths` and as detailed objects under `paths.details` with `reason: "config-ignore"`, `source: "config"`, and the matching `pattern`. Both live under `paths`, the shape every port shares; `paths.ignoredPaths` is the ordered path projection of the detail rows.
 
 ### `allowlists.acceptedAbbreviations`
 
@@ -183,9 +195,9 @@ A suppressed finding leaves the finding list, the counts, the score, and the
 exit code, exactly like the baseline channel - but it is never invisible,
 because the audit row survives.
 
-`summary --format json` is the one exception: it applies the exclusions but
-publishes no count, because the `gruff.summary.v2` envelope has no suppression
-field yet. Use the text summary or `analyse --format json` for the audit.
+`summary --format json` carries the same `suppressions` audit array as
+`analyse`, because the `gruff.summary.v3` envelope is the analysis document with
+only its top-level `findings` array removed.
 
 Each of the following is a fatal `config:` diagnostic naming the entry index and
 the offending key, and exits `2`:
@@ -214,7 +226,7 @@ selection:
   excludePillars: ["test-quality"]    # disable these pillars
 ```
 
-The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.
+The CLI flags `--show-rule`, `--hide-rule`, `--show-pillar`, and `--hide-pillar` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.
 
 ### `rules.<rule-id>`
 

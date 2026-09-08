@@ -204,20 +204,20 @@ repos:
     hooks:
       - id: gruff-go
         name: gruff-go
-        entry: gruff-go analyse --since HEAD --min-severity advisory .
+        entry: gruff-go analyse --since HEAD --fail-on advisory .
         language: system
         pass_filenames: false
         types: [go]
 ```
 
-`--since HEAD` scopes the hook to changed regions. `--min-severity advisory` keeps the gate at gruff-go’s comprehensive default, so every reported finding can block.
+`--since HEAD` scopes the hook to changed regions. `--fail-on advisory` keeps the gate at gruff-go’s comprehensive default, so every reported finding can block.
 
 ## Threshold knobs
 
 The two flags that most CI configurations end up tuning:
 
-- `--min-severity` - the binary default is **per command**, not a single value: `advisory` for the gating commands (`analyse`, `summary`) and `none` for the artifact generators (`report`, `dashboard`). [`configuration.md`](configuration.md#minimumseverity) carries the authoritative table. `advisory` is the broadest gate: every finding can fail the run. `warning` narrows the gate to warning and error findings; `error` narrows it to error findings only; `none` disables finding-driven exit `1`. The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` and the per-command defaults were added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
-- `--fail-on` is an alias for `--min-severity`.
+- `--fail-on` - the binary default is **per command**, not a single value: `advisory` for the gating commands (`analyse`, `summary`) and `none` for the artifact generators (`report`, `dashboard`). [`configuration.md`](configuration.md#failon) carries the authoritative table. `advisory` is the broadest gate: every finding can fail the run. `warning` narrows the gate to warning and error findings; `error` narrows it to error findings only; `none` disables finding-driven exit `1`. The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` and the per-command defaults were added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
+- `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter. The config key [`minimumSeverity`](configuration.md#minimumseverity) already carries that display floor, and never changes an exit code.
 
 ### `--fail-on=error` is not a security gate
 
@@ -225,7 +225,7 @@ With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are
 
 The below-error invariant is enforced, not just documented: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches error, naming this section in its failure message. Verify the live numbers yourself with `gruff-go list-rules --no-config --format json` - without `--no-config` you get the effective severities after your own `.gruff-go.yaml` overrides, which is a different question.
 
-Use the advisory floor when CI is intended to gate on all detected security issues. `analyse` and `summary` default to it, so the recipes above already gate. `report` and `dashboard` default to `none` and have **no** finding gate, so a pipeline whose failing step is one of those needs an explicit `--min-severity advisory` or a `minimumSeverity` entry - an artifact generator reports security findings and still exits `0`. For an existing codebase, reduce initial scope with a baseline or `--since` rather than raising the severity floor and silently excluding detected classes.
+Use the advisory floor when CI is intended to gate on all detected security issues. `analyse` and `summary` default to it, so the recipes above already gate. `report` and `dashboard` default to `none` and have **no** finding gate, so a pipeline whose failing step is one of those needs an explicit `--fail-on advisory` or a `failOn` entry - an artifact generator reports security findings and still exits `0`. For an existing codebase, reduce initial scope with a baseline or `--since` rather than raising the severity floor and silently excluding detected classes.
 
 ### Open family decision: security findings and grade A
 
@@ -235,10 +235,10 @@ The evidence behind this question - the registry distribution, the fixture above
 
 Gruff family contract §12 must decide whether any `security.*` finding should cap the composite below A or whether grades and finding gates remain independent. A cap would change serialized scores, grades, and cross-port semantics. No cap, severity, or scoring change is made here. Until that decision is ratified, CI should gate on findings at the advisory floor - on a command that has one, per the note above - and must not treat grade A as security proof.
 
-For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:
+For projects that want per-command defaults without passing the flag on every invocation, set [`failOn`](configuration.md#failon) in `.gruff-go.yaml`:
 
 ```yaml
-minimumSeverity:
+failOn:
   analyse: warning   # CI gate: fail on warning+
   summary: warning
   report: none       # artifact generation: never fail
@@ -249,7 +249,7 @@ The CLI flag still wins when set; the config block supplies the per-command defa
 
 If CI needs to **scan and report** without **failing**, two equally valid options:
 - Run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and upload the report artefact separately.
-- Pass `--min-severity none` (or set `minimumSeverity.analyse: none` in the project config). Findings cannot produce exit `1`, but diagnostics and invalid input still produce exit `2`.
+- Pass `--fail-on none` (or set `failOn.analyse: none` in the project config). Findings cannot produce exit `1`, but diagnostics and invalid input still produce exit `2`.
 
 Thresholds never downgrade operational failures. Missing paths, parse errors,
 baseline or diff failures, and invalid configuration/CLI input exit `2` at every
