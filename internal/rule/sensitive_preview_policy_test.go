@@ -26,22 +26,20 @@ type sensitivePreviewFixture struct {
 	secondary       string
 }
 
-// TestSensitivePreviewPolicyMatrix pins empty, nonmatching, and matching path
-// policy for every sensitive-data rule plus every PII/PHI category.
+// TestSensitivePreviewPolicyMatrix pins the one marker every sensitive-data rule and every PII/PHI category emits.
+//
+// Section 5 made markers unconditional: each one names a class the detector already decided and carries none of the
+// matched value, so there is no configuration that could make one safer or less safe.
 func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	states := []struct {
-		name      string
-		allowlist []string
-		allowed   bool
+		name string
 	}{
-		{name: "empty"},
-		{name: "nonmatching", allowlist: []string{"other/**"}},
-		{name: "matching", allowlist: []string{"secrets/**"}, allowed: true},
+		{name: "unconditional"},
 	}
 
 	for _, state := range states {
 		t.Run(state.name, func(t *testing.T) {
-			registry := sensitivePreviewRegistry(t, state.allowlist)
+			registry := sensitivePreviewRegistry(t)
 			for _, fixture := range sensitivePreviewFixtures() {
 				t.Run(fixture.name, func(t *testing.T) {
 					findings := registry.Analyze([]parser.Unit{sensitivePreviewUnit(fixture)}, Context{})
@@ -49,20 +47,13 @@ func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 					if !ok {
 						t.Fatalf("missing %s finding for category %q", fixture.ruleID, fixture.category)
 					}
-					want := "[redacted]"
-					if state.allowed {
-						want = fixture.allowedPreview
+					if got, _ := item.Metadata["preview"].(string); got != fixture.allowedPreview {
+						t.Fatalf("preview %q is not the approved marker %q", got, fixture.allowedPreview)
 					}
-					if got, _ := item.Metadata["preview"].(string); got != want {
-						t.Fatalf("preview does not match the approved marker for %s policy", state.name)
-					}
+					// A rule with a second field, such as a GCP service account, marks it independently.
 					if fixture.secondary != "" {
-						secondaryWant := "[redacted]"
-						if state.allowed {
-							secondaryWant = fixture.secondary
-						}
-						if got, _ := item.Metadata["secondaryPreview"].(string); got != secondaryWant {
-							t.Fatalf("secondary preview does not match the approved marker for %s policy", state.name)
+						if got, _ := item.Metadata["secondaryPreview"].(string); got != fixture.secondary {
+							t.Fatalf("secondary preview %q is not the approved marker %q", got, fixture.secondary)
 						}
 					}
 					assertSensitivePreviewHasNoReusableBytes(t, item, fixture.secret, fixture.secondarySecret)
@@ -72,9 +63,8 @@ func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	}
 }
 
-// sensitivePreviewRegistry enables the three opt-in sensitive detectors while
-// applying one project preview allowlist to the complete default rule family.
-func sensitivePreviewRegistry(t *testing.T, allowlist []string) Registry {
+// sensitivePreviewRegistry enables the three opt-in sensitive detectors across the complete default rule family.
+func sensitivePreviewRegistry(t *testing.T) Registry {
 	t.Helper()
 	registry, err := DefaultsConfigured(Config{
 		Enabled: map[string]bool{
@@ -82,7 +72,6 @@ func sensitivePreviewRegistry(t *testing.T, allowlist []string) Registry {
 			"sensitive-data.pii-pattern":         true,
 			"sensitive-data.phi-pattern":         true,
 		},
-		SensitiveDataPreviewAllowlist: allowlist,
 	})
 	if err != nil {
 		t.Fatal(err)

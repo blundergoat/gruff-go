@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"fmt"
 	"go/ast"
 	stdparser "go/parser"
 	"go/scanner"
@@ -41,6 +42,8 @@ type Function struct {
 
 // Diagnostic reports a parser failure or read error attached to a specific file.
 type Diagnostic struct {
+	// Type identifies a stable diagnostic contract such as bounded-deep-scan.
+	Type string `json:"diagnosticType,omitempty"`
 	// File is the repo-relative path of the source file the diagnostic targets.
 	File string `json:"file,omitempty"`
 	// Line is the 1-based line where the failure was reported; zero when unknown.
@@ -49,10 +52,25 @@ type Diagnostic struct {
 	Column int `json:"column,omitempty"`
 	// Message is the parser or I/O error text.
 	Message string `json:"message"`
+	// NonFatal keeps an informational degradation from invalidating the run.
+	NonFatal bool `json:"-"`
+}
+
+// DeepScanBudget controls whether expensive Go AST construction runs for one source file.
+type DeepScanBudget struct {
+	Enabled  bool
+	MaxLines int
+	MaxBytes int
+	Override string
 }
 
 // Parse converts discovered source files into Units and parser diagnostics.
 func Parse(files []source.File) ([]Unit, []Diagnostic) {
+	return ParseWithBudget(files, DeepScanBudget{})
+}
+
+// ParseWithBudget parses files while degrading over-budget Go sources to raw-text units.
+func ParseWithBudget(files []source.File, budget DeepScanBudget) ([]Unit, []Diagnostic) {
 	units := make([]Unit, 0, len(files))
 	diagnostics := []Diagnostic{}
 	fset := token.NewFileSet()
@@ -73,6 +91,17 @@ func Parse(files []source.File) ([]Unit, []Diagnostic) {
 			LineCount: countLines(sourceText),
 		}
 		if file.Type != source.FileTypeGo {
+			units = append(units, unit)
+			continue
+		}
+		if budget.Enabled && (unit.LineCount > budget.MaxLines || len(data) > budget.MaxBytes) {
+			diagnostics = append(diagnostics, Diagnostic{
+				Type:     "bounded-deep-scan",
+				File:     file.Path,
+				Line:     1,
+				NonFatal: true,
+				Message:  fmt.Sprintf("path=%s; lines=%d; bytes=%d; maxLines=%d; maxBytes=%d; override=%s. Text-level rules (size, sensitive-data, config) still ran; masking, block parsing, AST walking, and other deep script analysis were skipped.", file.Path, unit.LineCount, len(data), budget.MaxLines, budget.MaxBytes, budget.Override),
+			})
 			units = append(units, unit)
 			continue
 		}

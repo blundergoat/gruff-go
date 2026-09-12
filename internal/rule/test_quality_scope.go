@@ -15,11 +15,22 @@ import (
 // knownAssertionPackages lists selector-style assertion libraries whose package
 // qualifiers may stand in for an Assert*/Require*/Expect*/Must*/Check* prefix.
 var knownAssertionPackages = map[string]bool{
+	"github.com/onsi/ginkgo/v2":           true,
 	"github.com/onsi/gomega":              true,
 	"github.com/stretchr/testify/assert":  true,
 	"github.com/stretchr/testify/require": true,
 	"gotest.tools/v3/assert":              true,
 	"gotest.tools/v3/assert/cmp":          true,
+}
+
+// ginkgoSuiteEntrypoints hand the whole test over to the Ginkgo runner, which
+// owns failure from that point on. A Go test function that calls one of these is
+// a suite bootstrap, not an assertion-free test: its assertions live in specs
+// this parser-only rule never sees, so treating it as unable to fail reported
+// every Ginkgo suite in a repository.
+var ginkgoSuiteEntrypoints = map[string]bool{
+	"RunSpecs":            true,
+	"RegisterFailHandler": true,
 }
 
 // isRunnableTestFunction reports whether fn has a signature the Go test runner
@@ -169,7 +180,14 @@ func assertionPackageNames(file *ast.File) map[string]bool {
 		name := path.Base(importPath)
 		if imported.Name != nil {
 			switch imported.Name.Name {
-			case ".", "_":
+			// A blank import runs init and exposes no name, so nothing can qualify a call.
+			case "_":
+				continue
+			// A dot import puts the library's names in file scope, so its assertions are
+			// called bare. Discarding it made every gomega-style `Expect(x).To(...)` and
+			// every dot-imported Ginkgo suite look assertion-free.
+			case ".":
+				names[dotImportedAssertions] = true
 				continue
 			default:
 				name = imported.Name.Name
@@ -177,7 +195,95 @@ func assertionPackageNames(file *ast.File) map[string]bool {
 		}
 		names[name] = true
 	}
+	// A file whose own package clause names an assertion library is inside that library.
+	// Its tests call the package's assertions without a qualifier, because they are the
+	// package: the single largest false-positive shape measured for this rule, 98 findings,
+	// was testify/assert's own test file calling Equal(t, ...) bare.
+	if file.Name != nil && assertionPackageBaseNames[file.Name.Name] {
+		names[insideAssertionPackage] = true
+	}
 	return names
+}
+
+// assertionPackageBaseNames is the final path segment of every known assertion package,
+// which is the identifier such a package declares and the name its own files compile under.
+var assertionPackageBaseNames = buildAssertionPackageBaseNames()
+
+// buildAssertionPackageBaseNames derives the base names once, so the two lists cannot drift.
+func buildAssertionPackageBaseNames() map[string]bool {
+	names := map[string]bool{}
+	for importPath := range knownAssertionPackages {
+		names[path.Base(importPath)] = true
+	}
+	return names
+}
+
+// dotImportedAssertions is the sentinel name recorded when a test file dot-imports
+// an assertion library. There is no qualifier to match on, so the file's bare calls
+// are judged by whether they carry a testing receiver instead.
+const dotImportedAssertions = "."
+
+// insideAssertionPackage is the sentinel recorded when the file under analysis is part
+// of an assertion library rather than a consumer of one.
+const insideAssertionPackage = "\x00self"
+
+// isGinkgoSuiteEntrypoint reports whether the call hands the test to Ginkgo.
+//
+// `RunSpecs(t, "suite")` and `RegisterFailHandler(Fail)` are how a Go test starts a
+// spec suite. The assertions then live in specs a parser-only rule cannot follow, so
+// the entrypoint itself is the evidence that the test can fail.
+func isGinkgoSuiteEntrypoint(call *ast.CallExpr, assertionPackages map[string]bool) bool {
+	if !ginkgoSuiteEntrypoints[callFunctionName(call)] {
+		return false
+	}
+	// Qualified is the ordinary spelling; a dot import makes it bare, and either way the
+	// file must actually import an assertion library for the name to mean this.
+	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+		receiver, isIdent := selector.X.(*ast.Ident)
+		return isIdent && assertionPackages[receiver.Name]
+	}
+	_, bare := call.Fun.(*ast.Ident)
+	return bare && assertionPackages[dotImportedAssertions]
+}
+
+// isDelegatedSubtest reports whether the call is `t.Run(name, fn)` where fn is an
+// expression rather than a literal body.
+//
+// A table test that writes `t.Run(tc.name, tc.test)` or `t.Run(name, suite.check)`
+// has handed the assertions to a function this walk cannot enter. The literal form is
+// already walked as a FuncLit, so this covers only the non-literal argument, which the
+// rule previously read as a subtest that asserts nothing.
+func isDelegatedSubtest(call *ast.CallExpr, receivers map[string]bool) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Run" || len(call.Args) != 2 {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	if !ok || !receivers[receiver.Name] {
+		return false
+	}
+	_, isLiteral := call.Args[1].(*ast.FuncLit)
+	return !isLiteral
+}
+
+// isInPackageAssertionCall reports whether a bare call inside an assertion library's
+// own package is one of that library's assertions.
+//
+// Inside `testify/assert` the package's own tests call `Equal(t, a, b)` with no
+// qualifier, because the qualifier is the package they are in. The selector check
+// cannot see that, which is why the largest single false-positive shape measured for
+// this rule was 98 findings inside testify's own test file. Requiring the call to pass
+// a testing receiver keeps ordinary in-package helpers out.
+func isInPackageAssertionCall(call *ast.CallExpr, receivers map[string]bool, assertionPackages map[string]bool) bool {
+	if _, bare := call.Fun.(*ast.Ident); !bare {
+		return false
+	}
+	// Only inside the library itself: elsewhere a bare call is ordinary project code, and
+	// crediting it would suppress the findings this rule exists to make.
+	if !assertionPackages[insideAssertionPackage] {
+		return false
+	}
+	return callPassesTestingReceiver(call, receivers)
 }
 
 // blockHasFailureCall walks one lexical function body with receiver names scoped
@@ -212,7 +318,10 @@ func blockHasFailureCallWithHelpers(body *ast.BlockStmt, testingPackages, assert
 		found = isReceiverFailureCall(call, localReceivers) ||
 			isAssertionHelperCall(call, localReceivers, assertionPackages) ||
 			isCapturedAssertionHelperCall(call, helperObjects) ||
-			isLocalFailureHelperCall(call, localReceivers, failureHelpers)
+			isLocalFailureHelperCall(call, localReceivers, failureHelpers) ||
+			isGinkgoSuiteEntrypoint(call, assertionPackages) ||
+			isDelegatedSubtest(call, localReceivers) ||
+			isInPackageAssertionCall(call, localReceivers, assertionPackages)
 		return !found
 	})
 	return found

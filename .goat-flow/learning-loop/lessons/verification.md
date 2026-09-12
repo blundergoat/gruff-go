@@ -1,6 +1,6 @@
 ---
 category: verification
-last_reviewed: 2026-08-16
+last_reviewed: 2026-08-22
 ---
 
 # Verification Lessons
@@ -118,3 +118,12 @@ findings produced, a non-empty artefact — before comparing the two sides. The 
 "same?", never "same, and meaningful?". Scratch fixtures under `/tmp` are a standing trap for any
 scanner with a default ignore list; either place fixtures elsewhere or pass the port's
 `--include-ignored` equivalent, and check the scanned-file count either way.
+
+The same root cause recurred in the shipped Go performance harness on 2026-08-22. The hyperfine
+matrix entered `scripts/.perf-corpus/medium` and analysed `.`, but `peak_rss_kb` passed the hidden
+corpus path from the repository root. Gruff pruned that explicit path, produced an empty-analysis
+diagnostic with zero scanned files, and `/usr/bin/time` still returned a believable RSS value.
+The `--baseline-update` mode in `scripts/test-performance.sh` exposed the mismatch only because `pipefail`
+propagated analyser exit 2. The repair runs the RSS command from inside the same corpus, accepts only
+the expected success/findings exits, and rejects setup/empty-analysis exits. Performance cells need
+matching working directories and operands as well as matching labels.

@@ -21,18 +21,28 @@ gruff-go analyse --no-config .
 
 ```yaml
 # .gruff-go.yaml
-minimumSeverity:    # per-command exit-code threshold; see ADR-010
+schemaVersion: gruff-go.config.v0.1   # mandatory; a config without it exits 2
+
+deepScanBudget:       # above either bound, keep text-level rules and omit AST-backed deep analysis
+  enabled: true
+  maxLines: 20000
+  maxBytes: 2000000
+
+failOn:             # per-command exit-code gate; see ADR-010
   analyse: advisory # CI gating command - default `advisory` (fail on anything)
   summary: advisory # CI gating command - default `advisory`
   report: none      # artifact generator - default `none` (never fail on findings)
   dashboard: none   # artifact generator - default `none`
+
+minimumSeverity: advisory   # display floor: lowest severity a report shows; never gates the exit code
 
 paths:
   ignore: []          # extra path prefixes/globs to skip; merged with built-in ignores
 
 allowlists:
   acceptedAbbreviations: []   # identifiers naming rules treat as words (e.g. ID, HTTP); case-insensitive
-  secretPreviews: []          # authorise fixed category/scheme markers; never payload bytes
+
+sensitiveExclusions: []       # suppress one sensitive-data rule in one file, with a written reason
 
 selection:
   rules: []           # if non-empty, only these rule IDs run (allowlist)
@@ -54,12 +64,14 @@ rules:
 
 ## Section reference
 
-### `minimumSeverity`
+### `failOn`
 
-Per-command exit-code threshold. Each key is a `gruff-go` subcommand that gates exit codes (`analyse`, `summary`, `report`, `dashboard`); each value is one of `advisory | warning | error | none`. `none` means "report findings, never exit 1" - useful for artifact-generation commands (`report`, `dashboard`) where the consumer wants the HTML/JSON output regardless of whether anything tripped a gate.
+Per-command exit-code gate. Each key is a `gruff-go` subcommand that gates exit codes (`analyse`, `summary`, `report`, `dashboard`); each value is one of `advisory | warning | error | none`. `none` means "report findings, never exit 1" - useful for artifact-generation commands (`report`, `dashboard`) where the consumer wants the HTML/JSON output regardless of whether anything tripped a gate.
+
+Across the Gruff family only `analyse` and `report` are accepted by every port, so a polyglot repository that shares one `failOn` block should write only those two keys. `summary` is accepted by gruff-go and gruff-ts, and `dashboard` by gruff-go, gruff-php and gruff-py; each other port refuses the key with exit 2 rather than ignoring it, because it ships no gate for that command.
 
 ```yaml
-minimumSeverity:
+failOn:
   analyse: warning      # default `advisory`: fail on anything
   summary: warning      # default `advisory`
   report: none          # default `none`: never fail on findings
@@ -69,7 +81,7 @@ minimumSeverity:
 **Precedence rule** (locked in [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md)):
 
 ```
-CLI flag (--min-severity / --fail-on)  >  minimumSeverity.<cmd>  >  binary default
+CLI flag (--fail-on)  >  failOn.<cmd>  >  binary default
 ```
 
 The binary defaults (when neither the CLI flag nor the config block supply a value) are:
@@ -85,9 +97,19 @@ The block is additive: omitting any key falls back to the binary default. Omitti
 
 `none` is the canonical off-switch value. Legacy 5-bucket names (`medium`, `low`, `critical`, `high`, `info`) and alternative off-switch names (`never`, `off`, `disabled`) are rejected at load time per the no-legacy-compat policy.
 
+### `minimumSeverity`
+
+The display floor: the lowest severity a rendered report shows. It takes one severity - `advisory`, `warning`, or `error` - and never changes an exit code, a score, or a baseline. Hidden findings are still counted, and `analyse --format json` reports the total under `displayFilter.hiddenFindings`. `none` is not a value here; disable a gate with `failOn.<cmd>: none`.
+
+```yaml
+minimumSeverity: warning   # keep advisory findings out of the rendered report
+```
+
+Through `0.5` this key carried the per-command exit gate as a map. That shape now exits `2` naming `failOn` as the key that gates the exit code; `gruff-go migrate-config` rewrites an older config.
+
 ### `paths.ignore`
 
-A list of additional path prefixes or globs to skip during discovery. `gruff-go` already skips VCS directories (`.git/`), non-application metadata directories (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`), dependency caches (`vendor/`, `node_modules/`), and generated Go files whose leading comments contain both `generated` and `DO NOT EDIT`. The entries you add are layered on top.
+A list of additional path prefixes or globs to skip during discovery. VCS internals (`.git/`, `.hg/`, `.svn/`) are always blocked. When no `.gitignore` governs a candidate, the family fallback skips `.fleet/`, `.idea/`, `.vscode/`, `build/`, `coverage/`, `dist/`, `node_modules/`, and `vendor/` at any depth; any `.gitignore` from the scan root through the candidate's parent takes ownership of those non-VCS names. Committed control metadata such as `.agents/`, `.claude/`, `.codex/`, `.github/`, and `.goat-flow/` remains scannable unless Git or this config excludes it. Explicit supported files bypass Git and fallback exclusions, but never VCS internals or `paths.ignore`. Generated Go files whose leading comments contain both `generated` and `DO NOT EDIT` retain their existing generated-file handling.
 
 ```yaml
 paths:
@@ -101,9 +123,9 @@ Patterns are repository-relative slash paths; a leading `./` is normalised away.
 
 Config validation rejects empty or escaping patterns, POSIX-absolute paths, Windows drive-qualified or backslash-containing paths, malformed glob classes, and `**` anywhere except one trailing recursive suffix. General recursive-glob forms such as `**/*.go` and `pkg/**/generated.go` are not accepted.
 
-`paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and built-in default skips only; it never overrides config `paths.ignore`.
+`paths.ignore` is authoritative for every analyse shape: directory walks, explicit file operands, and changed-region scans such as `--diff`, `--since`, and `--changed-ranges`. `--include-ignored` opts into gitignored and non-VCS fallback skips only; it never overrides config `paths.ignore` or the VCS-internals boundary.
 
-In `analyse --format json`, config-ignored paths appear as bare strings under `paths.ignoredPaths` and as detailed objects under `paths.skipped[]` with `reason: "config-ignore"`, `source: "config"`, and the matching `pattern`. The bare list is nested under `paths` in gruff-go to match the Rust and TypeScript ports while preserving the detailed skip objects for existing consumers.
+In `analyse --format json`, config-ignored paths appear as bare strings under `paths.ignoredPaths` and as detailed objects under `paths.details` with `reason: "config-ignore"`, `source: "config"`, and the matching `pattern`. Both live under `paths`, the shape every port shares; `paths.ignoredPaths` is the ordered path projection of the detail rows.
 
 ### `allowlists.acceptedAbbreviations`
 
@@ -122,34 +144,84 @@ allowlists:
 
 Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. The validator rejects only blank entries; mixed-case values load successfully and are normalised to lowercase before matching. The same key name appears in sibling gruff ports but is consumed by different rules - see `.goat-flow/learning-loop/footguns/setup.md` for the cross-port consumer matrix.
 
-### `allowlists.secretPreviews`
+### Sensitive-data markers are not configurable
 
-Path globs that authorise additional non-secret structure in sensitive-data
-preview metadata. Authorisation is deny-by-default: an empty list and a path
-that does not match both emit the constant `[redacted]`. A matching path may
-emit only a fixed category marker (for example `[redacted:aws-access-key]`,
-`[redacted:private-key]`, `[redacted:email]`, or `[redacted:ssn]`) or a
-connection marker containing only its already-public scheme (for example
-`[redacted:connection-string:postgres]`). Generic and entropy findings stay
-`[redacted]` even on matching paths.
+A sensitive-data finding carries a marker, never a payload: the bare `[redacted]`, a fixed category such as
+`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:email]` or `[redacted:ssn]`, or a connection
+marker naming only its already-public scheme (`[redacted:connection-string:postgres]`). Generic-assignment and
+entropy findings are always `[redacted]`, because they classify nothing the user can act on.
 
-No state exposes provider payload characters, JWT segments, private-key body or
-header bytes, connection user/password/host/path/query, or PII/PHI identifier
-characters. Primary and secondary GCP previews are authorised independently by
-the same path decision and render as `[redacted:gcp-service-account]` plus
-`[redacted:private-key]` only on a match.
+gruff-go emits the most specific marker its detector already classified, on every path and under every
+configuration. FAMILY-CONTRACT.md section 5 ratifies that: every marker is zero-payload by construction, so gating
+one behind configuration bought no confidentiality. The 0.5 key `allowlists.secretPreviews` is therefore removed,
+and a configuration carrying it — even as an empty list — is refused with that explanation rather than silently
+ignored. `gruff-go migrate-config` deletes it.
 
-This is an output-control allowlist only: it does not suppress findings, change
-scoring, or mark sample secrets as safe. Use `selection.excludeRules`,
-`paths.ignore`, or an inline suppression when a finding should intentionally be
-hidden.
+No marker exposes provider payload characters, JWT segments, private-key bytes, connection user, password, host,
+path or query, or PII/PHI identifier characters. GCP primary and secondary fields are marked independently.
+
+### `sensitiveExclusions`
+
+The only way to suppress a sensitive-data finding. It is a separate top-level
+section rather than an option on `selection` or `rules` so the ban on matching a
+finding's message or value is structural: there is no key to add it back.
 
 ```yaml
-allowlists:
-  secretPreviews:
-    - "docs/**"
-    - "internal/rule/testdata/**"
+sensitiveExclusions:
+  - rule: sensitive-data.aws-access-key    # exactly one rule ID, sensitive-data pillar only
+    path: internal/rule/testdata/aws.env   # exactly one project-relative path
+    symbol: Fixtures.AWSSample             # optional; narrows the scope further
+    reason: Synthetic key used by the loader fixture; not a live credential.
 ```
+
+**Entries are written by hand.** No reported marker, preview, remediation, or
+matched value is ever converted into an exclusion for you, and none is ever
+copied into one. `reason` and `path` come from your configuration, so they are
+the only free text an exclusion publishes.
+
+**Scope.** An entry suppresses every occurrence of that one rule in that one
+file. The same rule in another file keeps reporting, and another rule in the
+same file keeps reporting. Adding `symbol` narrows the scope to findings
+carrying that exact symbol; no sensitive-data rule stamps a symbol today, so an
+entry carrying one correctly matches nothing.
+
+**An entry that matches nothing is not an error.** It reports `suppressed: 0`,
+so fixing the underlying problem never breaks your build.
+
+**Every entry is counted.** `analyse --format json` publishes one row per entry
+under `suppressions`, and both text surfaces that apply the exclusions -
+`analyse` and `summary` - print the same total:
+
+```json
+{"index": 0, "rule": "sensitive-data.aws-access-key", "paths": ["internal/rule/testdata/aws.env"], "reason": "Synthetic key used by the loader fixture; not a live credential.", "suppressed": 2}
+```
+
+```text
+suppressed findings: 2 via sensitiveExclusions[0] sensitive-data.aws-access-key: 2 (Synthetic key used by the loader fixture; not a live credential.)
+```
+
+A suppressed finding leaves the finding list, the counts, the score, and the
+exit code, exactly like the baseline channel - but it is never invisible,
+because the audit row survives.
+
+`summary --format json` carries the same `suppressions` audit array as
+`analyse`, because the `gruff.summary.v3` envelope is the analysis document with
+only its top-level `findings` array removed.
+
+Each of the following is a fatal `config:` diagnostic naming the entry index and
+the offending key, and exits `2`:
+
+- `rule` missing, empty, or carrying a wildcard, glob, or regular-expression metacharacter.
+- `rule` naming a pillar or selector (`sensitive-data`, `sensitive-data.*`) rather than one rule ID.
+- `rule` naming an unknown rule ID.
+- `rule` naming a known rule ID outside the sensitive-data pillar.
+- `path` missing, empty, absolute, containing `..`, or containing a glob metacharacter.
+- Any key outside `rule`, `path`, `symbol`, and `reason` - in particular `message_contains`, `messageContains`, `value`, and `preview`.
+- `reason` missing, empty, or whitespace-only.
+- A second entry repeating an earlier entry's `rule`, `path`, and `symbol`, because two entries claiming one scope would split the audit count arbitrarily.
+
+Sensitive-data markers are unrelated to suppression: they control display text
+only, and nothing configures them.
 
 ### `selection`
 
@@ -163,7 +235,7 @@ selection:
   excludePillars: ["test-quality"]    # disable these pillars
 ```
 
-The CLI flags `--include-rules`, `--exclude-rules`, `--include-pillars`, and `--exclude-pillars` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.
+The CLI flags `--show-rule`, `--hide-rule`, `--show-pillar`, and `--hide-pillar` are different: they are display-only filters. They hide rendered findings after analysis, but score and exit code still use the full unfiltered finding set.
 
 ### `rules.<rule-id>`
 
@@ -238,7 +310,7 @@ If a rule ID doesn't exist, the loader rejects the file with `config: unknown ru
 
 ## Strict validation
 
-The built-in parser accepts the mapping and scalar-list shapes used by the schema above; mapping-valued list items are outside this intentionally small YAML subset. Mapping keys must be unique within their own scope at every nesting depth. The same key may appear in separate mappings, but a repeated key in one mapping fails instead of silently replacing its earlier value.
+The built-in parser accepts the mapping and scalar-list shapes used by the schema above, plus the dash-introduced mapping items `sensitiveExclusions` needs; anything richer is outside this intentionally small YAML subset. A quoted list item stays a scalar even when it contains a colon, so existing string lists are unaffected. Mapping keys must be unique within their own scope at every nesting depth. The same key may appear in separate mappings, but a repeated key in one mapping fails instead of silently replacing its earlier value.
 
 Duplicate-key diagnostics report only the parsed key and the original 1-based lines of its first and repeated definitions. Blank and comment-only lines still count toward those source line numbers. Neither duplicate diagnostics nor structural indentation/list/key errors echo the YAML value or raw source line, so a malformed secret-bearing configuration does not copy that value into stderr or hook output.
 
@@ -253,6 +325,7 @@ The loader rejects:
 - A rule config that combines `threshold` and `thresholds`.
 - Severity values outside `advisory / warning / error`. The pre-v0.2.0 names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected with `unknown severity "<name>"`.
 - Blank entries in `allowlists.acceptedAbbreviations`. Case is no longer enforced - the validator only rejects empty / whitespace-only entries.
+- Any `sensitiveExclusions` entry that breaks the rule, path, key-set, rationale, or uniqueness contract listed under that section above.
 
 Any of these failures emits a `config:` diagnostic and exits the scan with code `2`. Treat config errors as build breaks, not silent warnings.
 

@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-08-08
+last_reviewed: 2026-08-22
 ---
 
 # Setup Footguns
@@ -40,7 +40,7 @@ Evidence:
 
 The field sits next to `allowlists.acceptedAbbreviations`, which IS a suppression-style allowlist for `naming.acronym-case`. The visual parallel plus the name `secretPreviews` (plural noun, "the previews we accept") makes adopters reach for it to silence noisy sensitive-data findings in test fixtures or documented dummies. It does not do that. A matching file still produces the same finding and may show only a marker such as `[redacted:aws-access-key]`; empty/nonmatching policy shows `[redacted]`. No state reveals payload characters.
 
-To actually suppress sensitive-data findings on a path the available levers are:
+To actually suppress sensitive-data findings the ratified lever is the top-level `sensitiveExclusions` section (`internal/config/validate.go`, search: `func validateSensitiveExclusions`), which names one rule, one project-relative path, and a required reason, and publishes a counted audit row. The older path-level levers still exist and still lose coverage:
 - `paths.ignore` glob, which skips discovery entirely (loses all rule coverage on that path).
 - Inline `#nosec` or `//nolint:gosec` / `//nolint:all` on the matching source line - the secret-scan helpers in `internal/rule/sensitive.go` (search: `hasSecretSuppressionAnnotation`) honour both forms.
 
@@ -157,6 +157,67 @@ Evidence:
 Following the suggestion would document vendored framework internals as gruff-go surfaces, which `CLAUDE.md` → Workspace Boundary forbids and which is simply untrue of this repo.
 
 How to avoid: when `--check-content` fails, split findings by rule before fixing any of them. Confirm a drift warning names a surface that exists in this checkout — resolve the cited path on disk first. If it does not resolve, it is framework self-audit leakage: report it, leave the docs correct, and do not count the audit's exit 1 as a project defect. The other content rules (`stale-semantic-anchor`, `skill-playbook-inventory-drift`) do describe real target-project drift and should be fixed normally.
+
+## Footgun: the hand-rolled YAML parser and the strict JSON decoder both fight a list-of-mappings config section
+
+**Status:** active | **Created:** 2026-08-22 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** Before adding any config section whose entries are objects rather than scalars, budget for two parser changes in gruff-go, not one - and expect the diagnostic to lose the entry index unless the entry type decodes itself.
+**Trigger phase:** SCOPE
+
+hallucination-risk: high (both defects are silent in the shape a reviewer checks first - the section reads fine as YAML, and the strict decoder does reject the bad key, so "it works" survives a shallow read while the entry index the contract requires is simply missing)
+
+`.gruff-go.yaml` is parsed by a deliberately small in-tree parser, not a YAML
+library, and every config value is then decoded through one strict JSON decoder.
+Adding the ratified `sensitiveExclusions` section (FAMILY-CONTRACT.md,
+search: `### 13a. Sensitive exclusions`) hit both layers.
+
+Evidence:
+
+- `internal/config/yaml.go` (search: `func parseYAMLList`) accepted only
+  `- scalar` items before this change, so a `- rule: x` item parsed as the
+  string `"rule: x"` and the section decoded into a list of strings, failing
+  with a type error that named neither the key nor the entry. The repair is
+  `yamlListItemOpensMap` plus `parseYAMLListItemMap`, which re-parse the dash
+  line and its deeper-indented siblings as one mapping. A quoted item stays a
+  scalar, which is what keeps `paths.ignore` and the allowlists unchanged.
+- `internal/config/config.go` (search: `func decodeConfigUnvalidated`) sets
+  `DisallowUnknownFields`, so a `message_contains` key inside an entry *is*
+  rejected - but the error reads `json: unknown field "message_contains"` with
+  no entry index, and section 13a requires the diagnostic to name both. The
+  repair is `SensitiveExclusion.UnmarshalJSON` (`internal/config/config.go`,
+  search: `func (entry *SensitiveExclusion) UnmarshalJSON`), which collects
+  offending keys into `UnsupportedKeys` so `validateOneSensitiveExclusion` can
+  report `sensitiveExclusions[1] has unsupported key "value"`.
+- `internal/cli/hook_base.go` (search: `type hookBaseScan`) is the third-order
+  cost: threading one more scan input through the hook's git-base resolver
+  pushed it to six parameters, and `go run ./cmd/gruff-go analyse .` dropped
+  from zero findings to one `size.parameter-count` warning. Grouping the three
+  scan inputs restored grade A. Measured 2026-08-22.
+
+How to avoid:
+
+- Treat "a new config section whose entries are objects" as a parser change plus
+  a decoder change plus a dogfood re-check, never as a schema addition.
+- Do not rely on `DisallowUnknownFields` when a contract requires a positional
+  diagnostic; give the entry type its own `UnmarshalJSON`.
+- Re-run the dogfood scan after threading a new value through the CLI, because
+  the parameter-count rule fires on the plumbing, not on the feature.
+
+**Portability question this raises for the family.** gruff-go and gruff-ts both
+hand-roll their configuration parsers (gruff-ts in `src/config-parse.ts`), and
+gruff-ts must add `sensitiveExclusions` with no rule-exclusion section to build
+on and no runtime dependency permitted. The question the family has not answered
+is whether each hand-rolled parser grows list-of-mapping support independently -
+five parsers, five subtly different accepted subsets, five different diagnostics
+for one malformed entry - or whether section 13a's entry shape should be
+constrained to what every port's existing parser already reads. gruff-go chose
+to grow the parser and to keep the growth narrow, but nothing in the contract
+pins the accepted subset, so two ports can both conform to 13a while disagreeing
+on whether a given file is valid at all. The same gap covers diagnostic wording:
+13a mandates that the entry index and offending key appear, not how, so
+cross-port conformance can only assert substrings today. M03 should decide
+whether the contract owns the parseable subset and the diagnostic shape, or only
+the semantics.
 
 ## Resolved Entries
 

@@ -44,14 +44,14 @@ func TestAnalyseChangedRangesNoBaselineSuppressedMath(t *testing.T) {
 	if len(full.Findings) < 2 {
 		t.Fatalf("full scan findings = %#v, want at least two findings for scoping math", full.Findings)
 	}
-	if scoped.SuppressedCount == nil {
+	if scoped.Summary.SuppressedFindings == nil {
 		t.Fatalf("scoped report missing suppressedCount: %#v", scoped)
 	}
 	if len(scoped.Findings) == 0 || len(scoped.Findings) >= len(full.Findings) {
 		t.Fatalf("scoped findings = %#v, full findings = %#v; want a strict subset", scoped.Findings, full.Findings)
 	}
-	if len(scoped.Findings)+*scoped.SuppressedCount != len(full.Findings) {
-		t.Fatalf("scoped findings %d + suppressedCount %d != full count %d", len(scoped.Findings), *scoped.SuppressedCount, len(full.Findings))
+	if len(scoped.Findings)+*scoped.Summary.SuppressedFindings != len(full.Findings) {
+		t.Fatalf("scoped findings %d + suppressedCount %d != full count %d", len(scoped.Findings), *scoped.Summary.SuppressedFindings, len(full.Findings))
 	}
 	if !strings.Contains(scoped.Diff.Caveat, "changed-region scoped") {
 		t.Fatalf("diff caveat = %q, want changed-region scoped warning", scoped.Diff.Caveat)

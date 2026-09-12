@@ -18,6 +18,8 @@ type DisplayFilter struct {
 	IncludePillars []finding.Pillar
 	// ExcludePillars hides findings whose Pillar is in this deny list.
 	ExcludePillars []finding.Pillar
+	// MinimumSeverity hides findings below this severity. Empty means the report shows every severity it found.
+	MinimumSeverity finding.Severity
 }
 
 // Empty reports whether the filter has no include or exclude selections.
@@ -25,7 +27,8 @@ func (filter DisplayFilter) Empty() bool {
 	return len(filter.IncludeRules) == 0 &&
 		len(filter.ExcludeRules) == 0 &&
 		len(filter.IncludePillars) == 0 &&
-		len(filter.ExcludePillars) == 0
+		len(filter.ExcludePillars) == 0 &&
+		filter.MinimumSeverity == ""
 }
 
 // ApplyDisplayFilter hides findings that do not match the supplied filter.
@@ -74,7 +77,25 @@ func displayFilterKeeps(item finding.Finding, filter DisplayFilter) bool {
 	if slices.Contains(filter.ExcludePillars, item.Pillar) {
 		return false
 	}
+	// The display floor hides quieter findings from the report; the exit code was already decided without it.
+	if filter.MinimumSeverity != "" && displaySeverityRank(item.Severity) < displaySeverityRank(filter.MinimumSeverity) {
+		return false
+	}
 	return true
+}
+
+// displaySeverityRank orders the three severities so a floor can be compared against a finding.
+//
+// An unrecognised severity ranks highest, so a finding this port cannot rank is shown rather than quietly hidden.
+func displaySeverityRank(severity finding.Severity) int {
+	switch severity {
+	case finding.SeverityAdvisory:
+		return 0
+	case finding.SeverityWarning:
+		return 1
+	default:
+		return 2
+	}
 }
 
 // sortedStrings returns a copy of values sorted lexicographically.

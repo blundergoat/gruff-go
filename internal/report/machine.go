@@ -14,26 +14,9 @@ import (
 
 // WriteSummaryJSON writes the scan-level JSON contract without the heavier per-finding payload.
 func WriteSummaryJSON(writer io.Writer, report analysis.Report) error {
-	payload := struct {
-		SchemaVersion string                        `json:"schemaVersion"`
-		Tool          analysis.Tool                 `json:"tool"`
-		Run           analysis.RunMetadata          `json:"run"`
-		Summary       analysis.Summary              `json:"summary"`
-		Baseline      analysis.BaselineSummary      `json:"baseline"`
-		Diff          analysis.DiffSummary          `json:"diff"`
-		DisplayFilter analysis.DisplayFilterSummary `json:"displayFilter"`
-		Score         any                           `json:"score"`
-		Diagnostics   []analysis.Diagnostic         `json:"diagnostics"`
-	}{
-		SchemaVersion: report.SchemaVersion,
-		Tool:          report.Tool,
-		Run:           report.Run,
-		Summary:       report.Summary,
-		Baseline:      report.Baseline,
-		Diff:          report.Diff,
-		DisplayFilter: report.DisplayFilter,
-		Score:         report.Score,
-		Diagnostics:   report.Diagnostics,
+	payload, err := report.MachineSummary()
+	if err != nil {
+		return err
 	}
 	return WriteJSON(writer, payload)
 }
@@ -49,8 +32,9 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 				SemanticVersion: report.Tool.Version,
 				Rules:           sarifRules(report.Rules),
 			}},
-			Results:    sarifResults(report.Findings, report.Rules, report.Baseline.Applied),
-			Properties: sarifRunPropertiesFromReport(report),
+			Invocations: sarifInvocations(report.Diagnostics),
+			Results:     sarifResults(report.Findings, report.Rules, report.Baseline.Applied),
+			Properties:  sarifRunPropertiesFromReport(report),
 		}},
 	}
 	return WriteJSON(writer, payload)
@@ -58,6 +42,23 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 
 // WriteGitHub writes each finding as a GitHub workflow annotation command on its own line.
 func WriteGitHub(writer io.Writer, report analysis.Report) error {
+	for _, diagnostic := range report.Diagnostics {
+		level := "error"
+		if diagnostic.InvalidatesRun != nil && !*diagnostic.InvalidatesRun {
+			level = "notice"
+		}
+		location := ""
+		if diagnostic.File != "" {
+			line := 1
+			if diagnostic.Location != nil && diagnostic.Location.Line > 0 {
+				line = diagnostic.Location.Line
+			}
+			location = fmt.Sprintf("file=%s,line=%d,", escapeGitHubProperty(diagnostic.File), line)
+		}
+		if _, err := fmt.Fprintf(writer, "::%s %stitle=%s::%s\n", level, location, escapeGitHubProperty(diagnosticLabel(diagnostic)), escapeGitHubMessage(diagnostic.Message)); err != nil {
+			return err
+		}
+	}
 	for _, item := range report.Findings {
 		level := githubLevel(item.Severity)
 		location := githubLocation(item)
@@ -84,10 +85,84 @@ type sarifLog struct {
 type sarifRun struct {
 	// Tool describes the analyser tool that produced the run.
 	Tool sarifTool `json:"tool"`
+	// Invocations carries runtime diagnostics that are not rule findings.
+	Invocations []sarifInvocation `json:"invocations,omitempty"`
 	// Results is the list of per-finding SARIF results emitted by the run.
 	Results []sarifResult `json:"results"`
 	// Properties carries gruff-specific run-level metadata.
 	Properties sarifRunProperties `json:"properties"`
+}
+
+// sarifInvocation records runtime notifications and whether fatal diagnostics occurred.
+type sarifInvocation struct {
+	ExecutionSuccessful        bool                `json:"executionSuccessful"`
+	ToolExecutionNotifications []sarifNotification `json:"toolExecutionNotifications"`
+}
+
+// sarifNotification is one diagnostic emitted during the tool invocation.
+type sarifNotification struct {
+	Descriptor map[string]string `json:"descriptor"`
+	Level      string            `json:"level"`
+	Message    sarifText         `json:"message"`
+	Locations  []sarifLocation   `json:"locations,omitempty"`
+	Properties map[string]any    `json:"properties"`
+}
+
+// diagnosticLabel prefers the stable type while retaining legacy stage labels.
+func diagnosticLabel(diagnostic analysis.Diagnostic) string {
+	if diagnostic.DiagnosticType != "" {
+		return diagnostic.DiagnosticType
+	}
+	return diagnostic.Stage
+}
+
+// hasInvalidatingDiagnostic reports whether any diagnostic retains legacy fatal semantics.
+func hasInvalidatingDiagnostic(diagnostics []analysis.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
+			return true
+		}
+	}
+	return false
+}
+
+// sarifInvocations keeps ordinary diagnostic-free SARIF byte-stable while surfacing runtime notes.
+func sarifInvocations(diagnostics []analysis.Diagnostic) []sarifInvocation {
+	if len(diagnostics) == 0 {
+		return nil
+	}
+	return []sarifInvocation{{
+		ExecutionSuccessful:        !hasInvalidatingDiagnostic(diagnostics),
+		ToolExecutionNotifications: sarifDiagnostics(diagnostics),
+	}}
+}
+
+// sarifDiagnostics projects runtime diagnostics into invocation notifications.
+func sarifDiagnostics(diagnostics []analysis.Diagnostic) []sarifNotification {
+	out := make([]sarifNotification, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		level := "error"
+		invalidatesRun := true
+		if diagnostic.InvalidatesRun != nil && !*diagnostic.InvalidatesRun {
+			level = "note"
+			invalidatesRun = false
+		}
+		notification := sarifNotification{
+			Descriptor: map[string]string{"id": diagnosticLabel(diagnostic)},
+			Level:      level,
+			Message:    sarifText{Text: diagnostic.Message},
+			Properties: map[string]any{"invalidatesRun": invalidatesRun},
+		}
+		if diagnostic.File != "" {
+			var region *sarifRegion
+			if diagnostic.Location != nil && diagnostic.Location.Line > 0 {
+				region = &sarifRegion{StartLine: diagnostic.Location.Line, StartColumn: diagnostic.Location.Column}
+			}
+			notification.Locations = []sarifLocation{{PhysicalLocation: sarifPhysicalLocation{ArtifactLocation: sarifArtifactLocation{URI: sarifURI(diagnostic.File)}, Region: region}}}
+		}
+		out = append(out, notification)
+	}
+	return out
 }
 
 // sarifTool describes the analyser tool block in a SARIF run.
@@ -183,10 +258,10 @@ type sarifResult struct {
 type sarifRunProperties struct {
 	// GruffSchemaVersion echoes the gruff-go report schema version.
 	GruffSchemaVersion string `json:"gruffSchemaVersion"`
-	// Score is the composite quality score for the run.
-	Score int `json:"score"`
-	// Grade is the letter grade derived from Score.
-	Grade string `json:"grade"`
+	// Score is the composite quality score for the run, null when nothing was evaluated.
+	Score *float64 `json:"score"`
+	// Grade is the letter grade derived from Score, null whenever Score is.
+	Grade *string `json:"grade"`
 }
 
 // sarifLocation wraps a physical location reference for a SARIF result.
@@ -248,58 +323,86 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 	return out
 }
 
+// sarifPartialFingerprints projects one finding into the fingerprints GitHub code scanning groups alerts by.
+//
+// gruffFingerprint is the ratified durable identity and nothing else, so an alert survives a line move and a
+// second declaration of one name opens its own alert. A sensitive finding has no identity at all and therefore
+// contributes no fingerprints: publishing one would give a secret a stable name in a system gruff does not control.
+func sarifPartialFingerprints(findingItem finding.Finding) map[string]string {
+	identity, err := findingItem.ComputeBaselineIdentity()
+	if err != nil {
+		// A finding that cannot be named durably is published without a fingerprint rather than with a guessed one.
+		return nil
+	}
+	return map[string]string{"gruffFingerprint": identity}
+}
+
 // sarifResults converts findings into SARIF results, indexing each entry into the driver rule list.
-// When baselineApplied is true, every emitted result is the surviving "new" set
-// (suppressed unchanged findings are not rendered), so each carries baselineState "new".
+// When baselineApplied is true, a result the baseline classified as new carries baselineState "new";
+// a collision or a sensitive finding does not, because neither was freshly introduced.
 func sarifResults(findings []finding.Finding, definitions []rule.Definition, baselineApplied bool) []sarifResult {
 	ruleIndices := map[string]int{}
 	for index, definition := range definitions {
 		ruleIndices[definition.ID] = index
 	}
-	out := make([]sarifResult, 0, len(findings))
+	// A direct API caller can hand over findings the analysis pipeline never ranked; ranking them here by
+	// line keeps every ordinary result fingerprinted rather than silently publishing one without a name.
+	findings = finding.EnsureSymbolOrdinals(findings)
+	results := make([]sarifResult, 0, len(findings))
 	for _, findingItem := range findings {
-		result := sarifResult{
-			RuleID:  findingItem.RuleID,
-			Level:   sarifLevel(findingItem.Severity),
-			Message: sarifText{Text: findingItem.Message},
-			Locations: []sarifLocation{{
-				PhysicalLocation: sarifPhysicalLocation{
-					ArtifactLocation: sarifArtifactLocation{URI: sarifURI(findingItem.File)},
-					Region:           sarifRegionFromFinding(findingItem),
-				},
-			}},
-			PartialFingerprints: map[string]string{"gruffFingerprint": findingItem.Fingerprint},
-			Properties: map[string]any{
-				"confidence":  findingItem.Confidence,
-				"fingerprint": findingItem.Fingerprint,
-				"pillar":      findingItem.Pillar,
-				"severity":    findingItem.Severity,
-			},
-		}
-		if ruleIndex, ok := ruleIndices[findingItem.RuleID]; ok {
-			result.RuleIndex = &ruleIndex
-		}
-		if len(findingItem.SecondaryPillars) > 0 {
-			result.Properties["secondaryPillars"] = findingItem.SecondaryPillars
-		}
-		if findingItem.Symbol != "" {
-			result.Properties["symbol"] = findingItem.Symbol
-		}
-		if findingItem.Remediation != "" {
-			result.Properties["remediation"] = findingItem.Remediation
-		}
-		if len(findingItem.Metadata) > 0 {
-			result.Properties["metadata"] = findingItem.Metadata
-		}
-		if baselineApplied {
-			// Emitted results are the surviving "new" set - suppressed (unchanged)
-			// findings are not rendered as SARIF results (ADR-012), so every result
-			// here is new relative to the baseline. SARIF 2.1.0 §3.27.25.
-			result.BaselineState = "new"
-		}
-		out = append(out, result)
+		results = append(results, sarifResultFor(findingItem, ruleIndices, baselineApplied))
 	}
-	return out
+	return results
+}
+
+// sarifResultFor projects one finding into the SARIF result a code-scanning reader sees.
+func sarifResultFor(findingItem finding.Finding, ruleIndices map[string]int, baselineApplied bool) sarifResult {
+	result := sarifResult{
+		RuleID:  findingItem.RuleID,
+		Level:   sarifLevel(findingItem.Severity),
+		Message: sarifText{Text: findingItem.Message},
+		Locations: []sarifLocation{{
+			PhysicalLocation: sarifPhysicalLocation{
+				ArtifactLocation: sarifArtifactLocation{URI: sarifURI(findingItem.File)},
+				Region:           sarifRegionFromFinding(findingItem),
+			},
+		}},
+		PartialFingerprints: sarifPartialFingerprints(findingItem),
+		Properties:          sarifResultProperties(findingItem),
+	}
+	if ruleIndex, ok := ruleIndices[findingItem.RuleID]; ok {
+		result.RuleIndex = &ruleIndex
+	}
+	// Only a finding the baseline classified as new is new relative to it. A collision and a sensitive
+	// finding are permanently unsuppressable rather than freshly introduced, so neither carries the state;
+	// a reader would otherwise see a long-standing secret as though it had just appeared. SARIF 2.1.0 §3.27.25.
+	if baselineApplied && findingItem.BaselineStatus == "new" {
+		result.BaselineState = "new"
+	}
+	return result
+}
+
+// sarifResultProperties carries the gruff-owned fields a reader needs beside the SARIF-standard ones.
+func sarifResultProperties(findingItem finding.Finding) map[string]any {
+	properties := map[string]any{
+		"confidence":  findingItem.Confidence,
+		"fingerprint": findingItem.Fingerprint,
+		"pillar":      findingItem.Pillar,
+		"severity":    findingItem.Severity,
+	}
+	if len(findingItem.SecondaryPillars) > 0 {
+		properties["secondaryPillars"] = findingItem.SecondaryPillars
+	}
+	if findingItem.Symbol != "" {
+		properties["symbol"] = findingItem.Symbol
+	}
+	if findingItem.Remediation != "" {
+		properties["remediation"] = findingItem.Remediation
+	}
+	if len(findingItem.Metadata) > 0 {
+		properties["metadata"] = findingItem.Metadata
+	}
+	return properties
 }
 
 // sarifRegionFromFinding produces a SARIF region from a finding location, or nil when the line is unknown.

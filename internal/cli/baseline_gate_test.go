@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
 // TestAnalyseBaselineUnchangedOnlyExitsZero verifies reviewed debt remains
@@ -60,7 +58,7 @@ func TestAnalyseBaselineSeverityFloorStillApplies(t *testing.T) {
 	generateUserBaseline(t, "baseline.json", "reviewed.go")
 	writeFile(t, projectRoot, "new.go", complexFixture())
 
-	report, exitCode := runBaselineGateAnalyse(t, "analyse", "--format", "json", "--min-severity", "error", "--baseline", "baseline.json", ".")
+	report, exitCode := runBaselineGateAnalyse(t, "analyse", "--format", "json", "--fail-on", "error", "--baseline", "baseline.json", ".")
 	// A new warning remains visible but cannot cross the configured error floor.
 	if exitCode != 0 || report.Summary.ExitCode != 0 || len(report.Findings) != 1 {
 		t.Fatalf("exit/report/findings = %d/%d/%d, want 0/0/1", exitCode, report.Summary.ExitCode, len(report.Findings))
@@ -107,11 +105,11 @@ func generateUserBaseline(t *testing.T, baselinePath string, sourcePaths ...stri
 
 // runBaselineGateAnalyse executes analyse and decodes its JSON even when a
 // user-facing finding correctly produces exit 1.
-func runBaselineGateAnalyse(t *testing.T, commandArguments ...string) (analysis.Report, int) {
+func runBaselineGateAnalyse(t *testing.T, commandArguments ...string) (machineAnalysisReport, int) {
 	t.Helper()
 	var standardOutput, standardError bytes.Buffer
 	exitCode := Main(commandArguments, &standardOutput, &standardError)
-	var report analysis.Report
+	var report machineAnalysisReport
 	// Valid gate journeys must always return parseable report JSON.
 	if err := json.Unmarshal(standardOutput.Bytes(), &report); err != nil {
 		t.Fatalf("analyse %v JSON: %v\nstdout=%s\nstderr=%s", commandArguments, err, standardOutput.String(), standardError.String())

@@ -55,3 +55,32 @@ func TestParseReportsParseDiagnostics(t *testing.T) {
 		t.Fatalf("diagnostic = %#v, want file and line", diagnostics[0])
 	}
 }
+
+// TestParseWithBudgetDegradesOnlyGoFiles covers independent line/byte bounds and the non-code sentinel.
+func TestParseWithBudgetDegradesOnlyGoFiles(t *testing.T) {
+	root := t.TempDir()
+	goPath := filepath.Join(root, "main.go")
+	textPath := filepath.Join(root, "notes.md")
+	if err := os.WriteFile(goPath, []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(textPath, []byte("ordinary text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := []source.File{
+		{Path: "main.go", AbsPath: goPath, Type: source.FileTypeGo},
+		{Path: "notes.md", AbsPath: textPath, Type: source.FileTypeText},
+	}
+	for _, budget := range []DeepScanBudget{
+		{Enabled: true, MaxLines: 1, MaxBytes: 10_000, Override: "config"},
+		{Enabled: true, MaxLines: 100, MaxBytes: 1, Override: "cli"},
+	} {
+		units, diagnostics := ParseWithBudget(files, budget)
+		if len(units) != 2 || units[0].AST != nil || units[0].Source == "" {
+			t.Fatalf("units = %#v, want raw Go unit without AST plus text unit", units)
+		}
+		if len(diagnostics) != 1 || diagnostics[0].Type != "bounded-deep-scan" || diagnostics[0].File != "main.go" || !diagnostics[0].NonFatal {
+			t.Fatalf("diagnostics = %#v, want one non-fatal Go budget diagnostic", diagnostics)
+		}
+	}
+}

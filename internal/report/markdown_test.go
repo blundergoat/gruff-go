@@ -25,7 +25,7 @@ func TestWriteMarkdownRendersCoreSections(t *testing.T) {
 	required := []string{
 		"# gruff-go report",
 		"Composite: **",
-		"**Schema:** `gruff.analysis.v2`",
+		"**Schema:** `gruff.analysis.v3`",
 		"**Files:** 3 scanned, 0 skipped",
 		"Findings: 5 total · 2 error · 2 warning · 1 advisory",
 		"\n## Pillars\n",

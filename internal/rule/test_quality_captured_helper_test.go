@@ -40,7 +40,7 @@ func TestCapturedCallBeforeInitialization(t *testing.T) {
 	_ = h
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, item := range findings {
 		got[item.Symbol] = true

@@ -9,6 +9,15 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// analyseNoFailurePathUnit runs the package-scoped rule over a single file.
+//
+// The rule became a project rule so it can credit a failure helper declared in a sibling
+// _test.go. Analysing one file is the one-unit case of that, so these tests keep asserting
+// exactly what they asserted before, on the same inputs.
+func analyseNoFailurePathUnit(unit parser.Unit) []finding.Finding {
+	return NoFailurePathTestRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
+}
+
 // TestQualityRulesRequireRunnableSignatures confirms Test-prefixed helpers that
 // do not match go test entrypoint signatures are ignored.
 func TestQualityRulesRequireRunnableSignatures(t *testing.T) {
@@ -34,7 +43,7 @@ func TestNoAssertion(t *testing.T) {
 	if len(emptyFindings) != 1 || emptyFindings[0].Symbol != "TestRealEmpty" {
 		t.Fatalf("empty findings = %#v, want TestRealEmpty only", emptyFindings)
 	}
-	noFailureFindings := (NoFailurePathTestRule{}).AnalyzeUnit(unit, Context{})
+	noFailureFindings := analyseNoFailurePathUnit(unit)
 	if len(noFailureFindings) != 1 || noFailureFindings[0].Symbol != "TestNoAssertion" {
 		t.Fatalf("no-failure findings = %#v, want TestNoAssertion only", noFailureFindings)
 	}
@@ -58,7 +67,7 @@ func TestDotSkip(t *T) {
 	t.Skip("later")
 }
 `)
-	if got := (NoFailurePathTestRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+	if got := analyseNoFailurePathUnit(unit); len(got) != 0 {
 		t.Fatalf("exact skip-only test should be owned by skipped-test, got no-failure findings %#v", got)
 	}
 	if got := (EmptyTestRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 || got[0].Symbol != "TestDotEmpty" {
@@ -89,7 +98,7 @@ func TestImportedRequire(t *testing.T) {
 	req.NoError(t, nil)
 }
 `)
-	if got := (NoFailurePathTestRule{}).AnalyzeUnit(accepted, Context{}); len(got) != 0 {
+	if got := analyseNoFailurePathUnit(accepted); len(got) != 0 {
 		t.Fatalf("known assertion imports should be accepted, got %#v", got)
 	}
 
@@ -107,7 +116,7 @@ func TestFakeAssertStillFires(t *testing.T) {
 	assert.Equal(t, 1, 1)
 }
 `)
-	if got := (NoFailurePathTestRule{}).AnalyzeUnit(rejected, Context{}); len(got) != 1 || got[0].Symbol != "TestFakeAssertStillFires" {
+	if got := analyseNoFailurePathUnit(rejected); len(got) != 1 || got[0].Symbol != "TestFakeAssertStillFires" {
 		t.Fatalf("local assert value should not suppress no-failure-path, got %#v", got)
 	}
 }
@@ -136,7 +145,7 @@ func TestClosureUsesOuterReceiver(t *testing.T) {
 }
 `)
 	got := map[string]bool{}
-	for _, item := range (NoFailurePathTestRule{}).AnalyzeUnit(unit, Context{}) {
+	for _, item := range analyseNoFailurePathUnit(unit) {
 		got[item.Symbol] = true
 	}
 	if len(got) != 1 || !got["TestShadowedReceiverStillFires"] {

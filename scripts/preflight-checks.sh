@@ -526,6 +526,287 @@ check_gruff_summary() {
     printf 'grade %s - %s/100 - %s findings' "${grade:-?}" "${score:-?}" "${findings:-?}"
 }
 
+# ---------------------------------------------------------------------------
+# Documentation drift (M09 task 14). The owned documentation must agree with the
+# live rule catalogue, name only rules that ship, cite only decisions this port
+# carries, and link only to pages that exist. Every extraction fails closed: a
+# document that states no catalogue size or names no rule is a defect, not a pass.
+# ---------------------------------------------------------------------------
+
+# Extract the live catalogue facts once so every drift assertion reads one snapshot.
+docs_drift_facts() {
+    local catalogue_file=$1
+    node - "$catalogue_file" <<'NODE'
+const fs = require("fs");
+
+const listing = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const rules = listing && Array.isArray(listing.rules) ? listing.rules : null;
+if (!rules || rules.length === 0) {
+  throw new Error("false-empty: list-rules published no rules under rules");
+}
+const ids = rules.map((rule) => rule.id).sort();
+const pillars = [...new Set(rules.map((rule) => rule.pillar))].sort();
+const enabled = rules.filter((rule) => rule.defaultEnabled === true).length;
+const pillarCounts = pillars.map((pillar) => pillar + ":" + rules.filter((rule) => rule.pillar === pillar).length);
+console.log("count=" + rules.length);
+console.log("pillars=" + pillars.length);
+console.log("enabled=" + enabled);
+console.log("optin=" + (rules.length - enabled));
+console.log("pillarNames=" + pillars.join("|"));
+console.log("pillarCounts=" + pillarCounts.join("|"));
+console.log("ids=" + ids.join(" "));
+NODE
+}
+
+# Compare every per-pillar table row in the README with the live catalogue. A row that names a count
+# the catalogue does not have, or a table shorter than the catalogue's pillar list, is a stale claim.
+docs_drift_pillar_table() {
+    local readme=$1 facts=$2
+    local backtick='`'
+    local pillar_counts row_pillar row_count live_count table_rows=0 pillars
+    pillars=$(docs_fact "$facts" pillars)
+    pillar_counts="|$(docs_fact "$facts" pillarCounts)|"
+
+    while IFS='|' read -r row_pillar row_count; do
+        table_rows=$((table_rows + 1))
+        live_count=$(sed -n "s/.*|${row_pillar}:\([0-9]*\)|.*/\1/p" <<<"$pillar_counts")
+        if [[ "$live_count" != "$row_count" ]]; then
+            printf 'docs drift: source-revision: README.md pillar table says %s has %s rules but list-rules has %s\n' \
+                "$row_pillar" "$row_count" "${live_count:-no such pillar}"
+            return 1
+        fi
+    done < <(grep -oE "^\| *${backtick}[a-z-]+${backtick} *\| *[0-9]+ *\|$" "$readme" \
+        | sed -E "s/^\| *${backtick}([a-z-]+)${backtick} *\| *([0-9]+) *\|$/\1|\2/")
+
+    if ((table_rows > 0 && table_rows != pillars)); then
+        printf 'docs drift: source-revision: README.md pillar table has %s rows but list-rules has %s pillars\n' \
+            "$table_rows" "$pillars"
+        return 1
+    fi
+
+    printf '%s' "$table_rows"
+}
+
+# Read one fact from the extracted facts block.
+docs_fact() {
+    local facts=$1 key=$2
+    sed -n "s/^${key}=//p" <<<"$facts"
+}
+
+# Capture the live catalogue facts, or the reason the catalogue could not be read.
+docs_drift_live_facts() {
+    local catalogue facts
+    if ! command -v node >/dev/null 2>&1; then
+        printf 'node is required to read list-rules JSON'
+        return "$SKIP_EXIT"
+    fi
+    catalogue=$(mktemp "${TMPDIR:-/tmp}/gruff-go-docs-drift.XXXXXX.json") || return 1
+    if ! go run ./cmd/gruff-go list-rules --no-config --format json >"$catalogue" 2>/dev/null; then
+        rm -f -- "$catalogue"
+        printf 'docs drift: list-rules --format json failed'
+        return 1
+    fi
+    facts=$(docs_drift_facts "$catalogue" 2>&1)
+    local status=$?
+    rm -f -- "$catalogue"
+    printf '%s' "$facts"
+    return "$status"
+}
+
+# Compare the owned documentation under one root with the live catalogue facts. Runs against the
+# real checkout, and against synthetic copies in the fixture harness, so both share one contract.
+docs_drift_check_root() {
+    local docs_root=$1 facts=$2
+    local readme="$docs_root/README.md" rules_doc="$docs_root/docs/rules.md"
+    local count pillars enabled optin ids pillar_names
+    local claim claims=0 doc token decision link
+    local documents=() mentioned=() phantom=() bad_decisions=() dead=()
+
+    count=$(docs_fact "$facts" count)
+    pillars=$(docs_fact "$facts" pillars)
+    enabled=$(docs_fact "$facts" enabled)
+    optin=$(docs_fact "$facts" optin)
+    ids=" $(docs_fact "$facts" ids) "
+    pillar_names=$(docs_fact "$facts" pillarNames)
+
+    for doc in "$readme" "$rules_doc"; do
+        if [[ ! -f "$doc" ]]; then
+            printf 'docs drift: false-empty: %s is missing\n' "${doc#"$docs_root"/}"
+            return 1
+        fi
+    done
+
+    # Source-revision claims: every stated catalogue size must equal the live catalogue.
+    while IFS= read -r claim; do
+        claims=$((claims + 1))
+        if [[ "$claim" != "$count rules across $pillars pillars" ]]; then
+            printf 'docs drift: source-revision: a document says "%s" but list-rules has %s rules across %s pillars\n' \
+                "$claim" "$count" "$pillars"
+            return 1
+        fi
+    done < <(grep -ohE '[0-9]+\*{0,2} rules\*{0,2} across \*{0,2}[0-9]+\*{0,2} pillars' "$readme" "$rules_doc" | tr -d '*')
+    while IFS= read -r claim; do
+        claims=$((claims + 1))
+        if [[ "$claim" != "$enabled"* ]]; then
+            printf 'docs drift: source-revision: a document says "%s" but list-rules enables %s by default\n' \
+                "$claim" "$enabled"
+            return 1
+        fi
+    done < <(grep -ohE '[0-9]+\*{0,2} (rules are )?enabled by default' "$readme" "$rules_doc" | tr -d '*')
+    while IFS= read -r claim; do
+        claims=$((claims + 1))
+        if [[ "$claim" != "$optin "* ]]; then
+            printf 'docs drift: source-revision: a document says "%s" but list-rules has %s opt-in rules\n' \
+                "$claim" "$optin"
+            return 1
+        fi
+    done < <(grep -ohE '[0-9]+ (opt-in rules|rules are opt-in)' "$readme" "$rules_doc")
+    local table_rows
+    table_rows=$(docs_drift_pillar_table "$readme" "$facts") || {
+        printf '%s\n' "$table_rows"
+        return 1
+    }
+    claims=$((claims + table_rows))
+    if ((claims == 0)); then
+        printf 'docs drift: false-empty: README.md and docs/rules.md state no catalogue size\n'
+        return 1
+    fi
+
+    # Phantom rule ids: a backticked <pillar>.<slug> in the README or docs must be a rule that
+    # ships. UPGRADING.md is history by design, and a line that says retired or removed is too.
+    mapfile -t documents < <(find "$docs_root/docs" -maxdepth 1 -name '*.md' 2>/dev/null | sort)
+    documents+=("$readme")
+    while IFS= read -r token; do
+        mentioned+=("$token")
+        if [[ "$ids" != *" $token "* ]]; then
+            phantom+=("$token")
+        fi
+    done < <(grep -hvE 'retired|removed' "${documents[@]}" \
+        | grep -oE "\`($pillar_names)\.[a-z0-9-]+\`" | tr -d '`' | sort -u)
+    if ((${#mentioned[@]} == 0)); then
+        printf 'docs drift: false-empty: the documentation names no rule id\n'
+        return 1
+    fi
+    if ((${#phantom[@]} > 0)); then
+        printf 'docs drift: phantom rule ids not in list-rules: %s\n' "${phantom[*]}"
+        return 1
+    fi
+
+    # Decision namespace: every ADR the documentation cites must exist in this port's decisions.
+    while IFS= read -r decision; do
+        if ! compgen -G "$REPO_ROOT/.goat-flow/learning-loop/decisions/$decision-*.md" >/dev/null; then
+            bad_decisions+=("$decision")
+        fi
+    done < <(cat "${documents[@]}" "$docs_root/UPGRADING.md" 2>/dev/null | grep -oE 'ADR-[0-9]{3}' | sort -u)
+    if ((${#bad_decisions[@]} > 0)); then
+        printf 'docs drift: decision-namespace: %s cited but absent from .goat-flow/learning-loop/decisions\n' \
+            "${bad_decisions[*]}"
+        return 1
+    fi
+
+    # Entry-page links: every relative link from the README must resolve inside the checkout. A
+    # fixture copy carries only the documentation, so a link to any other checked-in file still
+    # resolves against the real repository root.
+    while IFS= read -r link; do
+        if [[ ! -e "$docs_root/$link" && ! -e "$REPO_ROOT/$link" ]]; then
+            dead+=("$link")
+        fi
+    done < <(grep -oE '\]\([^)#[:space:]]+' "$readme" | sed 's/^](//' | grep -vE '^(https?://|mailto:)' | sort -u)
+    if ((${#dead[@]} > 0)); then
+        printf 'docs drift: entry-page link does not resolve: %s\n' "${dead[*]}"
+        return 1
+    fi
+
+    printf '%s rules, %s pillars, %s enabled; %s rule ids and every cited decision resolve' \
+        "$count" "$pillars" "$enabled" "${#mentioned[@]}"
+}
+
+check_docs_drift() {
+    local facts status
+    facts=$(docs_drift_live_facts)
+    status=$?
+    if ((status != 0)); then
+        printf '%s' "$facts"
+        return "$status"
+    fi
+    docs_drift_check_root "$REPO_ROOT" "$facts"
+}
+
+# Run the drift check against one mutated copy and require the named rejection.
+expect_docs_drift_rejection() {
+    local case_name=$1 expected=$2 docs_root=$3 facts=$4 output
+    if output=$(docs_drift_check_root "$docs_root" "$facts" 2>&1); then
+        printf 'docs drift fixture %s: the mutation passed the gate\n' "$case_name"
+        return 1
+    fi
+    if [[ "$output" != *"$expected"* ]]; then
+        printf 'docs drift fixture %s: rejected for the wrong reason; expected "%s", got: %s\n' \
+            "$case_name" "$expected" "$output"
+        return 1
+    fi
+}
+
+# Prove the drift gate rejects each mutation class without touching the real documentation
+# (M09 task 16): false-empty, phantom rule, decision-namespace, source-revision, dead link.
+check_docs_drift_fixtures() {
+    local facts status harness valid root count first_pillar
+    local backtick='`'
+    facts=$(docs_drift_live_facts)
+    status=$?
+    if ((status != 0)); then
+        printf '%s' "$facts"
+        return "$status"
+    fi
+    count=$(docs_fact "$facts" count)
+    first_pillar=$(docs_fact "$facts" pillarNames)
+    first_pillar=${first_pillar%%|*}
+
+    harness=$(mktemp -d "${TMPDIR:-/tmp}/gruff-go-docs-fixtures.XXXXXX") || return 1
+    valid="$harness/valid"
+    mkdir -p "$valid"
+    cp "$REPO_ROOT/README.md" "$REPO_ROOT/UPGRADING.md" "$valid/"
+    cp -R "$REPO_ROOT/docs" "$valid/docs"
+    if ! docs_drift_check_root "$valid" "$facts" >/dev/null 2>&1; then
+        printf 'docs drift fixture: the unmodified copy failed the gate'
+        rm -rf -- "$harness"
+        return 1
+    fi
+
+    root="$harness/false-empty"
+    cp -R "$valid" "$root"
+    printf '# gruff-go\n\nSee the docs.\n' >"$root/README.md"
+    printf '# Rule Catalog\n\nSee list-rules.\n' >"$root/docs/rules.md"
+    expect_docs_drift_rejection false-empty 'false-empty' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
+    root="$harness/phantom-rule"
+    cp -R "$valid" "$root"
+    printf '\nThe %s%s.phantom-rule%s rule is documented here.\n' "$backtick" "$first_pillar" "$backtick" >>"$root/README.md"
+    expect_docs_drift_rejection phantom-rule 'phantom rule ids' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
+    root="$harness/decision-namespace"
+    cp -R "$valid" "$root"
+    printf '\nSee ADR-999 for the rationale.\n' >>"$root/README.md"
+    expect_docs_drift_rejection decision-namespace 'decision-namespace' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
+    root="$harness/source-revision"
+    cp -R "$valid" "$root"
+    sed -i "s/$count rules across/$((count + 1)) rules across/" "$root/README.md"
+    expect_docs_drift_rejection source-revision 'source-revision' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
+    root="$harness/dead-link"
+    cp -R "$valid" "$root"
+    printf '\n[Missing page](docs/missing-page.md)\n' >>"$root/README.md"
+    expect_docs_drift_rejection dead-link 'entry-page link' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
+    root="$harness/stale-pillar-table"
+    cp -R "$valid" "$root"
+    sed -i -E "0,/^(\| *${backtick}[a-z-]+${backtick} *\| *)[0-9]+( *\|)$/s//\1999\2/" "$root/README.md"
+    expect_docs_drift_rejection stale-pillar-table 'pillar table' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
+    rm -rf -- "$harness"
+    printf '6 mutations rejected'
+}
+
 summary() {
     local elapsed failure
     elapsed=$(elapsed_since "$START_TIME")
@@ -574,6 +855,8 @@ Runs the local verification gates for gruff-go:
   - Static analysis (go vet)
   - Tests (go test ./...)
   - Gruff-go self-scan (go run ./cmd/gruff-go summary .)
+  - Documentation drift (README.md and docs/ agree with list-rules, cite only carried decisions, link only to real pages)
+  - Documentation drift fixtures (each mutation class is rejected: false-empty, phantom rule, decision-namespace, source-revision, dead link)
 
 Options:
   --release     Also require the source version to be unreleased unless HEAD is the matching v* tag.
@@ -620,6 +903,8 @@ main() {
     run_step "Static analysis (go vet)"   check_go_vet
     run_step "Tests (go test ./...)"      check_go_test
     run_step "Gruff-go self-scan"         check_gruff_summary
+    run_step "Documentation drift"        check_docs_drift
+    run_step "Documentation drift fixtures" check_docs_drift_fixtures
 
     summary
 }
