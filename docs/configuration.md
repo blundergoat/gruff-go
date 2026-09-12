@@ -68,6 +68,8 @@ rules:
 
 Per-command exit-code gate. Each key is a `gruff-go` subcommand that gates exit codes (`analyse`, `summary`, `report`, `dashboard`); each value is one of `advisory | warning | error | none`. `none` means "report findings, never exit 1" - useful for artifact-generation commands (`report`, `dashboard`) where the consumer wants the HTML/JSON output regardless of whether anything tripped a gate.
 
+Across the Gruff family only `analyse` and `report` are accepted by every port, so a polyglot repository that shares one `failOn` block should write only those two keys. `summary` is accepted by gruff-go and gruff-ts, and `dashboard` by gruff-go, gruff-php and gruff-py; each other port refuses the key with exit 2 rather than ignoring it, because it ships no gate for that command.
+
 ```yaml
 failOn:
   analyse: warning      # default `advisory`: fail on anything
