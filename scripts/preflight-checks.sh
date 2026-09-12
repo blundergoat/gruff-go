@@ -547,13 +547,44 @@ if (!rules || rules.length === 0) {
 const ids = rules.map((rule) => rule.id).sort();
 const pillars = [...new Set(rules.map((rule) => rule.pillar))].sort();
 const enabled = rules.filter((rule) => rule.defaultEnabled === true).length;
+const pillarCounts = pillars.map((pillar) => pillar + ":" + rules.filter((rule) => rule.pillar === pillar).length);
 console.log("count=" + rules.length);
 console.log("pillars=" + pillars.length);
 console.log("enabled=" + enabled);
 console.log("optin=" + (rules.length - enabled));
 console.log("pillarNames=" + pillars.join("|"));
+console.log("pillarCounts=" + pillarCounts.join("|"));
 console.log("ids=" + ids.join(" "));
 NODE
+}
+
+# Compare every per-pillar table row in the README with the live catalogue. A row that names a count
+# the catalogue does not have, or a table shorter than the catalogue's pillar list, is a stale claim.
+docs_drift_pillar_table() {
+    local readme=$1 facts=$2
+    local backtick='`'
+    local pillar_counts row_pillar row_count live_count table_rows=0 pillars
+    pillars=$(docs_fact "$facts" pillars)
+    pillar_counts="|$(docs_fact "$facts" pillarCounts)|"
+
+    while IFS='|' read -r row_pillar row_count; do
+        table_rows=$((table_rows + 1))
+        live_count=$(sed -n "s/.*|${row_pillar}:\([0-9]*\)|.*/\1/p" <<<"$pillar_counts")
+        if [[ "$live_count" != "$row_count" ]]; then
+            printf 'docs drift: source-revision: README.md pillar table says %s has %s rules but list-rules has %s\n' \
+                "$row_pillar" "$row_count" "${live_count:-no such pillar}"
+            return 1
+        fi
+    done < <(grep -oE "^\| *${backtick}[a-z-]+${backtick} *\| *[0-9]+ *\|$" "$readme" \
+        | sed -E "s/^\| *${backtick}([a-z-]+)${backtick} *\| *([0-9]+) *\|$/\1|\2/")
+
+    if ((table_rows > 0 && table_rows != pillars)); then
+        printf 'docs drift: source-revision: README.md pillar table has %s rows but list-rules has %s pillars\n' \
+            "$table_rows" "$pillars"
+        return 1
+    fi
+
+    printf '%s' "$table_rows"
 }
 
 # Read one fact from the extracted facts block.
@@ -630,6 +661,12 @@ docs_drift_check_root() {
             return 1
         fi
     done < <(grep -ohE '[0-9]+ (opt-in rules|rules are opt-in)' "$readme" "$rules_doc")
+    local table_rows
+    table_rows=$(docs_drift_pillar_table "$readme" "$facts") || {
+        printf '%s\n' "$table_rows"
+        return 1
+    }
+    claims=$((claims + table_rows))
     if ((claims == 0)); then
         printf 'docs drift: false-empty: README.md and docs/rules.md state no catalogue size\n'
         return 1
@@ -761,8 +798,13 @@ check_docs_drift_fixtures() {
     printf '\n[Missing page](docs/missing-page.md)\n' >>"$root/README.md"
     expect_docs_drift_rejection dead-link 'entry-page link' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
 
+    root="$harness/stale-pillar-table"
+    cp -R "$valid" "$root"
+    sed -i -E "0,/^(\| *${backtick}[a-z-]+${backtick} *\| *)[0-9]+( *\|)$/s//\1999\2/" "$root/README.md"
+    expect_docs_drift_rejection stale-pillar-table 'pillar table' "$root" "$facts" || { rm -rf -- "$harness"; return 1; }
+
     rm -rf -- "$harness"
-    printf '5 mutations rejected'
+    printf '6 mutations rejected'
 }
 
 summary() {
