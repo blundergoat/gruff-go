@@ -15,7 +15,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 ## Autonomy Tiers
 **Always:** Read relevant project files before changing them. Run `make check` after touching Go source. Preserve existing user edits.
 
-**Ask First:** Before changing `package.json`, `package-lock.json`, `.goat-flow/hooks/`, `.goat-flow/config.yaml`, schema versions (`SchemaVersion` constants, `gruff-go.*.v0.1`), the rule registry's `Defaults()` policy, or anything that flips the dogfood `go run ./cmd/gruff-go analyse .` from grade A. State the intended edit, the files read, any matching footgun/lesson entries, and the rollback command. For breaking CLI/schema changes, also note the `CHANGELOG.md` entry that will record the break.
+**Ask First:** Before changing `package.json`, `package-lock.json`, `.goat-flow/hooks/`, `.goat-flow/config.yaml`, schema versions (`SchemaVersion` constants, `gruff-go.*.v0.1`, and the family-contracted `gruff.analysis.v3`, `gruff.summary.v3`, `gruff.baseline.v3` and `gruff.hook.v2`, whose shapes `FAMILY-CONTRACT.md` owns), the rule registry's `Defaults()` policy, or anything that flips the dogfood `go run ./cmd/gruff-go analyse .` from grade A. State the intended edit, the files read, any matching footgun/lesson entries, and the rollback command. For breaking CLI/schema changes, also note the `CHANGELOG.md` entry that will record the break.
 
 **Never:** Do not edit `node_modules/`, `.idea/`, `.git/`, or other agents' instruction surfaces (`AGENTS.md`, `.codex/`, `GEMINI.md`, `.gemini/`) unless the user explicitly widens scope. Do not bypass safety hooks (`--no-verify`, `--no-gpg-sign`).
 
@@ -24,7 +24,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Keep `CLAUDE.md` concise; move domain and architecture detail to cold-path docs.
 - Use `rg`/`rg --files` for search. Open matching learning-loop entries before acting.
 - When a goat-* skill is active, its Step 0 replaces READ and selects mode/depth; SCOPE still gates writes, so the skill's mode or explicit user approval must permit them. Resume this loop at ACT.
-- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--min-severity` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
+- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--fail-on` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
 
 ## Key Resources

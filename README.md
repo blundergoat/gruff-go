@@ -24,21 +24,23 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.4.0` package line |
+| Release line | Published `0.5.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 83 rules across 11 pillars; 70 enabled by default |
+| Rule catalogue | 83 rules across 11 pillars; 71 enabled by default |
 | Primary config | `.gruff-go.yaml` |
-| Analysis schema | `gruff.analysis.v2` |
-| Baseline schema | `gruff-go.baseline.v0.1` |
-| Severity gate | `--min-severity` with `advisory`, `warning`, `error` |
+| Analysis schema | `gruff.analysis.v3` |
+| Baseline schema | `gruff.baseline.v3` |
+| Severity gate | `--fail-on` with `advisory`, `warning`, `error`, `none` |
 | Dashboard | `127.0.0.1:8765` by default |
+
+The Release line row names the published package; the schema and severity-gate rows are what this checkout emits, and the move to the `v3` envelopes and the refusal of `--min-severity` land in `0.6.0`. [`CHANGELOG.md`](CHANGELOG.md) records every break under `[Unreleased]`, and [`UPGRADING.md`](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) states what each one costs and how to go back.
 
 ## Requirements
 
-- Go `1.25` or newer, matching [`go.mod`](go.mod).
-- Git only for changed-region scans (`--since`, `--diff`, or the legacy `--diff-base`).
+- Go `1.25` or newer, matching [`go.mod`](https://github.com/blundergoat/gruff-go/blob/main/go.mod).
+- Git only for changed-region scans (`--diff-base`, `--since`, or `--diff`).
 - No runtime dependencies outside the Go standard library.
 
 The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24` or newer. The binary itself requires Go `1.25+`, so that is the effective floor.
@@ -48,7 +50,7 @@ The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24
 Install as a project-pinned dev tool:
 
 ```bash
-go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
 go tool gruff-go init
 go tool gruff-go summary .
 ```
@@ -77,10 +79,10 @@ go tool gruff-go summary .
 go tool gruff-go analyse .
 
 # Raise the failure floor while exploring an existing codebase.
-go tool gruff-go analyse --min-severity error .
+go tool gruff-go analyse --fail-on error .
 
 # Emit SARIF for code scanning.
-go tool gruff-go analyse --format sarif --min-severity error . > gruff.sarif
+go tool gruff-go analyse --format sarif --fail-on error . > gruff.sarif
 
 # Generate a fresh-start baseline.
 go tool gruff-go analyse --generate-baseline gruff-baseline.json .
@@ -89,18 +91,19 @@ go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go dashboard --project .
 ```
 
-Go's standard `flag` package stops parsing flags at the first non-flag argument. Put every `--flag` before path arguments.
+Subcommands parse flags before, between, or after positional path arguments. Put `--` before a path that starts with a dash.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `analyse` | Run rules over the supplied paths and emit a report. |
-| `hook` | Emit the `gruff.hook.v1` JSON contract for coding-agent changes. |
+| `hook` | Emit the `gruff.hook.v2` JSON contract for coding-agent changes. |
 | `summary` | Print a compact score, per-pillar counts, top rules, and top files. |
 | `report` | Render static HTML or JSON to stdout or `--output <file>`. |
 | `baseline` | Run a scan and write the current findings to a baseline file. |
 | `init` | Generate a default `.gruff-go.yaml`. |
+| `migrate-config` | Rewrite a 0.5 config for the current schema, writing the result to a different file. |
 | `check-ignore` | Report whether `paths.ignore` / gitignore would exclude given paths, and why. |
 | `list-rules` | Print rule metadata as text or JSON. |
 | `dashboard` | Serve the local browser dashboard. |
@@ -118,46 +121,48 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | Format | Use it for |
 | --- | --- |
 | `text` | Human terminal output. |
-| `json` | Full `gruff.analysis.v2` report. |
+| `json` | Full `gruff.analysis.v3` report. |
 | `summary-json` | Compact CI digest without the full finding list. |
 | `sarif` | SARIF 2.1.0 for code scanning. |
 | `github` | GitHub Actions workflow annotations. |
 | `html` | Self-contained inspection report. |
 | `markdown` | CI-ready Markdown summary for PR comments or job summaries. |
 
-`go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](docs/output-formats.md) for schema details and HTML flags.
+`go tool gruff-go report --format <fmt>` accepts `html` and `json`. See [`docs/output-formats.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/output-formats.md) for schema details and HTML flags.
 
 ## Exit Codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | No finding met `--min-severity`, and no fatal diagnostic occurred. |
-| `1` | At least one finding met `--min-severity`. |
+| `0` | No finding met `--fail-on`, and no fatal diagnostic occurred. |
+| `1` | At least one finding met `--fail-on`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--min-severity` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](docs/configuration.md#minimumseverity). Pass `warning` for moderate gating or `error` for the strict gate. Go uses `--min-severity` where the other gruff implementations use `--fail-on`; both names work on the CLI as of v0.1.1.
+`--fail-on` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for moderate gating or `error` for the strict gate. **`--min-severity` is refused in 0.6.0**: it gated the exit code in 0.5 and returns in 0.7.0 with the family meaning, filtering which findings are displayed. Passing it to `analyse` or `summary` prints that break and names `--fail-on`.
 
 ## CI Usage
 
 Generic CI command:
 
 ```bash
-go tool gruff-go analyse --format github --min-severity warning .
+go tool gruff-go analyse --format github --fail-on warning .
 ```
 
 SARIF upload jobs can use:
 
 ```bash
-go tool gruff-go analyse --format sarif --min-severity error . > gruff-go.sarif
+go tool gruff-go analyse --format sarif --fail-on error . > gruff-go.sarif
 ```
 
-For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](docs/ci-integration.md) for GitHub Actions and GitLab examples.
+For incremental rollout, generate a baseline first, commit it after review, then run with `--baseline gruff-baseline.json`. See [`docs/ci-integration.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/ci-integration.md) for GitHub Actions and GitLab examples.
 
 ## Configuration
 
 `gruff-go` auto-loads `.gruff-go.yaml` from the project root unless `--config <path>` or `--no-config` is supplied. Config validation fails closed on unknown keys, unknown rule IDs, unknown pillars, and invalid thresholds.
 
 ```yaml
+schemaVersion: gruff-go.config.v0.1
+
 paths:
   ignore:
     - "vendor/"
@@ -165,7 +170,6 @@ paths:
 
 allowlists:
   acceptedAbbreviations: ["ID", "HTTP", "JSON", "AST"]
-  secretPreviews: [] # authorize fixed category/scheme markers; payload stays hidden
 
 selection:
   excludeRules: []
@@ -179,11 +183,11 @@ rules:
     enabled: true
 ```
 
-See [`docs/configuration.md`](docs/configuration.md) for the full schema and validation rules.
+See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md) for the full schema and validation rules.
 
 ## Rules And Pillars
 
-The current checkout contains 83 rules across 11 pillars. 70 rules are enabled by default; the 13 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the entropy/PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
+The current checkout contains 83 rules across 11 pillars. 71 rules are enabled by default; the 12 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
 
 | Pillar | Rules |
 | --- | ---: |
@@ -199,7 +203,7 @@ The current checkout contains 83 rules across 11 pillars. 70 rules are enabled b
 | `size` | 3 |
 | `test-quality` | 9 |
 
-See [`docs/rules.md`](docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
+See [`docs/rules.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 
 `list-rules` reports the effective rule state after applying project config. Use `go tool gruff-go list-rules --no-config` to inspect built-in defaults.
 
@@ -227,9 +231,9 @@ go tool gruff-go analyse --format json --since HEAD src/foo.go
 git diff | go tool gruff-go analyse --format json --diff -
 ```
 
-`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and adds `suppressedCount` when changed-region filtering is active. The older `--diff-base` flag remains supported as a base-ref alias.
+`--diff` also accepts `working-tree`, `staged`, `unstaged`, or a base ref. JSON output keeps the normal `findings` array and reports the filtered count as `diff.filteredFindings` and `summary.suppressedFindings` when changed-region filtering is active. `--diff-base` is the family-canonical spelling of the same base-ref scoping; gruff-go accepts it and `--since` alike.
 
-Display filters such as `--include-pillars`, `--exclude-rules`, and `--include-rules` reduce report noise without changing which rules execute.
+Display filters such as `--show-pillar`, `--hide-rule`, and `--show-rule` reduce report noise without changing which rules execute.
 
 ## Dashboard
 
@@ -238,13 +242,13 @@ go tool gruff-go dashboard --project .
 # Open http://127.0.0.1:8765/ in a browser.
 ```
 
-The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
+The dashboard binds to loopback by default and refuses public hosts unless `--allow-public` is supplied. It has no authentication; treat the bind address as the safety boundary. See [`docs/dashboard.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/dashboard.md) for the security model, postMessage protocol, and scan timeout behavior.
 
 In polyglot repositories, `gruff-go`, `gruff-php`, and `gruff-py` all default to port `8765`; use `--port` when running multiple dashboards at the same time.
 
 ## Trust Boundary
 
-Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data previews are deny-by-default: empty or nonmatching preview allowlists emit `[redacted]`, while matching paths may emit only fixed category or connection-scheme markers—never reusable payload bytes.
+Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data findings carry a marker, never a payload: the bare `[redacted]`, a fixed category such as `[redacted:aws-access-key]`, or a connection marker naming only its already-public scheme. `gruff-go` emits the most specific marker its detector classified on every path and under every configuration; there is no preview allowlist to leave empty, nonmatching or matching, and no reusable payload bytes.
 
 ## Stability Contract
 
@@ -268,22 +272,22 @@ go vet ./...
 make check
 ```
 
-`make check` is the release gate together with a dogfood scan that must return grade A with zero findings on this repository. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for workflow and test conventions.
+`make check` is the release gate together with a dogfood scan that must return grade A with zero findings on this repository. Read [`CONTRIBUTING.md`](https://github.com/blundergoat/gruff-go/blob/main/CONTRIBUTING.md) for workflow and test conventions.
 
 ## Documentation
 
-[`docs/`](docs/README.md) indexes the full set. The most-used entries:
+[Upgrading](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) covers what breaks between lines and how to go back. [`docs/`](https://github.com/blundergoat/gruff-go/blob/main/docs/README.md) indexes the full set. The most-used entries:
 
-- [Agent guardrail](docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
-- [Configuration](docs/configuration.md)
-- [Output formats](docs/output-formats.md)
-- [Rules](docs/rules.md)
-- [Dashboard](docs/dashboard.md)
-- [CI integration](docs/ci-integration.md)
-- [Releasing](docs/releasing.md)
+- [Agent guardrail](https://github.com/blundergoat/gruff-go/blob/main/docs/agent-guardrail.md) - running gruff as a coding-agent hook: the loop, pre-commit, and CI gate.
+- [Configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md)
+- [Output formats](https://github.com/blundergoat/gruff-go/blob/main/docs/output-formats.md)
+- [Rules](https://github.com/blundergoat/gruff-go/blob/main/docs/rules.md)
+- [Dashboard](https://github.com/blundergoat/gruff-go/blob/main/docs/dashboard.md)
+- [CI integration](https://github.com/blundergoat/gruff-go/blob/main/docs/ci-integration.md)
+- [Releasing](https://github.com/blundergoat/gruff-go/blob/main/docs/releasing.md)
 - [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
+- [Contributing](https://github.com/blundergoat/gruff-go/blob/main/CONTRIBUTING.md)
+- [Security](https://github.com/blundergoat/gruff-go/blob/main/SECURITY.md)
 
 ## Author
 

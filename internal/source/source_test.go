@@ -27,9 +27,16 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	}
 
 	gotFiles := paths(result.Files)
-	// .github is metadata except for the workflows subtree, which is analysable so
-	// the CI/workflow security rules can inspect GitHub Actions YAML.
-	wantFiles := []string{".github/workflows/ci.yml", "config.yaml", "main.go"}
+	wantFiles := []string{
+		".agents/skills/tool/config.yaml",
+		".claude/settings.json",
+		".codex/config.toml",
+		".github/ISSUE_TEMPLATE/bug.yml",
+		".github/workflows/ci.yml",
+		".goat-flow/config.yaml",
+		"config.yaml",
+		"main.go",
+	}
 	if !equal(gotFiles, wantFiles) {
 		t.Fatalf("files = %#v, want %#v", gotFiles, wantFiles)
 	}
@@ -38,11 +45,6 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	for _, want := range []string{
 		"generated/generated.go:generated",
 		"vendor:dependency",
-		".agents:non-application-metadata",
-		".claude:non-application-metadata",
-		".codex:non-application-metadata",
-		".github/ISSUE_TEMPLATE:non-application-metadata",
-		".goat-flow:non-application-metadata",
 	} {
 		if !contains(gotSkipped, want) {
 			t.Fatalf("skipped reasons %#v missing %q", gotSkipped, want)
@@ -209,22 +211,47 @@ func TestDiscoverExplicitIgnoredInputDirectoryPrunes(t *testing.T) {
 	}
 }
 
-// TestDiscoverExplicitNonApplicationMetadataFileSkipped verifies metadata files are skipped explicitly.
-func TestDiscoverExplicitNonApplicationMetadataFileSkipped(t *testing.T) {
+// TestDiscoverExplicitDefaultIgnoredFileIsScanned verifies explicit files bypass fallback defaults.
+func TestDiscoverExplicitDefaultIgnoredFileIsScanned(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".codex/config.toml", "model = \"codex\"\n")
+	writeFile(t, root, "dist/config.json", "{}\n")
 
-	result, err := Discover(Options{Root: root, Paths: []string{".codex/config.toml"}})
+	result, err := Discover(Options{Root: root, Paths: []string{"dist/config.json"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Files) != 0 {
-		t.Fatalf("files = %#v, want no files from non-application metadata", result.Files)
+	if !equal(paths(result.Files), []string{"dist/config.json"}) {
+		t.Fatalf("explicit fallback file should be scanned; files=%#v skipped=%#v", result.Files, result.Skipped)
 	}
-	gotSkipped := skippedReasons(result.Skipped)
-	if !contains(gotSkipped, ".codex/config.toml:non-application-metadata") {
-		t.Fatalf("explicit metadata file should be skipped; got %#v", gotSkipped)
+}
+
+// TestDiscoverExplicitGitignoredFileIsScanned verifies explicit files bypass repository ignores.
+func TestDiscoverExplicitGitignoredFileIsScanned(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "secret.go\n")
+	writeFile(t, root, "secret.go", "package secret\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"secret.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equal(paths(result.Files), []string{"secret.go"}) {
+		t.Fatalf("explicit gitignored file should be scanned; files=%#v skipped=%#v", result.Files, result.Skipped)
+	}
+}
+
+// TestDiscoverExplicitVCSFileRemainsBlocked verifies VCS internals override explicit files and include-ignored.
+func TestDiscoverExplicitVCSFileRemainsBlocked(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".git/config.json", "{}\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{".git/config.json"}, IncludeIgnored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 0 || !contains(skippedReasons(result.Skipped), ".git/config.json:vcs") {
+		t.Fatalf("explicit VCS file must remain blocked; files=%#v skipped=%#v", result.Files, result.Skipped)
 	}
 }
 
@@ -266,6 +293,7 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	writeFile(t, root, "main.go", "package main\n")
 	writeFile(t, root, "vendor/pkg/vendor.go", "package pkg\n")
 	writeFile(t, root, "node_modules/lib/index.js", "x")
+	writeFile(t, root, ".fleet/config.json", "{}\n")
 
 	result, err := Discover(Options{Root: root, Paths: []string{"."}})
 	if err != nil {
@@ -277,7 +305,7 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 		t.Fatalf("files = %#v, want [main.go]", got)
 	}
 	gotSkipped := skippedReasons(result.Skipped)
-	for _, want := range []string{"vendor:dependency", "node_modules:dependency"} {
+	for _, want := range []string{"vendor:dependency", "node_modules:dependency", ".fleet:local-tooling"} {
 		if !contains(gotSkipped, want) {
 			t.Fatalf("hardcoded fallback skip missing %q in %#v", want, gotSkipped)
 		}
@@ -436,22 +464,19 @@ func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
 
 // TestCheckIgnoreReportsGitignoreAndDefaultSources confirms the non-config
 // sources surface their classification without a pattern (pattern is config-only).
-// The default case uses an always-ignored metadata directory (.codex) rather
-// than a fallback dependency dir, because the presence of a .gitignore here would
-// (by design) hand the tree to the project and disable the vendor/node_modules
-// fallback - .codex is unconditionally ignored regardless. (.github is no longer a
-// blanket default ignore because its workflows subtree is now analysable.)
+// The default case uses VCS internals because an unrelated .gitignore disables
+// non-VCS fallbacks while VCS paths remain blocked.
 func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".gitignore", "secret.go\n")
-	writeFile(t, root, "secret.go", "package s\n")
+	writeFile(t, root, ".gitignore", "ignored/\n")
+	writeFile(t, root, "ignored/secret.go", "package s\n")
 
 	options := Options{Root: root}
-	git := CheckIgnore(root, "secret.go", false, options)
+	git := CheckIgnore(root, "ignored", true, options)
 	if !git.Ignored || git.Source != OriginGitignore || git.Pattern != "" {
 		t.Fatalf("gitignore decision = %#v, want ignored source=gitignore no pattern", git)
 	}
-	dir := CheckIgnore(root, ".codex", true, options)
+	dir := CheckIgnore(root, ".git", true, options)
 	if !dir.Ignored || dir.Source != OriginDefault {
 		t.Fatalf("default dir decision = %#v, want ignored source=default", dir)
 	}

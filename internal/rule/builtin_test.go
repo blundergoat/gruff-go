@@ -266,7 +266,11 @@ func TestSensitiveDataRuleSkipsGoCommentOnlyLines(t *testing.T) {
 }
 
 // TestSensitiveDataRuleStillFlagsCodeBearingAssignments keeps the generic rule
-// strict on real source/config assignments and Go raw strings.
+// strict on real source and config assignments.
+//
+// The raw-string case changed on 2026-09-07: a backtick literal holds documentation, templates
+// and sample payloads, so its interior is no longer scanned. The fixture below names its own
+// literal `docs`, which is the case the change is about. Interpreted strings are untouched.
 func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 	tokenValue := secretPatternFixtureValue()
 	goUnit := parseOne(t, "pkg/secrets.go", "package pkg\n\n"+
@@ -274,8 +278,8 @@ func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 		"const accessToken = \""+tokenValue+"\" // fixture comment\n"+
 		"const docs = `auth_token = \""+tokenValue+"\"`\n")
 	goFindings := SensitiveDataRule{}.AnalyzeUnit(goUnit, Context{})
-	if len(goFindings) != 3 {
-		t.Fatalf("go assignments and raw string should still flag, got %#v", goFindings)
+	if len(goFindings) != 2 {
+		t.Fatalf("the two interpreted-string assignments should flag and the raw string should not, got %#v", goFindings)
 	}
 
 	textUnit := parser.Unit{

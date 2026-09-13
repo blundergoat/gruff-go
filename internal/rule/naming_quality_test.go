@@ -207,7 +207,7 @@ func FuzzWithFatal(f *testing.F) {
 func TestEmpty(t *testing.T) {
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, finding := range findings {
 		got[finding.Symbol] = true
@@ -275,7 +275,7 @@ func TestUnrelatedHelper(t *testing.T) {
 	helperWithoutT("x")
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, item := range findings {
 		got[item.Symbol] = true
@@ -339,7 +339,7 @@ func TestNonTestingAssertCallStillFires(t *testing.T) {
 	assert.Something("not a t value")
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, item := range findings {
 		got[item.Symbol] = true
@@ -382,7 +382,7 @@ func TestMockReceiverAloneStillFires(t *testing.T) {
 	_ = mockT
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, item := range findings {
 		got[item.Symbol] = true
@@ -428,7 +428,7 @@ func FuzzNoAssertion(f *testing.F) {
 	})
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, item := range findings {
 		got[item.Symbol] = true

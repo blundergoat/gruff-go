@@ -41,7 +41,7 @@ func TestSelectorHelperStillFires(t *testing.T) {
 	helpers.runCompatibilityCheck(t, "sqlite")
 }
 `)
-	findings := NoFailurePathTestRule{}.AnalyzeUnit(unit, Context{})
+	findings := analyseNoFailurePathUnit(unit)
 	got := map[string]bool{}
 	for _, item := range findings {
 		got[item.Symbol] = true

@@ -15,6 +15,7 @@ func TestAnalyseDuplicateYAMLConfigErrorIsSanitized(t *testing.T) {
 	hiddenValue := configYAMLFixtureValue()
 	duplicateLine := "    enabled: " + hiddenValue
 	configBody := strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"rules:",
 		"  size.file-length:",
 		"    enabled: true",
@@ -31,7 +32,7 @@ func TestAnalyseDuplicateYAMLConfigErrorIsSanitized(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("analyse exit = %d, want 2", code)
 	}
-	want := "config: duplicate YAML key \"enabled\": first defined at line 3, duplicated at line 6\n"
+	want := "config: duplicate YAML key \"enabled\": first defined at line 4, duplicated at line 7\n"
 	if stderr.String() != want {
 		t.Fatal("stderr did not preserve the deterministic sanitized config error")
 	}

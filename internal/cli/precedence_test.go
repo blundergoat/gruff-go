@@ -18,7 +18,7 @@ import (
 // config supply a value.
 func TestResolveFailOnPrecedence(t *testing.T) {
 	cfg := cfgpkg.Config{
-		MinimumSeverity: map[string]string{
+		FailOn: cfgpkg.CommandThresholds{
 			"analyse": "error",
 			"summary": "error",
 			"report":  "warning",
@@ -83,7 +83,7 @@ func TestResolveFailOnPrecedence(t *testing.T) {
 // defence-in-depth gate.
 func TestResolveFailOnRejectsBadConfigValue(t *testing.T) {
 	cfg := cfgpkg.Config{
-		MinimumSeverity: map[string]string{
+		FailOn: cfgpkg.CommandThresholds{
 			"analyse": "medium", // legacy 5-bucket name; post-ADR-009 invalid
 		},
 	}

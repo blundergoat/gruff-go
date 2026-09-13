@@ -22,7 +22,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
 	reportInteractive := flags.Bool("report-interactive", false, "enable interactive findings filter UI in html output")
 	// Default comes from DefaultFailThresholdFor("report") which is `none` -
-	// report is an artifact generator, not a CI gate. minimumSeverity.report in
+	// report is an artifact generator, not a CI gate. failOn.report in
 	// .gruff-go.yaml overrides; CLI flag wins over both (ADR-010).
 	minSeverity := string(finding.DefaultFailThresholdFor("report"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
@@ -36,15 +36,15 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
 	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
 	}
-	if *format != "html" && *format != "json" {
-		fmt.Fprintf(stderr, "unsupported format %q (want html or json)\n", *format)
+	// --min-severity inverts rather than disappears here too: this command gates on it exactly as analyse did.
+	if refuseMinSeverity(flags, stderr) {
 		return 2
 	}
-	if !supportedEditorLink(*editorLink) {
-		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", *editorLink)
+	if !validateReportEnums(*format, *editorLink, stderr) {
 		return 2
 	}
 	minSeverityExplicit, ok := checkMinSeverityFlag(flags, minSeverity, stderr)
@@ -60,20 +60,27 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	deepScanBudget, err := resolveDeepScanBudget(*deepScanBudgetRaw, cfg)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	displayFilter, err := parseDisplayFilter(*includeRules, *excludeRules, *includePillars, *excludePillars, registry.Definitions())
 	if err != nil {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
-		Paths:          flags.Args(),
-		Format:         *format,
-		FailOn:         failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		IncludeIgnored: *includeIgnored,
-		BaselinePath:   *baselinePath,
-		DiffBase:       *diffBase,
+		Paths:               flags.Args(),
+		Format:              *format,
+		FailOn:              failOn,
+		Registry:            registry,
+		IgnorePaths:         ignorePaths,
+		SensitiveExclusions: sensitiveExclusionsFor(cfg),
+		DeepScanBudget:      deepScanBudget,
+		IncludeIgnored:      *includeIgnored,
+		BaselinePath:        *baselinePath,
+		DiffBase:            *diffBase,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -81,19 +88,39 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	}
 	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)
 
-	writer, closer, err := openReportWriter(stdout, *output)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
-	}
-	defer closer()
-
 	htmlOpts := report.HTMLOptions{EditorLink: *editorLink, Interactive: *reportInteractive}
-	if err := writeReport(writer, analysisReport, *format, htmlOpts); err != nil {
+	if err := emitReport(stdout, *output, analysisReport, *format, htmlOpts); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	return analysisReport.Summary.ExitCode
+}
+
+// validateReportEnums checks the two closed vocabularies this command accepts, explaining any rejection on stderr.
+//
+// A mistyped format would otherwise fall through to a default and hand the user a file in the wrong shape.
+func validateReportEnums(format, editorLink string, stderr io.Writer) bool {
+	if format != "html" && format != "json" {
+		fmt.Fprintf(stderr, "unsupported format %q (want html or json)\n", format)
+		return false
+	}
+
+	if !supportedEditorLink(editorLink) {
+		fmt.Fprintf(stderr, "unsupported --report-editor-link %q (want none, vscode, or phpstorm)\n", editorLink)
+		return false
+	}
+
+	return true
+}
+
+// emitReport opens the requested destination and writes one complete report.
+func emitReport(stdout io.Writer, path string, analysisReport analysis.Report, format string, htmlOpts report.HTMLOptions) error {
+	writer, closer, err := openReportWriter(stdout, path)
+	if err != nil {
+		return err
+	}
+	defer closer()
+	return writeReport(writer, analysisReport, format, htmlOpts)
 }
 
 // openReportWriter selects stdout or a created file as the report writer.

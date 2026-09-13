@@ -34,7 +34,7 @@ Run after the agent edits, and gate on every finding so the agent clears it all
 before a human looks:
 
 ```bash
-gruff-go analyse --min-severity advisory .
+gruff-go analyse --fail-on advisory .
 ```
 
 To judge the agent on its own work rather than the whole repo, scan only the
@@ -44,7 +44,7 @@ changed region with the diff-aware flags - `--diff`, `--since`,
 recipes. Feed the findings back to the agent and re-run until clean.
 
 Agent harnesses that consume `gruff-go hook --format json --diff ...` receive the
-stable `gruff.hook.v1` payload. In a new git repository with no commits yet,
+stable `gruff.hook.v2` payload. In a new git repository with no commits yet,
 `--diff HEAD` cannot resolve a base; hook mode writes an actionable stderr
 diagnostic and falls back to scanning the requested paths without diff/new-only
 filtering rather than dropping the JSON contract.
@@ -58,7 +58,7 @@ a directory scan, an explicit file argument, or any diff/changed-region mode, an
 `--include-ignored` (which opts into git/default-ignored paths) never overrides
 it. So the agent is never asked to "fix" a file the project deliberately
 excludes - generated code, vendored trees, fixtures. Excluded files still appear
-in the report's `paths.skipped[]` with `source` and the matching `pattern`, so
+in the report's `paths.details` with `reason`, `source`, and the matching `pattern`, so
 the hook can explain the exclusion rather than silently dropping the file.
 
 To decide whether to invoke gruff on a file at all - before any analysis - use
@@ -70,7 +70,7 @@ does no scanning:
 if [ "$(gruff-go check-ignore --format json "$file" | jq -r '.[0].ignored')" = "true" ]; then
   exit 0   # out of scope; nothing for the agent to fix
 fi
-gruff-go analyse --min-severity advisory "$file"
+gruff-go analyse --fail-on advisory "$file"
 ```
 
 `check-ignore` mirrors `git check-ignore` exit codes (0 = at least one path
@@ -80,7 +80,7 @@ ignored, 1 = none, 2 = error), so it also composes in plain shell without `jq`.
 
 ```bash
 # .git/hooks/pre-commit
-gruff-go analyse --min-severity warning . || {
+gruff-go analyse --fail-on warning . || {
   echo "gruff: fix findings (or scope with --baseline) before committing" >&2
   exit 1
 }
@@ -93,7 +93,7 @@ Run gruff in CI and upload SARIF for code scanning; see
 semantics.
 
 ```bash
-gruff-go analyse --format sarif --min-severity error . > gruff.sarif
+gruff-go analyse --format sarif --fail-on error . > gruff.sarif
 ```
 
 ### Existing codebases
@@ -103,7 +103,7 @@ only on new ones.
 
 ```bash
 gruff-go analyse --generate-baseline gruff-baseline.json .
-gruff-go analyse --baseline gruff-baseline.json --min-severity advisory .
+gruff-go analyse --baseline gruff-baseline.json --fail-on advisory .
 ```
 
 Baseline and hook new-only filtering share one matcher: exact fingerprints pair
@@ -142,7 +142,7 @@ the underlying findings are handled.
 
 ## Recommended settings for agent-generated code
 
-- **`--min-severity advisory` inside the agent loop.** The agent should clear
+- **`--fail-on advisory` inside the agent loop.** The agent should clear
   everything; do not let it defer findings to the human reviewer.
 - **Keep `docs.comment-rubric`'s signal floor.** `minWordsBeyondSymbol` is what
   stops the agent from satisfying the doc requirement with a comment that just

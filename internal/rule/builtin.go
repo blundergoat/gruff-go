@@ -403,6 +403,35 @@ type SensitiveDataRule struct {
 	previews sensitivePreviewPolicy
 }
 
+// goRawStringLines reports every 1-based line that lies inside a Go raw-string literal.
+//
+// The opening and closing lines are included: a backtick that opens a multi-line literal is
+// followed on the same line by literal text, and the same holds for the closing line. A
+// single-line raw string is one line and is excluded too, which is correct — its contents are
+// still literal text rather than an assignment the program executes.
+//
+// A file that did not parse yields no exclusions, so the rule falls back to its line scan and
+// keeps reporting rather than going quiet on unparseable source.
+func goRawStringLines(unit parser.Unit) map[int]bool {
+	lines := map[int]bool{}
+	if unit.AST == nil || unit.FileSet == nil {
+		return lines
+	}
+	ast.Inspect(unit.AST, func(node ast.Node) bool {
+		literal, ok := node.(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING || !strings.HasPrefix(literal.Value, "`") {
+			return true
+		}
+		start := unit.FileSet.Position(literal.Pos()).Line
+		end := unit.FileSet.Position(literal.End()).Line
+		for line := start; line <= end; line++ {
+			lines[line] = true
+		}
+		return true
+	})
+	return lines
+}
+
 // Definition declares the sensitive-data.secret-pattern rule that flags secret-like key/value assignments with high severity.
 func (SensitiveDataRule) Definition() Definition {
 	return Definition{
@@ -418,10 +447,23 @@ func (SensitiveDataRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for every code-bearing line that matches the secret-assignment pattern.
+//
+// Lines inside a Go raw-string literal are skipped. A backtick string holds documentation,
+// templates and sample payloads, and a secret-shaped line in one is an example rather than a
+// credential: gosec's own `g101_samples` fixture is a raw string full of them.
+//
+// The exclusion is computed from the parsed syntax tree and applied here rather than in
+// `lineIsCodeBearing`, because that guard is reached by sixteen rules, twice the eight this
+// milestone's plan recorded. Teaching it about string literals would change all sixteen and
+// require a fixture pair for each; reading `*ast.BasicLit` changes this rule alone.
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
 	inBlockComment := false
+	rawStringLines := goRawStringLines(unit)
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		if unit.File.Type == source.FileTypeGo && rawStringLines[lineNumber+1] {
+			continue
+		}
 		if unit.File.Type == source.FileTypeGo && !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}

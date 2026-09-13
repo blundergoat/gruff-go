@@ -70,7 +70,7 @@ func Internal(err error) {
 	panic(err)
 }
 `)
-	if findings := (ProductionPanicRule{}).AnalyzeUnit(production, Context{}); len(findings) != 1 {
+	if findings := analyseProductionPanicUnit(production); len(findings) != 1 {
 		t.Fatalf("production findings = %#v, want one literal panic finding", findings)
 	}
 
@@ -80,7 +80,7 @@ func main() {
 	panic("bootstrap")
 }
 `)
-	if findings := (ProductionPanicRule{}).AnalyzeUnit(mainFile, Context{}); len(findings) != 0 {
+	if findings := analyseProductionPanicUnit(mainFile); len(findings) != 0 {
 		t.Fatalf("main findings = %#v, want none", findings)
 	}
 }

@@ -22,12 +22,12 @@ func TestCalculateScoresFindings(t *testing.T) {
 		Severity:   finding.SeverityError,
 		Confidence: finding.ConfidenceMedium,
 		Pillar:     finding.PillarComplexity,
-	}})
+	}}, 10)
 
-	if score.Composite <= 0 || score.Composite >= 100 {
-		t.Fatalf("composite = %d, want penalized score", score.Composite)
+	if score.Composite == nil || *score.Composite <= scoreFloor || *score.Composite >= 100 {
+		t.Fatalf("composite = %v, want a penalized score inside the ratified range", score.Composite)
 	}
-	if score.Grade == "" {
+	if score.Grade == nil {
 		t.Fatal("missing grade")
 	}
 	if len(score.Pillars) != 2 {
@@ -46,8 +46,10 @@ func TestCalculateScoresFindings(t *testing.T) {
 
 // TestCalculateCleanScore confirms an all-clean run returns the perfect A grade.
 func TestCalculateCleanScore(t *testing.T) {
-	score := Calculate(nil)
-	if score.Composite != 100 || score.Grade != "A" {
+	// The pillar set has to come from the catalogue: with no reachable pillar there is nothing to be
+	// clean about, and that case is the applicability contract's null, not an A.
+	score := Calculate(nil, 10, registeredRuleBackedPillars(t)...)
+	if score.Composite == nil || *score.Composite != 100 || score.Grade == nil || *score.Grade != "A" {
 		t.Fatalf("score = %#v, want clean A", score)
 	}
 	if len(score.TopOffender) != 0 {
@@ -67,8 +69,8 @@ func TestCalculateCleanScore(t *testing.T) {
 			t.Fatalf("complexity distribution missing bin %q", bin)
 		}
 	}
-	if score.PillarDetails == nil {
-		t.Fatal("pillar details should be a non-nil slice on clean scores")
+	if len(score.PillarDetails) != len(registeredRuleBackedPillars(t)) {
+		t.Fatalf("pillar details = %d rows, want one per rule-backed pillar on a clean scan", len(score.PillarDetails))
 	}
 }
 
@@ -82,11 +84,13 @@ func TestCalculateCompositeCountsCleanRuleBackedPillars(t *testing.T) {
 		{File: "complex.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceMedium, Pillar: finding.PillarComplexity},
 	}
 
-	score := Calculate(findings, registeredPillars...)
-	want := (92 + 78 + 100*(pillarCount-2)) / pillarCount
+	score := Calculate(findings, 10, registeredPillars...)
+	sizeScore := pillarScoreFor(4, 10)
+	complexityScore := pillarScoreFor(9, 10)
+	want := roundScore((sizeScore + complexityScore + 100*float64(pillarCount-2)) / float64(pillarCount))
 	// A different value means the headline omitted at least one clean rule-backed area.
-	if score.Composite != want {
-		t.Fatalf("composite = %d, want %d across %d rule-backed pillars", score.Composite, want, pillarCount)
+	if score.Composite == nil || *score.Composite != want {
+		t.Fatalf("composite = %v, want %v across %d rule-backed pillars", score.Composite, want, pillarCount)
 	}
 }
 
@@ -99,16 +103,16 @@ func TestCalculateCompositeNeverDropsWhenFindingRemoved(t *testing.T) {
 		{File: "size.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
 		{File: "docs.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarDocumentation},
 	}
-	before := Calculate(findings, registeredPillars...).Composite
+	before := Calculate(findings, 10, registeredPillars...).Composite
 
 	// Try every possible single remediation because users can clear findings in any order.
 	for removedIndex := range findings {
 		remaining := append([]finding.Finding(nil), findings[:removedIndex]...)
 		remaining = append(remaining, findings[removedIndex+1:]...)
-		after := Calculate(remaining, registeredPillars...).Composite
+		after := Calculate(remaining, 10, registeredPillars...).Composite
 		// A lower score would punish the user for completing a remediation.
-		if after < before {
-			t.Errorf("removing finding %d lowered composite from %d to %d", removedIndex, before, after)
+		if *after < *before {
+			t.Errorf("removing finding %d lowered composite from %v to %v", removedIndex, *before, *after)
 		}
 	}
 }
@@ -122,18 +126,18 @@ func TestCalculateCompositeKeepsClearedPillarInMean(t *testing.T) {
 		{File: "size.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
 		{File: "docs.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarDocumentation},
 	}
-	before := Calculate(findings, registeredPillars...).Composite
-	after := Calculate(findings[:2], registeredPillars...).Composite
+	before := Calculate(findings, 10, registeredPillars...).Composite
+	after := Calculate(findings[:2], 10, registeredPillars...).Composite
 
 	// The quality total must rise or stay level after the documentation pillar becomes clean.
-	if after < before {
-		t.Fatalf("clearing the final documentation finding lowered composite from %d to %d", before, after)
+	if *after < *before {
+		t.Fatalf("clearing the final documentation finding lowered composite from %v to %v", *before, *after)
 	}
 }
 
-// TestCalculateCompositeTruncatesIntegerMean pins the existing integer contract:
-// fractional composite values truncate toward zero instead of rounding half-up.
-func TestCalculateCompositeTruncatesIntegerMean(t *testing.T) {
+// TestCalculateCompositeCarriesTwoDecimals pins the ratified serialization: the composite is a
+// two-decimal mean, not the integer that truncated a user's fractional score toward zero before M06.
+func TestCalculateCompositeCarriesTwoDecimals(t *testing.T) {
 	registeredPillars := registeredRuleBackedPillars(t)
 	pillarCount := len(registeredPillars)
 	score := Calculate([]finding.Finding{{
@@ -141,12 +145,59 @@ func TestCalculateCompositeTruncatesIntegerMean(t *testing.T) {
 		Severity:   finding.SeverityAdvisory,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarDocumentation,
-	}}, registeredPillars...)
-	want := (99 + 100*(pillarCount-1)) / pillarCount
+	}}, 10, registeredPillars...)
+	want := roundScore((pillarScoreFor(1, 10) + 100*float64(pillarCount-1)) / float64(pillarCount))
 
-	// A one-point finding leaves a fractional mean that proves truncation to CLI users.
-	if score.Composite != want {
-		t.Fatalf("composite = %d, want truncated integer mean %d", score.Composite, want)
+	// A one-finding pillar leaves a fractional mean, which the ratified contract keeps to two decimals.
+	if score.Composite == nil || *score.Composite != want {
+		t.Fatalf("composite = %v, want the two-decimal mean %v", score.Composite, want)
+	}
+	if *score.Composite != roundScore(*score.Composite) {
+		t.Fatalf("composite = %v carries more than two decimals", *score.Composite)
+	}
+}
+
+// TestPillarCurveIsRatified pins the ratified curve itself at points whose arithmetic is exact,
+// so a change to floor, densityScale, or the formula fails here rather than drifting silently.
+func TestPillarCurveIsRatified(t *testing.T) {
+	// floor + (100-floor)/(1 + density/densityScale), with floor 50 and densityScale 0.1.
+	cases := []struct {
+		weight         float64
+		evaluatedFiles int
+		want           float64
+	}{
+		{weight: 0, evaluatedFiles: 10, want: 100}, // a reachable pillar with no findings
+		{weight: 1, evaluatedFiles: 10, want: 75},  // density 0.1 is the curve's half-way point
+		{weight: 4, evaluatedFiles: 10, want: 60},  // density 0.4
+		{weight: 9, evaluatedFiles: 10, want: 55},  // density 0.9
+		{weight: 2, evaluatedFiles: 20, want: 75},  // twice the findings over twice the code is one ratio
+	}
+	for _, testCase := range cases {
+		if got := pillarScoreFor(testCase.weight, testCase.evaluatedFiles); got != testCase.want {
+			t.Errorf("pillarScoreFor(%v, %d) = %v, want %v", testCase.weight, testCase.evaluatedFiles, got, testCase.want)
+		}
+	}
+}
+
+// TestCalculateEvaluatedNothingIsNotPerfect proves the applicability contract: a run that evaluated
+// no file reports null throughout instead of the 100/A an empty directory used to receive.
+func TestCalculateEvaluatedNothingIsNotPerfect(t *testing.T) {
+	registeredPillars := registeredRuleBackedPillars(t)
+	score := Calculate(nil, 0, registeredPillars...)
+
+	if score.Composite != nil || score.Grade != nil {
+		t.Fatalf("composite = %v, grade = %v; want null throughout when nothing was evaluated", score.Composite, score.Grade)
+	}
+	if score.EvaluatedFiles == nil || *score.EvaluatedFiles != 0 {
+		t.Fatalf("evaluatedFiles = %v, want a published zero", score.EvaluatedFiles)
+	}
+	if len(score.ScoredPillars) != len(registeredPillars) {
+		t.Fatalf("scoredPillars = %d, want all %d rule-backed pillars", len(score.ScoredPillars), len(registeredPillars))
+	}
+	for _, detail := range score.PillarDetails {
+		if detail.Score != nil || detail.Grade != nil {
+			t.Fatalf("pillar %s = %v, want no score when nothing was evaluated", detail.Pillar, detail.Score)
+		}
 	}
 }
 
@@ -180,7 +231,7 @@ func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 		{File: "b.go", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
 		{File: "b.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
 		{File: "c.go", Severity: finding.SeverityAdvisory, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
-	})
+	}, 10)
 
 	if len(score.PillarDetails) != 2 {
 		t.Fatalf("pillar details length = %d, want 2", len(score.PillarDetails))
@@ -193,27 +244,27 @@ func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 	if complexity.Findings != 3 || complexity.Warning != 1 || complexity.Advisory != 2 {
 		t.Fatalf("complexity counts = %#v", complexity)
 	}
-	// Complexity penalty = warning(8) + 2*advisory(1) = 10 raw, score clamps to 90.
-	if complexity.Penalty != 10 {
-		t.Errorf("complexity penalty = %v, want 10 (raw unclamped: 8 warning + 2*1 advisory)", complexity.Penalty)
+	// Complexity weight = warning(4) + 2*advisory(1) = 6 under the ratified weights.
+	if complexity.Penalty != 6 {
+		t.Errorf("complexity penalty = %v, want 6 (ratified: 4 warning + 2*1 advisory)", complexity.Penalty)
 	}
 	security := score.PillarDetails[1]
 	// Two findings collapsed from critical+high now both count as error.
 	if security.Findings != 2 || security.Error != 2 {
 		t.Fatalf("security counts = %#v", security)
 	}
-	// Security penalty = 2*error(30) = 60 raw, score clamps to 40 (grade F).
-	if security.Penalty != 60 {
-		t.Errorf("security penalty = %v, want 60 (raw unclamped: 2*30 error)", security.Penalty)
+	// Security weight = 2*error(12) = 24; the error weight dropped 2.5x at the M06 break.
+	if security.Penalty != 24 {
+		t.Errorf("security penalty = %v, want 24 (ratified: 2*12 error)", security.Penalty)
 	}
-	if security.Grade == "" {
+	if security.Grade == nil {
 		t.Fatal("pillar grade should be derived from per-pillar score")
 	}
 }
 
-// TestCalculatePillarPenaltyIsRawUnclamped verifies PillarDetail.Penalty
-// records the pre-clamp value, preserving the worst-pillar ranking signal when
-// scores floor at zero (e.g. 200 advisory findings -> penalty=200, score=0).
+// TestCalculatePillarPenaltyIsRawUnclamped verifies PillarDetail.Penalty records the raw summed
+// weight, preserving the worst-pillar ranking signal once the score itself has settled on the
+// ratified floor and can no longer separate a noisy pillar from a far noisier one.
 func TestCalculatePillarPenaltyIsRawUnclamped(t *testing.T) {
 	findings := make([]finding.Finding, 0, 200)
 	for range 200 {
@@ -224,13 +275,14 @@ func TestCalculatePillarPenaltyIsRawUnclamped(t *testing.T) {
 			Pillar:     finding.PillarDocumentation,
 		})
 	}
-	score := Calculate(findings)
+	score := Calculate(findings, 10)
 	if len(score.PillarDetails) != 1 {
 		t.Fatalf("pillar details length = %d, want 1", len(score.PillarDetails))
 	}
 	detail := score.PillarDetails[0]
-	if detail.Score != 0 {
-		t.Errorf("documentation score = %d, want 0 (clamped at floor)", detail.Score)
+	// The ratified curve approaches the floor but never crosses it, however much volume lands here.
+	if detail.Score == nil || *detail.Score <= scoreFloor || *detail.Score >= scoreFloor+1 {
+		t.Errorf("documentation score = %v, want just above the ratified floor %v", detail.Score, scoreFloor)
 	}
 	if detail.Penalty != 200 {
 		t.Errorf("documentation penalty = %v, want 200 (raw unclamped: 200 advisory * 1)", detail.Penalty)
@@ -263,7 +315,7 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 			Confidence: finding.ConfidenceHigh,
 			Pillar:     finding.PillarSize,
 		},
-	})
+	}, 10)
 
 	if len(score.TopOffender) != 2 {
 		t.Fatalf("top offenders length = %d", len(score.TopOffender))
@@ -276,7 +328,11 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 		t.Fatalf("expected max cyclomatic 32, got %#v", hot.MaxCyclomatic)
 	}
 	if hot.Grade == "" {
-		t.Fatal("file grade should be derived from penalty-based score")
+		t.Fatal("file grade should be derived from the ratified per-file score")
+	}
+	// A file's density is its own weighted findings, so file and project scores share one curve.
+	if hot.Score != pillarScoreFor(hot.Penalty, 1) {
+		t.Errorf("hot file score = %v, want the ratified per-file curve %v", hot.Score, pillarScoreFor(hot.Penalty, 1))
 	}
 	cold := score.TopOffender[1]
 	if cold.MaxCyclomatic != nil {
@@ -291,7 +347,7 @@ func TestCalculateComplexityDistribution(t *testing.T) {
 		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityWarning, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 17}},
 		{File: "b.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityError, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 42}},
 		{File: "c.go", RuleID: "size.function-length", Severity: finding.SeverityAdvisory, Pillar: finding.PillarSize},
-	})
+	}, 10)
 
 	if got := score.ComplexityDistribution["11-15"]; got != 1 {
 		t.Errorf("bin 11-15 = %d, want 1", got)
@@ -321,10 +377,10 @@ func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 		Pillar:     finding.PillarDesign,
 	})
 
-	baseScore := Calculate(base)
-	compositeScore := Calculate(withComposite)
-	if compositeScore.Composite != baseScore.Composite {
-		t.Fatalf("composite score = %d, want score-neutral %d", compositeScore.Composite, baseScore.Composite)
+	baseScore := Calculate(base, 10)
+	compositeScore := Calculate(withComposite, 10)
+	if *compositeScore.Composite != *baseScore.Composite {
+		t.Fatalf("composite score = %v, want score-neutral %v", *compositeScore.Composite, *baseScore.Composite)
 	}
 	if len(compositeScore.TopOffender) != len(baseScore.TopOffender) || compositeScore.TopOffender[0].Penalty != baseScore.TopOffender[0].Penalty {
 		t.Fatalf("top offenders changed: base=%#v composite=%#v", baseScore.TopOffender, compositeScore.TopOffender)
@@ -362,36 +418,35 @@ func findPillarDetail(t *testing.T, score Score, name string) PillarDetail {
 
 // TestCalculateClustersTwoCorrelatedFindings verifies P5 for the minimal case:
 // a function that is both long and complex trips size.function-length and
-// complexity.cyclomatic on one symbol. Each member contributes max(8)/2 = 4, so
-// the cluster bills 8 total (one warning) instead of 16, split across the two
-// member pillars. len 2 keeps the penalty exact in float64.
+// complexity.cyclomatic on one symbol. Each member contributes max(4)/2 = 2, so
+// the cluster bills 4 total (one ratified warning) instead of 8, split across the
+// two member pillars. len 2 keeps the penalty exact in float64.
 func TestCalculateClustersTwoCorrelatedFindings(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		correlatedFinding("size.function-length", finding.PillarSize, finding.SeverityWarning),
 		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
-	})
+	}, 10)
 	size := findPillarDetail(t, score, "size")
 	complexity := findPillarDetail(t, score, "complexity")
-	if size.Penalty != 4.0 || complexity.Penalty != 4.0 {
-		t.Errorf("penalties = size %v, complexity %v; want 4.0 each (8/2 per member)", size.Penalty, complexity.Penalty)
+	if size.Penalty != 2.0 || complexity.Penalty != 2.0 {
+		t.Errorf("penalties = size %v, complexity %v; want 2.0 each (4/2 per member)", size.Penalty, complexity.Penalty)
 	}
-	if total := size.Penalty + complexity.Penalty; total != 8.0 {
-		t.Errorf("cluster total = %v, want 8.0 (the single worst member, not 16)", total)
+	if total := size.Penalty + complexity.Penalty; total != 4.0 {
+		t.Errorf("cluster total = %v, want 4.0 (the single worst member, not 8)", total)
 	}
 	if size.Findings != 1 || complexity.Findings != 1 {
 		t.Errorf("findings = size %d, complexity %d; want 1 each (every finding still counts)", size.Findings, complexity.Findings)
 	}
-	if score.Composite != 96 {
-		t.Errorf("composite = %d, want 96 ((96+96)/2)", score.Composite)
+	if want := pillarScoreFor(2, 10); *score.Composite != want {
+		t.Errorf("composite = %v, want %v (both member pillars carry the same clustered weight)", *score.Composite, want)
 	}
 }
 
 // TestCalculateClustersFullSymbolStack verifies the realistic case: one function
 // trips all four warning-level size/complexity rules plus an advisory
-// parameter-count finding. Summing raw penalties would score complexity at
-// 100-24=76; clustering (max 8 / 5 members = 1.6 each) lifts it to 95, proving
-// correlated findings bill once. Asserts integer scores to stay free of float
-// rounding noise, and confirms every finding still counts toward its pillar.
+// parameter-count finding. Summing raw weights would charge complexity 12;
+// clustering (max 4 / 5 members = 0.8 each) charges 2.4, proving correlated
+// findings bill once, and confirms every finding still counts toward its pillar.
 func TestCalculateClustersFullSymbolStack(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
@@ -399,28 +454,28 @@ func TestCalculateClustersFullSymbolStack(t *testing.T) {
 		correlatedFinding("complexity.nesting-depth", finding.PillarComplexity, finding.SeverityWarning),
 		correlatedFinding("size.function-length", finding.PillarSize, finding.SeverityWarning),
 		correlatedFinding("size.parameter-count", finding.PillarSize, finding.SeverityAdvisory),
-	})
-	if score.Pillars["complexity"] != 95 {
-		t.Errorf("complexity score = %d, want 95 (3 x 8/5 = 4.8 penalty, not 24)", score.Pillars["complexity"])
+	}, 10)
+	if want := pillarScoreFor(2.4, 10); score.Pillars["complexity"] != want {
+		t.Errorf("complexity score = %v, want %v (3 x 4/5 = 2.4 weight, not 12)", score.Pillars["complexity"], want)
 	}
-	if score.Pillars["size"] != 97 {
-		t.Errorf("size score = %d, want 97 (2 x 8/5 = 3.2 penalty)", score.Pillars["size"])
+	if want := pillarScoreFor(1.6, 10); score.Pillars["size"] != want {
+		t.Errorf("size score = %v, want %v (2 x 4/5 = 1.6 weight)", score.Pillars["size"], want)
 	}
 	complexity := findPillarDetail(t, score, "complexity")
 	size := findPillarDetail(t, score, "size")
 	if complexity.Findings != 3 || size.Findings != 2 {
 		t.Errorf("findings = complexity %d, size %d; want 3 and 2 (clustering must not drop findings)", complexity.Findings, size.Findings)
 	}
-	if score.Composite != 96 {
-		t.Errorf("composite = %d, want 96 ((95+97)/2)", score.Composite)
+	if want := roundScore((pillarScoreFor(2.4, 10) + pillarScoreFor(1.6, 10)) / 2); *score.Composite != want {
+		t.Errorf("composite = %v, want the mean of the two member pillars %v", *score.Composite, want)
 	}
 }
 
 // TestCalculateDoesNotClusterAcrossSymbols verifies clustering keys on the symbol
 // occurrence: two distinct functions that each trip the same two correlated rules
-// form two clusters, not one. Each cluster bills 8/2 = 4 per member, so complexity
-// totals 8 (4 from each function) - had the four findings merged into one cluster,
-// each member would be 8/4 = 2 and complexity would total 4.
+// form two clusters, not one. Each cluster bills 4/2 = 2 per member, so complexity
+// totals 4 (2 from each function) - had the four findings merged into one cluster,
+// each member would be 4/4 = 1 and complexity would total 2.
 func TestCalculateDoesNotClusterAcrossSymbols(t *testing.T) {
 	finding10 := func(ruleID string, pillar finding.Pillar) finding.Finding {
 		return finding.Finding{RuleID: ruleID, Pillar: pillar, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go", Symbol: "Foo", Location: &finding.Location{Line: 10}}
@@ -433,10 +488,10 @@ func TestCalculateDoesNotClusterAcrossSymbols(t *testing.T) {
 		finding10("size.function-length", finding.PillarSize),
 		finding30("complexity.cyclomatic", finding.PillarComplexity),
 		finding30("size.function-length", finding.PillarSize),
-	})
+	}, 10)
 	complexity := findPillarDetail(t, score, "complexity")
-	if complexity.Penalty != 8.0 {
-		t.Errorf("complexity penalty = %v, want 8.0 (two separate clusters of 4, not one cluster of 4)", complexity.Penalty)
+	if complexity.Penalty != 4.0 {
+		t.Errorf("complexity penalty = %v, want 4.0 (two separate clusters of 2, not one cluster of 2)", complexity.Penalty)
 	}
 }
 
@@ -446,10 +501,10 @@ func TestCalculateDoesNotClusterAcrossSymbols(t *testing.T) {
 func TestCalculateLoneCorrelatedFindingKeepsFullPenalty(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
-	})
+	}, 10)
 	complexity := findPillarDetail(t, score, "complexity")
-	if complexity.Penalty != 8.0 {
-		t.Errorf("complexity penalty = %v, want 8.0 (a lone finding keeps its full penalty)", complexity.Penalty)
+	if complexity.Penalty != 4.0 {
+		t.Errorf("complexity penalty = %v, want 4.0 (a lone finding keeps its full ratified weight)", complexity.Penalty)
 	}
 }
 
@@ -460,9 +515,9 @@ func TestCalculateClusteringRequiresSymbolAndLine(t *testing.T) {
 	noSymbol := func() finding.Finding {
 		return finding.Finding{RuleID: "complexity.cyclomatic", Pillar: finding.PillarComplexity, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go"}
 	}
-	score := Calculate([]finding.Finding{noSymbol(), noSymbol()})
+	score := Calculate([]finding.Finding{noSymbol(), noSymbol()}, 10)
 	complexity := findPillarDetail(t, score, "complexity")
-	if complexity.Penalty != 16.0 {
-		t.Errorf("complexity penalty = %v, want 16.0 (no symbol/line means no clustering)", complexity.Penalty)
+	if complexity.Penalty != 8.0 {
+		t.Errorf("complexity penalty = %v, want 8.0 (no symbol/line means no clustering)", complexity.Penalty)
 	}
 }

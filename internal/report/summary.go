@@ -18,11 +18,11 @@ import (
 )
 
 // SummarySchemaVersion identifies the shared cross-port summary digest contract.
-// All five gruff-* ports emit the same `gruff.summary.v2` shape (7-column pillar
+// All five gruff-* ports emit the same `gruff.summary.v3` shape (7-column pillar
 // block sourced from BuildPillarSummaryRows); the bare prefix reflects that it
 // is the canonical schema rather than a per-port one. Distinct from the analysis
 // report schema so the summary digest can evolve independently.
-const SummarySchemaVersion = "gruff.summary.v2"
+const SummarySchemaVersion = analysis.SummarySchemaVersion
 
 // summaryPillarOrder enumerates every pillar surfaced in the summary digest. It
 // mirrors the spec's canonical pillar list and intentionally excludes the
@@ -42,7 +42,7 @@ var summaryPillarOrder = []finding.Pillar{
 }
 
 // PillarSummaryRow is a single per-pillar entry in the summary digest. It is
-// serialised into the gruff.summary.v2 JSON payload and rendered into the
+// serialised into the gruff.summary.v3 JSON payload and rendered into the
 // canonical text Pillars block.
 type PillarSummaryRow struct {
 	// Pillar is the canonical pillar name (e.g. "documentation").
@@ -83,14 +83,26 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	}
 	score := report.Score
 	fileCounts := countSummaryFiles(report)
-	header := fmt.Sprintf(
-		"%s %s summary\nscanned: %s (in %s)\nfiles: %d Go parsed, %d text scanned, %d failed, %d skipped\n",
-		report.Tool.Name, report.Tool.Version,
+	// FAMILY-CONTRACT section 1: the masthead and the two-line composite block are the first three
+	// lines, and every port-local line sits below them. The scan card used to sit between the two,
+	// which put the number a reader came for further down than the contract allows and out of line
+	// with what `analyse` does one command away.
+	if _, err := fmt.Fprintf(writer, "%s %s summary\n", report.Tool.Name, report.Tool.Version); err != nil {
+		return err
+	}
+	if err := writeCompositeBlock(writer, report); err != nil {
+		return err
+	}
+	scanCard := fmt.Sprintf(
+		"scanned: %s (in %s)\nfiles: %d Go parsed, %d text scanned, %d failed, %d skipped\n",
 		summaryInputs(report.Run.Inputs),
 		summaryWorkingDir(report.Run.WorkingDirectory),
 		fileCounts.parsedGoFiles, fileCounts.scannedTextFiles, fileCounts.failedFiles, report.Summary.FilesSkipped,
 	)
-	if _, err := fmt.Fprint(writer, header); err != nil {
+	if _, err := fmt.Fprint(writer, scanCard); err != nil {
+		return err
+	}
+	if err := writeTextDiagnostics(writer, report.Diagnostics); err != nil {
 		return err
 	}
 	if gitignored := countGitignored(report.Paths.Skipped); gitignored > 0 {
@@ -106,9 +118,6 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 	if _, err := fmt.Fprintf(writer, "schema: %s\n", report.SchemaVersion); err != nil {
 		return err
 	}
-	if err := writeCompositeBlock(writer, report); err != nil {
-		return err
-	}
 	if err := writeScoreCoverage(writer, score); err != nil {
 		return err
 	}
@@ -119,6 +128,15 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 		return err
 	}
 	if err := writeTopOffenders(writer, score.TopOffender, top); err != nil {
+		return err
+	}
+	// summary applies sensitive exclusions, so it owes the same audit line
+	// analyse prints: a surface that filters may never filter in silence
+	// (FAMILY-CONTRACT.md section 13a, "Where the audit must appear"). The
+	// shared writeTextSuppressions keeps the wording identical across the two
+	// surfaces, and it lands below the canonical Composite/Findings block as a
+	// permitted extension line (section 1).
+	if err := writeTextSuppressions(writer, report.Suppressions); err != nil {
 		return err
 	}
 	if err := writeSummaryBaseline(writer, report.Baseline); err != nil {
@@ -184,17 +202,13 @@ func writeSummaryBaseline(writer io.Writer, summary analysis.BaselineSummary) er
 	return err
 }
 
-// WriteSummaryV01JSON writes the gruff.summary.v2 digest payload used by the
-// `summary --format=json` command. The payload is intentionally smaller than
-// the analysis schema: callers that need the full per-finding report should
-// use `analyse --format=json` or `analyse --format=summary-json`.
+// WriteSummaryV01JSON writes the canonical v3 analysis projection used by the
+// `summary --format=json` command. The legacy function name remains internal so
+// callers do not select a second summary implementation.
 func WriteSummaryV01JSON(writer io.Writer, report analysis.Report) error {
-	payload := struct {
-		SchemaVersion string             `json:"schemaVersion"`
-		Pillars       []PillarSummaryRow `json:"pillars"`
-	}{
-		SchemaVersion: SummarySchemaVersion,
-		Pillars:       BuildPillarSummaryRows(report),
+	payload, err := report.MachineSummary()
+	if err != nil {
+		return err
 	}
 	return WriteJSON(writer, payload)
 }
@@ -255,8 +269,12 @@ func BuildPillarSummaryRows(report analysis.Report) []PillarSummaryRow {
 			Applicable: true,
 		}
 		if detail, ok := details[name]; ok {
-			row.Grade = summaryGrade(detail.Score)
-			row.Score = float64(detail.Score)
+			// A pillar with no score evaluated nothing, so it keeps neither a grade nor a number.
+			row.Applicable = detail.Applicable && detail.Score != nil
+			if detail.Score != nil {
+				row.Grade = summaryGrade(*detail.Score)
+				row.Score = *detail.Score
+			}
 			row.Findings = detail.Findings
 			row.Advisory = detail.Advisory
 			row.Warning = detail.Warning
@@ -327,7 +345,7 @@ func summaryDigitWidth(value int) int {
 
 // summaryGrade mirrors the scoring package's unexported grade ladder so the
 // summary renderer can grade pillars that did not produce a PillarDetail entry.
-func summaryGrade(score int) string {
+func summaryGrade(score float64) string {
 	switch {
 	case score >= 90:
 		return "A"
@@ -371,7 +389,7 @@ func writeTopOffenders(writer io.Writer, offenders []scoring.FileScore, top int)
 		count = len(offenders)
 	}
 	for _, file := range offenders[:count] {
-		if _, err := fmt.Fprintf(writer, "  %s  penalty=%d  findings=%d  grade=%s\n", file.File, file.Penalty, file.Findings, gradeOrNA(file.Grade)); err != nil {
+		if _, err := fmt.Fprintf(writer, "  %s  score=%.2f  findings=%d  grade=%s\n", file.File, file.Score, file.Findings, file.Grade); err != nil {
 			return err
 		}
 	}
@@ -408,12 +426,13 @@ func computeTopRules(report analysis.Report, top int) []ruleCount {
 	return entries
 }
 
-// gradeOrNA returns grade or the placeholder "n/a" when grade is empty.
-func gradeOrNA(grade string) string {
-	if grade == "" {
+// gradeOrNA returns the grade letter, or the placeholder "n/a" when the run graded nothing.
+// A nil grade means no applicable pillar was evaluated, which is distinct from a bad grade.
+func gradeOrNA(grade *string) string {
+	if grade == nil || *grade == "" {
 		return "n/a"
 	}
-	return grade
+	return *grade
 }
 
 // writeCompositeBlock emits the cross-port canonical two-line score block shared
@@ -423,7 +442,13 @@ func gradeOrNA(grade string) string {
 // token and data differ across ports).
 func writeCompositeBlock(writer io.Writer, report analysis.Report) error {
 	counts := severityCounts(report)
-	if _, err := fmt.Fprintf(writer, "Composite: %s (%.2f / 100)\n", gradeOrNA(report.Score.Grade), float64(report.Score.Composite)); err != nil {
+	// A run that evaluated nothing has no composite to render, and printing 100.00 here is exactly
+	// what let an empty directory read as perfect before the M06 break.
+	if report.Score.Composite == nil {
+		if _, err := fmt.Fprintf(writer, "Composite: n/a (nothing evaluated)\n"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintf(writer, "Composite: %s (%.2f / 100)\n", gradeOrNA(report.Score.Grade), *report.Score.Composite); err != nil {
 		return err
 	}
 	_, err := fmt.Fprintf(writer, "Findings: %d total · %d error · %d warning · %d advisory\n",

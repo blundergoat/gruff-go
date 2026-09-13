@@ -12,13 +12,13 @@ Compact terminal-friendly output:
 gruff-go 0.5.0 analyse
 Composite: A (99.00 / 100)
 Findings: 1 total · 0 error · 1 warning · 0 advisory
-schema: gruff.analysis.v2
+schema: gruff.analysis.v3
 files: 65 scanned, 6 skipped
 score coverage: size
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
 complexity distribution: finding-only
 findings:
-  [warning] internal/foo/bar.go:42 complexity.cyclomatic: function cyclomatic complexity is 23, above threshold 20
+- [warning] internal/foo/bar.go:42 complexity.cyclomatic - function cyclomatic complexity is 23, above threshold 20
 exit: 1
 ```
 
@@ -34,87 +34,162 @@ files: 61 Go parsed, 4 text scanned, 0 failed, 6 skipped
 
 `Go parsed` excludes Go files with parse or read diagnostics. `text scanned` counts successfully read configuration, workflow, module, and plain-text inputs used by sensitive-data, workflow-security, and dependency-posture rules. `failed` counts discovered inputs that could not be read or parsed.
 
-Full analysis JSON keeps `summary.filesScanned` as the combined discovered Go-and-text count. Use `paths.scanned` when a machine consumer needs the exact file set; adding serialized per-type counts is deferred to a coordinated schema change.
+Full analysis JSON keeps `summary.analysedFiles` as the combined discovered
+Go-and-text count. Use `paths.extensions.go.paths.scanned` when a machine
+consumer needs the exact file set.
 
 ## `json`
 
-Full structured report. Schema: `gruff.analysis.v2`.
+Use `json` for automation. Full reports use `gruff.analysis.v3`:
 
-```bash
-gruff-go analyse --format json . > analysis.json
+```sh
+gruff-go analyse --format json --fail-on none . > analysis.json
 ```
 
-Top-level shape:
+Version 3 is the coordinated family machine contract. Paths are project-relative
+POSIX paths, `run.projectRoot` is `.`, and unavailable optional fields are
+omitted rather than encoded as `null` - except the scoring fields, which are
+published as `null` rather than dropped. `score.composite.score`,
+`score.composite.grade`, and each `score.pillars[].score` and
+`score.pillars[].grade` are `null` when the run evaluated nothing at all: an
+empty directory, or one whose every Go file failed to parse. A per-file row in
+`score.topOffenders` always carries a number and a letter, because a run that
+evaluated nothing produces no rows.
+
+The canonical top-level sections are `schemaVersion`, `tool`, `run`,
+`summary`, `score`, `diagnostics`, `findings`, `paths`, and
+`suppressions`. `baseline`, `diff`, and `displayFilter` appear only when their
+feature is present. `extensions` sits at three levels - top level, inside
+`summary`, and inside `paths` - and gruff-go publishes Go-owned data at each one, so a
+consumer that reads only the top-level key misses two of them. The example below
+shows the top-level and `paths` keys; `summary.extensions` has the same shape.
+The important shared shape is:
 
 ```jsonc
 {
-  "schemaVersion": "gruff.analysis.v2",
-  "tool":          { "name": "gruff-go", "version": "0.5.0" },
-  "run":           { "workingDirectory": "/repo", "inputs": ["."], "format": "json", "failOn": "advisory" },
-  "summary":       { "filesScanned": 65, "filesSkipped": 6, "findingsCount": 3,
-                     "countsBySeverity": {...}, "countsByPillar": {...}, "exitCode": 1 },
-  "baseline":      { "applied": false, "entries": 0, "suppressedFindings": 0, "staleEntries": 0,
-                     "newFindings": 0, "unchangedFindings": 0, "resolvedFindings": 0 },
-  "diff":          { "enabled": false, "changedFiles": [], "filteredFindings": 0 },
-  "displayFilter": { "applied": false, "...": "..." },
-  "score":         { "composite": 92, "grade": "A",
-                     "pillars": {...}, "pillarDetails": [...], "coverage": {...},
-                     "topOffenders": [...], "complexityDistribution": {...},
-                     "complexityDistributionScope": "finding-only" },
-  "rules":         [ /* every rule definition active for this run, including capability */ ],
-  "paths":         { "scanned": [...], "ignoredPaths": [...], "skipped": [...], "missing": [] },
-  "diagnostics":   [ /* parse errors, missing paths, config errors, etc. */ ],
-  "findings":      [ /* one entry per finding */ ]
+  "schemaVersion": "gruff.analysis.v3",
+  "tool": { "name": "gruff-go", "version": "0.5.0" },
+  "run": {
+    "projectRoot": ".",
+    "inputs": ["."],
+    "format": "json",
+    "failOn": "advisory"
+  },
+  "summary": {
+    "analysedFiles": 65,
+    "skippedFiles": 6,
+    "ignoredPaths": 6,
+    "missingPaths": 0,
+    "diagnostics": 0,
+    "findings": {
+      "advisory": 0,
+      "warning": 3,
+      "error": 0,
+      "total": 3
+    },
+    "findingsByPillar": { "complexity": 3 },
+    "exitCode": 1
+  },
+  "score": {
+    "composite": { "score": 95.87, "grade": "A" },
+    "pillars": [],
+    "topOffenders": []
+  },
+  "paths": {
+    "analysedFiles": 65,
+    "ignoredPaths": [],
+    "details": [],
+    "missingPaths": [],
+    "extensions": { "go": { "paths": { "scanned": ["internal/foo/bar.go"] } } }
+  },
+  "diagnostics": [],
+  "findings": [],
+  "suppressions": []
 }
 ```
 
-Every finding looks like:
+A canonical finding uses one path key:
 
 ```jsonc
 {
-  "ruleId":      "complexity.cyclomatic",
-  "message":     "function cyclomatic complexity is 23, above threshold 20",
-  "file":        "internal/foo/bar.go",
-  "line":        42,
-  "endLine":     78,
-  "column":      null,
-  "location":    { "line": 42, "endLine": 78 },
-  "symbol":      "DoTheThing",
-  "severity":    "warning",
-  "pillar":      "complexity",
+  "ruleId": "complexity.cyclomatic",
+  "message": "function cyclomatic complexity is 23, above threshold 20",
+  "file": "internal/foo/bar.go",
+  "line": 42,
+  "endLine": 78,
+  "symbol": "DoTheThing",
+  "severity": "warning",
+  "pillar": "complexity",
   "secondaryPillars": [],
-  "tier":        "v0.1",
-  "confidence":  "high",
+  "tier": "v0.1",
+  "confidence": "high",
   "remediation": "Split independent decisions or move branches into named helpers.",
   "fingerprint": "a3b1c2d4e5f6a7b8",
   "stableIdentity": "b8a7f6e5d4c2b1a3",
-  "metadata":    { "complexity": 23, "threshold": 20 }
+  "metadata": {
+    "complexity": 23,
+    "threshold": 20,
+    "locationPrecision": "line-only"
+  }
 }
 ```
 
-The 16-character fingerprint is stable across runs as long as the rule ID, file, line, column, end-line, symbol, and message stay the same. Baselines consume exact rule/file/fingerprint pairs first. Score-neutral `design.*` composite findings intentionally omit line data so their fingerprints survive body-only line shifts when the file and symbol identity stay the same.
+`column`, `endLine`, and `symbol` are omitted when unavailable. Metadata
+declares `locationPrecision` as `scanner-pinpointed` when a column is known
+and `line-only` otherwise. The v3 adapter preserves every fingerprint,
+`stableIdentity`, score, grade, baseline result, and exit-code decision
+produced by the native analyser.
 
-The finding JSON `stableIdentity` is line-insensitive and intended for external diff tooling. Generated baseline entries also carry an optional `stableIdentity`, but baseline matching compares that stored value with the current finding's recomputed contract identity; metric findings may therefore use a different baseline value from `findings[].stableIdentity`. Remaining modern entries pair one-to-one by that contract identity after exact matching, so line and measured-value shifts stay reviewed without collapsing duplicates. Legacy baseline entries without `stableIdentity` remain exact-only. The hook invokes the same matcher over its complete current slice. The nested `location` object is retained for one release while consumers move to the top-level `line` / `endLine` / `column` fields.
+Go-specific data stays in named extension containers:
+`summary.extensions.go.summary` carries parser mode,
+`paths.extensions.go.paths.scanned` carries the exact scanned set, and
+`extensions.go.topLevel.rules` carries the active rule catalogue. Native score
+honesty fields such as `coverage`, `complexityDistribution`, and
+`complexityDistributionScope` remain inside `score`.
 
-Each rule definition in `rules[]` includes a `capability` field. The closed enum is `parser`, `type`, `ssa`, or `dataflow`; all rules shipped in v0.1 currently report `parser` because they use source text, Go parser units, ASTs, or already-produced findings, not type loading or dataflow analysis.
+`paths.details` records each skipped path with `path`, canonical `reason`,
+`source`, and `pattern` when a pattern caused the skip.
+`paths.ignoredPaths` is its ordered path projection. `--include-ignored` can
+include Git- or default-ignored files, while config `paths.ignore` still wins.
 
-The `score.coverage` object names the score-impacting pillars that contributed penalties and adds a caveat when the composite is clean or driven by a narrow set of pillars. This is report honesty metadata: it does not change score math, exit-code semantics, or schema version.
+Changed-region runs report the removed count as
+`diff.filteredFindings` and `summary.suppressedFindings`; the two values are
+equal. Full scans omit both fields and omit `diff`.
 
-`score.complexityDistribution` is scoped by `score.complexityDistributionScope`. In v0.1 the scope is always `finding-only`, meaning the histogram bins over-threshold `complexity.cyclomatic` findings rather than every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
+`suppressions` is always present and contains one
+`{index, rule, paths, symbol?, reason, suppressed}` row per configured
+`sensitiveExclusions` entry, including entries that matched nothing.
 
-`paths.ignoredPaths` is the cross-port bare-string list of files excluded by config `paths.ignore`, nested under `paths` in gruff-go to match the Rust and TypeScript ports. `paths.skipped[]` remains the detailed list for every skipped path, including `reason`, `source`, and the config `pattern` when one matched. `--include-ignored` can include git/default-ignored files, but config `paths.ignore` still wins and still appears in both lists.
+### Migrating v2 consumers
 
-When `--diff`, `--since`, `--diff-base`, or `--changed-ranges` scopes findings to changed regions, JSON also emits top-level `suppressedCount`: the number of findings held back because they were outside the changed region. The `diff` object carries the changed files, filtered count, and the changed-region caveat.
+Version 3 is a hard break with no v2 writer or compatibility flag:
+
+| v2 | v3 |
+|---|---|
+| `run.workingDirectory` | `run.projectRoot` with value `.` |
+| `summary.filesScanned` and `summary.filesSkipped` | `summary.analysedFiles` and `summary.skippedFiles` |
+| `summary.findingsCount` and `summary.countsBySeverity` | `summary.findings.total` and `summary.findings` |
+| `summary.countsByPillar` | `summary.findingsByPillar` |
+| `findings[].location` | flat `line`, optional `endLine`, and optional `column` |
+| `score.composite` plus `score.grade` | `score.composite.score` plus `score.composite.grade` |
+| `paths.scanned` | `paths.extensions.go.paths.scanned` |
+| `paths.skipped` and `paths.missing` | `paths.details` and `paths.missingPaths` |
+| top-level `rules` | `extensions.go.topLevel.rules` |
+| top-level `suppressedCount` | `diff.filteredFindings` and `summary.suppressedFindings` |
 
 ## `summary-json`
 
-Same shape as `json` minus the per-finding `findings` array. Useful for CI dashboards that want the counts, score, and diagnostics without parsing thousands of finding records.
+Both `analyse --format summary-json` and `summary --format json` emit the
+findings-free projection of analysis v3. The schema changes to
+`gruff.summary.v3`, and only the top-level `findings` array is removed.
 
-```bash
+```sh
 gruff-go analyse --format summary-json .
+gruff-go summary --format json .
 ```
 
-Schema is still `gruff.analysis.v2` - the missing `findings` field is the only difference.
+Counts, scores, diagnostics, paths, suppressions, baseline, diff, and extensions
+therefore retain the analysis values for the same run.
 
 ## `sarif`
 
@@ -183,7 +258,7 @@ Controls how file:line references render in the report:
 - `vscode` - `<a href="vscode://file/{absPath}:{line}">` anchors. Clicking opens VS Code at the right line on a machine that has the editor installed.
 - `phpstorm` - `<a href="phpstorm://open?file={absPath}&line={line}">` anchors. Same idea for JetBrains.
 
-The absolute path is built relative to `--project` (when set) or the working directory at render time. The visible text always shows the project-relative path so it's portable; only the `href` carries the absolute path.
+The absolute path is built relative to the working directory at render time, or to the `dashboard` command's `--project` when the report is served from there. The visible text always shows the project-relative path so it's portable; only the `href` carries the absolute path.
 
 ### `--report-interactive`
 
@@ -228,7 +303,7 @@ Output shape:
 # gruff-go report
 
 Composite: **A (100.00 / 100)**
-**Schema:** `gruff.analysis.v2`
+**Schema:** `gruff.analysis.v3`
 **Files:** 148 scanned, 13 skipped
 Findings: 0 total · 0 error · 0 warning · 0 advisory
 
@@ -250,12 +325,12 @@ The chosen format does **not** change the exit code. All formats use:
 
 | Exit | Meaning |
 |------|---------|
-| `0` | No findings at or above `--min-severity` and no diagnostics. |
-| `1` | At least one finding at or above `--min-severity`. |
+| `0` | No findings at or above `--fail-on` and no diagnostics. |
+| `1` | At least one finding at or above `--fail-on`. |
 | `2` | Diagnostics (path missing, parse error, config error, baseline error, diff error) **or** invalid CLI input. |
 
-Set `--min-severity` to control where the line falls (default: `advisory`).
-The threshold applies only to findings: `--min-severity none` disables exit `1`,
+Set `--fail-on` to control where the line falls (default: `advisory`). `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter.
+The threshold applies only to findings: `--fail-on none` disables exit `1`,
 but it cannot hide a missing path, parse failure, baseline load failure, diff
 failure, invalid configuration, or invalid CLI input. Those failures always exit
 `2`. Analysis diagnostics retain severity `error` as descriptive output; the
@@ -270,7 +345,8 @@ analysis, or internal failures remain exit `2`.
 
 | Schema | Used by | File |
 |--------|---------|------|
-| `gruff.analysis.v2`      | `json`, `summary-json` | `internal/analysis/report.go` |
+| `gruff.analysis.v3`      | `json` | `internal/analysis/report.go` |
+| `gruff.summary.v3`       | `summary-json`, `summary --format json` | `internal/analysis/report.go` |
 | `gruff-go.config.v0.1`   | `.gruff-go.yaml` config loader | `internal/config/config.go` |
-| `gruff-go.baseline.v0.1` | `baseline` subcommand | `internal/baseline/baseline.go` |
+| `gruff.baseline.v3` | `baseline` subcommand, `--generate-baseline` | `internal/baseline/baseline.go` |
 | `sarif-2.1.0`            | `sarif` | `internal/report/machine.go` |

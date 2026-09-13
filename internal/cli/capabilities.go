@@ -7,7 +7,7 @@ import (
 )
 
 // hookContractVersion is the cross-analyzer contract emitted by hook mode.
-const hookContractVersion = "gruff.hook.v1"
+const hookContractVersion = "gruff.hook.v2"
 
 // hookCapabilities is the §4 capability negotiation payload.
 type hookCapabilities struct {
@@ -26,21 +26,28 @@ type hookAnalyzer struct {
 
 // hookCapabilityFlags advertises which hook contract features are implemented.
 type hookCapabilityFlags struct {
-	ChangedRanges  bool `json:"changedRanges"`
-	Diff           bool `json:"diff"`
 	Baseline       bool `json:"baseline"`
-	ScopeField     bool `json:"scopeField"`
-	Metadata       bool `json:"metadata"`
-	StableIdentity bool `json:"stableIdentity"`
+	BaselineV3     bool `json:"baselineV3"`
+	ChangedRanges  bool `json:"changedRanges"`
+	ConfidenceGate bool `json:"confidenceGate"`
+	DeepScanBudget bool `json:"deepScanBudget"`
+	Diagnostics    bool `json:"diagnostics"`
+	Diff           bool `json:"diff"`
 	IgnoreReport   bool `json:"ignoreReport"`
+	Metadata       bool `json:"metadata"`
 	NewOnly        bool `json:"newOnly"`
+	ScopeField     bool `json:"scopeField"`
+	StableIdentity bool `json:"stableIdentity"`
 }
 
 // hookFlagNames maps contract concepts to this analyzer's real flags.
 type hookFlagNames struct {
-	ChangedRanges string `json:"changedRanges"`
-	Diff          string `json:"diff"`
-	Baseline      string `json:"baseline"`
+	Baseline          string `json:"baseline"`
+	ChangedRanges     string `json:"changedRanges"`
+	DeepScanBudget    string `json:"deepScanBudget"`
+	Diff              string `json:"diff"`
+	FailOnDiagnostics string `json:"failOnDiagnostics"`
+	MinConfidence     string `json:"minConfidence"`
 }
 
 // writeHookCapabilities writes the stable §4 JSON payload.
@@ -54,20 +61,29 @@ func hookCapabilitiesPayload() hookCapabilities {
 		ContractVersion: hookContractVersion,
 		Analyzer:        hookAnalyzer{Name: "gruff-go", Version: toolVersion},
 		Supports: hookCapabilityFlags{
-			ChangedRanges:  true,
-			Diff:           true,
 			Baseline:       true,
-			ScopeField:     true,
-			Metadata:       true,
-			StableIdentity: true,
+			BaselineV3:     true,
+			ChangedRanges:  true,
+			ConfidenceGate: true,
+			DeepScanBudget: true,
+			Diagnostics:    true,
+			Diff:           true,
 			IgnoreReport:   true,
+			Metadata:       true,
 			NewOnly:        true,
+			ScopeField:     true,
+			StableIdentity: true,
 		},
 		Flags: hookFlagNames{
-			ChangedRanges: "--changed-ranges",
-			Diff:          "--diff",
-			Baseline:      "--baseline",
+			Baseline:          "--baseline",
+			ChangedRanges:     "--changed-ranges",
+			DeepScanBudget:    "--deep-scan-budget",
+			Diff:              "--diff",
+			FailOnDiagnostics: "--fail-on-diagnostics",
+			MinConfidence:     "--min-confidence",
 		},
-		FlagOrder: "flags-before-path",
+		// Measured 2026-08-12 across all five ports: this port accepts flags after the path, so advertising anything
+		// narrower told every consumer something untrue about it.
+		FlagOrder: "any",
 	}
 }
