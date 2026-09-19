@@ -2,9 +2,11 @@
   "baseline": {
     "applied": true,
     "entries": 1,
+    "generated": false,
     "newFindings": 0,
     "path": "baseline.json",
     "resolvedFindings": 0,
+    "source": "explicit",
     "staleEntries": 0,
     "suppressedFindings": 1,
     "unchangedFindings": 1

@@ -156,6 +156,58 @@ func TestWriteSARIFContract(t *testing.T) {
 	requireSARIFRunProperties(t, run.Properties, report.Score.Composite)
 }
 
+// TestWriteSARIFWithholdsIdentityFromUnnameableFindings covers the two findings the family refuses to name.
+// A sensitive result carries no partialFingerprints and no fingerprint property, because a code-scanning system would
+// keep either as a durable name for a secret. A separator-bearing symbol keeps its port-local property and loses only
+// the family fingerprint. The ordinary result beside them keeps both, so the writer is not simply emitting nothing.
+func TestWriteSARIFWithholdsIdentityFromUnnameableFindings(t *testing.T) {
+	ordinary := sarifContractFinding()
+	sensitive := finding.Finding{
+		RuleID:     "sensitive-data.aws-access-key",
+		Message:    "Possible AWS access key [redacted:aws-access-key]",
+		File:       "config/app.env",
+		Location:   &finding.Location{Line: 3},
+		Severity:   finding.SeverityError,
+		Confidence: finding.ConfidenceHigh,
+		Pillar:     finding.PillarSensitiveData,
+	}.WithFingerprint()
+	separated := ordinary
+	separated.Symbol = "main#2"
+	separated = separated.WithFingerprint()
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "sarif",
+		FailOn:      finding.FailThresholdError,
+		Scanned:     []string{"pkg/main.go", "config/app.env"},
+		Findings:    []finding.Finding{ordinary, sensitive, separated},
+		Definitions: defaultDefinitions(),
+	})
+
+	run := requireSingleSARIFRun(t, decodeSARIFLog(t, writeSARIFBytes(t, report)))
+	if len(run.Results) != 3 {
+		t.Fatalf("results = %d, want 3", len(run.Results))
+	}
+	for _, result := range run.Results {
+		_, hasProperty := result.Properties["fingerprint"]
+		switch {
+		case result.RuleID == sensitive.RuleID:
+			if result.PartialFingerprints != nil || hasProperty {
+				t.Fatalf("sensitive result carries an identity: fingerprints %#v, fingerprint property %v", result.PartialFingerprints, hasProperty)
+			}
+		case result.Properties["symbol"] == "main#2":
+			if result.PartialFingerprints != nil || !hasProperty {
+				t.Fatalf("separator-bearing result: fingerprints %#v, fingerprint property %v; want none and present", result.PartialFingerprints, hasProperty)
+			}
+		default:
+			requireSARIFFingerprints(t, result.PartialFingerprints, baselineIdentityOf(t, ordinary))
+			if !hasProperty {
+				t.Fatal("ordinary result lost its fingerprint property")
+			}
+		}
+	}
+}
+
 // reversedDefinitions flips the rule definitions slice in place to prove the SARIF writer sorts rules itself.
 func reversedDefinitions(definitions []rule.Definition) []rule.Definition {
 	for left, right := 0, len(definitions)-1; left < right; left, right = left+1, right-1 {

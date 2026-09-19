@@ -411,6 +411,21 @@ func TestAnalyseGenerateBaselineWritesUsableBaseline(t *testing.T) {
 	if parsed.Baseline.SuppressedFindings != 1 || parsed.Summary.Findings.Total != 0 {
 		t.Fatalf("baseline summary = %#v summary = %#v, want one suppressed and no findings", parsed.Baseline, parsed.Summary)
 	}
+	// The family baseline contract names nine keys; a consumer must find every one without a per-port branch.
+	var raw struct {
+		Baseline map[string]any `json:"baseline"`
+	}
+	if err := json.Unmarshal(analysisOut.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"applied", "entries", "generated", "newFindings", "resolvedFindings", "source", "suppressedFindings", "unchangedFindings", "path"} {
+		if _, ok := raw.Baseline[key]; !ok {
+			t.Fatalf("baseline section lacks ratified key %q: %#v", key, raw.Baseline)
+		}
+	}
+	if raw.Baseline["generated"] != false || raw.Baseline["source"] != "explicit" {
+		t.Fatalf("baseline section = %#v, want generated false and an explicit source", raw.Baseline)
+	}
 }
 
 // TestAnalyseGenerateBaselineRejectsPartialScopeFlags protects the baseline

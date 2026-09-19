@@ -5,6 +5,8 @@
 package rule
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -46,9 +48,39 @@ func assertNoRawLeak(t *testing.T, findings []finding.Finding, raw string) {
 // long random token and redacts it.
 func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	findings := HighEntropyStringRule{}.AnalyzeUnit(unit, Context{})
+	findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if len(findings) != 1 {
 		t.Fatalf("findings = %#v, want 1", findings)
+	}
+	assertNoRawLeak(t, findings, randomSecretToken)
+}
+
+// TestHighEntropyStringScoresGoLiteralsAndCommentsNotIdentifiers covers parsed Go source, where only a
+// string literal or a comment can hold a secret. A long test name is as random-looking as a key and is
+// not one, so neither the declaration nor a doc comment naming it reports, even from a sibling file of
+// the package. An interpreted literal, the second line of a raw literal, a whole-line comment and a
+// trailing comment each report on the line they occupy.
+func TestHighEntropyStringScoresGoLiteralsAndCommentsNotIdentifiers(t *testing.T) {
+	src := "package demo\n\n" +
+		"// TestAnalyzeExplicitAllSkippedInputReportsDiagnosticForEveryPath documents itself by name.\n" +
+		"func TestAnalyzeExplicitAllSkippedInputReportsDiagnosticForEveryPath() {}\n\n" +
+		"var interpreted = \"" + randomSecretToken + "\"\n\n" +
+		"var raw = `first line\n" + randomSecretToken + "`\n\n" +
+		"// rotated key: " + randomSecretToken + "\n" +
+		"var trailing = 1 // " + randomSecretToken + "\n"
+	sibling := "package demo\n\n" +
+		"// See TestAnalyzeExplicitAllSkippedInputReportsDiagnosticForEveryPath for the contract.\n" +
+		"var other = 1\n"
+	units := []parser.Unit{parseOne(t, "demo/demo.go", src), parseOne(t, "demo/other.go", sibling)}
+	findings := HighEntropyStringRule{}.AnalyzeProject(units, Context{})
+	lines := []string{}
+	for _, item := range findings {
+		lines = append(lines, fmt.Sprintf("%s:%d", item.File, item.Location.Line))
+	}
+	slices.Sort(lines)
+	want := []string{"demo/demo.go:11", "demo/demo.go:12", "demo/demo.go:6", "demo/demo.go:9"}
+	if !slices.Equal(lines, want) {
+		t.Fatalf("findings = %v, want %v and nothing for the test name or the comments naming it", lines, want)
 	}
 	assertNoRawLeak(t, findings, randomSecretToken)
 }
@@ -73,7 +105,7 @@ func TestHighEntropyStringSkipsNonSecretShapes(t *testing.T) {
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {
 			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
-			if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+			if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 				t.Fatalf("findings = %#v, want 0 for %s", got, name)
 			}
 		})
@@ -88,7 +120,7 @@ func TestHighEntropyStringDefersToProviderRules(t *testing.T) {
 	// 36-char body floor so the provider rule claims it.
 	token := "ghp_" + randomSecretToken
 	unit := sensitiveTextUnit("x.env", "token = \""+token+"\"\n")
-	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+	if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 		t.Fatalf("entropy findings = %#v, want 0 (GitHubTokenRule owns this token)", got)
 	}
 	if got := (GitHubTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
@@ -101,7 +133,7 @@ func TestHighEntropyStringDefersToProviderRules(t *testing.T) {
 // minLength above the token length silences the finding.
 func TestHighEntropyThresholdIsConfigurable(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	if got := (HighEntropyStringRule{MinLength: 200}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+	if got := (HighEntropyStringRule{MinLength: 200}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 		t.Fatalf("findings = %#v, want 0 with minLength 200", got)
 	}
 	registry, err := DefaultsConfigured(Config{
@@ -232,7 +264,7 @@ func TestHighEntropyStringDigestsSurviveALoweredThreshold(t *testing.T) {
 	for name, value := range digests {
 		t.Run(name, func(t *testing.T) {
 			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
-			if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {
+			if got := rule.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 				t.Fatalf("findings = %#v, want 0 for %s at a lowered bar", got, name)
 			}
 		})
@@ -243,10 +275,10 @@ func TestHighEntropyStringDigestsSurviveALoweredThreshold(t *testing.T) {
 	// AWS-shaped key, because the entropy rule defers to the provider rules that own such a
 	// prefix and would report nothing for a reason unrelated to the threshold.
 	unit := sensitiveTextUnit("x.env", "v = \""+randomSecretToken+"\"\n")
-	if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 1 {
+	if got := rule.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
 		t.Fatalf("findings = %#v, want 1 at the lowered bar", got)
 	}
-	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+	if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
 		t.Fatalf("findings = %#v, want 1 at the default bar", got)
 	}
 }
@@ -280,11 +312,11 @@ func TestHighEntropyStringContract(t *testing.T) {
 	// silent at the default and reports once the bar is lowered to admit it.
 	short := "aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0eF"[:24]
 	unit := sensitiveTextUnit("x.env", "v = \""+short+"\"\n")
-	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+	if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 		t.Fatalf("findings = %#v, want 0 below the ratified minLength", got)
 	}
 	admitted := HighEntropyStringRule{MinLength: 20, Entropy: highEntropyMinBitsPerChar}
-	if got := admitted.AnalyzeUnit(unit, Context{}); len(got) != 1 {
+	if got := admitted.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
 		t.Fatalf("findings = %#v, want 1 once minLength admits the token", got)
 	}
 }

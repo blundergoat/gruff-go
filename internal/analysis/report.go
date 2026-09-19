@@ -772,7 +772,9 @@ func (report Report) machinePathPayload() (map[string]any, error) {
 }
 
 // machineBaseline projects an applied baseline while preserving its native
-// matching results and optional detail lists.
+// matching results and optional detail lists. It always carries the nine keys
+// the family baseline contract requires, so one consumer reads five ports
+// without a per-port branch; staleEntries is a contract-permitted extra.
 func (report Report) machineBaseline() (map[string]any, bool, error) {
 	if !report.Baseline.Applied {
 		return nil, false, nil
@@ -780,8 +782,10 @@ func (report Report) machineBaseline() (map[string]any, bool, error) {
 	payload := map[string]any{
 		"applied":            true,
 		"entries":            report.Baseline.Entries,
+		"generated":          report.Baseline.Generated,
 		"newFindings":        report.Baseline.NewFindings,
 		"resolvedFindings":   report.Baseline.ResolvedFindings,
+		"source":             report.Baseline.Source,
 		"staleEntries":       report.Baseline.StaleEntries,
 		"suppressedFindings": report.Baseline.SuppressedFindings,
 		"unchangedFindings":  report.Baseline.UnchangedFindings,

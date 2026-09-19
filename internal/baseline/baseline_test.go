@@ -209,6 +209,28 @@ func TestMessageRewordingOnlyMattersWithoutASymbol(t *testing.T) {
 	expectCounts(t, result, counts{0, 1, 1, 0, 0})
 }
 
+// TestSeparatorBearingSymbolHasNoIdentity covers a symbol that carries the ordinal
+// separator: it could pose as another symbol's ordinal, so it is reported with no
+// identity instead of aborting the baseline, and it is never counted as a secret.
+func TestSeparatorBearingSymbolHasNoIdentity(t *testing.T) {
+	separated := ordinary("process#2", 20)
+	written, err := FromFindingsAt([]finding.Finding{ordinary("process", 10), separated}, stamp)
+	if err != nil {
+		t.Fatalf("a separator-bearing symbol must not abort baseline generation: %v", err)
+	}
+	if len(written.Occurrences) != 1 || written.Occurrences[0].Subject != "process#1" || written.Sensitive.Counts.Total != 0 {
+		t.Fatalf("written baseline = %#v, want only the ordinary occurrence and no sensitive count", written)
+	}
+	result, err := Apply([]finding.Finding{ordinary("process", 10), separated}, written)
+	if err != nil {
+		t.Fatalf("a separator-bearing symbol must not abort a baseline-applying run: %v", err)
+	}
+	expectCounts(t, result, counts{1, 0, 0, 0, 1})
+	if len(result.Findings) != 1 || result.Findings[0].Symbol != "process#2" {
+		t.Fatalf("the separator-bearing finding must stay visible, got %#v", result.Findings)
+	}
+}
+
 // TestSensitiveFindingsAreNeverEligible covers both directions: a written
 // baseline carries no sensitive entry and nothing that could name one, and a
 // hand-written entry claiming a secret's identity suppresses nothing.

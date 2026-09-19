@@ -206,7 +206,7 @@ The output includes:
   - `error` → `error`
   - `warning` → `warning`
   - `advisory` → `note`
-- `partialFingerprints.gruffFingerprint` carries the gruff-go fingerprint so consumers can match findings across runs.
+- `partialFingerprints.gruffFingerprint` carries the gruff-go fingerprint so consumers can match findings across runs. A `sensitive-data.*` result carries no `partialFingerprints` and no `properties.fingerprint`: a code-scanning system would keep either as a durable name for a secret.
 
 Upload via GitHub Actions:
 

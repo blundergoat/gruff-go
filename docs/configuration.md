@@ -30,7 +30,7 @@ deepScanBudget:       # above either bound, keep text-level rules and omit AST-b
 
 failOn:             # per-command exit-code gate; see ADR-010
   analyse: advisory # CI gating command - default `advisory` (fail on anything)
-  summary: advisory # CI gating command - default `advisory`
+  summary: none     # first-scan overview - default `none`; set a severity to gate CI on it
   report: none      # artifact generator - default `none` (never fail on findings)
   dashboard: none   # artifact generator - default `none`
 
@@ -73,7 +73,7 @@ Across the Gruff family only `analyse` and `report` are accepted by every port, 
 ```yaml
 failOn:
   analyse: warning      # default `advisory`: fail on anything
-  summary: warning      # default `advisory`
+  summary: warning      # default `none`
   report: none          # default `none`: never fail on findings
   dashboard: advisory   # default `none`: gate this dashboard like CI
 ```
@@ -89,7 +89,7 @@ The binary defaults (when neither the CLI flag nor the config block supply a val
 | Command   | Default    | Reason |
 | --------- | ---------- | ------ |
 | `analyse` | `advisory` | CI gating; fail on anything |
-| `summary` | `advisory` | CI gating |
+| `summary` | `none` | First-scan overview; gates only when asked |
 | `report`  | `none`     | artifact generator; finding gate disabled |
 | `dashboard` | `none`   | artifact generator |
 

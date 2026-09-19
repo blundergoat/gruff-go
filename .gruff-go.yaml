@@ -26,6 +26,12 @@ paths:
     # opt-in detectors never flag their own deliberate test vectors.
     - internal/rule/sensitive_expansion_test.go
 
+# Per-command exit-code thresholds. `summary` defaults to `none`, so a first scan exits 0.
+# This repository asks for the gate: scripts/preflight-checks.sh fails the build on
+# summary's exit status. Precedence: CLI flag > failOn.<cmd> > binary default.
+failOn:
+  summary: advisory
+
 # Project-wide allowlists.
 # acceptedAbbreviations relax naming.acronym-case. Sensitive-data markers are
 # unconditional and carry no payload, so nothing configures them.
@@ -380,13 +386,13 @@ rules:
     enabled: true
     severity: error
 
-  # Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in heuristic; tune minLength and entropy. Emits only a redacted preview.
+  # Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview.
   sensitive-data.high-entropy-string:
-    enabled: false
+    enabled: true
     severity: warning
     thresholds:
-      minLength: 20
-      entropy: 4.5
+      minLength: 32
+      entropy: 4.2
 
   # Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.
   sensitive-data.jwt-token:

@@ -257,7 +257,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 // resolveFailOn decides which severity makes the command exit non-zero, following ADR-010 precedence:
 //
 //   - an explicit CLI flag wins;
-//   - otherwise the matching minimumSeverity.<cmd> entry in the project config;
+//   - otherwise the matching failOn.<cmd> entry in the project config;
 //   - otherwise the binary default from DefaultFailThresholdFor.
 //
 // Returns (threshold, ok). A value the user mistyped prints the error to stderr and returns ok=false, so the caller exits 2.

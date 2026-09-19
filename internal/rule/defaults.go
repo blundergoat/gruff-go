@@ -114,8 +114,8 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 }
 
 // defaultSensitiveDataUnitRules returns vendor and generic sensitive-data checks.
-// The entropy, PII, and PHI detectors ship opt-in (DefaultEnabled:false on their
-// own definitions): they are heuristic and noisier than the exact-prefix vendor
+// The PII and PHI detectors ship opt-in (DefaultEnabled:false on their own
+// definitions): they are heuristic and noisier than the exact-prefix vendor
 // rules, so per ADR-007/ADR-009 they stay out of default scans until a project
 // enables them, rather than riding at an inflated severity to dodge the gate.
 func defaultSensitiveDataUnitRules(config Config) []UnitRule {
@@ -134,11 +134,6 @@ func defaultSensitiveDataUnitRules(config Config) []UnitRule {
 		GCPServiceAccountRule{previews: previews},
 		NPMTokenRule{previews: previews},
 		GitLabTokenRule{previews: previews},
-		HighEntropyStringRule{
-			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
-			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
-			previews:  previews,
-		},
 		PIIPatternRule{previews: previews},
 		PHIPatternRule{previews: previews},
 	}
@@ -192,6 +187,13 @@ func defaultTestQualityUnitRules() []UnitRule {
 // defaultProjectRules builds the project-level rule slice from strict config.
 func defaultProjectRules(config Config) []ProjectRule {
 	return []ProjectRule{
+		// Package-scoped since 2026-09-19: a comment token that the package's code uses as an
+		// identifier is a name, not a secret, and only the whole package shows which names it uses.
+		HighEntropyStringRule{
+			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
+			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
+			previews:  newSensitivePreviewPolicy(),
+		},
 		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
 		// that boundary in whichever file owns the entry point, not the one that panics.
 		ProductionPanicRule{},

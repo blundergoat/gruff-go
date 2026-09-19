@@ -138,7 +138,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `1` | At least one finding met `--fail-on`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--fail-on` defaults per command: `advisory` (every finding fails) for `analyse` and `summary`, `none` (never fails) for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for moderate gating or `error` for the strict gate. **`--min-severity` is refused in 0.6.0**: it gated the exit code in 0.5 and returns in 0.7.0 with the family meaning, filtering which findings are displayed. Passing it to `analyse` or `summary` prints that break and names `--fail-on`.
+`--fail-on` defaults per command: `advisory` (every finding fails) for `analyse`, `none` (never fails) for `summary` and for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for moderate gating or `error` for the strict gate. **`--min-severity` is refused in 0.6.0**: it gated the exit code in 0.5 and returns in 0.7.0 with the family meaning, filtering which findings are displayed. Passing it to `analyse` or `summary` prints that break and names `--fail-on`.
 
 ## CI Usage
 

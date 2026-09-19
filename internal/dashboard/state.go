@@ -73,7 +73,7 @@ func boolFlag(value bool) string {
 }
 
 // loadDashboardConfigForDefault loads the project config so defaultState can
-// consult minimumSeverity.dashboard. Best-effort: any error (missing file,
+// consult failOn.dashboard. Best-effort: any error (missing file,
 // invalid YAML, walk failure) returns a zero-value Config, which makes the
 // caller fall back to DefaultFailThresholdFor. Per-request load is cheap and
 // keeps the dashboard reactive to mid-session config edits.

@@ -116,7 +116,7 @@ Every rule has a default severity; configs can override per rule. ADR-009 collap
 | `warning` | 8 | amber | Worth fixing in the next clean-up pass. |
 | `advisory` | 1 | muted | Informational; trend over time. |
 
-The `--fail-on` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse` and `summary`, `none` for `report` and `dashboard`; see [`configuration.md`](configuration.md#failon). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
+The `--fail-on` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse`, `none` for `summary`, `report` and `dashboard`; see [`configuration.md`](configuration.md#failon). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
 
 ## Per-rule reference
 
@@ -1227,7 +1227,7 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern - the catch-all for rotated, custom, or vendor-less credentials the exact-prefix rules miss. A token is scored by Shannon entropy (bits per character); the `4.5` default sits above random hex (max `4.0`) and ordinary prose (~1-3) while still catching random base64 secrets (~5-6). To bound false positives the rule skips all-hex ids, UUIDs, SRI/digest prefixes, and path/URL fragments, and defers to the provider-specific rules so one embedded AWS key or JWT is reported once by its precise rule, not twice. Ships opt-in because entropy is a heuristic that cannot prove a token is live; enable it where leaked-credential coverage matters more than occasional review of a legitimate constant.
+Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern - the catch-all for rotated, custom, or vendor-less credentials the exact-prefix rules miss. In Go source only string literals, interpreted and raw, and comments are scored, so a long identifier is never reported. A comment token is skipped when the Go code in the same directory uses it as an identifier, because a doc comment opens with the name it documents. A file with no Go syntax tree, such as `.env` or YAML, is scanned line by line. A token is scored by Shannon entropy (bits per character); the `4.2` default sits above random hex (max `4.0`) and ordinary prose (~1-3) while still catching random base64 secrets (~5-6). To bound false positives the rule skips all-hex ids, UUIDs, SRI/digest prefixes, and path/URL fragments, and defers to the provider-specific rules so one embedded AWS key or JWT is reported once by its precise rule, not twice. Ships enabled at `warning`, below the confirmed-token rules' `error`, because entropy is a heuristic that cannot prove a token is live.
 
 **Remediation.** Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the `entropy`/`minLength` thresholds or add an inline `#nosec` / `//nolint:gosec` suppression.
 

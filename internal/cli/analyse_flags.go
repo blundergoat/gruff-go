@@ -16,7 +16,7 @@ import (
 
 // analyseFlagValues is the parsed analyse command state after validation.
 // minSeverityRaw + minSeverityExplicit replace the resolved FailThreshold so
-// runAnalyse can apply the ADR-010 precedence (CLI flag > minimumSeverity.cmd
+// runAnalyse can apply the ADR-010 precedence (CLI flag > failOn.<cmd>
 // > DefaultFailThresholdFor) after the config has been loaded.
 type analyseFlagValues struct {
 	format               string
@@ -181,7 +181,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
 	// returns (currently advisory, intentionally permissive after the 3-bucket
 	// migration). Help text shows this default; precedence in runAnalyse lets
-	// .gruff-go.yaml's minimumSeverity.analyse override it.
+	// .gruff-go.yaml's failOn.analyse override it.
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
 	minSeverity := string(finding.DefaultFailThresholdFor("analyse"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")

@@ -329,6 +329,10 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 // second declaration of one name opens its own alert. A sensitive finding has no identity at all and therefore
 // contributes no fingerprints: publishing one would give a secret a stable name in a system gruff does not control.
 func sarifPartialFingerprints(findingItem finding.Finding) map[string]string {
+	// The identity rule itself would happily hash a sensitive finding, so eligibility is decided before it runs.
+	if !findingItem.HasBaselineIdentity() {
+		return nil
+	}
 	identity, err := findingItem.ComputeBaselineIdentity()
 	if err != nil {
 		// A finding that cannot be named durably is published without a fingerprint rather than with a guessed one.
@@ -383,12 +387,15 @@ func sarifResultFor(findingItem finding.Finding, ruleIndices map[string]int, bas
 }
 
 // sarifResultProperties carries the gruff-owned fields a reader needs beside the SARIF-standard ones.
+// A sensitive finding carries no fingerprint here either: a code-scanning system keeps every property it is sent.
 func sarifResultProperties(findingItem finding.Finding) map[string]any {
 	properties := map[string]any{
-		"confidence":  findingItem.Confidence,
-		"fingerprint": findingItem.Fingerprint,
-		"pillar":      findingItem.Pillar,
-		"severity":    findingItem.Severity,
+		"confidence": findingItem.Confidence,
+		"pillar":     findingItem.Pillar,
+		"severity":   findingItem.Severity,
+	}
+	if findingItem.IsBaselineEligible() {
+		properties["fingerprint"] = findingItem.Fingerprint
 	}
 	if len(findingItem.SecondaryPillars) > 0 {
 		properties["secondaryPillars"] = findingItem.SecondaryPillars

@@ -169,15 +169,22 @@ func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
 }
 
 // TestSummaryCommandSuggestsGeneratedBaseline checks the text-only fresh-start
-// hint appears when a first summary finds existing debt.
+// hint appears when a first summary finds existing debt. That first summary exits 0:
+// the family CLI contract reserves exit 1 for a gate somebody asked for, and the same
+// findings do exit 1 once --fail-on asks.
 func TestSummaryCommandSuggestsGeneratedBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex path.go", complexFixture())
 	t.Chdir(root)
 
+	var gatedOut, gatedErr bytes.Buffer
+	if code := Main([]string{"summary", "--fail-on", "advisory", "complex path.go"}, &gatedOut, &gatedErr); code != 1 {
+		t.Fatalf("summary --fail-on advisory exit = %d, want 1; stderr = %s", code, gatedErr.String())
+	}
+
 	var out, errBuf bytes.Buffer
-	if code := Main([]string{"summary", "complex path.go"}, &out, &errBuf); code != 1 {
-		t.Fatalf("summary exit = %d, stderr = %s", code, errBuf.String())
+	if code := Main([]string{"summary", "complex path.go"}, &out, &errBuf); code != 0 {
+		t.Fatalf("summary exit = %d, want 0 when no gate was asked for; stderr = %s", code, errBuf.String())
 	}
 	for _, fragment := range []string{
 		"fresh start: gruff-go analyse --generate-baseline gruff-baseline.json \"complex path.go\"",

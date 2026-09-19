@@ -24,6 +24,13 @@ func (f Finding) IsBaselineEligible() bool {
 	return f.Pillar != PillarSensitiveData && !strings.HasPrefix(f.RuleID, "sensitive-data.")
 }
 
+// HasBaselineIdentity reports whether a finding can be named durably at all.
+// A sensitive finding never is, and neither is one whose symbol carries the ordinal separator, which could pose as
+// another symbol's ordinal. Such a finding is reported on every run and never stored, matched or fingerprinted.
+func (f Finding) HasBaselineIdentity() bool {
+	return f.IsBaselineEligible() && !strings.Contains(f.Symbol, baselineOrdinalSeparator)
+}
+
 // measuredValuePattern matches every number a message can state: a length, a count, a percentage, or a version such as 1,234 or 12.5.
 var measuredValuePattern = regexp.MustCompile(`[0-9]+(?:[.,][0-9]+)*`)
 

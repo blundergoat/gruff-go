@@ -347,12 +347,12 @@ func TestDefaultStateFallsBackToBinaryDefaultWithoutConfig(t *testing.T) {
 
 // TestDefaultStateServerFlagBeatsConfig asserts that opts.FailOn (the
 // --fail-on flag passed when starting the dashboard) wins over any
-// minimumSeverity.dashboard config entry, matching ADR-010's precedence rule.
+// failOn.dashboard config entry, matching the flag > config > default precedence.
 func TestDefaultStateServerFlagBeatsConfig(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   dashboard: error
 `)
 	state := defaultState(Options{ProjectRoot: project, FailOn: "warning"})

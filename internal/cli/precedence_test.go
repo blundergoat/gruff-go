@@ -1,5 +1,5 @@
-// Package cli precedence tests lock the ADR-010 minimumSeverity resolution
-// ladder: explicit CLI flag > config minimumSeverity.<cmd> > binary default.
+// Package cli precedence tests lock the per-command gate resolution
+// ladder: explicit CLI flag > config failOn.<cmd> > binary default.
 // resolveFailOn is the single helper every CLI consumer routes through; this
 // file exercises it directly so the precedence semantics live in one place.
 package cli

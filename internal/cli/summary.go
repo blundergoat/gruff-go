@@ -24,7 +24,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	// Default comes from DefaultFailThresholdFor("summary"); precedence below
-	// lets minimumSeverity.summary in .gruff-go.yaml override it (ADR-010).
+	// lets failOn.summary in .gruff-go.yaml override it.
 	minSeverity := string(finding.DefaultFailThresholdFor("summary"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&minSeverity, "fail-on", minSeverity, "alias for --min-severity")

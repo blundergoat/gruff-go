@@ -4,7 +4,10 @@
 package rule
 
 import (
+	"go/ast"
+	"go/token"
 	"math"
+	"path"
 	"regexp"
 	"strings"
 
@@ -13,7 +16,7 @@ import (
 )
 
 // Default thresholds for the high-entropy detector. minLength keeps short tokens
-// (which can clear the entropy bar by chance) out, and 4.5 bits/char sits above
+// (which can clear the entropy bar by chance) out, and 4.2 bits/char sits above
 // random hex (max 4.0 bits/char, so hex never trips it) and ordinary prose
 // (~1-3 bits/char) while still catching random base64/base64url secrets
 // (~5-6 bits/char). Both are tunable via rules.sensitive-data.high-entropy-string.
@@ -109,39 +112,146 @@ func (r HighEntropyStringRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit scans code-bearing lines for high-entropy tokens, skipping shapes a
-// reviewer would never rotate (hex ids, UUIDs, SRI digests, paths/URLs) and tokens
-// a provider-specific rule already owns, then emits a policy-masked preview for each hit.
-func (r HighEntropyStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+// AnalyzeProject scores every reportable unit. It is package-scoped because a comment token is
+// skipped when the Go code in its directory uses the same name as an identifier: a doc comment
+// opens with the name it documents, and a long test name is as random-looking as a key.
+func (r HighEntropyStringRule) AnalyzeProject(units []parser.Unit, context Context) []finding.Finding {
+	identifiers := goIdentifiersByDirectory(units)
+	findings := []finding.Finding{}
+	for _, unit := range units {
+		if context.isReportable(unit.File.Path) {
+			findings = append(findings, r.analyzeUnit(unit, identifiers[path.Dir(unit.File.Path)])...)
+		}
+	}
+	return findings
+}
+
+// analyzeUnit scores one unit's candidate tokens for high entropy, skipping shapes a reviewer
+// would never rotate (hex ids, UUIDs, SRI digests, paths/URLs) and tokens a
+// provider-specific rule already owns, then emits a policy-masked preview for each hit.
+func (r HighEntropyStringRule) analyzeUnit(unit parser.Unit, packageIdentifiers map[string]bool) []finding.Finding {
 	if unit.Source == "" {
 		return nil
 	}
 	minLength := r.minLength()
 	minEntropy := r.minEntropy()
 	findings := []finding.Finding{}
+	for _, candidate := range entropyCandidates(unit, packageIdentifiers) {
+		if !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
+			continue
+		}
+		findings = append(findings, finding.Finding{
+			Message:  "high-entropy string literal detected",
+			File:     unit.File.Path,
+			Location: &finding.Location{Line: candidate.line},
+			// The configured thresholds already tell a reviewer why this fired; the token's own
+			// entropy is a statistic computed from the matched characters and is forbidden in
+			// serialized output by FAMILY-CONTRACT section 5.
+			Metadata: map[string]any{
+				"preview": r.previews.format(unit.File.Path, previewEntropy, candidate.token),
+			},
+		})
+	}
+	return findings
+}
+
+// entropyCandidate is one token the rule may score, with the 1-based line it sits on.
+type entropyCandidate struct {
+	token string
+	line  int
+}
+
+// entropyCandidates returns the tokens worth scoring in a unit.
+//
+// In parsed Go source only a string literal or a comment can hold a secret, so identifiers are
+// never scored: a long test or function name is as random-looking as a key and is not one. A file
+// with no syntax tree, such as a .env or YAML file whose values are unquoted, keeps the line scan.
+func entropyCandidates(unit parser.Unit, packageIdentifiers map[string]bool) []entropyCandidate {
+	if unit.AST != nil && unit.FileSet != nil {
+		return append(goLiteralEntropyCandidates(unit.AST, unit.FileSet), goCommentEntropyCandidates(unit.AST, unit.FileSet, packageIdentifiers)...)
+	}
+	return lineEntropyCandidates(unit.Source)
+}
+
+// goLiteralEntropyCandidates tokenises every string literal in a Go file, interpreted or raw.
+func goLiteralEntropyCandidates(file *ast.File, fileSet *token.FileSet) []entropyCandidate {
+	candidates := []entropyCandidate{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		literal, ok := node.(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING {
+			return true
+		}
+		candidates = append(candidates, spanEntropyCandidates(literal.Value, fileSet.Position(literal.Pos()).Line)...)
+		return true
+	})
+	return candidates
+}
+
+// goCommentEntropyCandidates tokenises every comment in a Go file, line and block alike, and drops
+// a token the package's code uses as an identifier. Punctuation the token pattern admits, such as
+// the = of `-run=TestName`, is trimmed from its ends before the lookup.
+func goCommentEntropyCandidates(file *ast.File, fileSet *token.FileSet, packageIdentifiers map[string]bool) []entropyCandidate {
+	candidates := []entropyCandidate{}
+	for _, group := range file.Comments {
+		for _, comment := range group.List {
+			for _, candidate := range spanEntropyCandidates(comment.Text, fileSet.Position(comment.Slash).Line) {
+				if !packageIdentifiers[strings.Trim(candidate.token, "_-=+")] {
+					candidates = append(candidates, candidate)
+				}
+			}
+		}
+	}
+	return candidates
+}
+
+// goIdentifiersByDirectory collects every identifier the Go code in each directory uses. A package's
+// files share a directory, and an external _test package beside them documents the same names.
+func goIdentifiersByDirectory(units []parser.Unit) map[string]map[string]bool {
+	byDirectory := map[string]map[string]bool{}
+	for _, unit := range units {
+		if unit.AST == nil {
+			continue
+		}
+		directory := path.Dir(unit.File.Path)
+		if byDirectory[directory] == nil {
+			byDirectory[directory] = map[string]bool{}
+		}
+		ast.Inspect(unit.AST, func(node ast.Node) bool {
+			if identifier, ok := node.(*ast.Ident); ok {
+				byDirectory[directory][identifier.Name] = true
+			}
+			return true
+		})
+	}
+	return byDirectory
+}
+
+// spanEntropyCandidates tokenises one literal or comment that begins on startLine. Either can
+// span lines, so each token is placed on the line it actually occupies.
+func spanEntropyCandidates(text string, startLine int) []entropyCandidate {
+	candidates := []entropyCandidate{}
+	for _, span := range entropyTokenPattern.FindAllStringIndex(text, -1) {
+		candidates = append(candidates, entropyCandidate{
+			token: text[span[0]:span[1]],
+			line:  startLine + strings.Count(text[:span[0]], "\n"),
+		})
+	}
+	return candidates
+}
+
+// lineEntropyCandidates tokenises every code-bearing line of a file that has no syntax tree.
+func lineEntropyCandidates(source string) []entropyCandidate {
+	candidates := []entropyCandidate{}
 	inBlockComment := false
-	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+	for lineNumber, line := range strings.Split(source, "\n") {
 		if !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
 		for _, token := range entropyTokenPattern.FindAllString(line, -1) {
-			if !isHighEntropySecretCandidate(token, minLength, minEntropy) {
-				continue
-			}
-			findings = append(findings, finding.Finding{
-				Message:  "high-entropy string literal detected",
-				File:     unit.File.Path,
-				Location: &finding.Location{Line: lineNumber + 1},
-				// The configured thresholds already tell a reviewer why this fired; the token's own
-				// entropy is a statistic computed from the matched characters and is forbidden in
-				// serialized output by FAMILY-CONTRACT section 5.
-				Metadata: map[string]any{
-					"preview": r.previews.format(unit.File.Path, previewEntropy, token),
-				},
-			})
+			candidates = append(candidates, entropyCandidate{token: token, line: lineNumber + 1})
 		}
 	}
-	return findings
+	return candidates
 }
 
 // isHighEntropySecretCandidate reports whether a token should be flagged: long

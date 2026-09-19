@@ -123,7 +123,7 @@ func TestDefaultFailThresholdFor(t *testing.T) {
 		want FailThreshold
 	}{
 		{"analyse", FailThresholdAdvisory},
-		{"summary", FailThresholdAdvisory},
+		{"summary", FailThresholdNone},
 		{"report", FailThresholdNone},
 		{"dashboard", FailThresholdNone},
 		// Unknown commands fall back to Advisory; empty also falls back.

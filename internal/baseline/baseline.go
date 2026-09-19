@@ -50,8 +50,9 @@ const (
 	// StatusCollision marks findings on distinct declarations that share one
 	// identity, so the identity cannot separate them. Never suppressed.
 	StatusCollision Status = "collision"
-	// StatusNotEligible marks a sensitive finding, which has no identity, no
-	// entry, and no suppression whatever the baseline says.
+	// StatusNotEligible marks a finding with no identity: a sensitive one, or one
+	// whose symbol carries the ordinal separator. It has no entry and no
+	// suppression whatever the baseline says.
 	StatusNotEligible Status = "notEligible"
 )
 
@@ -159,7 +160,7 @@ type ApplyResult struct {
 	ResolvedFindings int
 	// CollisionFindings counts findings reported because their identity collided.
 	CollisionFindings int
-	// NotEligibleFindings counts sensitive findings the baseline may not touch.
+	// NotEligibleFindings counts the findings the baseline may not touch because they have no identity.
 	NotEligibleFindings int
 	// SuppressedFindings equals UnchangedFindings; retained for ADR-012 consumers.
 	SuppressedFindings int
@@ -200,6 +201,10 @@ func FromFindingsAt(currentFindings []finding.Finding, generatedAt time.Time) (F
 		if !currentFinding.IsBaselineEligible() {
 			sensitive.Counts.Total++
 			sensitive.Counts.ByRule[currentFinding.RuleID]++
+			continue
+		}
+		// A symbol carrying the ordinal separator has no identity to store, and it is not a secret to count.
+		if !currentFinding.HasBaselineIdentity() {
 			continue
 		}
 		identity, err := currentFinding.ComputeBaselineIdentity()
@@ -382,7 +387,8 @@ func Apply(currentFindings []finding.Finding, baselineFile File) (ApplyResult, e
 func groupEligibleFindings(currentFindings []finding.Finding, statuses []Status) (identityGroups, error) {
 	groups := identityGroups{byIdentity: map[string]*identityGroup{}}
 	for index, currentFinding := range currentFindings {
-		if !currentFinding.IsBaselineEligible() {
+		// A sensitive finding, or one whose symbol carries the ordinal separator, has no identity to look up.
+		if !currentFinding.HasBaselineIdentity() {
 			statuses[index] = StatusNotEligible
 			continue
 		}
