@@ -41,6 +41,8 @@ type hookSuppression struct {
 	Reason string `json:"reason"`
 	// Suppressed counts what this entry removed from this run; zero is reported, never hidden.
 	Suppressed int `json:"suppressed"`
+	// Source is "built-in" on a row the family's lockfile skip produced, and omitted on a configured entry's row.
+	Source string `json:"source,omitempty"`
 }
 
 // hookRun is the audit block a consumer needs to trust a verdict: what ran, over what, and against which baseline.
@@ -277,7 +279,7 @@ func hookSuppressions(summaries []analysis.SuppressionSummary) []hookSuppression
 	rows := make([]hookSuppression, 0, len(summaries))
 
 	for _, summary := range summaries {
-		row := hookSuppression{Rule: summary.Rule, Reason: summary.Reason, Suppressed: summary.Suppressed}
+		row := hookSuppression{Rule: summary.Rule, Reason: summary.Reason, Suppressed: summary.Suppressed, Source: summary.Source}
 
 		// Section 13a gives each entry exactly one path; the analysis audit carries it in the family's array shape.
 		if len(summary.Paths) > 0 {

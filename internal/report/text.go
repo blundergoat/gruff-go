@@ -47,6 +47,11 @@ func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSum
 	clauses := make([]string, 0, len(summaries))
 	for _, summary := range summaries {
 		total += summary.Suppressed
+		// A built-in row names the lockfile it skipped, because it has no configured entry to point at.
+		if summary.Source == analysis.SuppressionSourceBuiltIn && len(summary.Paths) > 0 {
+			clauses = append(clauses, fmt.Sprintf("builtInLockfile[%s] %s: %d (%s)", summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			continue
+		}
 		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, summary.Reason))
 	}
 	_, err := fmt.Fprintf(writer, "suppressed findings: %d via %s\n", total, strings.Join(clauses, "; "))

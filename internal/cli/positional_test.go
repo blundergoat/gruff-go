@@ -4,6 +4,9 @@
 package cli
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -98,5 +101,58 @@ func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 	if string(defaultStdout) != string(explicitStdout) {
 		t.Fatalf("bare completion and explicit bash differ: %d vs %d bytes",
 			len(defaultStdout), len(explicitStdout))
+	}
+}
+
+// TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling
+// directory still publishes its report. The operand `../project` names the project itself, so the report lists it as
+// `.`, and a baseline kept outside the project is applied and simply has no project-relative path to publish.
+func TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launch := filepath.Join(root, "launch")
+	for _, directory := range []string{project, launch} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+
+	t.Chdir(launch)
+	exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-config", "--no-baseline", "--fail-on", "none", "--format", "json", "../project"})
+	if exitCode != 0 {
+		t.Fatalf("relative target: exit %d, stderr=%q", exitCode, stderr)
+	}
+	var fromSibling struct {
+		Run struct {
+			Inputs []string `json:"inputs"`
+		} `json:"run"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &fromSibling); err != nil {
+		t.Fatalf("relative target: stdout is not JSON: %v", err)
+	}
+	if len(fromSibling.Run.Inputs) != 1 || fromSibling.Run.Inputs[0] != "." {
+		t.Fatalf("run.inputs = %v, want [.]", fromSibling.Run.Inputs)
+	}
+
+	t.Chdir(project)
+	if exitCode, _, stderr := captureCLIResult([]string{"baseline", "--no-config", "--out", "../reviewed.json"}); exitCode != 0 {
+		t.Fatalf("baseline generation: exit %d, stderr=%q", exitCode, stderr)
+	}
+	exitCode, stdout, stderr = captureCLIResult([]string{"analyse", "--no-config", "--baseline", "../reviewed.json", "--fail-on", "none", "--format", "json", "."})
+	if exitCode != 0 {
+		t.Fatalf("outside baseline: exit %d, stderr=%q", exitCode, stderr)
+	}
+	var withBaseline struct {
+		Baseline map[string]any `json:"baseline"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &withBaseline); err != nil {
+		t.Fatalf("outside baseline: stdout is not JSON: %v", err)
+	}
+	if withBaseline.Baseline["applied"] != true {
+		t.Fatalf("baseline.applied = %v, want true", withBaseline.Baseline["applied"])
+	}
+	if _, published := withBaseline.Baseline["path"]; published {
+		t.Fatalf("baseline.path = %v, want it left out for a baseline outside the project", withBaseline.Baseline["path"])
 	}
 }

@@ -6,6 +6,7 @@ package analysis
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -591,7 +592,7 @@ type machineEnvelopeParts struct {
 // buildMachineEnvelopeParts normalizes every path-bearing section before the
 // report is assembled.
 func (report Report) buildMachineEnvelopeParts() (machineEnvelopeParts, error) {
-	inputs, err := machinePaths(report.Run.WorkingDirectory, report.Run.Inputs)
+	inputs, err := machineInputs(report.Run.WorkingDirectory, report.Run.Inputs)
 	if err != nil {
 		return machineEnvelopeParts{}, fmt.Errorf("run inputs: %w", err)
 	}
@@ -792,10 +793,14 @@ func (report Report) machineBaseline() (map[string]any, bool, error) {
 	}
 	if report.Baseline.Path != "" {
 		path, err := machinePath(report.Run.WorkingDirectory, report.Baseline.Path)
-		if err != nil {
+		// A baseline kept outside the project has no project-relative form and a host path may not be published, so
+		// the optional key is left out, as the other ports leave it out, rather than failing the whole report.
+		if err != nil && !errors.Is(err, errOutsideProjectRoot) {
 			return nil, false, fmt.Errorf("baseline path: %w", err)
 		}
-		payload["path"] = path
+		if err == nil {
+			payload["path"] = path
+		}
 	}
 	if report.Baseline.Show {
 		unchanged, err := machineFindings(report.Run.WorkingDirectory, report.Baseline.Unchanged)
@@ -943,6 +948,10 @@ func machineSuppressions(root string, values []SuppressionSummary) ([]map[string
 		if suppression.Symbol != nil && *suppression.Symbol != "" {
 			payload["symbol"] = *suppression.Symbol
 		}
+		// Only a built-in row names its source; a configured row is recognised by carrying none.
+		if suppression.Source != "" {
+			payload["source"] = suppression.Source
+		}
 		out = append(out, payload)
 	}
 	return out, nil
@@ -972,6 +981,30 @@ func machineScore(root string, score scoring.Score) (map[string]any, error) {
 		"complexityDistribution":      score.ComplexityDistribution,
 		"complexityDistributionScope": score.ComplexityDistributionScope,
 	}, nil
+}
+
+// errOutsideProjectRoot marks a path that has no project-relative form, so a caller may omit an optional key for it.
+var errOutsideProjectRoot = errors.New("outside the project root")
+
+// machineInputs converts the operands a user typed to project-relative POSIX form. An operand is typed relative
+// to the launch directory, which need not be the project root: `analyse ../proj` from a sibling directory names
+// the project itself. An operand that reads as outside the root is therefore measured again from the launch
+// directory before it is refused; one that reads as inside the root is published exactly as typed.
+func machineInputs(root string, values []string) ([]string, error) {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		portable, err := machinePath(root, value)
+		if errors.Is(err, errOutsideProjectRoot) {
+			if resolved, absErr := filepath.Abs(value); absErr == nil {
+				portable, err = machinePath(root, resolved)
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, portable)
+	}
+	return out, nil
 }
 
 // machinePaths converts an ordered path list to project-relative POSIX form.
@@ -1010,7 +1043,7 @@ func machinePath(root, value string) (string, error) {
 	}
 	portable := filepath.ToSlash(cleaned)
 	if portable == ".." || strings.HasPrefix(portable, "../") || strings.HasPrefix(portable, "/") || strings.Contains(portable, "\\") {
-		return "", fmt.Errorf("path %q is outside the project root", value)
+		return "", fmt.Errorf("path %q is %w", value, errOutsideProjectRoot)
 	}
 	return portable, nil
 }

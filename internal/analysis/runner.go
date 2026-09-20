@@ -130,6 +130,8 @@ func Analyze(opts Options) (Report, error) {
 	// Excluded before baseline and diff so a suppressed finding is absent from
 	// scoring, exit codes, and baseline classification alike.
 	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
+	// A configured entry claims its findings first, so its count stays what the user wrote it for.
+	findings, suppressions = ApplyBuiltInLockfileSkip(findings, suppressions)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
