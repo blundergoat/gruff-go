@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
 // sensitiveExclusionFixture returns a Go source file carrying a synthetic AWS
@@ -117,8 +119,25 @@ func TestAnalyseRejectsValueMatchingExclusion(t *testing.T) {
 	if !strings.Contains(stderr.String(), "sensitiveExclusions[0]") || !strings.Contains(stderr.String(), "value") {
 		t.Fatalf("stderr does not name the entry and key: %s", stderr.String())
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("analyse wrote a report after a fatal config diagnostic: %s", stdout.String())
+	// A refusal after argument parsing publishes the v3 envelope, so a JSON caller reads the failure rather than
+	// scraping stderr for it (FAMILY-CONTRACT.md section 6).
+	payload := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("analyse published no readable envelope after a fatal config diagnostic: %v\n%s", err, stdout.String())
+	}
+	if payload["schemaVersion"] != analysis.SchemaVersion {
+		t.Fatalf("schemaVersion = %v, want %s", payload["schemaVersion"], analysis.SchemaVersion)
+	}
+	if findings, ok := payload["findings"].([]any); !ok || len(findings) != 0 {
+		t.Fatalf("a run that could not start published findings: %v", payload["findings"])
+	}
+	diagnostics, ok := payload["diagnostics"].([]any)
+	if !ok || len(diagnostics) != 1 {
+		t.Fatalf("diagnostics = %v, want exactly one", payload["diagnostics"])
+	}
+	first, ok := diagnostics[0].(map[string]any)
+	if !ok || first["type"] != analysis.ConfigErrorDiagnosticType {
+		t.Fatalf("diagnostic = %v, want type %s", diagnostics[0], analysis.ConfigErrorDiagnosticType)
 	}
 }
 

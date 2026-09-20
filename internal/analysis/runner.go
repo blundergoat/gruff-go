@@ -61,6 +61,10 @@ type Options struct {
 	DiffPatch []byte
 	// ChangedRanges enables explicit changed-region filtering such as "3-3,8-10".
 	ChangedRanges string
+	// ChangedRangesProvided records that the caller passed --changed-ranges, so an empty value is refused as a
+	// range naming nothing rather than read as no filter. A programmatic caller may leave it false and set
+	// ChangedRanges alone.
+	ChangedRangesProvided bool
 	// ChangedScope selects "symbol" (default) or "hunk" changed-region filtering.
 	ChangedScope string
 	// BaselineShow renders the unchanged/resolved baseline detail arrays and the
@@ -124,6 +128,11 @@ func Analyze(opts Options) (Report, error) {
 	registry := opts.Registry
 	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
 	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
+	// A scope the run could not read leaves nothing scoped to report. Publishing the unscoped findings beside the
+	// diagnostic would read as a successful narrow scan at a scope the run never applied.
+	if hasUnreadableChangedScope(diagnostics) {
+		findings = nil
+	}
 	// The baseline identity separates same-named declarations by ordinal, which
 	// only the parsed units can rank; assigning here reaches analyse and hook alike.
 	findings = finding.AssignSymbolOrdinals(findings, declarationPositionFor(units))
@@ -416,7 +425,7 @@ func symbolNamesFunction(symbol, functionName string) bool {
 func resolveChangedScope(ctx context.Context, root string, files []source.File, diagnostics []Diagnostic, opts Options) (diff.ChangedLines, DiffSummary, []Diagnostic) {
 	diffSummary := DiffSummary{}
 	switch {
-	case opts.ChangedRanges != "":
+	case opts.ChangedRangesProvided || opts.ChangedRanges != "":
 		changed, err := diff.ExplicitRanges("explicit", opts.ChangedRanges, sourcePaths(files))
 		if err != nil {
 			return diff.ChangedLines{}, diffSummary, appendDiffDiagnostic(diagnostics, err)
@@ -460,15 +469,31 @@ func resolveChangedScope(ctx context.Context, root string, files []source.File, 
 	}
 }
 
-// appendDiffDiagnostic records a diff-stage failure as a fatal, error-severity
-// Diagnostic. The scan continues long enough to render the structured failure,
-// then ResolveExitCode returns 2. Nonfatal diff limitations use DiffSummary.Caveat.
+// ChangedRegionDiagnosticType is the one type every port publishes when it cannot read the changed-region scope
+// it was asked to analyse, whether that scope came from --changed-ranges, --diff or --since, so a consumer
+// reading a scoped run's failure need not know which analyser produced it (FAMILY-CONTRACT.md section 6).
+const ChangedRegionDiagnosticType = "changed-region"
+
+// appendDiffDiagnostic records a diff-stage failure as a fatal, error-severity Diagnostic. The scan stops
+// before it produces findings, because a scope the run could not read leaves nothing scoped to report, and
+// ResolveExitCode returns 2. Nonfatal diff limitations use DiffSummary.Caveat instead.
 func appendDiffDiagnostic(diagnostics []Diagnostic, err error) []Diagnostic {
 	return append(diagnostics, Diagnostic{
-		Stage:    "diff",
-		Message:  err.Error(),
-		Severity: finding.SeverityError,
+		DiagnosticType: ChangedRegionDiagnosticType,
+		Stage:          "diff",
+		Message:        err.Error(),
+		Severity:       finding.SeverityError,
 	})
+}
+
+// hasUnreadableChangedScope reports whether the run failed to read the scope it was asked to analyse.
+func hasUnreadableChangedScope(diagnostics []Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.DiagnosticType == ChangedRegionDiagnosticType {
+			return true
+		}
+	}
+	return false
 }
 
 // sourcePaths projects discovered source files down to their path strings - the

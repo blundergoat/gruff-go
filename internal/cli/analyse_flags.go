@@ -34,8 +34,10 @@ type analyseFlagValues struct {
 	since         string
 	diffPatch     []byte
 	changedRanges string
-	changedScope  string
-	baselineShow  bool
+	// changedRangesSet distinguishes an absent --changed-ranges from one the user passed empty.
+	changedRangesSet bool
+	changedScope     string
+	baselineShow     bool
 	// showRules and its three siblings are the family display filters; the plural spellings feed the same fields.
 	showRules   string
 	hideRules   string
@@ -162,6 +164,7 @@ func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagS
 		return flagSet, analyseFlagValues{}, false
 	}
 	parsed := registeredFlags.values(diffPatch, minimumSeverityExplicit)
+	parsed.changedRangesSet = flagProvided(flagSet, "changed-ranges")
 	parsed.gates = gates
 	return flagSet, parsed, true
 }

@@ -4,8 +4,11 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
 // TestAnalyseNoBaselineOverridesBaseline confirms --no-baseline is accepted and
@@ -27,6 +30,34 @@ func TestAnalyseNoBaselineOverridesBaseline(t *testing.T) {
 	}
 	if len(report.Findings) != 1 {
 		t.Fatalf("--no-baseline findings = %#v, want unsuppressed finding", report.Findings)
+	}
+}
+
+// TestAnalyseRefusesChangedRangesItCannotScope pins that a range the run cannot
+// scope to ends the run rather than widening it to the whole tree. An empty
+// value is malformed for the same reason a garbled one is: the caller asked for
+// a scoped run and named nothing.
+func TestAnalyseRefusesChangedRangesItCannotScope(t *testing.T) {
+	for _, ranges := range []string{"=abc", ""} {
+		root := t.TempDir()
+		writeFile(t, root, "complex.go", complexFixture())
+		t.Chdir(root)
+
+		var out, errOut bytes.Buffer
+		code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "--no-baseline", "--changed-ranges", ranges, "complex.go"}, &out, &errOut)
+		if code != 2 {
+			t.Fatalf("--changed-ranges %q exit = %d, want 2; stdout = %s", ranges, code, out.String())
+		}
+		var report machineAnalysisReport
+		if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+			t.Fatalf("--changed-ranges %q published no readable envelope: %v\n%s", ranges, err, out.String())
+		}
+		if len(report.Diagnostics) != 1 || report.Diagnostics[0].Type != analysis.ChangedRegionDiagnosticType {
+			t.Fatalf("--changed-ranges %q diagnostics = %#v, want one %s", ranges, report.Diagnostics, analysis.ChangedRegionDiagnosticType)
+		}
+		if len(report.Findings) != 0 {
+			t.Fatalf("--changed-ranges %q published %d findings beside an unusable scope", ranges, len(report.Findings))
+		}
 	}
 }
 

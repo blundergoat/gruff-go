@@ -169,6 +169,21 @@ func analyseHelpRequested(commandArguments []string) bool {
 	return helpRequested(normalizedArguments, analyseFlagHasSeparateValue)
 }
 
+// baselineScan assembles the scan --generate-baseline runs, which reads the same resolved config as the report it
+// replaces.
+func (values analyseFlagValues) baselineScan(paths []string, registry rule.Registry, ignorePaths []string, cfg cfgpkg.Config, deepScanBudget analysis.DeepScanBudget) baselineScanOptions {
+	return baselineScanOptions{
+		paths:               paths,
+		outPath:             values.generateBaselinePath,
+		registry:            registry,
+		ignorePaths:         ignorePaths,
+		includeIgnored:      values.includeIgnored,
+		sensitiveExclusions: sensitiveExclusionsFor(cfg),
+		deepScanBudget:      deepScanBudget,
+		force:               values.force,
+	}
+}
+
 // runAnalyse executes the analyse subcommand and renders the scan report.
 func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if analyseHelpRequested(args) {
@@ -182,7 +197,9 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	registry, ignorePaths, cfg, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
-		return 2
+		// A configuration the run could not load is a run that could not start, so a caller who asked for a
+		// machine format reads the failure in the envelope rather than only on stderr.
+		return writeFailedRunReport(values, analysis.ConfigErrorDiagnosticType, err, stdout)
 	}
 	registry, cfg, ok = selectedRegistryFor(values, registry, cfg, stderr)
 	// A selector naming a rule or pillar nobody defines is a usage error; scanning everything would answer a question
@@ -200,16 +217,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		return 2
 	}
 	if values.generateBaselinePath != "" {
-		return writeBaselineFromScan(baselineScanOptions{
-			paths:               flags.Args(),
-			outPath:             values.generateBaselinePath,
-			registry:            registry,
-			ignorePaths:         ignorePaths,
-			includeIgnored:      values.includeIgnored,
-			sensitiveExclusions: sensitiveExclusionsFor(cfg),
-			deepScanBudget:      deepScanBudget,
-			force:               values.force,
-		}, stdout, stderr)
+		return writeBaselineFromScan(values.baselineScan(flags.Args(), registry, ignorePaths, cfg, deepScanBudget), stdout, stderr)
 	}
 	displayFilter, ok := analyseDisplayFilter(values, registry, cfg, stderr)
 	if !ok {
@@ -239,6 +247,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		DiffMode:               values.resolvedDiffMode(),
 		DiffPatch:              values.diffPatch,
 		ChangedRanges:          values.changedRanges,
+		ChangedRangesProvided:  values.changedRangesSet,
 		ChangedScope:           values.changedScope,
 		BaselineShow:           values.baselineShow,
 	})
@@ -319,6 +328,19 @@ func selectedRegistryFor(values analyseFlagValues, registry rule.Registry, cfg c
 	return selectedRegistry, selectedConfig, true
 }
 
+// flagProvided reports whether the user passed the named flag, which a string flag's value cannot answer: an
+// absent flag and one passed empty both read as "".
+func flagProvided(flags *flag.FlagSet, name string) bool {
+	provided := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			provided = true
+		}
+	})
+
+	return provided
+}
+
 // checkMinSeverityFlag reports whether --min-severity or --fail-on was typed on the command line, and validates the value
 // straight away when it was, so a mistyped severity is rejected before any config file is read.
 //
@@ -338,6 +360,23 @@ func checkMinSeverityFlag(flags *flag.FlagSet, rawValue string, stderr io.Writer
 		}
 	}
 	return explicit, true
+}
+
+// writeFailedRunReport publishes the envelope a run that could not start owes a machine-format caller, and returns
+// the exit code that failure carries.
+//
+// A human-readable format already has the reason on stderr, so only the machine formats gain the envelope; every
+// other port draws the line in the same place.
+func writeFailedRunReport(values analyseFlagValues, diagnosticType string, cause error, stdout io.Writer) int {
+	switch values.format {
+	case "json", "summary-json", "sarif":
+		failed := analysis.FailedRunReport(".", values.format, diagnosticType, cause.Error())
+		if err := writeAnalysisReport(stdout, values.format, failed, report.HTMLOptions{}); err != nil {
+			return 2
+		}
+	}
+
+	return 2
 }
 
 // writeAnalysisReport serialises the analysis report to writer in the chosen format.

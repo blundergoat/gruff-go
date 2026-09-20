@@ -269,6 +269,31 @@ type ReportInput struct {
 	Suppressions []SuppressionSummary
 }
 
+// ConfigErrorDiagnosticType is the type every port publishes when it cannot load the configuration it was given.
+const ConfigErrorDiagnosticType = "config-error"
+
+// FailedRunReport builds the envelope a run that could not start still owes a caller who asked for a machine
+// format.
+//
+// A run that never started has no findings and nothing discovered, so the envelope carries one run-invalidating
+// diagnostic and empty everything else. Printing only to stderr would leave a JSON consumer with no diagnostic,
+// no type and no run block to read, where every other port publishes all three.
+func FailedRunReport(root, format, diagnosticType, message string) Report {
+	return NewReport(ReportInput{
+		Root:   root,
+		Format: format,
+		// The run never reached its gate, so the envelope names the default threshold rather than leaving the
+		// contract-required field empty.
+		FailOn: finding.FailThresholdAdvisory,
+		Diagnostics: []Diagnostic{{
+			DiagnosticType: diagnosticType,
+			Stage:          "config",
+			Message:        message,
+			Severity:       finding.SeverityError,
+		}},
+	})
+}
+
 // NewReport assembles a deterministic report from analysis inputs.
 func NewReport(input ReportInput) Report {
 	scanned := nonNilStrings(input.Scanned)
