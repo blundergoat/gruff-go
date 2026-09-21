@@ -113,7 +113,7 @@ func (AWSAccessKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.aws-access-key",
 		Title:          "AWS access key id",
-		Description:    "Flags AWS access key identifiers (AKIA...) embedded in source or text files.",
+		Description:    "Flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityError,
 		Confidence:     finding.ConfidenceHigh,

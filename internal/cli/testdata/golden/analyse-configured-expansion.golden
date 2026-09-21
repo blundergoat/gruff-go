@@ -977,7 +977,7 @@
           {
             "id": "sensitive-data.aws-access-key",
             "title": "AWS access key id",
-            "description": "Flags AWS access key identifiers (AKIA...) embedded in source or text files.",
+            "description": "Flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source or text files.",
             "pillar": "sensitive-data",
             "severity": "error",
             "confidence": "high",

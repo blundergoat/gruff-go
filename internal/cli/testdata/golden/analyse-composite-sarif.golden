@@ -1657,7 +1657,7 @@
                 "text": "AWS access key id"
               },
               "fullDescription": {
-                "text": "Flags AWS access key identifiers (AKIA...) embedded in source or text files."
+                "text": "Flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source or text files."
               },
               "help": {
                 "text": "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them."
