@@ -26,7 +26,9 @@ import (
 // Regular expressions used by the sensitive-data rules to detect embedded secrets in source.
 var (
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN[ A-Z]*PRIVATE KEY-----`)
-	awsAccessPattern  = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	// ASIA is AWS's prefix for temporary session credentials, and the body is the same fixed shape. Missing it
+	// left a live credential unnamed, which is the worse direction for this pillar.
+	awsAccessPattern = regexp.MustCompile(`(?:AKIA|ASIA)[0-9A-Z]{16}`)
 	// JWT: three base64url segments separated by dots; first starts with `eyJ`
 	// (the literal base64 prefix for `{"`).
 	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}`)
@@ -103,10 +105,10 @@ func (r PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return scanLinesForSecret(unit, privateKeyPattern, "private key literal detected", r.previews, previewPrivateKey)
 }
 
-// AWSAccessKeyRule flags AWS access key identifiers (AKIA...) embedded in source.
+// AWSAccessKeyRule flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source.
 type AWSAccessKeyRule struct{ previews sensitivePreviewPolicy }
 
-// Definition declares the sensitive-data.aws-access-key rule that flags AKIA-prefixed access key identifiers with high severity and high confidence.
+// Definition declares the sensitive-data.aws-access-key rule that flags AKIA- and ASIA-prefixed access key identifiers with high severity and high confidence.
 func (AWSAccessKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.aws-access-key",

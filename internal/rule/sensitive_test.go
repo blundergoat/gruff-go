@@ -129,6 +129,22 @@ func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawAWSKey)
 }
 
+// TestAWSAccessKeyRuleDetectsASessionToken pins the ASIA half of the shape. AWS issues temporary session
+// credentials under that prefix over the same fixed body, so a rule that named only AKIA left a live
+// credential unreported. gruff-php and gruff-py already named both.
+func TestAWSAccessKeyRuleDetectsASessionToken(t *testing.T) {
+	sessionToken := "ASIA" + "IOSFODNN7" + "EXAMPLE"
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + sessionToken + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings for a session token, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], sessionToken)
+}
+
 func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
