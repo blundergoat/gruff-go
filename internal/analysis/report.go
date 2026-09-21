@@ -915,10 +915,17 @@ func machineDiagnostic(root string, diagnostic Diagnostic) (map[string]any, erro
 	}
 	if diagnostic.File != "" {
 		path, err := machinePath(root, diagnostic.File)
-		if err != nil {
+		// A diagnostic may name a file the user passed from outside the project, such as `--baseline ../y.json`
+		// run from a sibling directory. That path has no project-relative form and a host path may not be
+		// published, so the optional key is left out the way the baseline path above leaves it out. Failing here
+		// instead took the whole envelope with it: the run exited 2 with nothing on stdout, where the other four
+		// ports publish the report and omit the key.
+		if err != nil && !errors.Is(err, errOutsideProjectRoot) {
 			return nil, fmt.Errorf("diagnostic path: %w", err)
 		}
-		payload["file"] = path
+		if err == nil {
+			payload["file"] = path
+		}
 	}
 	if diagnostic.Stage != "" {
 		payload["stage"] = diagnostic.Stage

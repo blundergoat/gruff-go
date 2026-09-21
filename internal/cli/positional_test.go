@@ -104,6 +104,52 @@ func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 	}
 }
 
+// TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject pins the envelope against the one path that used to
+// suppress it. A baseline the run cannot read produces a run-invalidating diagnostic naming that file; launched from
+// a sibling directory the file sits outside the project, so it has no project-relative form. Publishing the report
+// without the optional key is what the other four ports do, and §5 of the decided contract requires a refusal after
+// argument parsing to publish the envelope rather than exit with an empty stdout.
+func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launch := filepath.Join(root, "launch")
+	for _, directory := range []string{project, launch} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "unreadable.json", "{\"schemaVersion\": \"gruff.baseline.v3\", \"toolLanguage\": \"go\", \"nope\": []}\n")
+
+	t.Chdir(launch)
+	exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-config", "--baseline", "../unreadable.json", "--fail-on", "none", "--format", "json", "../project"})
+	if exitCode != 2 {
+		t.Fatalf("outside diagnostic: exit %d, want 2; stderr=%q", exitCode, stderr)
+	}
+	if len(stdout) == 0 {
+		t.Fatalf("outside diagnostic: stdout is empty, so the envelope was suppressed; stderr=%q", stderr)
+	}
+	var report struct {
+		SchemaVersion string `json:"schemaVersion"`
+		Diagnostics   []struct {
+			Type string  `json:"type"`
+			File *string `json:"file"`
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(stdout, &report); err != nil {
+		t.Fatalf("outside diagnostic: stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if report.SchemaVersion != "gruff.analysis.v3" {
+		t.Fatalf("schemaVersion = %q, want gruff.analysis.v3", report.SchemaVersion)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].Type != "baseline" {
+		t.Fatalf("diagnostics = %#v, want one baseline diagnostic", report.Diagnostics)
+	}
+	if report.Diagnostics[0].File != nil {
+		t.Fatalf("diagnostic file = %q, want it left out for a file outside the project", *report.Diagnostics[0].File)
+	}
+}
+
 // TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling
 // directory still publishes its report. The operand `../project` names the project itself, so the report lists it as
 // `.`, and a baseline kept outside the project is applied and simply has no project-relative path to publish.
