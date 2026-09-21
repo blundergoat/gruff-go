@@ -29,6 +29,10 @@ var (
 	// ASIA is AWS's prefix for temporary session credentials, and the body is the same fixed shape. Missing it
 	// left a live credential unnamed, which is the worse direction for this pillar.
 	awsAccessPattern = regexp.MustCompile(`(?:AKIA|ASIA)[0-9A-Z]{16}`)
+	// A masked key is one whose whole body is a run of X, written to show where a key goes (FAMILY-CONTRACT.md
+	// section 5). Only the whole body counts: a real key may contain a run of X, and hiding it would hide a live
+	// credential.
+	awsMaskedAccessPattern = regexp.MustCompile(`^(?:AKIA|ASIA)X{16}$`)
 	// JWT: three base64url segments separated by dots; first starts with `eyJ`
 	// (the literal base64 prefix for `{"`).
 	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}`)
@@ -238,7 +242,7 @@ func secretMatchesOnCodeLines(unit parser.Unit, pattern *regexp.Regexp) []secret
 			continue
 		}
 		for _, match := range pattern.FindAllString(line, -1) {
-			if isNonSecretPrivateKeyMention(unit, line, match) {
+			if isNonSecretPrivateKeyMention(unit, line, match) || (pattern == awsAccessPattern && awsMaskedAccessPattern.MatchString(match)) {
 				continue
 			}
 			matches = append(matches, secretLineMatch{line: lineNumber + 1, value: match})

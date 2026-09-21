@@ -145,6 +145,24 @@ func TestAWSAccessKeyRuleDetectsASessionToken(t *testing.T) {
 	assertNoRawSecret(t, findings[0], sessionToken)
 }
 
+// TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked pins FAMILY-CONTRACT.md section 5: a key whose body is a run of X
+// where the sixteen characters should be names no credential, while a real key that merely contains a run of X
+// still reports, because a rule that hid it would hide a live credential.
+func TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked(t *testing.T) {
+	masked := strings.Repeat("X", 16)
+	partlyMasked := "IOSFODNN" + strings.Repeat("X", 8)
+	unit := parser.Unit{
+		File: source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + "AKIA" + masked + "\n" +
+			"aws_session_key_id = " + "ASIA" + masked + "\n" +
+			"aws_partly_masked_id = " + "AKIA" + partlyMasked + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 || findings[0].Location == nil || findings[0].Location.Line != 3 {
+		t.Fatalf("got %d findings, want exactly the partly masked key on line 3: %+v", len(findings), findings)
+	}
+}
+
 func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
