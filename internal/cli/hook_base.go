@@ -88,7 +88,7 @@ func stampHookBaselineStatuses(currentFindings []finding.Finding, result baselin
 // Disabled output means the user requested no changed-region filtering.
 func resolveHookChanged(scanContext context.Context, projectRoot string, scannedPaths []string, hookFlags hookFlagValues) (diff.ChangedLines, bool, error) {
 	switch {
-	case hookFlags.changedRanges != "":
+	case hookFlags.changedRangesSet || hookFlags.changedRanges != "":
 		changedLines, err := diff.ExplicitRanges("explicit", hookFlags.changedRanges, scannedPaths)
 		return changedLines, err == nil, err
 	case hookFlags.diffMode == "-":

@@ -61,6 +61,30 @@ func TestAnalyseRefusesChangedRangesItCannotScope(t *testing.T) {
 	}
 }
 
+// TestHookRefusesChangedRangesItCannotScope pins the hook half of the same
+// contract analyse holds: a value the run cannot scope to ends the run rather
+// than widening it. An empty value is malformed for the same reason a garbled
+// one is, and reading it as "no filter" would hand an agent a whole-tree
+// finding list attributed to the edit it just made.
+func TestHookRefusesChangedRangesItCannotScope(t *testing.T) {
+	for _, ranges := range []string{"=abc", ""} {
+		root := t.TempDir()
+		writeFile(t, root, "complex.go", complexFixture())
+		t.Chdir(root)
+
+		payload, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--changed-ranges", ranges, "complex.go")
+		if code != 2 {
+			t.Fatalf("hook --changed-ranges %q exit = %d, want 2", ranges, code)
+		}
+		if len(payload.Diagnostics) != 1 || payload.Diagnostics[0].Type != analysis.ChangedRegionDiagnosticType {
+			t.Fatalf("hook --changed-ranges %q diagnostics = %#v, want one %s", ranges, payload.Diagnostics, analysis.ChangedRegionDiagnosticType)
+		}
+		if len(payload.Findings) != 0 {
+			t.Fatalf("hook --changed-ranges %q published %d findings beside an unusable scope", ranges, len(payload.Findings))
+		}
+	}
+}
+
 // TestAnalyseChangedRangesNoBaselineSuppressedMath pins the agent-hook
 // invocation: --no-baseline is accepted, symbol scope keeps only the changed
 // function's finding, and suppressedCount balances against the full-file count.

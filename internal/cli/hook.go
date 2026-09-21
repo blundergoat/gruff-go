@@ -19,16 +19,19 @@ import (
 // It keeps config, changed-region, baseline, ignore, and path inputs together
 // before analysis builds the gruff.hook.v2 response.
 type hookFlagValues struct {
-	format         string
-	capabilities   bool
-	configPath     string
-	noConfig       bool
-	changedRanges  string
-	diffMode       string
-	diffPatch      []byte
-	baselinePath   string
-	includeIgnored bool
-	deepScanBudget string
+	format        string
+	capabilities  bool
+	configPath    string
+	noConfig      bool
+	changedRanges string
+	// changedRangesSet records that the caller passed --changed-ranges, so an empty value is refused as an
+	// unreadable scope rather than read as no filter at all.
+	changedRangesSet bool
+	diffMode         string
+	diffPatch        []byte
+	baselinePath     string
+	includeIgnored   bool
+	deepScanBudget   string
 	// failOn is the lowest severity that blocks the user's edit; the hook's default of none keeps findings advisory.
 	failOn finding.FailThreshold
 	// gates carry the confidence floor and the baseline dimension, which apply beside the severity threshold.
@@ -236,6 +239,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 		configPath:        *configPath,
 		noConfig:          *noConfig,
 		changedRanges:     *changedRanges,
+		changedRangesSet:  flagProvided(flagSet, "changed-ranges"),
 		diffMode:          *diffMode,
 		diffPatch:         diffPatch,
 		baselinePath:      *baselinePath,
