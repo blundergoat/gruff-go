@@ -36,6 +36,12 @@ time, so a project using more than one of them moves once. This port's recorded 
 
 16. **SARIF results for secrets lose their fingerprints, and the entropy rule reports fewer findings** — A `sensitive-data.*` SARIF result no longer carries `partialFingerprints` or `properties.fingerprint`, so code scanning tracks it by location only. `sensitive-data.high-entropy-string` no longer reports long Go identifiers; string literals report as before, and comments are now scored unless the token names an identifier in the package's code.
 
+17. **an empty `--changed-ranges` is refused instead of scanning everything** — `--changed-ranges=` asks for a scoped run and names no range, and it was read as "no filter": the run silently widened to the whole tree and exited `0`. It now exits `2` with one `changed-region` diagnostic and no findings, on analyse and on the hook. A caller that passes a computed range which can legitimately come back empty must skip the run rather than pass the empty value; the shipped `gruff-code-quality.sh` wrapper already does.
+
+18. **`sensitive-data.high-entropy-string` no longer reports in package-manager lockfiles** — Nine lockfile names are skipped for that rule alone, at any depth, and each skip is published as an audit row carrying `source: "built-in"`. A project that relied on those findings loses them; every other sensitive-data rule still reads the file, so a credential pasted into a lockfile is still reported.
+
+19. **`sensitive-data.aws-access-key` reports AWS session tokens** — The rule matched only the `AKIA` long-term prefix, so a temporary `ASIA` credential went unnamed. Both are reported now. A run that gates on this rule may see new findings where a session token is present in source.
+
 ## Upgrade workflow (`0.5.x` → `0.6.0`)
 
 1. Read the list above and decide which breaks touch your project. A project with no committed
