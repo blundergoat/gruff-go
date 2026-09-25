@@ -439,7 +439,7 @@ func (SensitiveDataRule) Definition() Definition {
 		Title:          "Secret-like literal",
 		Description:    "Flags high-risk secret-like key/value assignments in Go and text/config files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Remediation:    "Move secrets to a secret manager or environment-specific runtime configuration.",
@@ -594,20 +594,10 @@ func cyclomaticComplexity(fn *ast.FuncDecl) int {
 	return complexity
 }
 
-// functionName returns the rendered function or method name (Receiver.Name when applicable).
+// functionName returns the rendered function or method name (BaseType.Name for a method, generic or not) from the
+// parser's one canonical renderer, so a finding's symbol matches the function metadata it is positioned against.
 func functionName(fn *ast.FuncDecl) string {
-	name := fn.Name.Name
-	if fn.Recv != nil && len(fn.Recv.List) > 0 {
-		switch expr := fn.Recv.List[0].Type.(type) {
-		case *ast.Ident:
-			return expr.Name + "." + name
-		case *ast.StarExpr:
-			if ident, ok := expr.X.(*ast.Ident); ok {
-				return ident.Name + "." + name
-			}
-		}
-	}
-	return name
+	return parser.FuncDeclSymbol(fn)
 }
 
 // isGoTestFile reports whether the file path is a Go test file (_test.go suffix).

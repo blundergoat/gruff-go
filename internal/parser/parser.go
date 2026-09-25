@@ -149,26 +149,47 @@ func functions(fset *token.FileSet, file *ast.File) []Function {
 		}
 		start := fset.Position(fn.Pos())
 		end := fset.Position(fn.End())
-		name := fn.Name.Name
-		if fn.Recv != nil && len(fn.Recv.List) > 0 {
-			name = receiverName(fn.Recv.List[0]) + "." + name
-		}
-		out = append(out, Function{Name: name, Line: start.Line, EndLine: end.Line})
+		out = append(out, Function{Name: FuncDeclSymbol(fn), Line: start.Line, EndLine: end.Line})
 	}
 	return out
 }
 
-// receiverName returns the receiver type name for method declarations.
-func receiverName(field *ast.Field) string {
-	switch expr := field.Type.(type) {
-	case *ast.Ident:
-		return expr.Name
-	case *ast.StarExpr:
-		if ident, ok := expr.X.(*ast.Ident); ok {
-			return ident.Name
+// FuncDeclSymbol is the one renderer for a function declaration's symbol, shared by function metadata, rule findings,
+// nolint lookups and clustering, so every surface names a declaration the same way and its identity is stable.
+// A free function renders as its name and a method as `BaseType.Method`, with no pointer marker and no type
+// arguments: `func (s *Stack[T]) Push` is `Stack.Push`, exactly as `func (s *Plain) Push` is `Plain.Push`. A receiver
+// whose base type cannot be resolved, which valid Go never produces, renders as `receiver.Method`.
+func FuncDeclSymbol(fn *ast.FuncDecl) string {
+	name := fn.Name.Name
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return name
+	}
+	if base := ReceiverTypeName(fn.Recv.List[0]); base != "" {
+		return base + "." + name
+	}
+	return "receiver." + name
+}
+
+// ReceiverTypeName returns the declared base type of a method receiver, unwrapping parentheses, pointers and generic
+// type arguments (`IndexExpr` for one, `IndexListExpr` for several), or "" for a shape it cannot resolve.
+func ReceiverTypeName(field *ast.Field) string {
+	expr := field.Type
+	for {
+		switch item := expr.(type) {
+		case *ast.Ident:
+			return item.Name
+		case *ast.StarExpr:
+			expr = item.X
+		case *ast.ParenExpr:
+			expr = item.X
+		case *ast.IndexExpr:
+			expr = item.X
+		case *ast.IndexListExpr:
+			expr = item.X
+		default:
+			return ""
 		}
 	}
-	return "receiver"
 }
 
 // countLines returns the total newline-terminated line count of the source text.

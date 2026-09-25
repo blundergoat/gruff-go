@@ -1638,7 +1638,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1647,7 +1647,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1664,7 +1664,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1673,7 +1673,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1690,7 +1690,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1699,7 +1699,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1716,7 +1716,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1725,7 +1725,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1742,7 +1742,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1751,7 +1751,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1768,7 +1768,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1777,7 +1777,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1794,7 +1794,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1803,7 +1803,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1850,7 +1850,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1859,7 +1859,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1876,7 +1876,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1885,7 +1885,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1956,7 +1956,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1965,7 +1965,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1982,13 +1982,13 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -2005,7 +2005,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -2014,7 +2014,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -2031,7 +2031,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -2040,7 +2040,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {

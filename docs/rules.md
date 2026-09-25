@@ -75,22 +75,22 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.unsafe-deserialization`](#securityunsafe-deserialization) | security | advisory | parser | - | Decoding request-controlled input via `encoding/gob` or `gopkg.in/yaml`. |
 | [`security.weak-crypto`](#securityweak-crypto) | security | advisory | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
 | [`security.xxe-candidate`](#securityxxe-candidate) | security | advisory | parser | - | `xml.Decoder` configured with a custom entity map (possible XXE); stdlib XML is safe by default. |
-| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | error | parser | - | Anthropic API key literals (`sk-ant-…`). |
-| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | error | parser | - | AWS access key id (AKIA…) literals. |
-| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | error | parser | - | Database/queue URLs with embedded passwords. |
-| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | error | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
-| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | error | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
-| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | error | parser | - | GitLab personal, trigger, runner, and application token literals. |
-| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | error | parser | - | Google API key literals (`AIza…`). |
+| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | warning | parser | - | Anthropic API key literals (`sk-ant-…`). |
+| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | warning | parser | - | AWS access key id (AKIA…) literals. |
+| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | warning | parser | - | Database/queue URLs with embedded passwords. |
+| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | warning | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
+| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | warning | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
+| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | warning | parser | - | GitLab personal, trigger, runner, and application token literals. |
+| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | warning | parser | - | Google API key literals (`AIza…`). |
 | [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 32`, `entropy: 4.2` | Long high-entropy tokens no provider rule covers. |
-| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | error | parser | - | JWT-shaped literals (`eyJ…`). |
-| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | error | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
+| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | warning | parser | - | JWT-shaped literals (`eyJ…`). |
+| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | warning | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
 | [`sensitive-data.phi-pattern`](#sensitive-dataphi-pattern) | sensitive-data | warning | parser | - | Opt-in. US SSN, Medicare MBI, and labelled MRN identifiers. |
 | [`sensitive-data.pii-pattern`](#sensitive-datapii-pattern) | sensitive-data | warning | parser | - | Opt-in. Email, phone, and Luhn-valid payment-card numbers. |
-| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | error | parser | - | PEM-encoded private keys embedded in source. |
-| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
-| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
-| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
+| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | warning | parser | - | PEM-encoded private keys embedded in source. |
+| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | warning | parser | - | High-risk secret-like key/value assignments. |
+| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | warning | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
+| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | warning | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
 | [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
@@ -1121,7 +1121,7 @@ the report's `suppressions` array, so an accepted suppression stays reviewable.
 ### `sensitive-data.anthropic-api-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1134,7 +1134,7 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 ### `sensitive-data.aws-access-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1147,7 +1147,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 ### `sensitive-data.connection-string`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1164,7 +1164,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the bare 
 ### `sensitive-data.gcp-service-account`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1174,14 +1174,14 @@ Flags files containing both a `"type": "service_account"` field and a PEM privat
 
 The finding is located at the line of the `"type"` marker. Empty/nonmatching paths fully mask both preview fields. Matching paths emit only `[redacted:gcp-service-account]` and `[redacted:private-key]`; the type literal, key header/body, and reusable fragments never reach any output format.
 
-**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `error` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
+**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `warning` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
 
 **Remediation.** Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity.
 
 ### `sensitive-data.github-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1194,7 +1194,7 @@ Flags GitHub personal-access (`ghp_`), OAuth (`gho_`), user-to-server (`ghu_`), 
 ### `sensitive-data.gitlab-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1207,7 +1207,7 @@ Flags GitLab personal, trigger, runner, and application token literals with prov
 ### `sensitive-data.google-api-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1236,7 +1236,7 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 ### `sensitive-data.jwt-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1251,7 +1251,7 @@ Flags JWT-shaped literals - three base64url segments separated by dots, the firs
 ### `sensitive-data.npm-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1298,7 +1298,7 @@ Flags personally identifiable information embedded in source or text: email addr
 ### `sensitive-data.private-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1313,7 +1313,7 @@ Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized
 ### `sensitive-data.secret-pattern`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1331,7 +1331,7 @@ Documentation placeholders such as `${sessionToken}` are skipped when they are n
 ### `sensitive-data.slack-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1344,7 +1344,7 @@ Flags Slack bot (`xoxb-`), user (`xoxp-`), app (`xoxa-`), and refresh (`xoxr-`) 
 ### `sensitive-data.stripe-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser

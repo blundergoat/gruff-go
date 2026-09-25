@@ -3,6 +3,9 @@
 package parser
 
 import (
+	"go/ast"
+	stdparser "go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,6 +36,66 @@ func TestParseBuildsUnitsAndFunctionMetadata(t *testing.T) {
 	}
 	if len(units[0].Functions) != 1 || units[0].Functions[0].Name != "main" {
 		t.Fatalf("functions = %#v, want main", units[0].Functions)
+	}
+}
+
+// TestFuncDeclSymbolRendersTheBaseTypeForEveryReceiverShape pins the one symbol renderer every surface shares: a
+// generic receiver drops its type arguments and pointer marker exactly as a plain one does, so `*Stack[T]` and
+// `Pair[K, V]` render as `Stack.Method` and `Pair.Method`, and function metadata carries the same names.
+func TestFuncDeclSymbolRendersTheBaseTypeForEveryReceiverShape(t *testing.T) {
+	src := `package sample
+
+func Free() {}
+func (v Value) OnValue() {}
+func (p *Pointer) OnPointer() {}
+func (s Stack[T]) OnGeneric() {}
+func (s *Stack[T]) OnGenericPointer() {}
+func (p Pair[K, V]) OnPair() {}
+func (p *Pair[K, V]) OnPairPointer() {}
+func (q (*Paren)) OnParen() {}
+func (s pkg.Foreign) OnSelector() {}
+`
+	file, err := stdparser.ParseFile(token.NewFileSet(), "sample.go", src, stdparser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"Free",
+		"Value.OnValue",
+		"Pointer.OnPointer",
+		"Stack.OnGeneric",
+		"Stack.OnGenericPointer",
+		"Pair.OnPair",
+		"Pair.OnPairPointer",
+		"Paren.OnParen",
+		"receiver.OnSelector",
+	}
+	got := []string{}
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			got = append(got, FuncDeclSymbol(fn))
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("symbols = %v, want %v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("symbol %d = %q, want %q (all: %v)", index, got[index], want[index], got)
+		}
+	}
+
+	root := t.TempDir()
+	path := filepath.Join(root, "stack.go")
+	if err := os.WriteFile(path, []byte("package sample\n\nfunc (s *Stack[T]) Push(item T) {\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	units, diagnostics := Parse([]source.File{{Path: "stack.go", AbsPath: path, Type: source.FileTypeGo}})
+	if len(diagnostics) != 0 || len(units) != 1 {
+		t.Fatalf("units = %#v, diagnostics = %#v, want one clean unit", units, diagnostics)
+	}
+	if len(units[0].Functions) != 1 || units[0].Functions[0].Name != "Stack.Push" {
+		t.Fatalf("functions = %#v, want Stack.Push", units[0].Functions)
 	}
 }
 

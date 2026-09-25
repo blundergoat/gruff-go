@@ -222,7 +222,7 @@ Migrating from 0.5: `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as
 
 ### `--fail-on=error` is not a security gate
 
-With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are below error: 20 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.sql-string-query` and `security.shell-command`. Some `sensitive-data.*` rules use error severity, but that separate rule family does not cover the application-security classes under `security.*`.
+With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are below error: 20 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.sql-string-query` and `security.shell-command`. No default-enabled `sensitive-data.*` rule reaches error either: since 0.6.0 every one defaults to warning, so an error-only gate ignores every built-in secret finding too.
 
 The below-error invariant is enforced, not just documented: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches error, naming this section in its failure message. Verify the live numbers yourself with `gruff-go list-rules --no-config --format json` - without `--no-config` you get the effective severities after your own `.gruff-go.yaml` overrides, which is a different question.
 

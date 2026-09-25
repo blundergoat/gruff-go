@@ -35,7 +35,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Severity gate | `--fail-on` with `advisory`, `warning`, `error`, `none` |
 | Dashboard | `127.0.0.1:8765` by default |
 
-The Release line row names the published package; the schema and severity-gate rows are what this checkout emits, and the move to the `v3` envelopes and the refusal of `--min-severity` land in `0.6.0`. [`CHANGELOG.md`](CHANGELOG.md) records every break under `[Unreleased]`, and [`UPGRADING.md`](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) states what each one costs and how to go back.
+The Release line row names the published package; the schema and severity-gate rows are what this checkout emits, and the move to the `v3` envelopes and the refusal of `--min-severity` land in `0.6.0`. [`CHANGELOG.md`](CHANGELOG.md) records every break under `v0.6.0`, and [`UPGRADING.md`](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) states what each one costs and how to go back.
 
 ## Requirements
 

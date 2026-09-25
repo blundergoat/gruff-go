@@ -222,6 +222,61 @@ func ExportedTestHelper() {}
 	}
 }
 
+// TestGenericMethodsCarryTheirBaseTypeSymbol pins the generic-receiver correction that rides the 0.6.0 identity break:
+// an exported generic type's undocumented methods are reported, an unexported generic type's are not, and a finding
+// inside a generic method names it `Stack.Deep`, the same symbol a plain receiver's method has always carried.
+func TestGenericMethodsCarryTheirBaseTypeSymbol(t *testing.T) {
+	unit := parseOne(t, "stack.go", `package sample
+
+// Stack is a generic stack.
+type Stack[T any] struct{ items []T }
+
+// Pair is a generic pair.
+type Pair[K comparable, V any] struct{ key K }
+
+type stack[T any] struct{}
+
+func (s *Stack[T]) Push(item T) {}
+
+func (p Pair[K, V]) Key() K { return p.key }
+
+func (s *stack[T]) Hidden() {}
+
+func (s *Stack[T]) Deep(a, b, c bool) {
+	if a {
+		if b {
+			if c {
+				for i := 0; i < 10; i++ {
+					if i > 0 {
+						if i < 5 {
+							_ = i
+						}
+					}
+				}
+			}
+		}
+	}
+}
+`)
+	got := map[string]bool{}
+	for _, f := range (ExportedSymbolCommentRule{}).AnalyzeUnit(unit, Context{}) {
+		got[f.Symbol] = true
+	}
+	for _, name := range []string{"Stack.Push", "Pair.Key", "Stack.Deep"} {
+		if !got[name] {
+			t.Fatalf("exported-symbol findings = %v, missing %s", got, name)
+		}
+	}
+	if got["stack.Hidden"] || got["Hidden"] || got["Push"] {
+		t.Fatalf("exported-symbol findings = %v, want no unexported or bare generic symbol", got)
+	}
+
+	nesting := NestingDepthRule{}.AnalyzeUnit(unit, Context{})
+	if len(nesting) != 1 || nesting[0].Symbol != "Stack.Deep" {
+		t.Fatalf("nesting findings = %#v, want one finding on Stack.Deep", nesting)
+	}
+}
+
 // TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages=true option, asserting an internal/service export is silenced while a public pkg/api export still surfaces.
 func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
