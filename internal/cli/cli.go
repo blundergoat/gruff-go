@@ -238,7 +238,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	}
 	analysisReport, err := analysis.Analyze(analysis.Options{
 		Root:                   projectRoot,
-		Paths:                  flags.Args(),
+		Paths:                  targetsForRoot(projectRoot, flags.Args()),
 		Format:                 values.format,
 		FailOn:                 failOn,
 		MinConfidence:          finding.Confidence(values.gates.minConfidence),

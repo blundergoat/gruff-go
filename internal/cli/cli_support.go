@@ -73,6 +73,46 @@ func projectRootFromTargets(paths []string) (string, error) {
 	return common, nil
 }
 
+// targetsForRoot writes each relative target as an absolute path from the launch directory whenever the project root
+// is not the launch directory. The analyzer reads operands against the root, so `..` typed from `proj/src` names
+// `proj`, but read against the root `proj` it named the directory above the project, which was then scanned.
+func targetsForRoot(projectRoot string, paths []string) []string {
+	workingDirectory, err := os.Getwd()
+	// Inside the launch directory the root and the operands already agree, so they are passed on exactly as typed.
+	if err != nil || workingDirectory == projectRoot {
+		return paths
+	}
+	resolved := make([]string, len(paths))
+	for index, path := range paths {
+		resolved[index] = path
+		if !filepath.IsAbs(path) {
+			resolved[index] = filepath.Join(workingDirectory, path)
+		}
+	}
+	return resolved
+}
+
+// analyseFromTargets analyses options.Paths against the project root those targets name, not the launch directory.
+// Left to default, the root is the launch directory, so `summary ../proj --format=json` run from a sibling exited 2
+// with nothing on stdout, and a baseline generated there keyed its identities by absolute host paths. Reports false
+// once it has written the reason to stderr.
+func analyseFromTargets(options analysis.Options, stderr io.Writer) (analysis.Report, bool) {
+	projectRoot, err := projectRootFromTargets(options.Paths)
+	// The caller named targets in unrelated projects, so there is no single root to report paths against.
+	if err != nil {
+		fmt.Fprintf(stderr, "project root: %v\n", err)
+		return analysis.Report{}, false
+	}
+	options.Root = projectRoot
+	options.Paths = targetsForRoot(projectRoot, options.Paths)
+	analysisReport, err := analysis.Analyze(options)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return analysis.Report{}, false
+	}
+	return analysisReport, true
+}
+
 // targetOutsideLaunchDirectory returns the first of several targets that sits outside the launch directory.
 //
 // One target outside it is supported: `gruff-go analyse /srv/checkout` makes that target the project root. Several

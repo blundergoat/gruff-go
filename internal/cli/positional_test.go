@@ -150,6 +150,79 @@ func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) 
 	}
 }
 
+// TestLaunchDirectoryDoesNotChangeTheResult verifies analyse, summary and report JSON, and a generated baseline, come
+// out the same whether the project is named from inside it, from a sibling directory (`../project`), or from one of
+// its own subdirectories (`..`). Before the root came from the target, summary and report exited 2 with nothing on
+// stdout from a sibling; before operands were read from the launch directory, `..` from a subdirectory scanned the
+// directory above the project, here holding stray.go, and every command crashed on it.
+func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launches := map[string]string{filepath.Join(root, "launch"): "../project", filepath.Join(project, "sub"): ".."}
+	for directory := range launches {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "package main\n\nfunc Exported(unused int) {}\n\nfunc main() {}\n")
+	writeFile(t, root, "stray.go", "package stray\n\nfunc Stray(unused int) {}\n")
+
+	run := func(directory string, commandArguments []string) (int, string) {
+		t.Chdir(directory)
+		exitCode, stdout, stderr := captureCLIResult(commandArguments)
+		if len(stdout) == 0 {
+			t.Fatalf("%v from %s: empty stdout, exit %d, stderr=%q", commandArguments, directory, exitCode, stderr)
+		}
+		return exitCode, string(stdout)
+	}
+	stable := func(label, stdout string) string {
+		var envelope struct {
+			Findings []map[string]any `json:"findings"`
+			Score    map[string]any   `json:"score"`
+			Summary  map[string]any   `json:"summary"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+			t.Fatalf("%s: stdout is not JSON: %v", label, err)
+		}
+		encoded, _ := json.Marshal(envelope)
+		return string(encoded)
+	}
+	for _, command := range []string{"analyse", "summary", "report"} {
+		insideExit, insideStdout := run(project, []string{command, "--no-config", "--fail-on", "none", "--format", "json", "."})
+		inside := stable(command+" inside", insideStdout)
+		for directory, target := range launches {
+			outsideExit, outsideStdout := run(directory, []string{command, "--no-config", "--fail-on", "none", "--format", "json", target})
+			outside := stable(command+" "+target, outsideStdout)
+			if insideExit != outsideExit || inside != outside {
+				t.Fatalf("%s %s differs by launch directory:\ninside  exit %d %s\noutside exit %d %s", command, target, insideExit, inside, outsideExit, outside)
+			}
+		}
+	}
+
+	baselineOf := func(directory, target, name string) string {
+		run(directory, []string{"analyse", "--no-config", "--generate-baseline", filepath.Join(root, name), target})
+		contents, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		var baseline struct {
+			Occurrences []map[string]any `json:"occurrences"`
+		}
+		if err := json.Unmarshal(contents, &baseline); err != nil {
+			t.Fatalf("%s is not JSON: %v", name, err)
+		}
+		encoded, _ := json.Marshal(baseline)
+		return string(encoded)
+	}
+	inside := baselineOf(project, ".", "inside.json")
+	for directory, target := range launches {
+		outside := baselineOf(directory, target, "outside.json")
+		if outside != inside || strings.Contains(outside, root) {
+			t.Fatalf("baseline from %s differs by launch directory:\noutside %s\ninside  %s", target, outside, inside)
+		}
+	}
+}
+
 // TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling
 // directory still publishes its report. The operand `../project` names the project itself, so the report lists it as
 // `.`, and a baseline kept outside the project is applied and simply has no project-relative path to publish.

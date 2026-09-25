@@ -70,7 +70,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
 	}
-	analysisReport, err := analysis.Analyze(analysis.Options{
+	analysisReport, ok := analyseFromTargets(analysis.Options{
 		Paths:               flags.Args(),
 		Format:              *format,
 		FailOn:              failOn,
@@ -81,9 +81,8 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		IncludeIgnored:      *includeIgnored,
 		BaselinePath:        *baselinePath,
 		DiffBase:            *diffBase,
-	})
-	if err != nil {
-		fmt.Fprintln(stderr, err)
+	}, stderr)
+	if !ok {
 		return 2
 	}
 	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)

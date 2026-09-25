@@ -62,7 +62,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	analysisReport, err := analysis.Analyze(analysis.Options{
+	analysisReport, ok := analyseFromTargets(analysis.Options{
 		Paths:               flags.Args(),
 		Format:              *format,
 		FailOn:              failOn,
@@ -71,9 +71,8 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 		SensitiveExclusions: sensitiveExclusionsFor(cfg),
 		DeepScanBudget:      deepScanBudget,
 		IncludeIgnored:      *includeIgnored,
-	})
-	if err != nil {
-		fmt.Fprintln(stderr, err)
+	}, stderr)
+	if !ok {
 		return 2
 	}
 	scanDuration := time.Since(started)

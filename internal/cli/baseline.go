@@ -81,7 +81,7 @@ type baselineScanOptions struct {
 // then writes a baseline file from the current findings. The generated baseline
 // is a setup artifact, so current findings do not make this command fail.
 func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) int {
-	analysisReport, err := analysis.Analyze(analysis.Options{
+	analysisReport, ok := analyseFromTargets(analysis.Options{
 		Paths:               opts.paths,
 		Format:              "json",
 		FailOn:              finding.FailThresholdError,
@@ -90,9 +90,8 @@ func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) i
 		SensitiveExclusions: opts.sensitiveExclusions,
 		DeepScanBudget:      opts.deepScanBudget,
 		IncludeIgnored:      opts.includeIgnored,
-	})
-	if err != nil {
-		fmt.Fprintln(stderr, err)
+	}, stderr)
+	if !ok {
 		return 2
 	}
 	if analysisReport.Summary.ExitCode == 2 {
