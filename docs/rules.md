@@ -4,7 +4,7 @@
 
 Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
 
-Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
+Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
 The first summary sentence, the `Opt-in rules:` line, catalog rows, `### <rule-id>` headings, and exact `Pillar`, `Default severity`, `Default-enabled`, `Threshold`, `Confidence`, `Capability`, and `Tags` bullets form a narrow structured authoring contract. Tests compare those markers with the built-in no-config registry, including counts and the exact opt-in set. Keep both the catalog row and per-rule bullets in the same change as intentional registry metadata updates. Descriptions, remediation, examples, options, secondary pillars, and other explanatory prose remain free-form and are not parsed by this contract.
 

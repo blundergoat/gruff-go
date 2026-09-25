@@ -252,6 +252,44 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	}
 }
 
+// TestListRulesListsBuiltInCatalogueUnderAProjectConfig pins the family listing: a project config that overrides a
+// rule's severity, enablement and threshold changes nothing in either format, because `defaultSeverity`,
+// `defaultEnabled` and `thresholds` publish the release defaults in every port. The config is still loaded, so a
+// broken one is refused with exit 2 as every other command refuses it.
+func TestListRulesListsBuiltInCatalogueUnderAProjectConfig(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	for _, format := range []string{"json", "text"} {
+		var builtIn, builtInErr bytes.Buffer
+		if code := Main([]string{"list-rules", "--no-config", "--format", format}, &builtIn, &builtInErr); code != 0 {
+			t.Fatalf("list-rules --no-config --format %s exit = %d, stderr = %s", format, code, builtInErr.String())
+		}
+		config := "schemaVersion: gruff-go.config.v0.1\nrules:\n  sensitive-data.private-key:\n    enabled: false\n    severity: error\n  complexity.cyclomatic:\n    threshold: 3\n"
+		if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(config), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var configured, configuredErr bytes.Buffer
+		if code := Main([]string{"list-rules", "--format", format}, &configured, &configuredErr); code != 0 {
+			t.Fatalf("list-rules --format %s exit = %d, stderr = %s", format, code, configuredErr.String())
+		}
+		if configured.String() != builtIn.String() {
+			t.Fatalf("list-rules --format %s changed under a project config:\nbuilt-in:\n%s\nconfigured:\n%s", format, builtIn.String(), configured.String())
+		}
+		if err := os.Remove(filepath.Join(root, ".gruff-go.yaml")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	broken := "schemaVersion: gruff-go.config.v0.1\nrules:\n  not.a-rule:\n    enabled: true\n"
+	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var brokenOut, brokenErr bytes.Buffer
+	if code := Main([]string{"list-rules", "--format", "json"}, &brokenOut, &brokenErr); code != 2 {
+		t.Fatalf("list-rules under a broken config exit = %d, want 2; stderr = %s", code, brokenErr.String())
+	}
+}
+
 // TestListRulesAndDiagnostics covers list-rules output and diagnostic exit codes.
 func TestListRulesAndDiagnostics(t *testing.T) {
 	t.Chdir(t.TempDir())

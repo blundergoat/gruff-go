@@ -205,7 +205,7 @@ The current checkout contains 83 rules across 11 pillars. 71 rules are enabled b
 
 See [`docs/rules.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 
-`list-rules` reports the effective rule state after applying project config. Use `go tool gruff-go list-rules --no-config` to inspect built-in defaults.
+`list-rules` reports the built-in catalogue: its default severities, enablement and thresholds, as every gruff port lists them. A project `.gruff-go.yaml` is still loaded and a broken one is refused with exit 2, but its overrides are not shown; they are in the file itself.
 
 ## Baselines And Changed-Code Scans
 

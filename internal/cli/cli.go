@@ -425,12 +425,15 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "unsupported format %q\n", *format)
 		return 2
 	}
-	registry, _, _, err := configuredRegistry(*configPath, *noConfig)
-	if err != nil {
+	// The config is still loaded, so a broken one is refused with exit 2 as every command refuses it, but the listing
+	// is the built-in catalogue. `defaultSeverity` and `defaultEnabled` name release defaults in every family port,
+	// and a project's overrides published under them would read as the rule's defaults.
+	if _, _, _, err := configuredRegistry(*configPath, *noConfig); err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}
-	definitions := registry.Definitions()
+	builtIn := rule.Defaults()
+	definitions := builtIn.Definitions()
 	if *format == "json" {
 		payload := struct {
 			SchemaVersion string               `json:"schemaVersion"`
