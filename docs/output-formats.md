@@ -9,7 +9,7 @@ The default is `text` if you omit `--format`.
 Compact terminal-friendly output:
 
 ```text
-gruff-go 0.5.0 analyse
+gruff-go 0.6.0 analyse
 Composite: A (99.00 / 100)
 Findings: 1 total · 0 error · 1 warning · 0 advisory
 schema: gruff.analysis.v3
@@ -68,7 +68,7 @@ The important shared shape is:
 ```jsonc
 {
   "schemaVersion": "gruff.analysis.v3",
-  "tool": { "name": "gruff-go", "version": "0.5.0" },
+  "tool": { "name": "gruff-go", "version": "0.6.0" },
   "run": {
     "projectRoot": ".",
     "inputs": ["."],

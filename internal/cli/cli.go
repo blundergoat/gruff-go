@@ -16,7 +16,7 @@ import (
 )
 
 // toolVersion is the released gruff-go semantic version printed by --version.
-const toolVersion = "0.5.0"
+const toolVersion = "0.6.0"
 
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 func Main(args []string, stdout, stderr io.Writer) int {
@@ -222,6 +222,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	displayFilter, ok := analyseDisplayFilter(values, registry, cfg, stderr)
 	if !ok {
 		return 2
+	}
+	// Several targets outside the launch directory leave no root the analyzer resolves them against, so a caller who
+	// asked for a machine format reads the refusal in the envelope rather than a serialiser failure on stderr.
+	if outside, found := targetOutsideLaunchDirectory(flags.Args()); found {
+		err := fmt.Errorf("target %q is outside the launch directory; gruff-go analyses several targets only from a directory that contains them all", outside)
+		fmt.Fprintf(stderr, "targets: %v\n", err)
+		return writeFailedRunReport(values, analysis.TargetErrorDiagnosticType, err, stdout)
 	}
 	projectRoot, err := projectRootFromTargets(flags.Args())
 	// The caller named targets in unrelated projects, so there is no single root to report paths against.

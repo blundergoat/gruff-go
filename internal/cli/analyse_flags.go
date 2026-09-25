@@ -88,6 +88,7 @@ type analyseFlagPointers struct {
 	minConfidence        *string
 	failOnNew            *bool
 	scanTimeout          *string
+	historyFile          *string
 	editorLink           *string
 	reportInteractive    *bool
 	includeIgnored       *bool
@@ -208,6 +209,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 	minConfidence := flags.String("min-confidence", "", "lowest confidence that reaches the exit gate: low, medium, or high")
 	failOnNew := flags.Bool("fail-on-new", false, "exit 1 when any finding is new against the applied baseline")
 	scanTimeout := flags.String("scan-timeout", "", "accepted for cross-port compatibility; not implemented in gruff-go")
+	historyFile := flags.String("history-file", "", "accepted for cross-port compatibility; not implemented in gruff-go")
 	runRules := flags.String("include-rule", "", "comma-separated rule IDs to run; changes execution, so the score and any generated baseline move with it")
 	skipRules := flags.String("exclude-rule", "", "comma-separated rule IDs not to run")
 	runPillars := flags.String("include-pillar", "", "comma-separated pillars to run; changes execution, not just display")
@@ -246,6 +248,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 		minConfidence:        minConfidence,
 		failOnNew:            failOnNew,
 		scanTimeout:          scanTimeout,
+		historyFile:          historyFile,
 		runRules:             runRules,
 		skipRules:            skipRules,
 		runPillars:           runPillars,

@@ -55,7 +55,8 @@ time, so a project using more than one of them moves once. This port's recorded 
 3. Regenerate the configuration if you hand-wrote one: `gruff-go init --force` rewrites it
    with the current schema version and preserves the tuning you already had.
 4. Carry a baseline forward rather than regenerating it, so previously reviewed findings stay
-   reviewed. The command is in the CHANGELOG entry for the baseline break.
+   reviewed. Run `gruff-go baseline --migrate-baseline <old path> --out <new path>`; it writes a separate
+   file and leaves the old one untouched for a retreat. The CHANGELOG entry for the baseline break has the detail.
 5. Re-run `gruff-go summary .` and compare the finding count with the one you had. A rule
    whose default changed will move it; a rule whose identity changed will not.
 

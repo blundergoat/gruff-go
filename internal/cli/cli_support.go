@@ -73,6 +73,30 @@ func projectRootFromTargets(paths []string) (string, error) {
 	return common, nil
 }
 
+// targetOutsideLaunchDirectory returns the first of several targets that sits outside the launch directory.
+//
+// One target outside it is supported: `gruff-go analyse /srv/checkout` makes that target the project root. Several
+// targets outside it are not, because the analyzer resolves each operand against the root it picks, so `../a` and
+// `../b` from a sibling directory would resolve to paths that do not exist. The caller refuses that run up front.
+func targetOutsideLaunchDirectory(paths []string) (string, bool) {
+	workingDirectory, err := os.Getwd()
+	// Without a launch directory nothing can be judged outside it, so the run proceeds to fail where it always did.
+	if err != nil || len(paths) < 2 {
+		return "", false
+	}
+	for _, path := range paths {
+		absolute := path
+		// A relative target is meant relative to where the command was typed.
+		if !filepath.IsAbs(absolute) {
+			absolute = filepath.Join(workingDirectory, absolute)
+		}
+		if !isSameOrDescendant(filepath.Clean(absolute), workingDirectory) {
+			return path, true
+		}
+	}
+	return "", false
+}
+
 // isSameOrDescendant reports whether one directory is another or sits inside it.
 // Comparison is by whole path segment, so a sibling folder like /work/apidocs is never mistaken for
 // something inside /work/api.

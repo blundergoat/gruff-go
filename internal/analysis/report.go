@@ -272,6 +272,10 @@ type ReportInput struct {
 // ConfigErrorDiagnosticType is the type every port publishes when it cannot load the configuration it was given.
 const ConfigErrorDiagnosticType = "config-error"
 
+// TargetErrorDiagnosticType is the type every port publishes when it refuses the scan targets it was given, such as
+// several targets outside the launch directory, which leave no single root to resolve them against.
+const TargetErrorDiagnosticType = "target-error"
+
 // FailedRunReport builds the envelope a run that could not start still owes a caller who asked for a machine
 // format.
 //
@@ -279,6 +283,11 @@ const ConfigErrorDiagnosticType = "config-error"
 // diagnostic and empty everything else. Printing only to stderr would leave a JSON consumer with no diagnostic,
 // no type and no run block to read, where every other port publishes all three.
 func FailedRunReport(root, format, diagnosticType, message string) Report {
+	stage := "config"
+	// A refused target list fails while the run is choosing what to scan, not while it loads the configuration.
+	if diagnosticType == TargetErrorDiagnosticType {
+		stage = "discovery"
+	}
 	return NewReport(ReportInput{
 		Root:   root,
 		Format: format,
@@ -287,7 +296,7 @@ func FailedRunReport(root, format, diagnosticType, message string) Report {
 		FailOn: finding.FailThresholdAdvisory,
 		Diagnostics: []Diagnostic{{
 			DiagnosticType: diagnosticType,
-			Stage:          "config",
+			Stage:          stage,
 			Message:        message,
 			Severity:       finding.SeverityError,
 		}},
@@ -309,7 +318,7 @@ func NewReport(input ReportInput) Report {
 		SchemaVersion: SchemaVersion,
 		Tool: Tool{
 			Name:    "gruff-go",
-			Version: "0.5.0",
+			Version: "0.6.0",
 		},
 		Run: RunMetadata{
 			WorkingDirectory: input.Root,

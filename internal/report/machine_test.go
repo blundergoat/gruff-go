@@ -269,7 +269,7 @@ func requireSingleSARIFRun(t *testing.T, payload sarifLog) sarifRun {
 // requireSARIFDriver asserts the driver identity matches the gruff-go tool and pinned semantic version.
 func requireSARIFDriver(t *testing.T, driver sarifDriver) {
 	t.Helper()
-	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.5.0" {
+	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.6.0" {
 		t.Fatalf("unexpected driver identity: %#v", driver)
 	}
 }
