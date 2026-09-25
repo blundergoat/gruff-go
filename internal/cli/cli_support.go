@@ -92,6 +92,23 @@ func targetsForRoot(projectRoot string, paths []string) []string {
 	return resolved
 }
 
+// rootRelativePath rewrites a path the user typed, such as --baseline, so that joined to the project root it names the
+// file the user meant from the launch directory. It stays relative so the report never publishes a host path; a file
+// outside the project keeps its ../ form, which the machine renderers leave out.
+func rootRelativePath(projectRoot, path string) string {
+	workingDirectory, err := os.Getwd()
+	// Inside the launch directory the root and the typed path already agree, so the path is passed on as typed.
+	if path == "" || filepath.IsAbs(path) || err != nil || workingDirectory == projectRoot {
+		return path
+	}
+	relativePath, err := filepath.Rel(projectRoot, filepath.Join(workingDirectory, path))
+	// Rel fails only when the two cannot share a base; the absolute path still names the right file.
+	if err != nil {
+		return filepath.Join(workingDirectory, path)
+	}
+	return relativePath
+}
+
 // analyseFromTargets analyses options.Paths against the project root those targets name, not the launch directory.
 // Left to default, the root is the launch directory, so `summary ../proj --format=json` run from a sibling exited 2
 // with nothing on stdout, and a baseline generated there keyed its identities by absolute host paths. Reports false
@@ -105,6 +122,7 @@ func analyseFromTargets(options analysis.Options, stderr io.Writer) (analysis.Re
 	}
 	options.Root = projectRoot
 	options.Paths = targetsForRoot(projectRoot, options.Paths)
+	options.BaselinePath = rootRelativePath(projectRoot, options.BaselinePath)
 	analysisReport, err := analysis.Analyze(options)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -149,14 +167,30 @@ func isSameOrDescendant(candidate, ancestor string) bool {
 	return strings.HasPrefix(candidate, strings.TrimSuffix(ancestor, separator)+separator)
 }
 
+// configDiscoveryRoot names the directory the configuration is read from. An explicit --config path keeps the meaning
+// the user typed, relative to the launch directory. Otherwise the configuration is the project's own, found at the
+// root its targets name: `gruff-go analyse /srv/checkout` run from elsewhere used to look in the launch directory,
+// find nothing, and silently scan without the project's rules, gates and sensitive exclusions.
+func configDiscoveryRoot(configPath string, targets []string) (string, error) {
+	if configPath != "" {
+		return os.Getwd()
+	}
+	root, err := projectRootFromTargets(targets)
+	// Targets in unrelated projects have no single root; the launch directory stands in and the analysis says why.
+	if err != nil {
+		return os.Getwd()
+	}
+	return root, nil
+}
+
 // configuredRegistry builds the rule registry that honours the project's config file.
 //
 // It also returns the loaded Config so callers can consult MinimumSeverity.
 // Running without a config file on disk returns a zero-valued Config, where a MinimumSeverity lookup
 // yields an empty string, which callers read as "no value set".
-func configuredRegistry(configPath string, noConfig bool) (rule.Registry, []string, cfgpkg.Config, error) {
+func configuredRegistry(configPath string, noConfig bool, targets []string) (rule.Registry, []string, cfgpkg.Config, error) {
 	defaults := rule.Defaults()
-	root, err := os.Getwd()
+	root, err := configDiscoveryRoot(configPath, targets)
 	if err != nil {
 		return rule.Registry{}, nil, cfgpkg.Config{}, err
 	}

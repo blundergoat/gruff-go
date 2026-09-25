@@ -265,12 +265,32 @@ func isHighEntropySecretCandidate(token string, minLength int, minEntropy float6
 	if isExcludedEntropyShape(token) {
 		return false
 	}
+	if !hasLetterAndDigit(token) {
+		return false
+	}
 	for _, pattern := range entropyProviderPatterns {
 		if pattern.MatchString(token) {
 			return false
 		}
 	}
 	return shannonEntropy(token) >= minEntropy
+}
+
+// hasLetterAndDigit reports whether a token carries at least one letter and one digit, the floor FAMILY-CONTRACT
+// section 12 sets. Without both it is not credential-shaped: a run of one character class clears the entropy bar by
+// construction (prometheus's random-letter series test data alone raised 36,962 findings, and MIME types read the
+// same way), and a digit-free mix of cases is an identifier.
+func hasLetterAndDigit(token string) bool {
+	hasLetter, hasDigit := false, false
+	for _, character := range token {
+		switch {
+		case character >= 'a' && character <= 'z', character >= 'A' && character <= 'Z':
+			hasLetter = true
+		case character >= '0' && character <= '9':
+			hasDigit = true
+		}
+	}
+	return hasLetter && hasDigit
 }
 
 // isExcludedEntropyShape reports whether a token is a known non-secret shape that

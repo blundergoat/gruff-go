@@ -55,6 +55,32 @@ func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
 	assertNoRawLeak(t, findings, randomSecretToken)
 }
 
+// TestHighEntropyStringNeedsALetterAndADigit holds FAMILY-CONTRACT section 12's floor: a token needs a letter and a
+// digit to be credential-shaped, so a lowercase-only or uppercase-only run and a digit-free mix of cases stay quiet,
+// while a token mixing letters and digits still reports. Each token's entropy is asserted first, so the silence is
+// the floor's and not the entropy bar's.
+func TestHighEntropyStringNeedsALetterAndADigit(t *testing.T) {
+	cases := []struct {
+		token   string
+		reports bool
+	}{
+		{token: "vxezaawdsdwcvvuvryyabvkvbgdqlcqstgddkefmpdrjp", reports: false},
+		{token: "VXEZAAWDSDWCVVUVRYYABVKVBGDQLCQSTGDDKEFMPDRJP", reports: false},
+		{token: "VxEzAaWdSdWcVvUvRyYaBvKvBgDqLcQsTgDdKeFmPdRjP", reports: false},
+		{token: "k3j9x2m7q1w8e5r4t6y0u9i8o7p6a5s4d3f2g1h0zb", reports: true},
+	}
+	for _, testCase := range cases {
+		if entropy := shannonEntropy(testCase.token); entropy < 4.2 {
+			t.Fatalf("%s has entropy %.2f, below the bar the case needs to clear", testCase.token, entropy)
+		}
+		unit := sensitiveTextUnit("x.env", "value = \""+testCase.token+"\"\n")
+		findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
+		if (len(findings) == 1) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want reported=%v", testCase.token, len(findings), testCase.reports)
+		}
+	}
+}
+
 // TestHighEntropyStringScoresGoLiteralsAndCommentsNotIdentifiers covers parsed Go source, where only a
 // string literal or a comment can hold a secret. A long test name is as random-looking as a key and is
 // not one, so neither the declaration nor a doc comment naming it reports, even from a sibling file of

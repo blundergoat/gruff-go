@@ -194,7 +194,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
-	registry, ignorePaths, cfg, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr)
+	registry, ignorePaths, cfg, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr, flags.Args())
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		// A configuration the run could not load is a run that could not start, so a caller who asked for a
@@ -249,7 +249,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		DeepScanBudget:         deepScanBudget,
 		IncludeIgnored:         values.includeIgnored,
 		ReportAllSkippedInputs: true,
-		BaselinePath:           values.baselinePath,
+		BaselinePath:           rootRelativePath(projectRoot, values.baselinePath),
 		DiffBase:               values.diffBase,
 		DiffMode:               values.resolvedDiffMode(),
 		DiffPatch:              values.diffPatch,
@@ -428,7 +428,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 	// The config is still loaded, so a broken one is refused with exit 2 as every command refuses it, but the listing
 	// is the built-in catalogue. `defaultSeverity` and `defaultEnabled` name release defaults in every family port,
 	// and a project's overrides published under them would read as the rule's defaults.
-	if _, _, _, err := configuredRegistry(*configPath, *noConfig); err != nil {
+	if _, _, _, err := configuredRegistry(*configPath, *noConfig, nil); err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2
 	}

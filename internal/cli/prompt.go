@@ -53,9 +53,9 @@ func extractNoInteraction(commandArguments []string) ([]string, bool) {
 // file is on disk and the shell can answer a prompt, offers to generate one
 // before falling back to the built-in defaults. Returns the loaded Config so
 // callers can consult MinimumSeverity for per-command threshold precedence.
-func configuredRegistryInteractive(configPath string, noConfig, interactive bool, promptWriter io.Writer) (rule.Registry, []string, cfgpkg.Config, error) {
+func configuredRegistryInteractive(configPath string, noConfig, interactive bool, promptWriter io.Writer, targets []string) (rule.Registry, []string, cfgpkg.Config, error) {
 	if interactive {
-		root, err := os.Getwd()
+		root, err := configDiscoveryRoot(configPath, targets)
 		if err != nil {
 			return rule.Registry{}, nil, cfgpkg.Config{}, err
 		}
@@ -63,7 +63,7 @@ func configuredRegistryInteractive(configPath string, noConfig, interactive bool
 			return rule.Registry{}, nil, cfgpkg.Config{}, err
 		}
 	}
-	return configuredRegistry(configPath, noConfig)
+	return configuredRegistry(configPath, noConfig, targets)
 }
 
 // maybeBootstrapConfigInRoot prompts to create .gruff-go.yaml when auto-discovery

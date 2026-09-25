@@ -37,7 +37,7 @@ func runBaseline(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "baseline requires --out")
 		return 2
 	}
-	registry, ignorePaths, cfg, err := configuredRegistry(*configPath, *noConfig)
+	registry, ignorePaths, cfg, err := configuredRegistry(*configPath, *noConfig, flags.Args())
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

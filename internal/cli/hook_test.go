@@ -370,7 +370,7 @@ func TestHookMetadataDirection(t *testing.T) {
 // tables against registry drift: a renamed or removed rule must not silently
 // leave hookScope / hookThresholdDirection pointing at a dead ID.
 func TestHookScopeAndDirectionRuleIDsExist(t *testing.T) {
-	registry, _, _, err := configuredRegistry("", true)
+	registry, _, _, err := configuredRegistry("", true, nil)
 	if err != nil {
 		t.Fatalf("configuredRegistry: %v", err)
 	}

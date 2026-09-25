@@ -68,7 +68,7 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	ruleRegistry, ignoredPathPatterns, hookConfig, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig)
+	ruleRegistry, ignoredPathPatterns, hookConfig, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig, nil)
 	// Invalid project config is returned in-band so the agent can explain it.
 	if err != nil {
 		// A secondary JSON write failure leaves no usable hook contract for the user.

@@ -223,6 +223,82 @@ func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
 	}
 }
 
+// TestProjectConfigIsReadFromTheProjectRoot verifies the project's .gruff-go.yaml applies whichever directory the scan
+// is launched from. It was looked up in the launch directory, so a scan of /srv/checkout from elsewhere, the shape CI
+// uses, silently ran without the project's rules, gates and sensitive exclusions.
+func TestProjectConfigIsReadFromTheProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launches := map[string]string{project: ".", filepath.Join(root, "launch"): "../project", filepath.Join(project, "sub"): ".."}
+	for directory := range launches {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "package main\n\nfunc Exported() {}\n\nfunc main() {}\n")
+	writeFile(t, project, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.exported-symbol-comment:\n    enabled: false\n")
+
+	for directory, target := range launches {
+		t.Chdir(directory)
+		exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-baseline", "--fail-on", "none", "--format", "json", target})
+		if exitCode != 0 {
+			t.Fatalf("%s from %s: exit %d, stderr=%q", target, directory, exitCode, stderr)
+		}
+		var envelope struct {
+			Findings []struct {
+				RuleID string `json:"ruleId"`
+			} `json:"findings"`
+		}
+		if err := json.Unmarshal(stdout, &envelope); err != nil {
+			t.Fatalf("%s from %s: stdout is not JSON: %v", target, directory, err)
+		}
+		for _, finding := range envelope.Findings {
+			if finding.RuleID == "docs.exported-symbol-comment" {
+				t.Fatalf("%s from %s: the project config disables docs.exported-symbol-comment, but it reported", target, directory)
+			}
+		}
+	}
+}
+
+// TestBaselinePathsAreReadFromTheLaunchDirectory verifies --generate-baseline and --baseline mean the path typed from
+// two levels inside the project. The write already landed there; the read joined the path to the project root, missed
+// the file, and published the joined host path in the diagnostic.
+func TestBaselinePathsAreReadFromTheLaunchDirectory(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	nested := filepath.Join(project, "a", "b")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", nested, err)
+	}
+	writeFile(t, project, "main.go", "package main\n\nfunc Exported() {}\n\nfunc main() {}\n")
+	t.Chdir(nested)
+
+	if exitCode, _, stderr := captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--generate-baseline", "../../base.json", "../.."}); exitCode != 0 {
+		t.Fatalf("generate: exit %d, stderr=%q", exitCode, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(project, "base.json")); err != nil {
+		t.Fatalf("the baseline was not written at the project root: %v", err)
+	}
+	exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--format", "json", "--baseline", "../../base.json", "../.."})
+	if exitCode != 0 {
+		t.Fatalf("apply: exit %d, stderr=%q", exitCode, stderr)
+	}
+	var envelope struct {
+		Baseline map[string]any `json:"baseline"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("apply: stdout is not JSON: %v", err)
+	}
+	if envelope.Baseline["applied"] != true || envelope.Baseline["path"] != "base.json" {
+		t.Fatalf("baseline = %v, want applied with path base.json", envelope.Baseline)
+	}
+
+	_, stdout, _ = captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--format", "json", "--baseline", "../../missing.json", "../.."})
+	if strings.Contains(string(stdout), root) {
+		t.Fatalf("a missing baseline's diagnostic names the host path: %s", stdout)
+	}
+}
+
 // TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling
 // directory still publishes its report. The operand `../project` names the project itself, so the report lists it as
 // `.`, and a baseline kept outside the project is applied and simply has no project-relative path to publish.

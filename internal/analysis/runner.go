@@ -287,8 +287,9 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	file, err := baseline.Load(loadPath)
 	if err != nil {
 		diagnostics = append(diagnostics, Diagnostic{
-			Stage:    "baseline",
-			Message:  err.Error(),
+			Stage: "baseline",
+			// The load error names the joined host path; the report names the baseline as the user gave it.
+			Message:  strings.ReplaceAll(err.Error(), loadPath, displayPath),
 			File:     displayPath,
 			Severity: finding.SeverityError,
 		})
