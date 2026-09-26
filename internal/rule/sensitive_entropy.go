@@ -136,9 +136,9 @@ func (r HighEntropyStringRule) analyzeUnit(unit parser.Unit, packageIdentifiers 
 	minLength := r.minLength()
 	minEntropy := r.minEntropy()
 	findings := []finding.Finding{}
-	armoured := publicArmourLines(unit.Source)
+	armoured := publicArmourSpans(unit.Source)
 	for _, candidate := range entropyCandidates(unit, packageIdentifiers) {
-		if armoured[candidate.line] || !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
+		if insideSpan(candidate.offset, armoured) || !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
 			continue
 		}
 		findings = append(findings, finding.Finding{
@@ -156,37 +156,75 @@ func (r HighEntropyStringRule) analyzeUnit(unit parser.Unit, packageIdentifiers 
 	return findings
 }
 
-// pemArmourOpening matches the first line of a PEM block and captures its label.
+// pemArmourOpening matches the opening marker of a PEM block and captures its label.
 var pemArmourOpening = regexp.MustCompile(`-----BEGIN ([A-Z0-9 ]+)-----`)
 
-// publicArmourLines returns every line inside a complete PEM block whose label names no private key. A certificate,
-// public key, certificate request, PKCS7 bundle or CRL is public by construction, so its base64 body is never a
-// secret; a private key's block stays scannable (FAMILY-CONTRACT section 12).
-func publicArmourLines(source string) map[int]bool {
-	lines := map[int]bool{}
-	for _, match := range pemArmourOpening.FindAllStringSubmatchIndex(source, -1) {
-		label := source[match[2]:match[3]]
+// pemArmourMarker matches any opening or closing marker, so a block can end only at the next one.
+var pemArmourMarker = regexp.MustCompile(`-----(BEGIN|END) ([A-Z0-9 ]+)-----`)
+
+// A PEM body's lines break at real line breaks and at the escaped ones a string literal spells. Each line then
+// loses its concatenation operators, and its quotes, commas, brackets, comment stars and ASCII whitespace, before
+// pemBodyLine judges what is left.
+var (
+	pemBodyLineBreaks = regexp.MustCompile(`\n|\\[nrt]`)
+	pemBodyOperators  = regexp.MustCompile(`[ \t\r\f\x0B]+[+.]|[+.][ \t\r\f\x0B]+`)
+	pemBodyQuoting    = regexp.MustCompile("[ \\t\\r\\f\\x0B\"'`,;()\\[\\]{}#*\\\\]")
+	pemBodyLine       = regexp.MustCompile(`^(?:[A-Za-z0-9+/]+={0,2}|=[A-Za-z0-9+/]{4}|(?:Version|Comment|Hash|Charset|MessageID|Proc-Type|DEK-Info):.*)$`)
+)
+
+// publicArmourSpans returns the byte spans of the PEM blocks whose label names no private key. A certificate,
+// public key, certificate request, PKCS7 bundle or CRL is public by construction, so its body is never a secret.
+// A block ends at the next marker, which must close the same label, and its body must be PEM-shaped. Anything
+// else means the markers are not a block, so nothing between them is exempted and a private key there stays
+// scannable (FAMILY-CONTRACT section 12).
+func publicArmourSpans(source string) [][2]int {
+	spans := [][2]int{}
+	for _, opening := range pemArmourOpening.FindAllStringSubmatchIndex(source, -1) {
+		label := source[opening[2]:opening[3]]
 		if strings.Contains(label, "PRIVATE") {
 			continue
 		}
-		end := strings.Index(source[match[1]:], "-----END "+label+"-----")
-		// An opening line without its matching end marker is not a block, so nothing is exempted.
-		if end < 0 {
+		rest := source[opening[1]:]
+		closing := pemArmourMarker.FindStringSubmatchIndex(rest)
+		if closing == nil || rest[closing[2]:closing[3]] != "END" || rest[closing[4]:closing[5]] != label {
 			continue
 		}
-		first := strings.Count(source[:match[0]], "\n") + 1
-		last := strings.Count(source[:match[1]+end], "\n") + 1
-		for line := first; line <= last; line++ {
-			lines[line] = true
+		if isPEMShapedBody(rest[:closing[0]]) {
+			spans = append(spans, [2]int{opening[0], opening[1] + closing[1]})
 		}
 	}
-	return lines
+	return spans
 }
 
-// entropyCandidate is one token the rule may score, with the 1-based line it sits on.
+// isPEMShapedBody reports whether every line between two markers, once its string quoting is stripped, is
+// base64, a PGP checksum, an armour header or empty. Code, a placeholder or prose between the markers is not.
+// Splitting at escaped line breaks too keeps a one-line block's header from vouching for the rest of the line.
+func isPEMShapedBody(body string) bool {
+	for _, line := range pemBodyLineBreaks.Split(body, -1) {
+		stripped := pemBodyQuoting.ReplaceAllString(pemBodyOperators.ReplaceAllString(line, ""), "")
+		if stripped != "" && !pemBodyLine.MatchString(stripped) {
+			return false
+		}
+	}
+	return true
+}
+
+// insideSpan reports whether a byte offset falls inside any of the half-open spans.
+func insideSpan(offset int, spans [][2]int) bool {
+	for _, span := range spans {
+		if offset >= span[0] && offset < span[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// entropyCandidate is one token the rule may score: the 1-based line it is reported on, and its byte offset in
+// the unit's source, which places it against a PEM block's markers.
 type entropyCandidate struct {
-	token string
-	line  int
+	token  string
+	line   int
+	offset int
 }
 
 // entropyCandidates returns the tokens worth scoring in a unit.
@@ -196,20 +234,21 @@ type entropyCandidate struct {
 // with no syntax tree, such as a .env or YAML file whose values are unquoted, keeps the line scan.
 func entropyCandidates(unit parser.Unit, packageIdentifiers map[string]bool) []entropyCandidate {
 	if unit.AST != nil && unit.FileSet != nil {
-		return append(goLiteralEntropyCandidates(unit.AST, unit.FileSet), goCommentEntropyCandidates(unit.AST, unit.FileSet, packageIdentifiers)...)
+		lineStarts := sourceLineStarts(unit.Source)
+		return append(goLiteralEntropyCandidates(unit.AST, unit.FileSet, lineStarts), goCommentEntropyCandidates(unit.AST, unit.FileSet, packageIdentifiers, lineStarts)...)
 	}
 	return lineEntropyCandidates(unit.Source)
 }
 
 // goLiteralEntropyCandidates tokenises every string literal in a Go file, interpreted or raw.
-func goLiteralEntropyCandidates(file *ast.File, fileSet *token.FileSet) []entropyCandidate {
+func goLiteralEntropyCandidates(file *ast.File, fileSet *token.FileSet, lineStarts []int) []entropyCandidate {
 	candidates := []entropyCandidate{}
 	ast.Inspect(file, func(node ast.Node) bool {
 		literal, ok := node.(*ast.BasicLit)
 		if !ok || literal.Kind != token.STRING {
 			return true
 		}
-		candidates = append(candidates, spanEntropyCandidates(literal.Value, fileSet.Position(literal.Pos()).Line)...)
+		candidates = append(candidates, spanEntropyCandidates(literal.Value, fileSet, literal.Pos(), lineStarts)...)
 		return true
 	})
 	return candidates
@@ -218,11 +257,11 @@ func goLiteralEntropyCandidates(file *ast.File, fileSet *token.FileSet) []entrop
 // goCommentEntropyCandidates tokenises every comment in a Go file, line and block alike, and drops
 // a token the package's code uses as an identifier. Punctuation the token pattern admits, such as
 // the = of `-run=TestName`, is trimmed from its ends before the lookup.
-func goCommentEntropyCandidates(file *ast.File, fileSet *token.FileSet, packageIdentifiers map[string]bool) []entropyCandidate {
+func goCommentEntropyCandidates(file *ast.File, fileSet *token.FileSet, packageIdentifiers map[string]bool, lineStarts []int) []entropyCandidate {
 	candidates := []entropyCandidate{}
 	for _, group := range file.Comments {
 		for _, comment := range group.List {
-			for _, candidate := range spanEntropyCandidates(comment.Text, fileSet.Position(comment.Slash).Line) {
+			for _, candidate := range spanEntropyCandidates(comment.Text, fileSet, comment.Slash, lineStarts) {
 				if !packageIdentifiers[strings.Trim(candidate.token, "_-=+")] {
 					candidates = append(candidates, candidate)
 				}
@@ -254,30 +293,52 @@ func goIdentifiersByDirectory(units []parser.Unit) map[string]map[string]bool {
 	return byDirectory
 }
 
-// spanEntropyCandidates tokenises one literal or comment that begins on startLine. Either can
-// span lines, so each token is placed on the line it actually occupies.
-func spanEntropyCandidates(text string, startLine int) []entropyCandidate {
+// spanEntropyCandidates tokenises one literal or comment that begins at pos. Either can span lines, so each
+// token is placed on the line it actually occupies. A token past the first line takes its offset from that
+// line's start in the source, because go/scanner drops a CRLF raw string's or block comment's carriage returns
+// from the text, and the unadjusted position keeps a //line directive out of the arithmetic.
+func spanEntropyCandidates(text string, fileSet *token.FileSet, pos token.Pos, lineStarts []int) []entropyCandidate {
+	reported := fileSet.Position(pos)
+	actual := fileSet.PositionFor(pos, false)
 	candidates := []entropyCandidate{}
 	for _, span := range entropyTokenPattern.FindAllStringIndex(text, -1) {
+		newlines := strings.Count(text[:span[0]], "\n")
+		offset := actual.Offset + span[0]
+		if sourceLine := actual.Line - 1 + newlines; newlines > 0 && sourceLine < len(lineStarts) {
+			offset = lineStarts[sourceLine] + span[0] - strings.LastIndex(text[:span[0]], "\n") - 1
+		}
 		candidates = append(candidates, entropyCandidate{
-			token: text[span[0]:span[1]],
-			line:  startLine + strings.Count(text[:span[0]], "\n"),
+			token:  text[span[0]:span[1]],
+			line:   reported.Line + newlines,
+			offset: offset,
 		})
 	}
 	return candidates
+}
+
+// sourceLineStarts returns the byte offset at which each line of source begins.
+func sourceLineStarts(source string) []int {
+	starts := []int{0}
+	for index := 0; index < len(source); index++ {
+		if source[index] == '\n' {
+			starts = append(starts, index+1)
+		}
+	}
+	return starts
 }
 
 // lineEntropyCandidates tokenises every code-bearing line of a file that has no syntax tree.
 func lineEntropyCandidates(source string) []entropyCandidate {
 	candidates := []entropyCandidate{}
 	inBlockComment := false
+	lineStart := 0
 	for lineNumber, line := range strings.Split(source, "\n") {
-		if !lineIsCodeBearing(line, &inBlockComment) {
-			continue
+		if lineIsCodeBearing(line, &inBlockComment) {
+			for _, span := range entropyTokenPattern.FindAllStringIndex(line, -1) {
+				candidates = append(candidates, entropyCandidate{token: line[span[0]:span[1]], line: lineNumber + 1, offset: lineStart + span[0]})
+			}
 		}
-		for _, token := range entropyTokenPattern.FindAllString(line, -1) {
-			candidates = append(candidates, entropyCandidate{token: token, line: lineNumber + 1})
-		}
+		lineStart += len(line) + 1
 	}
 	return candidates
 }

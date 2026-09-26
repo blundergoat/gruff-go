@@ -94,6 +94,16 @@ func TestHighEntropyStringSkipsPublicPEMArmour(t *testing.T) {
 		{name: "certificate", source: "cert = \"-----BEGIN CERTIFICATE-----\n" + body + "\n-----END CERTIFICATE-----\"\n", reports: 0},
 		{name: "bare line", source: "value = \"" + body + "\"\n", reports: 1},
 		{name: "private key", source: "key = \"-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n-----END RSA PRIVATE KEY-----\"\n", reports: 1},
+		// Marker constants are not a block: the body between them is code, so the secret there still reports.
+		{name: "marker constants", source: "header = \"-----BEGIN CERTIFICATE-----\"\nsecret = \"" + body + "\"\nfooter = \"-----END CERTIFICATE-----\"\n", reports: 1},
+		// A block ends at the next marker, so a private key between public markers stays scannable.
+		{name: "private key inside public markers", source: "outer = \"-----BEGIN CERTIFICATE-----\"\nkey = \"-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n-----END RSA PRIVATE KEY-----\"\nend = \"-----END CERTIFICATE-----\"\n", reports: 1},
+		// A one-line block breaks at its escaped line breaks, so a header vouches only for its own line and the
+		// secret after it still reports, while a one-line PGP block's checksum line stays part of the block.
+		{name: "header on a one-line block", source: "a = \"-----BEGIN CERTIFICATE-----\\nComment: x\\n\"; key = \"" + body + "\"; b = \"-----END CERTIFICATE-----\"\n", reports: 1},
+		{name: "one-line PGP block", source: "k = \"-----BEGIN PGP PUBLIC KEY BLOCK-----\\n\\n" + body + "\\n=AbCd\\n-----END PGP PUBLIC KEY BLOCK-----\"\n", reports: 0},
+		// The span is the block's bytes, not its lines, so a secret after it on the same line still reports.
+		{name: "secret after the block on its line", source: "{\"ca\":\"-----BEGIN CERTIFICATE-----\\n" + body + "\\n-----END CERTIFICATE-----\\n\",\"secret\":\"" + body + "\"}\n", reports: 1},
 	}
 	for _, testCase := range cases {
 		unit := sensitiveTextUnit("x.env", testCase.source)
@@ -101,6 +111,18 @@ func TestHighEntropyStringSkipsPublicPEMArmour(t *testing.T) {
 		if len(findings) != testCase.reports {
 			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
 		}
+	}
+}
+
+// TestHighEntropyStringPEMSpansSurviveCRLFRawStrings covers the offsets of parsed Go source. go/scanner drops a
+// raw string's carriage returns, so a token past its first line is placed from that line's start in the source:
+// the certificate body stays quiet, and the secret after the closing marker still reports on its own line.
+func TestHighEntropyStringPEMSpansSurviveCRLFRawStrings(t *testing.T) {
+	body := "k3j9x2m7q1w8e5r4t6y0u9i8o7p6a5s4d3f2g1h0zb"
+	src := "package demo\r\n\r\nvar bundle = `-----BEGIN CERTIFICATE-----\r\n" + body + "\r\n-----END CERTIFICATE-----\r\n" + body + "`\r\n"
+	findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{parseOne(t, "demo/bundle.go", src)}, Context{})
+	if len(findings) != 1 || findings[0].Location.Line != 6 {
+		t.Fatalf("findings = %+v, want one on line 6", findings)
 	}
 }
 
