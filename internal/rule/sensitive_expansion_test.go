@@ -81,6 +81,29 @@ func TestHighEntropyStringNeedsALetterAndADigit(t *testing.T) {
 	}
 }
 
+// TestHighEntropyStringSkipsPublicPEMArmour covers the base64 body of a PEM block. A certificate is public by
+// construction, so its lines never report; the same line outside any armour does, and so does a line inside a block
+// whose label names a private key.
+func TestHighEntropyStringSkipsPublicPEMArmour(t *testing.T) {
+	body := "k3j9x2m7q1w8e5r4t6y0u9i8o7p6a5s4d3f2g1h0zb"
+	cases := []struct {
+		name    string
+		source  string
+		reports int
+	}{
+		{name: "certificate", source: "cert = \"-----BEGIN CERTIFICATE-----\n" + body + "\n-----END CERTIFICATE-----\"\n", reports: 0},
+		{name: "bare line", source: "value = \"" + body + "\"\n", reports: 1},
+		{name: "private key", source: "key = \"-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n-----END RSA PRIVATE KEY-----\"\n", reports: 1},
+	}
+	for _, testCase := range cases {
+		unit := sensitiveTextUnit("x.env", testCase.source)
+		findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
+		if len(findings) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
+		}
+	}
+}
+
 // TestHighEntropyStringScoresGoLiteralsAndCommentsNotIdentifiers covers parsed Go source, where only a
 // string literal or a comment can hold a secret. A long test name is as random-looking as a key and is
 // not one, so neither the declaration nor a doc comment naming it reports, even from a sibling file of

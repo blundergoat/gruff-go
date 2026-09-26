@@ -136,8 +136,9 @@ func (r HighEntropyStringRule) analyzeUnit(unit parser.Unit, packageIdentifiers 
 	minLength := r.minLength()
 	minEntropy := r.minEntropy()
 	findings := []finding.Finding{}
+	armoured := publicArmourLines(unit.Source)
 	for _, candidate := range entropyCandidates(unit, packageIdentifiers) {
-		if !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
+		if armoured[candidate.line] || !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
 			continue
 		}
 		findings = append(findings, finding.Finding{
@@ -153,6 +154,33 @@ func (r HighEntropyStringRule) analyzeUnit(unit parser.Unit, packageIdentifiers 
 		})
 	}
 	return findings
+}
+
+// pemArmourOpening matches the first line of a PEM block and captures its label.
+var pemArmourOpening = regexp.MustCompile(`-----BEGIN ([A-Z0-9 ]+)-----`)
+
+// publicArmourLines returns every line inside a complete PEM block whose label names no private key. A certificate,
+// public key, certificate request, PKCS7 bundle or CRL is public by construction, so its base64 body is never a
+// secret; a private key's block stays scannable (FAMILY-CONTRACT section 12).
+func publicArmourLines(source string) map[int]bool {
+	lines := map[int]bool{}
+	for _, match := range pemArmourOpening.FindAllStringSubmatchIndex(source, -1) {
+		label := source[match[2]:match[3]]
+		if strings.Contains(label, "PRIVATE") {
+			continue
+		}
+		end := strings.Index(source[match[1]:], "-----END "+label+"-----")
+		// An opening line without its matching end marker is not a block, so nothing is exempted.
+		if end < 0 {
+			continue
+		}
+		first := strings.Count(source[:match[0]], "\n") + 1
+		last := strings.Count(source[:match[1]+end], "\n") + 1
+		for line := first; line <= last; line++ {
+			lines[line] = true
+		}
+	}
+	return lines
 }
 
 // entropyCandidate is one token the rule may score, with the 1-based line it sits on.

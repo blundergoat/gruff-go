@@ -1132,7 +1132,7 @@
                 "text": "Secrets in pull-request workflow"
               },
               "fullDescription": {
-                "text": "Flags workflows triggered by pull_request or pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. Candidate wording."
+                "text": "Flags workflows triggered by pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. A plain pull_request run from a fork receives no secrets."
               },
               "help": {
                 "text": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
