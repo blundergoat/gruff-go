@@ -51,6 +51,7 @@ func TestGoldenConfigLoading(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   complexity.cyclomatic:
     threshold: 100
@@ -97,6 +98,7 @@ func TestGoldenConfiguredExpansionRules(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "expansion.go", expansionFixture())
 	writeFile(t, root, ".gruff-go.yaml", `
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.parameter-count:
     enabled: true
@@ -193,6 +195,7 @@ func Hot(a bool, b bool) {
 // threshold.
 func compositeConfig() string {
 	return `
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.function-length:
     threshold: 4
@@ -290,7 +293,7 @@ func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
-	writeFile(t, root, ".gruff-go.yaml", "paths:\n  ignore:\n    - secret.go\n")
+	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - secret.go\n")
 	writeFile(t, root, "main.go", "// Package main is a test package.\npackage main\n\nfunc main() {}\n")
 	writeFile(t, root, "secret.go", "// Package main is a test package.\npackage main\n")
 	t.Chdir(root)
@@ -304,29 +307,35 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 	var parsed struct {
 		Paths struct {
-			Scanned      []string `json:"scanned"`
 			IgnoredPaths []string `json:"ignoredPaths"`
-			Skipped      []struct {
+			Details      []struct {
 				Path   string `json:"path"`
 				Reason string `json:"reason"`
-			} `json:"skipped"`
+			} `json:"details"`
+			Extensions struct {
+				Go struct {
+					Paths struct {
+						Scanned []string `json:"scanned"`
+					} `json:"paths"`
+				} `json:"go"`
+			} `json:"extensions"`
 		} `json:"paths"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("invalid json: %v\n%s", err, stdout)
 	}
-	if slices.Contains(parsed.Paths.Scanned, "secret.go") {
-		t.Fatalf("secret.go should not be scanned with config ignore; got %#v", parsed.Paths.Scanned)
+	if slices.Contains(parsed.Paths.Extensions.Go.Paths.Scanned, "secret.go") {
+		t.Fatalf("secret.go should not be scanned with config ignore; got %#v", parsed.Paths.Extensions.Go.Paths.Scanned)
 	}
 	if !slices.Contains(parsed.Paths.IgnoredPaths, "secret.go") {
 		t.Fatalf("secret.go should be listed in paths.ignoredPaths; got %#v", parsed.Paths.IgnoredPaths)
 	}
 	foundSkip := false
-	for _, item := range parsed.Paths.Skipped {
+	for _, item := range parsed.Paths.Details {
 		foundSkip = foundSkip || (item.Path == "secret.go" && item.Reason == "config-ignore")
 	}
 	if !foundSkip {
-		t.Fatalf("secret.go should remain config-ignored with --include-ignored; got %#v", parsed.Paths.Skipped)
+		t.Fatalf("secret.go should remain config-ignored with --include-ignored; got %#v", parsed.Paths.Details)
 	}
 }
 

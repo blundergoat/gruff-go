@@ -35,3 +35,7 @@ jobs:
 
       - name: Preflight checks
         run: NO_COLOR=1 scripts/preflight-checks.sh
+
+      - name: Check version references
+        # Fails when a source-owned version literal in docs, goldens or metadata disagrees with the version cli.go builds.
+        run: bash scripts/bump-version.sh --check-references --root . --source-version "$(sed -n 's/^const toolVersion = "\(.*\)"$/\1/p' internal/cli/cli.go)"

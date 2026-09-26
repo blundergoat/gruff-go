@@ -40,6 +40,7 @@ archives:
       - README.md
       - LICENSE
       - CHANGELOG.md
+      - UPGRADING.md
 
 checksum:
   name_template: "checksums.txt"
@@ -71,9 +72,9 @@ release:
   github:
     owner: blundergoat
     name: gruff-go
-  draft: false
+  draft: true
   prerelease: auto
-  mode: replace
+  mode: keep-existing
   header: |
     ## gruff-go {{ .Tag }}
 

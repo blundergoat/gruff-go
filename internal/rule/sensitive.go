@@ -14,6 +14,8 @@
 package rule
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
 	"regexp"
 	"strings"
@@ -26,7 +28,13 @@ import (
 // Regular expressions used by the sensitive-data rules to detect embedded secrets in source.
 var (
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN[ A-Z]*PRIVATE KEY-----`)
-	awsAccessPattern  = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	// ASIA is AWS's prefix for temporary session credentials, and the body is the same fixed shape. Missing it
+	// left a live credential unnamed, which is the worse direction for this pillar.
+	awsAccessPattern = regexp.MustCompile(`(?:AKIA|ASIA)[0-9A-Z]{16}`)
+	// A masked key is one whose whole body is a run of X, written to show where a key goes (FAMILY-CONTRACT.md
+	// section 5). Only the whole body counts: a real key may contain a run of X, and hiding it would hide a live
+	// credential.
+	awsMaskedAccessPattern = regexp.MustCompile(`^(?:AKIA|ASIA)X{16}$`)
 	// JWT: three base64url segments separated by dots; first starts with `eyJ`
 	// (the literal base64 prefix for `{"`).
 	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}`)
@@ -90,7 +98,7 @@ func (PrivateKeyRule) Definition() Definition {
 		Title:          "Embedded private key",
 		Description:    "Flags PEM-encoded private keys embedded directly in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -103,17 +111,17 @@ func (r PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return scanLinesForSecret(unit, privateKeyPattern, "private key literal detected", r.previews, previewPrivateKey)
 }
 
-// AWSAccessKeyRule flags AWS access key identifiers (AKIA...) embedded in source.
+// AWSAccessKeyRule flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source.
 type AWSAccessKeyRule struct{ previews sensitivePreviewPolicy }
 
-// Definition declares the sensitive-data.aws-access-key rule that flags AKIA-prefixed access key identifiers with high severity and high confidence.
+// Definition declares the sensitive-data.aws-access-key rule that flags AKIA- and ASIA-prefixed access key identifiers with high severity and high confidence.
 func (AWSAccessKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.aws-access-key",
 		Title:          "AWS access key id",
-		Description:    "Flags AWS access key identifiers (AKIA...) embedded in source or text files.",
+		Description:    "Flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -136,7 +144,7 @@ func (JWTTokenRule) Definition() Definition {
 		Title:          "JWT token literal",
 		Description:    "Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -159,7 +167,7 @@ func (ConnectionStringRule) Definition() Definition {
 		Title:          "Connection string with embedded password",
 		Description:    "Flags database/queue connection URLs that embed a username and password in the URI.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -236,13 +244,47 @@ func secretMatchesOnCodeLines(unit parser.Unit, pattern *regexp.Regexp) []secret
 			continue
 		}
 		for _, match := range pattern.FindAllString(line, -1) {
-			if isNonSecretPrivateKeyMention(unit, line, match) {
+			// A key header named in prose, a masked AWS key or a vendor-documented sample is not a live credential, so none reports.
+			if isNonSecretPrivateKeyMention(unit, line, match) || (pattern == awsAccessPattern && awsMaskedAccessPattern.MatchString(match)) || isDocumentedSample(match) {
 				continue
 			}
 			matches = append(matches, secretLineMatch{line: lineNumber + 1, value: match})
 		}
 	}
 	return matches
+}
+
+// documentedSampleDigests are SHA-256 digests of the 19 values vendors publish as documentation samples, so code that pastes one never reports.
+//
+// They are AWS's example access key ids and secret keys, the jwt.io sample token and fourteen published test card numbers.
+// Digests keep the literals out of this source (FAMILY-CONTRACT.md section 5).
+var documentedSampleDigests = map[string]bool{
+	"19ff47cc8024c133d5845d3f8938caca289929031e7d508c3adf7adff177f0c2": true,
+	"1a5d44a2dca19669d72edf4c4f1c27c4c1ca4b4408fbb17f6ce4ad452d78ddb3": true,
+	"1c9d38ed26cd808fa3b02b9b3b988a7caf474e2e42d95789c0fe07e267c80d8f": true,
+	"2f725bbd1f405a1ed0336abaf85ddfeb6902a9984a76fd877c3b5cc3b5085a82": true,
+	"304945e91de3deff52a61d08733141d72dd42ec9d47972f1060534d54c0c7f90": true,
+	"3a134ef77d4e2e4cdad2d2945ff1f76c1a23296c93c851f6244220a8cedea130": true,
+	"477bba133c182267fe5f086924abdc5db71f77bfc27f01f2843f2cdc69d89f05": true,
+	"51a4ae4c6ae999146474a67cbcb3b05fbcf4c17ab683043a066459da95513ea8": true,
+	"53a8fc816e63b7a5ccd17aaff93f28bcf13abbf418209dcd93947722d7c326ba": true,
+	"576c15a8072461c216efb9bd7306a6fc6039b43a6763c4c1a05930a2dd7b788f": true,
+	"78314b11be2e581549ac1c4f616563fad3fdf0c3b71678f6e2299182080e0598": true,
+	"7f75367e7881255134e1375e723d1dea8ad5f6a4fdb79d938df1f1754a830606": true,
+	"9bbef19476623ca56c17da75fd57734dbf82530686043a6e491c6d71befe8f6e": true,
+	"c6ea27c534f993d31f0aef882e3d200e7b87470c379ae79c8f9b19d3bd363dc9": true,
+	"d79449f462cec9af0d857c3e1af888d4fa8bbdaa511b9eaaafcd2805c4ea6471": true,
+	"d8086d483c15c711ebba19f966b97d3c2adcba74025ff8d7e07c3698c9531deb": true,
+	"dd13cdf9af9dd3baf46ce96aecd7163cabf381ccb21e63f15f0fa10b1c663fa9": true,
+	"e21b597ba6b9cafa59d9ebc4d65c0385f5eb3fa56abab2607fa76589ad849a33": true,
+	"f41e7ca4a3d71c4f047581f2ae2d6a8dbb8c58e51a020fa227edc724474aab6e": true,
+}
+
+// isDocumentedSample reports whether a matched value is, exactly and whole, a vendor-documented sample such as AWS's example key.
+// A value that merely contains one is compared whole, so it still reports.
+func isDocumentedSample(matchedValue string) bool {
+	digest := sha256.Sum256([]byte(matchedValue))
+	return documentedSampleDigests[hex.EncodeToString(digest[:])]
 }
 
 // isNonSecretPrivateKeyMention accepts narrow documentation prose and delimiter

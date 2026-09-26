@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"fmt"
 	"go/ast"
 	stdparser "go/parser"
 	"go/scanner"
@@ -41,6 +42,8 @@ type Function struct {
 
 // Diagnostic reports a parser failure or read error attached to a specific file.
 type Diagnostic struct {
+	// Type identifies a stable diagnostic contract such as bounded-deep-scan.
+	Type string `json:"diagnosticType,omitempty"`
 	// File is the repo-relative path of the source file the diagnostic targets.
 	File string `json:"file,omitempty"`
 	// Line is the 1-based line where the failure was reported; zero when unknown.
@@ -49,10 +52,25 @@ type Diagnostic struct {
 	Column int `json:"column,omitempty"`
 	// Message is the parser or I/O error text.
 	Message string `json:"message"`
+	// NonFatal keeps an informational degradation from invalidating the run.
+	NonFatal bool `json:"-"`
+}
+
+// DeepScanBudget controls whether expensive Go AST construction runs for one source file.
+type DeepScanBudget struct {
+	Enabled  bool
+	MaxLines int
+	MaxBytes int
+	Override string
 }
 
 // Parse converts discovered source files into Units and parser diagnostics.
 func Parse(files []source.File) ([]Unit, []Diagnostic) {
+	return ParseWithBudget(files, DeepScanBudget{})
+}
+
+// ParseWithBudget parses files while degrading over-budget Go sources to raw-text units.
+func ParseWithBudget(files []source.File, budget DeepScanBudget) ([]Unit, []Diagnostic) {
 	units := make([]Unit, 0, len(files))
 	diagnostics := []Diagnostic{}
 	fset := token.NewFileSet()
@@ -73,6 +91,17 @@ func Parse(files []source.File) ([]Unit, []Diagnostic) {
 			LineCount: countLines(sourceText),
 		}
 		if file.Type != source.FileTypeGo {
+			units = append(units, unit)
+			continue
+		}
+		if budget.Enabled && (unit.LineCount > budget.MaxLines || len(data) > budget.MaxBytes) {
+			diagnostics = append(diagnostics, Diagnostic{
+				Type:     "bounded-deep-scan",
+				File:     file.Path,
+				Line:     1,
+				NonFatal: true,
+				Message:  fmt.Sprintf("path=%s; lines=%d; bytes=%d; maxLines=%d; maxBytes=%d; override=%s. Text-level rules (size, sensitive-data, config) still ran; masking, block parsing, AST walking, and other deep script analysis were skipped.", file.Path, unit.LineCount, len(data), budget.MaxLines, budget.MaxBytes, budget.Override),
+			})
 			units = append(units, unit)
 			continue
 		}
@@ -120,26 +149,47 @@ func functions(fset *token.FileSet, file *ast.File) []Function {
 		}
 		start := fset.Position(fn.Pos())
 		end := fset.Position(fn.End())
-		name := fn.Name.Name
-		if fn.Recv != nil && len(fn.Recv.List) > 0 {
-			name = receiverName(fn.Recv.List[0]) + "." + name
-		}
-		out = append(out, Function{Name: name, Line: start.Line, EndLine: end.Line})
+		out = append(out, Function{Name: FuncDeclSymbol(fn), Line: start.Line, EndLine: end.Line})
 	}
 	return out
 }
 
-// receiverName returns the receiver type name for method declarations.
-func receiverName(field *ast.Field) string {
-	switch expr := field.Type.(type) {
-	case *ast.Ident:
-		return expr.Name
-	case *ast.StarExpr:
-		if ident, ok := expr.X.(*ast.Ident); ok {
-			return ident.Name
+// FuncDeclSymbol is the one renderer for a function declaration's symbol, shared by function metadata, rule findings,
+// nolint lookups and clustering, so every surface names a declaration the same way and its identity is stable.
+// A free function renders as its name and a method as `BaseType.Method`, with no pointer marker and no type
+// arguments: `func (s *Stack[T]) Push` is `Stack.Push`, exactly as `func (s *Plain) Push` is `Plain.Push`. A receiver
+// whose base type cannot be resolved, which valid Go never produces, renders as `receiver.Method`.
+func FuncDeclSymbol(fn *ast.FuncDecl) string {
+	name := fn.Name.Name
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return name
+	}
+	if base := ReceiverTypeName(fn.Recv.List[0]); base != "" {
+		return base + "." + name
+	}
+	return "receiver." + name
+}
+
+// ReceiverTypeName returns the declared base type of a method receiver, unwrapping parentheses, pointers and generic
+// type arguments (`IndexExpr` for one, `IndexListExpr` for several), or "" for a shape it cannot resolve.
+func ReceiverTypeName(field *ast.Field) string {
+	expr := field.Type
+	for {
+		switch item := expr.(type) {
+		case *ast.Ident:
+			return item.Name
+		case *ast.StarExpr:
+			expr = item.X
+		case *ast.ParenExpr:
+			expr = item.X
+		case *ast.IndexExpr:
+			expr = item.X
+		case *ast.IndexListExpr:
+			expr = item.X
+		default:
+			return ""
 		}
 	}
-	return "receiver"
 }
 
 // countLines returns the total newline-terminated line count of the source text.

@@ -53,22 +53,22 @@ security.tls-insecure-config	security	warning	parser	TLS insecure config
 security.unsafe-deserialization	security	advisory	parser	Unsafe deserialization
 security.weak-crypto	security	advisory	parser	Weak crypto primitive
 security.xxe-candidate	security	advisory	parser	XML external entity candidate
-sensitive-data.anthropic-api-key	sensitive-data	error	parser	Anthropic API key literal
-sensitive-data.aws-access-key	sensitive-data	error	parser	AWS access key id
-sensitive-data.connection-string	sensitive-data	error	parser	Connection string with embedded password
-sensitive-data.gcp-service-account	sensitive-data	error	parser	GCP service-account JSON key
-sensitive-data.github-token	sensitive-data	error	parser	GitHub token literal
-sensitive-data.gitlab-token	sensitive-data	error	parser	GitLab token literal
-sensitive-data.google-api-key	sensitive-data	error	parser	Google API key literal
+sensitive-data.anthropic-api-key	sensitive-data	warning	parser	Anthropic API key literal
+sensitive-data.aws-access-key	sensitive-data	warning	parser	AWS access key id
+sensitive-data.connection-string	sensitive-data	warning	parser	Connection string with embedded password
+sensitive-data.gcp-service-account	sensitive-data	warning	parser	GCP service-account JSON key
+sensitive-data.github-token	sensitive-data	warning	parser	GitHub token literal
+sensitive-data.gitlab-token	sensitive-data	warning	parser	GitLab token literal
+sensitive-data.google-api-key	sensitive-data	warning	parser	Google API key literal
 sensitive-data.high-entropy-string	sensitive-data	warning	parser	High-entropy string
-sensitive-data.jwt-token	sensitive-data	error	parser	JWT token literal
-sensitive-data.npm-token	sensitive-data	error	parser	npm token literal
+sensitive-data.jwt-token	sensitive-data	warning	parser	JWT token literal
+sensitive-data.npm-token	sensitive-data	warning	parser	npm token literal
 sensitive-data.phi-pattern	sensitive-data	warning	parser	PHI pattern
 sensitive-data.pii-pattern	sensitive-data	warning	parser	PII pattern
-sensitive-data.private-key	sensitive-data	error	parser	Embedded private key
-sensitive-data.secret-pattern	sensitive-data	error	parser	Secret-like literal
-sensitive-data.slack-token	sensitive-data	error	parser	Slack token literal
-sensitive-data.stripe-key	sensitive-data	error	parser	Stripe live key literal
+sensitive-data.private-key	sensitive-data	warning	parser	Embedded private key
+sensitive-data.secret-pattern	sensitive-data	warning	parser	Secret-like literal
+sensitive-data.slack-token	sensitive-data	warning	parser	Slack token literal
+sensitive-data.stripe-key	sensitive-data	warning	parser	Stripe live key literal
 size.file-length	size	error	parser	File length
 size.function-length	size	warning	parser	Function length
 size.parameter-count	size	advisory	parser	Parameter count

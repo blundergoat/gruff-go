@@ -85,7 +85,7 @@ func (d IgnoreDecision) skippedPath(rel string) SkippedPath {
 // reported here. rootAbs anchors the repository .gitignore matcher.
 func CheckIgnore(rootAbs, rel string, isDir bool, options Options) IgnoreDecision {
 	walker := newDiscoveryWalker(context.Background(), rootAbs, options)
-	return walker.decideIgnore(rel, isDir)
+	return walker.decideIgnore(rel, isDir, !isDir)
 }
 
 // Result is the discovery output containing files, missing inputs, and skipped paths.
@@ -106,7 +106,7 @@ type Options struct {
 	Root string
 	// Paths limits discovery to these explicit roots under Root; empty means scan everything under Root.
 	Paths []string
-	// IncludeIgnored disables gitignore and metadata pruning when true.
+	// IncludeIgnored disables gitignore, fallback, and generated-file pruning when true.
 	IncludeIgnored bool
 	// IgnorePatterns are config-supplied path patterns merged on top of gitignore handling.
 	IgnorePatterns []string
@@ -211,7 +211,7 @@ func (w *discoveryWalker) visitInput(input string) error {
 		return err
 	}
 	if !info.IsDir() {
-		w.visitFile(path)
+		w.visitFile(path, true)
 		return nil
 	}
 	path = filepath.Clean(path)
@@ -236,7 +236,7 @@ func (w *discoveryWalker) visitInput(input string) error {
 			}
 			return w.visitDir(current)
 		}
-		w.visitFile(current)
+		w.visitFile(current, false)
 		return nil
 	})
 }
@@ -244,17 +244,17 @@ func (w *discoveryWalker) visitInput(input string) error {
 // visitDir decides whether to prune or descend into a directory.
 func (w *discoveryWalker) visitDir(current string) error {
 	rel := displayPath(w.rootAbs, current)
-	if decision := w.decideIgnore(rel, true); decision.Ignored {
+	if decision := w.decideIgnore(rel, true, false); decision.Ignored {
 		w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
 		return filepath.SkipDir
 	}
 	return nil
 }
 
-// visitFile classifies a discovered file and records it as scanned or skipped.
-func (w *discoveryWalker) visitFile(path string) {
+// visitFile classifies a discovered or explicitly requested file and records it as scanned or skipped.
+func (w *discoveryWalker) visitFile(path string, explicit bool) {
 	rel := displayPath(w.rootAbs, path)
-	if decision := w.decideIgnore(rel, false); decision.Ignored {
+	if decision := w.decideIgnore(rel, false, explicit); decision.Ignored {
 		w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
 		return
 	}
@@ -284,39 +284,38 @@ func (w *discoveryWalker) normalize() {
 }
 
 // decideIgnore is the single ignore engine shared by discovery and the
-// check-ignore command. Precedence, highest first: repository .gitignore
-// (disabled by --include-ignored), then config paths.ignore (authoritative in
-// every invocation mode and never disabled - this is the contract that keeps an
-// agent hook from flagging files the project excluded), then VCS/metadata
-// always-ignores and the dependency fallback (both disabled by
-// --include-ignored). Generated-file detection lives in addFile, not here,
+// check-ignore command. Precedence, highest first: config paths.ignore
+// (authoritative in every invocation mode), VCS internals (always blocked),
+// repository .gitignore, then the no-gitignore fallback. Explicit files bypass
+// gitignore and fallback decisions. Generated-file detection lives in addFile, not here,
 // because it must read the file - keeping this engine O(1) and path-only so
 // check-ignore can reuse it verbatim.
-func (w *discoveryWalker) decideIgnore(rel string, isDir bool) IgnoreDecision {
-	if w.gitignoreActive && repoRelative(rel) {
-		if ignored, _ := w.matcher.Match(rel, isDir); ignored {
-			return IgnoreDecision{Ignored: true, Reason: "gitignored", Source: OriginGitignore}
-		}
-	}
+func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) IgnoreDecision {
 	if matched, pattern := pathfilter.FirstMatch(w.options.IgnorePatterns, rel); matched {
 		return IgnoreDecision{Ignored: true, Reason: "config-ignore", Source: OriginConfig, Pattern: pattern}
-	}
-	if w.options.IncludeIgnored {
-		return IgnoreDecision{}
 	}
 	if isDir {
 		if reason, ignored := alwaysIgnoredDir(rel); ignored {
 			return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 		}
+	} else if reason, ignored := alwaysIgnoredFile(rel); ignored {
+		return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
+	}
+	if w.options.IncludeIgnored || explicit {
+		return IgnoreDecision{}
+	}
+	if w.gitignoreActive && repoRelative(rel) {
+		if ignored, _ := w.matcher.Match(rel, isDir); ignored {
+			return IgnoreDecision{Ignored: true, Reason: "gitignored", Source: OriginGitignore}
+		}
+	}
+	if isDir {
 		if w.fallbackAppliesAt(rel) {
 			if reason, ignored := fallbackIgnoredDir(rel); ignored {
 				return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 			}
 		}
 		return IgnoreDecision{}
-	}
-	if reason, ignored := alwaysIgnoredFile(rel); ignored {
-		return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 	}
 	if w.fallbackAppliesAt(rel) {
 		if reason, ignored := fallbackIgnoredFile(rel); ignored {

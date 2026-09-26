@@ -5,7 +5,7 @@
 #   --smoke          one timed pass over the repo itself, prints elapsed + counts
 #   --matrix         hyperfine over self + synthetic-medium + synthetic-large
 #   --sweep          format x rule-set x pathological inputs; peak RSS captured
-#   --compare        compare against scripts/.perf-results/baseline.json
+#   --compare        compare against scripts/performance-baselines/<host>.json
 #   --baseline-update  overwrite baseline with current run
 #   --ci             stricter regression tolerances and compact output
 #   --all           run --smoke, --matrix, --sweep in that order
@@ -20,7 +20,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN="$REPO_ROOT/bin/gruff-go"
 RESULTS_DIR="$SCRIPT_DIR/.perf-results"
 CORPUS_DIR="$SCRIPT_DIR/.perf-corpus"
-BASELINE_FILE="$RESULTS_DIR/baseline.json"
+PLATFORM_SLUG="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+BASELINE_FILE="$SCRIPT_DIR/performance-baselines/${PLATFORM_SLUG}.json"
 HYPERFINE=""  # populated by preflight when needed
 
 # Regression tolerances (per-corpus wall %, per-rule wall %). --ci tightens them.
@@ -130,14 +131,15 @@ bootstrap_hyperfine() {
 preflight() {
   # $1: "needs_hyperfine" if any mode other than smoke is requested
   local need_hf="${1:-}"
-  if [[ ! -x "$BIN" ]]; then
-    log "${C_DIM}building $BIN ...${C_OFF}"
-    (cd "$REPO_ROOT" && go build -o "$BIN" ./cmd/gruff-go) || fail "go build failed"
-  fi
+  # A performance baseline must never bind a stale ignored binary. Build from
+  # the current runtime source on every invocation, matching the family runner.
+  log "${C_DIM}building $BIN ...${C_OFF}"
+  (cd "$REPO_ROOT" && go build -trimpath -o "$BIN" ./cmd/gruff-go) || fail "go build failed"
 
   if ! command -v python3 >/dev/null 2>&1; then
     fail "python3 is required for result parsing"
   fi
+  command -v git >/dev/null 2>&1 || fail "git is required for source provenance"
 
   if [[ "$need_hf" == "needs_hyperfine" ]]; then
     HYPERFINE=$(bootstrap_hyperfine)
@@ -146,7 +148,7 @@ preflight() {
     fi
   fi
 
-  mkdir -p "$RESULTS_DIR" "$CORPUS_DIR"
+  mkdir -p "$RESULTS_DIR" "$CORPUS_DIR" "$(dirname "$BASELINE_FILE")"
 }
 
 # ---------- smoke mode ----------
@@ -304,8 +306,19 @@ PY
 peak_rss_kb() {
   # Runs the given command and prints peak RSS in KB (or "-" if unavailable).
   if /usr/bin/time -v true >/dev/null 2>&1; then
-    /usr/bin/time -v -- "$@" 2>&1 >/dev/null \
-      | awk '/Maximum resident set size/ {print $NF; found=1} END{if(!found) print "-"}'
+    local time_file status rss
+    time_file=$(mktemp)
+    set +e
+    /usr/bin/time -v -o "$time_file" -- "$@" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "1" ]]; then
+      rm -f "$time_file"
+      fail "RSS probe failed with analyser exit $status"
+    fi
+    rss=$(awk '/Maximum resident set size/ {print $NF; found=1} END{if(!found) print "-"}' "$time_file")
+    rm -f "$time_file"
+    printf '%s\n' "$rss"
   else
     printf '%s\n' "-"
   fi
@@ -353,7 +366,10 @@ run_sweep() {
   printf '%s\n' "--------------  ------------  ------------  ------------"
   for fmt in summary-json text json sarif html; do
     local raw; raw=$(hyperfine_run "sweep-fmt-$fmt" "$CORPUS_DIR/medium" "$BIN analyse --no-config --format $fmt .")
-    local rss; rss=$(peak_rss_kb "$BIN" analyse --no-config --format "$fmt" "$CORPUS_DIR/medium")
+    # Run from inside the corpus just like the hyperfine cell. Passing the
+    # hidden .perf-corpus path from the repository root is ignored by Gruff and
+    # measures an empty-analysis diagnostic instead of the intended workload.
+    local rss; rss=$(cd "$CORPUS_DIR/medium" && peak_rss_kb "$BIN" analyse --no-config --format "$fmt" .)
     python3 - "$fmt" "$raw" "$rss" "$sweep_out" "$sweep_stash" <<'PY'
 import json, sys, os
 fmt, raw, rss, out, stash = sys.argv[1:6]
@@ -558,12 +574,120 @@ PY
 # ---------- regression gate ----------
 write_baseline_from_results() {
   # Reads the latest matrix raw json files + sweep stash and emits baseline.
-  python3 - "$RESULTS_DIR" "$BASELINE_FILE" <<'PY'
-import glob, json, os, sys, datetime
-results_dir, out = sys.argv[1:]
-data = {"schemaVersion": "gruff-perf.v1",
-        "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "corpora": {}, "rules": {}}
+  python3 - \
+    "$RESULTS_DIR" \
+    "$BASELINE_FILE" \
+    "$REPO_ROOT" \
+    "$BIN" \
+    "$SCRIPT_DIR/test-performance.sh" \
+    "$HYPERFINE" \
+    "$CORPUS_SEED" \
+    "$HYPERFINE_WARMUP" \
+    "$HYPERFINE_MIN_RUNS" \
+    "$PLATFORM_SLUG" <<'PY'
+import datetime
+import glob
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+(
+    results_dir,
+    out,
+    repo_root,
+    binary,
+    harness,
+    hyperfine,
+    corpus_seed,
+    warmup,
+    min_runs,
+    platform_slug,
+) = sys.argv[1:]
+
+
+def sha256_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def sha256_file(path):
+    return sha256_bytes(pathlib.Path(path).read_bytes())
+
+
+def command(*argv):
+    return subprocess.run(
+        argv,
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def runtime_source_identity():
+    included = ["cmd/gruff-go", "internal", "go.mod"]
+    files = set()
+
+    def visit(path):
+        path = pathlib.Path(path)
+        if path.is_symlink() or path.is_file():
+            files.add(path)
+            return
+        for child in path.iterdir():
+            visit(child)
+
+    for relative in included:
+        visit(pathlib.Path(repo_root, relative))
+
+    manifest = []
+    for path in sorted(files):
+        digest = sha256_bytes(os.readlink(path).encode()) if path.is_symlink() else sha256_file(path)
+        manifest.append({"path": path.relative_to(repo_root).as_posix(), "sha256": digest})
+    canonical = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    return {
+        "includedPaths": included,
+        "fileCount": len(manifest),
+        "digest": sha256_bytes(canonical.encode()),
+    }
+
+
+cpu = "unknown"
+try:
+    for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
+        if line.startswith("model name"):
+            cpu = line.split(":", 1)[1].strip()
+            break
+except OSError:
+    pass
+
+data = {
+    "schemaVersion": "gruff-perf.v1",
+    "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "host": {
+        "platform": platform_slug,
+        "uname": command("uname", "-srm"),
+        "cpu": cpu,
+        "go": command("go", "version"),
+    },
+    "source": {
+        "gitCommit": command("git", "rev-parse", "HEAD"),
+        "gitDirty": bool(command("git", "status", "--porcelain=v1")),
+        "runtimeSource": runtime_source_identity(),
+        "artifact": {"kind": "fresh-binary", "sha256": sha256_file(binary)},
+        "harnessSha256": sha256_file(harness),
+        "toolVersion": command(binary, "--version"),
+    },
+    "runner": {
+        "hyperfineVersion": command(hyperfine, "--version"),
+        "corpusSeed": int(corpus_seed),
+        "warmup": int(warmup),
+        "minRuns": int(min_runs),
+    },
+    "corpora": {},
+    "rules": {},
+}
 
 for path in sorted(glob.glob(os.path.join(results_dir, "raw-matrix-*.json"))):
     name = os.path.basename(path).replace("raw-matrix-", "").replace(".json", "")

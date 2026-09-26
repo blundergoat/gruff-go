@@ -4,6 +4,7 @@
 package rule
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -144,6 +145,36 @@ func TestDefaultsCapability(t *testing.T) {
 		if definition.Capability != CapabilityParser {
 			t.Fatalf("rule %s capability = %q, want %q", definition.ID, definition.Capability, CapabilityParser)
 		}
+	}
+}
+
+// TestDefaultsPrecisionGuidance ensures every medium- or low-confidence rule
+// tells catalogue users how to recognise and mitigate its known context limit.
+func TestDefaultsPrecisionGuidance(t *testing.T) {
+	defaults := Defaults()
+	definitions := defaults.Definitions()
+	if len(definitions) != 83 {
+		t.Fatalf("definitions = %d, want 83", len(definitions))
+	}
+
+	precisionRuleCount := 0
+	for _, definition := range definitions {
+		if definition.Confidence != finding.ConfidenceMedium && definition.Confidence != finding.ConfidenceLow {
+			continue
+		}
+		precisionRuleCount++
+		if len(definition.FalsePositiveShapes) == 0 {
+			t.Errorf("rule %s has no false-positive guidance", definition.ID)
+			continue
+		}
+		for shapeIndex, knownShape := range definition.FalsePositiveShapes {
+			if strings.TrimSpace(knownShape.Shape) == "" || strings.TrimSpace(knownShape.Mitigation) == "" {
+				t.Errorf("rule %s has incomplete false-positive guidance at index %d", definition.ID, shapeIndex)
+			}
+		}
+	}
+	if precisionRuleCount != 46 {
+		t.Fatalf("medium/low-confidence rules = %d, want 46", precisionRuleCount)
 	}
 }
 

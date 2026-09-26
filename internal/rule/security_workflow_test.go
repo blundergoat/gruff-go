@@ -125,17 +125,17 @@ func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsSecretsInPRRule covers named secrets in pull-request workflows
-// and the GITHUB_TOKEN / non-PR exemptions.
+// TestGitHubActionsSecretsInPRRule covers named secrets in pull_request_target
+// workflows and the GITHUB_TOKEN, plain pull_request and non-PR exemptions.
 func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
 		want int
 	}{
-		{name: "named secret in pull_request", src: "on: pull_request\njobs:\n  x:\n    steps:\n      - run: deploy\n        env:\n          KEY: ${{ secrets.NPM_TOKEN }}\n", want: 1},
+		{name: "named secret in plain pull_request is not exposed to forks", src: "on: pull_request\njobs:\n  x:\n    steps:\n      - run: deploy\n        env:\n          KEY: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 		{name: "named secret in pull_request_target", src: "on: pull_request_target\nenv:\n  K: ${{ secrets.DEPLOY_KEY }}\n", want: 1},
-		{name: "github token exempt", src: "on: pull_request\nenv:\n  K: ${{ secrets.GITHUB_TOKEN }}\n", want: 0},
+		{name: "github token exempt", src: "on: pull_request_target\nenv:\n  K: ${{ secrets.GITHUB_TOKEN }}\n", want: 0},
 		{name: "secret reference inside a comment is inert", src: "on: pull_request\n# do not use ${{ secrets.DEPLOY_KEY }} on PRs\njobs:\n  x:\n    steps:\n      - run: build\n", want: 0},
 		{name: "named secret on push", src: "on: push\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 		{name: "pull_request in comment is not a trigger", src: "on: push\n# also relevant for pull_request builds\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},

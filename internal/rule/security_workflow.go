@@ -217,8 +217,9 @@ func (GitHubActionsPullRequestTargetRule) AnalyzeUnit(unit parser.Unit, _ Contex
 	}}
 }
 
-// GitHubActionsSecretsInPRRule flags pull-request workflows that reference named
-// secrets, which are exposed to fork-controlled runs.
+// GitHubActionsSecretsInPRRule flags pull_request_target workflows that reference
+// named secrets: that trigger runs pull-request code with the repository's secrets,
+// while a plain pull_request run from a fork receives none.
 type GitHubActionsSecretsInPRRule struct{}
 
 // Definition declares the security.github-actions-secrets-in-pr rule.
@@ -226,7 +227,7 @@ func (GitHubActionsSecretsInPRRule) Definition() Definition {
 	return Definition{
 		ID:             "security.github-actions-secrets-in-pr",
 		Title:          "Secrets in pull-request workflow",
-		Description:    "Flags workflows triggered by pull_request or pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. Candidate wording.",
+		Description:    "Flags workflows triggered by pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. A plain pull_request run from a fork receives no secrets.",
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
@@ -238,7 +239,7 @@ func (GitHubActionsSecretsInPRRule) Definition() Definition {
 
 // AnalyzeUnit emits findings for named secrets referenced in PR workflows.
 func (GitHubActionsSecretsInPRRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if !isWorkflowFile(unit.File.Path) || !isPullRequestTriggered(unit.Source) {
+	if !isWorkflowFile(unit.File.Path) || !isPullRequestTargetTriggered(unit.Source) {
 		return nil
 	}
 	findings := []finding.Finding{}
@@ -252,7 +253,7 @@ func (GitHubActionsSecretsInPRRule) AnalyzeUnit(unit parser.Unit, _ Context) []f
 				continue
 			}
 			findings = append(findings, finding.Finding{
-				Message:  "pull-request workflow references a named secret",
+				Message:  "pull_request_target workflow references a named secret",
 				File:     unit.File.Path,
 				Location: &finding.Location{Line: lineNumber + 1},
 				Metadata: map[string]any{"secret": match[1]},
@@ -308,15 +309,6 @@ func workflowHasExecution(source string) bool {
 		}
 	}
 	return false
-}
-
-// isPullRequestTriggered reports whether the workflow's on: triggers include a
-// pull-request event (pull_request or pull_request_target). It inspects only the
-// on: block so a pull_request mention in a comment, job name, or step condition
-// elsewhere does not register as a trigger.
-func isPullRequestTriggered(source string) bool {
-	section := workflowTriggerSection(source)
-	return workflowPRTargetPattern.MatchString(section) || workflowPRPattern.MatchString(section)
 }
 
 // isPullRequestTargetTriggered reports whether the workflow's on: triggers include

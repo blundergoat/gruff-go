@@ -5,6 +5,8 @@
 package rule
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -46,9 +48,140 @@ func assertNoRawLeak(t *testing.T, findings []finding.Finding, raw string) {
 // long random token and redacts it.
 func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	findings := HighEntropyStringRule{}.AnalyzeUnit(unit, Context{})
+	findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
 	if len(findings) != 1 {
 		t.Fatalf("findings = %#v, want 1", findings)
+	}
+	assertNoRawLeak(t, findings, randomSecretToken)
+}
+
+// TestHighEntropyStringNeedsALetterAndADigit holds FAMILY-CONTRACT section 12's floor: a token needs a letter and a
+// digit to be credential-shaped, so a lowercase-only or uppercase-only run and a digit-free mix of cases stay quiet,
+// while a token mixing letters and digits still reports. Each token's entropy is asserted first, so the silence is
+// the floor's and not the entropy bar's.
+func TestHighEntropyStringNeedsALetterAndADigit(t *testing.T) {
+	cases := []struct {
+		token   string
+		reports bool
+	}{
+		{token: "vxezaawdsdwcvvuvryyabvkvbgdqlcqstgddkefmpdrjp", reports: false},
+		{token: "VXEZAAWDSDWCVVUVRYYABVKVBGDQLCQSTGDDKEFMPDRJP", reports: false},
+		{token: "VxEzAaWdSdWcVvUvRyYaBvKvBgDqLcQsTgDdKeFmPdRjP", reports: false},
+		{token: "k3j9x2m7q1w8e5r4t6y0u9i8o7p6a5s4d3f2g1h0zb", reports: true},
+	}
+	for _, testCase := range cases {
+		if entropy := shannonEntropy(testCase.token); entropy < 4.2 {
+			t.Fatalf("%s has entropy %.2f, below the bar the case needs to clear", testCase.token, entropy)
+		}
+		unit := sensitiveTextUnit("x.env", "value = \""+testCase.token+"\"\n")
+		findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
+		if (len(findings) == 1) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want reported=%v", testCase.token, len(findings), testCase.reports)
+		}
+	}
+}
+
+// TestHighEntropyStringSkipsPublicPEMArmour covers the base64 body of a PEM block. A certificate is public by
+// construction, so its lines never report; the same line outside any armour does, and so does a line inside a block
+// whose label names a private key.
+func TestHighEntropyStringSkipsPublicPEMArmour(t *testing.T) {
+	body := "k3j9x2m7q1w8e5r4t6y0u9i8o7p6a5s4d3f2g1h0zb"
+	cases := []struct {
+		name    string
+		source  string
+		reports int
+	}{
+		{name: "certificate", source: "cert = \"-----BEGIN CERTIFICATE-----\n" + body + "\n-----END CERTIFICATE-----\"\n", reports: 0},
+		{name: "bare line", source: "value = \"" + body + "\"\n", reports: 1},
+		{name: "private key", source: "key = \"-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n-----END RSA PRIVATE KEY-----\"\n", reports: 1},
+		// Marker constants are not a block: the body between them is code, so the secret there still reports.
+		{name: "marker constants", source: "header = \"-----BEGIN CERTIFICATE-----\"\nsecret = \"" + body + "\"\nfooter = \"-----END CERTIFICATE-----\"\n", reports: 1},
+		// A block ends at the next marker, so a private key between public markers stays scannable.
+		{name: "private key inside public markers", source: "outer = \"-----BEGIN CERTIFICATE-----\"\nkey = \"-----BEGIN RSA PRIVATE KEY-----\n" + body + "\n-----END RSA PRIVATE KEY-----\"\nend = \"-----END CERTIFICATE-----\"\n", reports: 1},
+		// A one-line block breaks at its escaped line breaks, so a header vouches only for its own line and the
+		// secret after it still reports, while a one-line PGP block's checksum line stays part of the block.
+		{name: "header on a one-line block", source: "a = \"-----BEGIN CERTIFICATE-----\\nComment: x\\n\"; key = \"" + body + "\"; b = \"-----END CERTIFICATE-----\"\n", reports: 1},
+		{name: "one-line PGP block", source: "k = \"-----BEGIN PGP PUBLIC KEY BLOCK-----\\n\\n" + body + "\\n=AbCd\\n-----END PGP PUBLIC KEY BLOCK-----\"\n", reports: 0},
+		// The span is the block's bytes, not its lines, so a secret after it on the same line still reports.
+		{name: "secret after the block on its line", source: "{\"ca\":\"-----BEGIN CERTIFICATE-----\\n" + body + "\\n-----END CERTIFICATE-----\\n\",\"secret\":\"" + body + "\"}\n", reports: 1},
+	}
+	for _, testCase := range cases {
+		unit := sensitiveTextUnit("x.env", testCase.source)
+		findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
+		if len(findings) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
+		}
+	}
+}
+
+// TestDocumentedSamplesAreNotReported verifies AWS's example key id, the jwt.io token and a published test card never report.
+//
+// A key of the same shape and a value that merely contains the sample still report (FAMILY-CONTRACT.md section 5).
+// Every value is assembled from parts, so this file holds none of them whole.
+func TestDocumentedSamplesAreNotReported(t *testing.T) {
+	example := "AKIA" + "IOSFODNN7" + "EXAMPLE"
+	live := "AKIA" + "Q7R2M8N4" + "P6T9V1X3"
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + "." + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ" + "." + "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	card := "4111" + " 1111 1111 " + "1111"
+	cases := []struct {
+		name    string
+		rule    UnitRule
+		source  string
+		reports int
+	}{
+		{name: "aws example", rule: AWSAccessKeyRule{}, source: "key = " + example + "\n", reports: 0},
+		{name: "aws live-shaped", rule: AWSAccessKeyRule{}, source: "key = " + live + "\n", reports: 1},
+		{name: "jwt sample", rule: JWTTokenRule{}, source: "token = " + jwt + "\n", reports: 0},
+		{name: "jwt sample with a suffix", rule: JWTTokenRule{}, source: "token = " + jwt + "x\n", reports: 1},
+		{name: "test card", rule: PIIPatternRule{}, source: "card = " + card + "\n", reports: 0},
+	}
+	for _, testCase := range cases {
+		unit := sensitiveTextUnit("x.env", testCase.source)
+		findings := testCase.rule.AnalyzeUnit(unit, Context{})
+		if len(findings) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
+		}
+	}
+}
+
+// TestHighEntropyStringPEMSpansSurviveCRLFRawStrings covers the offsets of parsed Go source. go/scanner drops a
+// raw string's carriage returns, so a token past its first line is placed from that line's start in the source:
+// the certificate body stays quiet, and the secret after the closing marker still reports on its own line.
+func TestHighEntropyStringPEMSpansSurviveCRLFRawStrings(t *testing.T) {
+	body := "k3j9x2m7q1w8e5r4t6y0u9i8o7p6a5s4d3f2g1h0zb"
+	src := "package demo\r\n\r\nvar bundle = `-----BEGIN CERTIFICATE-----\r\n" + body + "\r\n-----END CERTIFICATE-----\r\n" + body + "`\r\n"
+	findings := HighEntropyStringRule{}.AnalyzeProject([]parser.Unit{parseOne(t, "demo/bundle.go", src)}, Context{})
+	if len(findings) != 1 || findings[0].Location.Line != 6 {
+		t.Fatalf("findings = %+v, want one on line 6", findings)
+	}
+}
+
+// TestHighEntropyStringScoresGoLiteralsAndCommentsNotIdentifiers covers parsed Go source, where only a
+// string literal or a comment can hold a secret. A long test name is as random-looking as a key and is
+// not one, so neither the declaration nor a doc comment naming it reports, even from a sibling file of
+// the package. An interpreted literal, the second line of a raw literal, a whole-line comment and a
+// trailing comment each report on the line they occupy.
+func TestHighEntropyStringScoresGoLiteralsAndCommentsNotIdentifiers(t *testing.T) {
+	src := "package demo\n\n" +
+		"// TestAnalyzeExplicitAllSkippedInputReportsDiagnosticForEveryPath documents itself by name.\n" +
+		"func TestAnalyzeExplicitAllSkippedInputReportsDiagnosticForEveryPath() {}\n\n" +
+		"var interpreted = \"" + randomSecretToken + "\"\n\n" +
+		"var raw = `first line\n" + randomSecretToken + "`\n\n" +
+		"// rotated key: " + randomSecretToken + "\n" +
+		"var trailing = 1 // " + randomSecretToken + "\n"
+	sibling := "package demo\n\n" +
+		"// See TestAnalyzeExplicitAllSkippedInputReportsDiagnosticForEveryPath for the contract.\n" +
+		"var other = 1\n"
+	units := []parser.Unit{parseOne(t, "demo/demo.go", src), parseOne(t, "demo/other.go", sibling)}
+	findings := HighEntropyStringRule{}.AnalyzeProject(units, Context{})
+	lines := []string{}
+	for _, item := range findings {
+		lines = append(lines, fmt.Sprintf("%s:%d", item.File, item.Location.Line))
+	}
+	slices.Sort(lines)
+	want := []string{"demo/demo.go:11", "demo/demo.go:12", "demo/demo.go:6", "demo/demo.go:9"}
+	if !slices.Equal(lines, want) {
+		t.Fatalf("findings = %v, want %v and nothing for the test name or the comments naming it", lines, want)
 	}
 	assertNoRawLeak(t, findings, randomSecretToken)
 }
@@ -56,8 +189,14 @@ func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
 // TestHighEntropyStringSkipsNonSecretShapes verifies the detector stays quiet on
 // the identifier and structural shapes that look random but are not secrets.
 func TestHighEntropyStringSkipsNonSecretShapes(t *testing.T) {
+	// The sha256, sha384 and sha512 rows are the digest lengths the 2026-08-29 downstream report
+	// actually produced. The 40-character row already covered sha1; nothing covered the lengths
+	// the report complained about, so the claim that go handles them was untested.
 	cases := map[string]string{
 		"hex digest":  "d41d8cd98f00b204e9800998ecf8427ed41d8cd9",
+		"sha256":      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		"sha384":      "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+		"sha512":      "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
 		"uuid":        "550e8400-e29b-41d4-a716-446655440000",
 		"sri hash":    "sha256-47DEQpj8HBSaTImW1OD2tz6O5Kz9SzaQ1bln",
 		"import path": "github.com/blundergoat/gruff-go/internal/rule/sensitive",
@@ -67,7 +206,7 @@ func TestHighEntropyStringSkipsNonSecretShapes(t *testing.T) {
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {
 			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
-			if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+			if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 				t.Fatalf("findings = %#v, want 0 for %s", got, name)
 			}
 		})
@@ -82,7 +221,7 @@ func TestHighEntropyStringDefersToProviderRules(t *testing.T) {
 	// 36-char body floor so the provider rule claims it.
 	token := "ghp_" + randomSecretToken
 	unit := sensitiveTextUnit("x.env", "token = \""+token+"\"\n")
-	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+	if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 		t.Fatalf("entropy findings = %#v, want 0 (GitHubTokenRule owns this token)", got)
 	}
 	if got := (GitHubTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
@@ -95,7 +234,7 @@ func TestHighEntropyStringDefersToProviderRules(t *testing.T) {
 // minLength above the token length silences the finding.
 func TestHighEntropyThresholdIsConfigurable(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	if got := (HighEntropyStringRule{MinLength: 200}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+	if got := (HighEntropyStringRule{MinLength: 200}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
 		t.Fatalf("findings = %#v, want 0 with minLength 200", got)
 	}
 	registry, err := DefaultsConfigured(Config{
@@ -124,7 +263,7 @@ func TestPIIPatternFlagsRealValues(t *testing.T) {
 	}{
 		{"email", "contact = \"jane.roe@acmecorp.co\"\n", "jane.roe@acmecorp.co"},
 		{"phone", "phone = \"+1 (415) 555-0137\"\n", "(415) 555-0137"},
-		{"card", "card = \"4242 4242 4242 4242\"\n", "4242 4242 4242 4242"},
+		{"card", "card = \"4539 5787 6362 1486\"\n", "4539 5787 6362 1486"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -202,5 +341,92 @@ func TestPHIOwnsSSNNotPII(t *testing.T) {
 	}
 	if got := (PHIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
 		t.Fatalf("PHI findings = %#v, want 1", got)
+	}
+}
+
+// TestHighEntropyStringDigestsSurviveALoweredThreshold asserts the other direction of the
+// contract: a content digest stays quiet even when the entropy bar is dropped below hex's
+// arithmetic ceiling.
+//
+// This matters because the family's shared answer to digest false positives is the 4.2 bar
+// itself, and a project may lower it. go does not rely on the bar alone: entropyHexPattern
+// excludes all-hex tokens outright, so the guarantee holds at any threshold. That is the part
+// M19 cites when deciding whether php needs the same shape guard.
+func TestHighEntropyStringDigestsSurviveALoweredThreshold(t *testing.T) {
+	// Construct the rule the way the registry does, with the entropy bar lowered below hex's
+	// arithmetic ceiling of 4.0.
+	rule := HighEntropyStringRule{MinLength: highEntropyMinLength, Entropy: 3.5}
+
+	digests := map[string]string{
+		"sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		"sha384": "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+		"sha512": "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
+	}
+	for name, value := range digests {
+		t.Run(name, func(t *testing.T) {
+			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
+			if got := rule.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
+				t.Fatalf("findings = %#v, want 0 for %s at a lowered bar", got, name)
+			}
+		})
+	}
+
+	// The control: a genuinely random token still fires at both bars, so the guard above is a
+	// shape exclusion rather than the rule going quiet. randomSecretToken is used rather than an
+	// AWS-shaped key, because the entropy rule defers to the provider rules that own such a
+	// prefix and would report nothing for a reason unrelated to the threshold.
+	unit := sensitiveTextUnit("x.env", "v = \""+randomSecretToken+"\"\n")
+	if got := rule.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
+		t.Fatalf("findings = %#v, want 1 at the lowered bar", got)
+	}
+	if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
+		t.Fatalf("findings = %#v, want 1 at the default bar", got)
+	}
+}
+
+// TestHighEntropyStringContract pins the four axes the operator ratified on 2026-09-02 as one
+// contract for all five ports, plus the threshold pair that proves both bounds are honoured.
+//
+// Every axis is asserted because the defect this replaces was one rule id carrying five
+// different contracts: go alone shipped opt-in at 20 and 4.5 while php and rs shipped 32 and
+// 4.2, and three ports could not honour a configured entropy at all.
+func TestHighEntropyStringContract(t *testing.T) {
+	definition := HighEntropyStringRule{}.Definition()
+
+	if definition.Severity != finding.SeverityWarning {
+		t.Errorf("severity = %q, want warning", definition.Severity)
+	}
+	if definition.Confidence != finding.ConfidenceMedium {
+		t.Errorf("confidence = %q, want medium", definition.Confidence)
+	}
+	if !definition.DefaultEnabled {
+		t.Error("DefaultEnabled = false, want true: a secret scanner that is off by default finds no secrets")
+	}
+	if got := definition.Thresholds["minLength"]; got != 32 {
+		t.Errorf("minLength = %v, want 32", got)
+	}
+	if got := definition.Thresholds["entropy"]; got != 4.2 {
+		t.Errorf("entropy = %v, want 4.2", got)
+	}
+
+	// Both thresholds must be honoured, not merely published. A token below the length bar is
+	// silent at the default and reports once the bar is lowered to admit it.
+	short := "aB3dE6gH9jK2mN5pQ8sT1vW4xY7zC0eF"[:24]
+	unit := sensitiveTextUnit("x.env", "v = \""+short+"\"\n")
+	if got := (HighEntropyStringRule{}).AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 0 {
+		t.Fatalf("findings = %#v, want 0 below the ratified minLength", got)
+	}
+	admitted := HighEntropyStringRule{MinLength: 20, Entropy: highEntropyMinBitsPerChar}
+	if got := admitted.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
+		t.Fatalf("findings = %#v, want 1 once minLength admits the token", got)
+	}
+}
+
+// TestDocumentedCardDoesNotHideARealCard verifies a published test card first on a line leaves the real card after it reported.
+func TestDocumentedCardDoesNotHideARealCard(t *testing.T) {
+	source := "cards = " + "4111" + " 1111 1111 " + "1111" + " / " + "4539 5787 " + "6362 1486\n"
+	findings := PIIPatternRule{}.AnalyzeUnit(sensitiveTextUnit("x.env", source), Context{})
+	if len(findings) != 1 || findings[0].Metadata["category"] != "payment-card" {
+		t.Fatalf("findings = %+v, want one payment-card finding", findings)
 	}
 }

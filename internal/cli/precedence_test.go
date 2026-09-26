@@ -1,5 +1,5 @@
-// Package cli precedence tests lock the ADR-010 minimumSeverity resolution
-// ladder: explicit CLI flag > config minimumSeverity.<cmd> > binary default.
+// Package cli precedence tests lock the per-command gate resolution
+// ladder: explicit CLI flag > config failOn.<cmd> > binary default.
 // resolveFailOn is the single helper every CLI consumer routes through; this
 // file exercises it directly so the precedence semantics live in one place.
 package cli
@@ -18,7 +18,7 @@ import (
 // config supply a value.
 func TestResolveFailOnPrecedence(t *testing.T) {
 	cfg := cfgpkg.Config{
-		MinimumSeverity: map[string]string{
+		FailOn: cfgpkg.CommandThresholds{
 			"analyse": "error",
 			"summary": "error",
 			"report":  "warning",
@@ -83,7 +83,7 @@ func TestResolveFailOnPrecedence(t *testing.T) {
 // defence-in-depth gate.
 func TestResolveFailOnRejectsBadConfigValue(t *testing.T) {
 	cfg := cfgpkg.Config{
-		MinimumSeverity: map[string]string{
+		FailOn: cfgpkg.CommandThresholds{
 			"analyse": "medium", // legacy 5-bucket name; post-ADR-009 invalid
 		},
 	}

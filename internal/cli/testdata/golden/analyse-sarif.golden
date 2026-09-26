@@ -6,7 +6,7 @@
       "tool": {
         "driver": {
           "name": "gruff-go",
-          "semanticVersion": "0.5.0",
+          "semanticVersion": "0.6.0",
           "rules": [
             {
               "id": "complexity.cognitive",
@@ -99,7 +99,7 @@
                 "text": "Flags empty control-flow blocks that usually indicate unfinished or unnecessary code."
               },
               "help": {
-                "text": "Remove the empty block or add the intended implementation."
+                "text": "Add the intended implementation, or leave a comment saying why the branch is deliberately empty."
               },
               "properties": {
                 "pillar": "dead-code",
@@ -1132,7 +1132,7 @@
                 "text": "Secrets in pull-request workflow"
               },
               "fullDescription": {
-                "text": "Flags workflows triggered by pull_request or pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. Candidate wording."
+                "text": "Flags workflows triggered by pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. A plain pull_request run from a fork receives no secrets."
               },
               "help": {
                 "text": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
@@ -1638,7 +1638,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1647,7 +1647,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1657,14 +1657,14 @@
                 "text": "AWS access key id"
               },
               "fullDescription": {
-                "text": "Flags AWS access key identifiers (AKIA...) embedded in source or text files."
+                "text": "Flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source or text files."
               },
               "help": {
                 "text": "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them."
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1673,7 +1673,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1690,7 +1690,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1699,7 +1699,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1716,7 +1716,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1725,7 +1725,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1742,7 +1742,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1751,7 +1751,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1768,7 +1768,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1777,7 +1777,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1794,7 +1794,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1803,7 +1803,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1813,7 +1813,7 @@
                 "text": "High-entropy string"
               },
               "fullDescription": {
-                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Opt-in; tune minLength and entropy. Emits only a redacted preview."
+                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview."
               },
               "help": {
                 "text": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
@@ -1823,13 +1823,13 @@
                 "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false,
+                "defaultEnabled": true,
                 "tags": [
                   "secrets"
                 ],
                 "thresholds": {
-                  "entropy": 4.5,
-                  "minLength": 20
+                  "entropy": 4.2,
+                  "minLength": 32
                 }
               },
               "defaultConfiguration": {
@@ -1850,7 +1850,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1859,7 +1859,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1876,7 +1876,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1885,7 +1885,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1956,7 +1956,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -1965,7 +1965,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -1982,13 +1982,13 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -2005,7 +2005,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -2014,7 +2014,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -2031,7 +2031,7 @@
               },
               "properties": {
                 "pillar": "sensitive-data",
-                "defaultSeverity": "error",
+                "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
@@ -2040,7 +2040,7 @@
                 ]
               },
               "defaultConfiguration": {
-                "level": "error"
+                "level": "warning"
               }
             },
             {
@@ -2209,7 +2209,7 @@
                 "text": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.)."
               },
               "help": {
-                "text": "Add an assertion or document why the test cannot fail."
+                "text": "Add an assertion, or disable this rule for a package whose tests deliberately assert nothing."
               },
               "properties": {
                 "pillar": "test-quality",
@@ -2382,7 +2382,7 @@
             }
           ],
           "partialFingerprints": {
-            "gruffFingerprint": "be37c390cfcd524d"
+            "gruffFingerprint": "df90a2eb34a7579c"
           },
           "properties": {
             "confidence": "high",
@@ -2399,8 +2399,8 @@
         }
       ],
       "properties": {
-        "gruffSchemaVersion": "gruff.analysis.v2",
-        "score": 99,
+        "gruffSchemaVersion": "gruff.analysis.v3",
+        "score": 95.57,
         "grade": "A"
       }
     }

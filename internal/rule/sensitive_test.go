@@ -13,7 +13,7 @@ import (
 // Zero-value rules use the deny-by-default full mask; the focused M11 policy
 // matrix separately covers authorized category markers.
 const (
-	rawAWSKey            = "AKIAIOSFODNN7EXAMPLE"
+	rawAWSKey            = "AKIA" + "Q7R2M8N4P6T9V1X3"
 	rawJWT               = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 	rawPrivateKey        = "-----BEGIN RSA PRIVATE KEY-----"
 	rawConnectionURL     = "postgres://app:supersecretpassword@db.internal:5432/orders"
@@ -127,6 +127,40 @@ func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
 	assertNoRawSecret(t, findings[0], rawAWSKey)
+}
+
+// TestAWSAccessKeyRuleDetectsASessionToken pins the ASIA half of the shape. AWS issues temporary session
+// credentials under that prefix over the same fixed body, so a rule that named only AKIA left a live
+// credential unreported. gruff-php and gruff-py already named both.
+func TestAWSAccessKeyRuleDetectsASessionToken(t *testing.T) {
+	sessionToken := "ASIA" + "IOSFODNN7" + "EXAMPLE"
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + sessionToken + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings for a session token, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], sessionToken)
+}
+
+// TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked pins FAMILY-CONTRACT.md section 5: a key whose body is a run of X
+// where the sixteen characters should be names no credential, while a real key that merely contains a run of X
+// still reports, because a rule that hid it would hide a live credential.
+func TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked(t *testing.T) {
+	masked := strings.Repeat("X", 16)
+	partlyMasked := "IOSFODNN" + strings.Repeat("X", 8)
+	unit := parser.Unit{
+		File: source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + "AKIA" + masked + "\n" +
+			"aws_session_key_id = " + "ASIA" + masked + "\n" +
+			"aws_partly_masked_id = " + "AKIA" + partlyMasked + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 || findings[0].Location == nil || findings[0].Location.Line != 3 {
+		t.Fatalf("got %d findings, want exactly the partly masked key on line 3: %+v", len(findings), findings)
+	}
 }
 
 func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
