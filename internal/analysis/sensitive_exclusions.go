@@ -8,7 +8,9 @@ package analysis
 import (
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
@@ -19,6 +21,20 @@ const BuiltInLockfileRule = "sensitive-data.high-entropy-string"
 
 // BuiltInLockfileReason is the rationale every port publishes on a built-in lockfile audit row.
 const BuiltInLockfileReason = "Lockfile digests are published integrity hashes, so the entropy rule skips package-manager lockfiles by name."
+
+// BuiltInTestPathReason is the reason a user reads on each builtInTestPath audit row; every port publishes these exact words.
+const BuiltInTestPathReason = "Test, fixture and example files hold sample credentials, so sensitive-data rules skip them by path."
+
+// builtInTestPathExemptRule is the family's fixture-PII rule, which keeps reading test paths; gruff-go has no rule with this id.
+const builtInTestPathExemptRule = "sensitive-data.pii-test-fixture"
+
+// builtInTestPathDirectories are directory names, compared case-insensitively, that make a path test code, e.g. `testdata/` or `Examples/`.
+var builtInTestPathDirectories = map[string]bool{
+	"test": true, "tests": true, "__tests__": true, "spec": true, "testdata": true, "fixtures": true, "examples": true,
+}
+
+// builtInTestFileName matches a whole base name that marks a test file in any family language, e.g. `keys_test.go` or `login.spec.ts`.
+var builtInTestFileName = regexp.MustCompile(`^(?:.*_test\.go|test_.*\.py|.*_test\.py|.*Test\.php|.*\.(?:test|spec)\.(?:js|jsx|ts|tsx|mjs|cjs))$`)
 
 // SuppressionSourceBuiltIn marks an audit row no configured entry produced.
 const SuppressionSourceBuiltIn = "built-in"
@@ -126,6 +142,78 @@ func ApplyBuiltInLockfileSkip(findings []finding.Finding, summaries []Suppressio
 		})
 	}
 	return kept, summaries
+}
+
+// ApplyBuiltInTestPathSkip hides sensitive-data findings in test, fixture and example files, and publishes one audit row per hidden file and rule.
+//
+// A user scanning a project with sample keys in `testdata/` sees builtInTestPath[...] rows instead of findings.
+// The skip is never silent, and it covers every gruff-go sensitive-data rule, pii-pattern included (FAMILY-CONTRACT.md section 13a).
+func ApplyBuiltInTestPathSkip(findings []finding.Finding, summaries []SuppressionSummary) ([]finding.Finding, []SuppressionSummary) {
+	type fileAndRule struct{ file, rule string }
+	skippedCountByFileAndRule := map[fileAndRule]int{}
+	kept := make([]finding.Finding, 0, len(findings))
+	// Each finding either stays in the report or is folded into its file's audit row.
+	for _, item := range findings {
+		// Only the pillar's findings in test code are skipped, and never the family's fixture-PII rule.
+		if strings.HasPrefix(item.RuleID, "sensitive-data.") && item.RuleID != builtInTestPathExemptRule && IsBuiltInTestPath(item.File) {
+			skippedCountByFileAndRule[fileAndRule{item.File, item.RuleID}]++
+			continue
+		}
+		kept = append(kept, item)
+	}
+	skippedFilesAndRules := make([]fileAndRule, 0, len(skippedCountByFileAndRule))
+	for skipped := range skippedCountByFileAndRule {
+		skippedFilesAndRules = append(skippedFilesAndRules, skipped)
+	}
+	// Byte order, path first and then rule id, is the order every port publishes these rows in.
+	sort.Slice(skippedFilesAndRules, func(left, right int) bool {
+		if skippedFilesAndRules[left].file != skippedFilesAndRules[right].file {
+			return skippedFilesAndRules[left].file < skippedFilesAndRules[right].file
+		}
+		return skippedFilesAndRules[left].rule < skippedFilesAndRules[right].rule
+	})
+	// Built-in rows are numbered among themselves, so the first test-path row follows the last lockfile row.
+	nextIndex := 0
+	for _, summary := range summaries {
+		if summary.Source == SuppressionSourceBuiltIn {
+			nextIndex++
+		}
+	}
+	// One row per file and rule, which text output shows as `builtInTestPath[testdata/keys.json] sensitive-data.aws-access-key: 2`.
+	for offset, skipped := range skippedFilesAndRules {
+		summaries = append(summaries, SuppressionSummary{
+			Index:      nextIndex + offset,
+			Rule:       skipped.rule,
+			Paths:      []string{skipped.file},
+			Reason:     BuiltInTestPathReason,
+			Suppressed: skippedCountByFileAndRule[skipped],
+			Source:     SuppressionSourceBuiltIn,
+		})
+	}
+	return kept, summaries
+}
+
+// IsBuiltInTestPath reports whether a finding's file is test, fixture or example code, e.g. a file under `testdata/` or one named `keys_test.go`.
+func IsBuiltInTestPath(displayPath string) bool {
+	segments := strings.Split(strings.ReplaceAll(displayPath, "\\", "/"), "/")
+	// Any directory on the path, compared case-insensitively over ASCII letters as every port does, can make it test code.
+	for _, directory := range segments[:len(segments)-1] {
+		if builtInTestPathDirectories[asciiLower(directory)] {
+			return true
+		}
+	}
+	// Otherwise the file name alone must mark a test, e.g. `keys_test.go` or `KeysTest.php`.
+	return builtInTestFileName.MatchString(segments[len(segments)-1])
+}
+
+// asciiLower lowercases only A-Z, so a directory such as `FİXTURES` stays unmatched, as it does in the other ports.
+func asciiLower(value string) string {
+	return strings.Map(func(character rune) rune {
+		if character >= 'A' && character <= 'Z' {
+			return character + ('a' - 'A')
+		}
+		return character
+	}, value)
 }
 
 // newSuppressionSummaries seeds one zeroed audit row per configured entry, so an

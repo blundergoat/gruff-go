@@ -138,7 +138,8 @@ func (r HighEntropyStringRule) analyzeUnit(unit parser.Unit, packageIdentifiers 
 	findings := []finding.Finding{}
 	armoured := publicArmourSpans(unit.Source)
 	for _, candidate := range entropyCandidates(unit, packageIdentifiers) {
-		if insideSpan(candidate.offset, armoured) || !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
+		// Public armour, a vendor-documented sample and a literal below the entropy bar are not secrets to report.
+		if insideSpan(candidate.offset, armoured) || isDocumentedSample(candidate.token) || !isHighEntropySecretCandidate(candidate.token, minLength, minEntropy) {
 			continue
 		}
 		findings = append(findings, finding.Finding{

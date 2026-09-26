@@ -270,3 +270,23 @@ func TestReportAlwaysCarriesASuppressionsArray(t *testing.T) {
 		t.Fatal("report without exclusions did not publish an empty suppressions array")
 	}
 }
+
+// TestBuiltInTestPathMatchesAsEveryPortDoes pins the two comparisons gruff-go once made differently from the other ports.
+//
+// Case folds over ASCII letters only, so a dotted capital I never becomes `i`.
+// A backslash separates directories even on Unix, as the other four ports split on it.
+func TestBuiltInTestPathMatchesAsEveryPortDoes(t *testing.T) {
+	cases := map[string]bool{
+		"Tests/Fixtures/keys.json": true,
+		"src/keys_test.go":         true,
+		"a\\tests\\keys.json":      true,
+		"F\u0130XTURES/keys.json":  false,
+		"src/latest.json":          false,
+		"src/contest/keys.json":    false,
+	}
+	for displayPath, want := range cases {
+		if got := IsBuiltInTestPath(displayPath); got != want {
+			t.Errorf("IsBuiltInTestPath(%q) = %v, want %v", displayPath, got, want)
+		}
+	}
+}

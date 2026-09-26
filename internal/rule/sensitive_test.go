@@ -13,7 +13,7 @@ import (
 // Zero-value rules use the deny-by-default full mask; the focused M11 policy
 // matrix separately covers authorized category markers.
 const (
-	rawAWSKey            = "AKIAIOSFODNN7EXAMPLE"
+	rawAWSKey            = "AKIA" + "Q7R2M8N4P6T9V1X3"
 	rawJWT               = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 	rawPrivateKey        = "-----BEGIN RSA PRIVATE KEY-----"
 	rawConnectionURL     = "postgres://app:supersecretpassword@db.internal:5432/orders"

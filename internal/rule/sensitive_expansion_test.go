@@ -114,6 +114,36 @@ func TestHighEntropyStringSkipsPublicPEMArmour(t *testing.T) {
 	}
 }
 
+// TestDocumentedSamplesAreNotReported verifies AWS's example key id, the jwt.io token and a published test card never report.
+//
+// A key of the same shape and a value that merely contains the sample still report (FAMILY-CONTRACT.md section 5).
+// Every value is assembled from parts, so this file holds none of them whole.
+func TestDocumentedSamplesAreNotReported(t *testing.T) {
+	example := "AKIA" + "IOSFODNN7" + "EXAMPLE"
+	live := "AKIA" + "Q7R2M8N4" + "P6T9V1X3"
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + "." + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ" + "." + "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	card := "4111" + " 1111 1111 " + "1111"
+	cases := []struct {
+		name    string
+		rule    UnitRule
+		source  string
+		reports int
+	}{
+		{name: "aws example", rule: AWSAccessKeyRule{}, source: "key = " + example + "\n", reports: 0},
+		{name: "aws live-shaped", rule: AWSAccessKeyRule{}, source: "key = " + live + "\n", reports: 1},
+		{name: "jwt sample", rule: JWTTokenRule{}, source: "token = " + jwt + "\n", reports: 0},
+		{name: "jwt sample with a suffix", rule: JWTTokenRule{}, source: "token = " + jwt + "x\n", reports: 1},
+		{name: "test card", rule: PIIPatternRule{}, source: "card = " + card + "\n", reports: 0},
+	}
+	for _, testCase := range cases {
+		unit := sensitiveTextUnit("x.env", testCase.source)
+		findings := testCase.rule.AnalyzeUnit(unit, Context{})
+		if len(findings) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
+		}
+	}
+}
+
 // TestHighEntropyStringPEMSpansSurviveCRLFRawStrings covers the offsets of parsed Go source. go/scanner drops a
 // raw string's carriage returns, so a token past its first line is placed from that line's start in the source:
 // the certificate body stays quiet, and the secret after the closing marker still reports on its own line.
@@ -233,7 +263,7 @@ func TestPIIPatternFlagsRealValues(t *testing.T) {
 	}{
 		{"email", "contact = \"jane.roe@acmecorp.co\"\n", "jane.roe@acmecorp.co"},
 		{"phone", "phone = \"+1 (415) 555-0137\"\n", "(415) 555-0137"},
-		{"card", "card = \"4242 4242 4242 4242\"\n", "4242 4242 4242 4242"},
+		{"card", "card = \"4539 5787 6362 1486\"\n", "4539 5787 6362 1486"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -389,5 +419,14 @@ func TestHighEntropyStringContract(t *testing.T) {
 	admitted := HighEntropyStringRule{MinLength: 20, Entropy: highEntropyMinBitsPerChar}
 	if got := admitted.AnalyzeProject([]parser.Unit{unit}, Context{}); len(got) != 1 {
 		t.Fatalf("findings = %#v, want 1 once minLength admits the token", got)
+	}
+}
+
+// TestDocumentedCardDoesNotHideARealCard verifies a published test card first on a line leaves the real card after it reported.
+func TestDocumentedCardDoesNotHideARealCard(t *testing.T) {
+	source := "cards = " + "4111" + " 1111 1111 " + "1111" + " / " + "4539 5787 " + "6362 1486\n"
+	findings := PIIPatternRule{}.AnalyzeUnit(sensitiveTextUnit("x.env", source), Context{})
+	if len(findings) != 1 || findings[0].Metadata["category"] != "payment-card" {
+		t.Fatalf("findings = %+v, want one payment-card finding", findings)
 	}
 }

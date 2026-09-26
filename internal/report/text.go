@@ -47,9 +47,14 @@ func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSum
 	clauses := make([]string, 0, len(summaries))
 	for _, summary := range summaries {
 		total += summary.Suppressed
-		// A built-in row names the lockfile it skipped, because it has no configured entry to point at.
+		// A built-in row names the file it skipped, because it has no configured entry to point at.
 		if summary.Source == analysis.SuppressionSourceBuiltIn && len(summary.Paths) > 0 {
-			clauses = append(clauses, fmt.Sprintf("builtInLockfile[%s] %s: %d (%s)", summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			label := "builtInLockfile"
+			// The reason tells a test-path skip from a lockfile skip, so the label names the class the user is reading.
+			if summary.Reason == analysis.BuiltInTestPathReason {
+				label = "builtInTestPath"
+			}
+			clauses = append(clauses, fmt.Sprintf("%s[%s] %s: %d (%s)", label, summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
 			continue
 		}
 		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, summary.Reason))

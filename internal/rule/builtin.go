@@ -478,7 +478,8 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		if unit.File.Type == source.FileTypeGo && !goSecretAssignmentLooksLiteral(match) {
 			continue
 		}
-		if isPlaceholderSecretAssignment(match) {
+		// A placeholder, or a vendor-documented sample such as AWS's example key pasted from its docs, is not a credential.
+		if isPlaceholderSecretAssignment(match) || isDocumentedSample(match) {
 			continue
 		}
 		metadata := map[string]any{

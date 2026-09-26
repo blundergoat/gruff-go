@@ -162,9 +162,14 @@ path or query, or PII/PHI identifier characters. GCP primary and secondary field
 
 ### `sensitiveExclusions`
 
-The only way to suppress a sensitive-data finding. It is a separate top-level
+The only setting that suppresses a sensitive-data finding. It is a separate top-level
 section rather than an option on `selection` or `rules` so the ban on matching a
 finding's message or value is structural: there is no key to add it back.
+
+Two built-in skips also hide sensitive-data findings, and count each one in
+`suppressions`: the entropy rule in package-manager lockfiles, and every
+sensitive-data rule in test, fixture and example files. A configured entry
+applies before either, so a finding it claims is counted under the entry.
 
 ```yaml
 sensitiveExclusions:

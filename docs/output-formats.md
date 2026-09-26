@@ -160,6 +160,14 @@ equal. Full scans omit both fields and omit `diff`.
 `{index, rule, paths, symbol?, reason, suppressed}` row per configured
 `sensitiveExclusions` entry, including entries that matched nothing.
 
+The family's two built-in skips also publish rows, after the configured ones,
+numbered from `0` among themselves and marked `source: "built-in"`, which a
+configured row never carries. The lockfile skip adds one row per package-manager
+lockfile whose `sensitive-data.high-entropy-string` findings it removed. The
+test-path skip then adds one row per file and rule it removed, because every
+sensitive-data rule skips test, fixture and example files. Text output labels
+them `builtInLockfile[<path>]` and `builtInTestPath[<path>]`.
+
 ### Migrating v2 consumers
 
 Version 3 is a hard break with no v2 writer or compatibility flag:

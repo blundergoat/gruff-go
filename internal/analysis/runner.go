@@ -141,6 +141,8 @@ func Analyze(opts Options) (Report, error) {
 	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
 	// A configured entry claims its findings first, so its count stays what the user wrote it for.
 	findings, suppressions = ApplyBuiltInLockfileSkip(findings, suppressions)
+	// The lockfile skip runs first, so `testdata/go.sum` gets one audit row, not two.
+	findings, suppressions = ApplyBuiltInTestPathSkip(findings, suppressions)
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
