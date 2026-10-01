@@ -8,6 +8,56 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
+// TestWorkflowEventGuards binds conservative expression and ownership proof to the existing sink.
+func TestWorkflowEventGuards(t *testing.T) {
+	cases := []struct {
+		name, body string
+		want       int
+	}{
+		{"expression github.event_name == 'issues'", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression github.event_name != 'pull_request_target'", "jobs:\n  build:\n    if: github.event_name != 'pull_request_target'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression ${{ !(github.event_name == 'pull_request_target') }}", "jobs:\n  build:\n    if: ${{ !(github.event_name == 'pull_request_target') }}\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression (github.event_name == 'push' || github.event_name == 'issues')", "jobs:\n  build:\n    if: (github.event_name == 'push' || github.event_name == 'issues')\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression github.event_name == 'issues' && inputs.enabled", "jobs:\n  build:\n    if: github.event_name == 'issues' && inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression inputs.enabled && github.event_name == 'issues'", "jobs:\n  build:\n    if: inputs.enabled && github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression github.event_name == 'PULL_REQUEST_TARGET'", "jobs:\n  build:\n    if: github.event_name == 'PULL_REQUEST_TARGET'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'pull_request_target'", "jobs:\n  build:\n    if: github.event_name == 'pull_request_target'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name != 'issues'", "jobs:\n  build:\n    if: github.event_name != 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression inputs.enabled", "jobs:\n  build:\n    if: inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' || inputs.enabled", "jobs:\n  build:\n    if: github.event_name == 'issues' || inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression ${{ github.event_name == 'issues' }} trailing", "jobs:\n  build:\n    if: ${{ github.event_name == 'issues' }} trailing\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' trailing", "jobs:\n  build:\n    if: github.event_name == 'issues' trailing\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' &&", "jobs:\n  build:\n    if: github.event_name == 'issues' &&\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' && contains(inputs.x, 'x')", "jobs:\n  build:\n    if: github.event_name == 'issues' && contains(inputs.x, 'x')\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 0", "jobs:\n  build:\n    if: github.event_name == 0\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression !github.event_name == 'issues'", "jobs:\n  build:\n    if: !github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 1", "jobs:\n  build:\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n    if: github.event_name == 'issues'\n", 0},
+		{"ownership 2", "'jobs':\n  'build':\n    'steps':\n      - 'run': echo ${{ secrets.DEPLOY_TOKEN }}\n        'if': github.event_name == 'issues'\n", 0},
+		{"ownership 3", "jobs:\n  build:\n    steps:\n      - if: github.event_name == 'issues'\n        run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"ownership 4", "jobs:\n  build:\n    steps:\n      - run: |\n          if: github.event_name == 'issues'\n          echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 5", "jobs:\n  build:\n    steps:\n      - run: |\n          echo ${{ secrets.DEPLOY_TOKEN }}\n        if: github.event_name == 'issues'\n", 0},
+		{"ownership 6", "env:\n  TOKEN: ${{ secrets.DEPLOY_TOKEN }}\njobs:\n  build:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ready\n", 1},
+		{"ownership 7", "jobs:\n  build:\n    env:\n      TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - if: github.event_name == 'issues'\n        run: echo ready\n", 1},
+		{"ownership 8", "jobs:\n  safe:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ready\n  build:\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 9", "jobs:\n  build:\n    steps:\n      - if: github.event_name == 'issues'\n        run: echo ready\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 10", "jobs:\n  build:\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n        with:\n          if: github.event_name == 'issues'\n", 1},
+		{"ownership 11", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    if: inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 12", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n  build:\n    steps:\n      - run: echo ready\n", 1},
+		{"ownership 13", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    env: &shared\n      TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - run: echo ready\n", 1},
+		{"ownership 14", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    <<: *shared\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 15", "jobs: {build: {if: \"github.event_name == 'issues'\", env: {TOKEN: ${{ secrets.DEPLOY_TOKEN }}}}}\n", 1},
+		{"scalar list alias", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    env:\n      TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - *shared\n", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := GitHubActionsSecretsInPRRule{}.AnalyzeUnit(workflowUnit("guard.yml", "on:\n  pull_request_target:\n"+tc.body), Context{})
+			if len(got) != tc.want {
+				t.Fatalf("findings = %#v, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 // workflowUnit builds a text unit located under .github/workflows for rule tests.
 func workflowUnit(name, src string) parser.Unit {
 	return parser.Unit{

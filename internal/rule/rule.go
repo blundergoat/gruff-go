@@ -12,7 +12,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// Context carries run-level information shared with rule implementations.
+// Context carries the project information rules need to explain a user's scan.
+// It distinguishes files selected for reporting from siblings parsed only for proof.
+// A missing sibling unit means the rule must keep any warning that needs it.
 type Context struct {
 	// Root is the project root directory that file paths are reported relative to.
 	Root string
@@ -24,6 +26,9 @@ type Context struct {
 	// anchor package-level findings to a reportable file so the post-filter does
 	// not drop them. Empty means every discovered file is reportable.
 	ReportableFiles map[string]struct{}
+	// ProjectUnits includes parsed sibling files even when the user scans one file.
+	// An empty slice gives a rule no cross-file evidence for suppressing a warning.
+	ProjectUnits []parser.Unit
 }
 
 // isReportable reports whether findings anchored to path survive the report
@@ -236,9 +241,10 @@ func (r *Registry) Analyze(units []parser.Unit, context Context) []finding.Findi
 	return r.AnalyzeWithProjectContext(units, units, context)
 }
 
-// AnalyzeWithProjectContext dispatches unit rules against reportable units while
-// letting project rules see a broader parser context.
+// AnalyzeWithProjectContext checks the user's selected files with sibling package facts available.
+// Findings still come only from reportable files; an empty sibling set supplies no extra proof.
 func (r *Registry) AnalyzeWithProjectContext(units []parser.Unit, projectUnits []parser.Unit, context Context) []finding.Finding {
+	context.ProjectUnits = projectUnits
 	findings := []finding.Finding{}
 	for _, unit := range units {
 		for _, entry := range r.activeUnitRules {

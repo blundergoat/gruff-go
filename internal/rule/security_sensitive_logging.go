@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
+
 // This file implements a parser-only check for logging credential-bearing values.
+// A configured file path can stay out of the results when the same file proves its public role.
 package rule
 
 import (
@@ -10,21 +12,23 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// loggingSecretSubstrings are the high-precision identifier fragments that mark a
-// logged value as a credential. Token and key are intentionally omitted because
-// their bare forms (tokenizer, sortKey) are too noisy; request tokens are caught
-// through auth-header/cookie reads and env-secret reads instead.
+// loggingSecretSubstrings mark credential-looking names in logged values.
+// Token and key stay out because bare names like tokenizer and sortKey are noisy; request and environment reads are checked separately.
 var loggingSecretSubstrings = []string{"password", "passwd", "passphrase", "secret", "credential", "bearer"}
 
 // loggingEnvSecretSubstrings mark an os.Getenv/LookupEnv key as a secret read.
-var loggingEnvSecretSubstrings = []string{"secret", "token", "password", "passwd", "apikey", "api_key", "privatekey", "private_key", "credential", "passphrase"}
+var loggingEnvSecretSubstrings = []string{
+	"secret", "token", "password", "passwd", "apikey", "api_key", "privatekey", "private_key", "credential", "passphrase",
+}
 
 // loggingRedactionWords name calls that neutralise a value before logging, so a
 // wrapped value is not reported.
 var loggingRedactionWords = []string{"redact", "mask", "scrub", "sanit", "obfuscat", "truncat", "hash", "sum", "sha", "hmac"}
 
-// SensitiveDataLoggingRule flags logging or print calls whose arguments carry
-// credential-bearing values.
+// SensitiveDataLoggingRule flags logging or print calls with credential-bearing values.
+//
+// A user sees the risky argument's location and classification.
+// A configured file path stays quiet only when its source and read role are proved.
 type SensitiveDataLoggingRule struct{}
 
 // Definition declares the security.sensitive-data-logging rule for bounded
@@ -45,7 +49,8 @@ func (SensitiveDataLoggingRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for logging calls that receive credential-bearing arguments.
-func (SensitiveDataLoggingRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
+// Sibling package files can prove a logged storage prefix is fixed when the user scans one file.
+func (SensitiveDataLoggingRule) AnalyzeUnit(unit parser.Unit, context Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
 	}
@@ -79,7 +84,13 @@ func (SensitiveDataLoggingRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !ok {
 				return true
 			}
-			reason, arg, ok := firstSensitiveArg(call.Args, scope, osPackages)
+			reason, arg, ok := firstSensitiveArg(loggingArgContext{
+				unit:         unit,
+				projectUnits: context.ProjectUnits,
+				body:         body,
+				requestScope: scope,
+				osPackages:   osPackages,
+			}, call.Args)
 			if !ok {
 				return true
 			}
@@ -105,37 +116,283 @@ func (SensitiveDataLoggingRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return findings
 }
 
-// loggingSinkPackages groups the imported aliases of the logging/print packages.
+// loggingSinkPackages holds imported names for packages that print or log values.
+//
+// A project can rename log, fmt or slog during import.
+// The rule uses those names to recognize where a user's values are sent.
 type loggingSinkPackages struct {
 	log  map[string]bool
 	fmt  map[string]bool
 	slog map[string]bool
 }
 
-// firstSensitiveArg returns the first non-literal argument that carries a
-// credential, its classification reason, and the argument expression. Pure string
-// literals (format strings, static keys) are skipped. Redaction and hashing calls
-// no longer disqualify the whole argument: each detector prunes a redaction call's
-// own subtree, so a hashed sibling value (e.g. a checksum logged next to a raw
-// password) does not mask a credential elsewhere in the same argument.
-func firstSensitiveArg(args []ast.Expr, scope *requestTaintScope, osPackages map[string]bool) (string, ast.Expr, bool) {
-	for _, arg := range args {
+// loggingArgContext holds the source facts used to explain one user's log call.
+// It keeps local request and environment checks beside optional sibling proof.
+// Empty sibling context cannot certify a fixed storage prefix.
+type loggingArgContext struct {
+	unit         parser.Unit
+	projectUnits []parser.Unit
+	body         *ast.BlockStmt
+	requestScope *requestTaintScope
+	osPackages   map[string]bool
+}
+
+// firstSensitiveArg returns the first credential-bearing log argument and its reason, so a user sees the risky value's location.
+// Static text and proven metadata stay quiet; request and environment reads keep priority over those exceptions.
+func firstSensitiveArg(context loggingArgContext, args []ast.Expr) (string, ast.Expr, bool) {
+	// Check every argument because a safe path can appear beside a password in one log record.
+	for index, arg := range args {
+		// A format string or structured key is static text, not the value the user chose to log.
 		if isStringLiteral(arg) {
 			continue
 		}
-		if scope != nil {
-			if reason, ok := scope.requestSensitiveRead(arg); ok {
+		// A request header or cookie remains sensitive even in a record with a public path.
+		if context.requestScope != nil {
+			// A sensitive request read takes priority over a public metadata role.
+			if reason, ok := context.requestScope.requestSensitiveRead(arg); ok {
 				return reason, arg, true
 			}
 		}
-		if isSecretEnvRead(arg, osPackages) {
+		// A secret-named environment read is still a warning before any path-role check.
+		if isSecretEnvRead(arg, context.osPackages) {
 			return "env-secret", arg, true
 		}
+		// A path read from configuration and later used to open the file is metadata, not the file contents.
+		if isConfiguredPasswordFilePath(context.unit.AST, context.body, args, index, context.osPackages) {
+			continue
+		}
+		// A seal's required share count is progress metadata when this function proves its source and result role.
+		if isProvenSealShareThreshold(context.body, args, index) {
+			continue
+		}
+		// A fixed package constant used to list storage is metadata, while any unproved prefix still warns.
+		if isProvenFixedStorageListPrefix(context, args, index) {
+			continue
+		}
+		// A secret-looking name with no path proof remains visible in scan results.
 		if hasSecretIdentifier(arg) {
 			return "secret-identifier", arg, true
 		}
 	}
 	return "", nil, false
+}
+
+// isConfiguredPasswordFilePath accepts the structured path value only when its local origin and later file-read role both match.
+// A user can log the path used for auth setup; any missing or changed proof keeps the warning.
+func isConfiguredPasswordFilePath(file *ast.File, body *ast.BlockStmt, args []ast.Expr, index int, osPackages map[string]bool) bool {
+	// Only the observed structured key can identify the following value as a password-file path.
+	if index == 0 {
+		return false
+	}
+	key, ok := stringLiteral(args[index-1])
+	if !ok || key != "password_file_path" {
+		return false
+	}
+	path, ok := args[index].(*ast.SelectorExpr)
+	if !ok || path.Sel.Name != "passwordFilePath" {
+		return false
+	}
+	receiver, ok := path.X.(*ast.Ident)
+	if !ok || receiver.Obj == nil {
+		return false
+	}
+	methodType := locallyConstructedMethodType(body, receiver.Obj)
+	// A different or reassigned receiver could hold a secret under the same field name.
+	if methodType == "" || !fieldComesFromPathConfig(file, body, receiver.Obj) {
+		return false
+	}
+	return methodReadsPasswordFile(file, methodType, osPackages)
+}
+
+// locallyConstructedMethodType returns the one local struct type created for the logged receiver.
+// A second assignment leaves its value unclear to a user reviewing the log record.
+func locallyConstructedMethodType(body *ast.BlockStmt, receiver *ast.Object) string {
+	methodType := ""
+	writes := 0
+	seededWithPassword := false
+	ast.Inspect(body, func(node ast.Node) bool {
+		assignment, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		// Count every reassignment so a later object cannot inherit the earlier path proof.
+		for index, target := range assignment.Lhs {
+			name, ok := target.(*ast.Ident)
+			if !ok || name.Obj != receiver {
+				continue
+			}
+			writes++
+			// The receiver starts as a fresh method object, as in Vault's auth setup.
+			if index >= len(assignment.Rhs) {
+				continue
+			}
+			address, ok := assignment.Rhs[index].(*ast.UnaryExpr)
+			if !ok || address.Op.String() != "&" {
+				continue
+			}
+			literal, ok := address.X.(*ast.CompositeLit)
+			if !ok {
+				continue
+			}
+			// A constructor that already holds a password can reach the log if later config assignment is conditional.
+			for _, element := range literal.Elts {
+				field, ok := element.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				name, ok := field.Key.(*ast.Ident)
+				if ok && name.Name == "passwordFilePath" {
+					seededWithPassword = true
+				}
+			}
+			kind, ok := literal.Type.(*ast.Ident)
+			if ok {
+				methodType = kind.Name
+			}
+		}
+		return true
+	})
+	// A missing constructor or multiple receiver writes cannot prove the logged field's origin.
+	if writes != 1 || seededWithPassword {
+		return ""
+	}
+	return methodType
+}
+
+// fieldComesFromPathConfig requires the only field write to unwrap the exact path configuration entry.
+// This keeps a password or a later overwrite from borrowing the path's safe role.
+func fieldComesFromPathConfig(file *ast.File, body *ast.BlockStmt, receiver *ast.Object) bool {
+	writes := 0
+	var rawPath *ast.Object
+	ast.Inspect(file, func(node ast.Node) bool {
+		assignment, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		// Any same-named field write in this file makes the path proof ambiguous.
+		for index, target := range assignment.Lhs {
+			field, ok := target.(*ast.SelectorExpr)
+			if !ok || field.Sel.Name != "passwordFilePath" {
+				continue
+			}
+			writes++
+			owner, ok := field.X.(*ast.Ident)
+			if !ok || owner.Obj != receiver || index >= len(assignment.Rhs) {
+				continue
+			}
+			assertion, ok := assignment.Rhs[index].(*ast.TypeAssertExpr)
+			if !ok {
+				continue
+			}
+			kind, ok := assertion.Type.(*ast.Ident)
+			if !ok || kind.Name != "string" {
+				continue
+			}
+			alias, ok := assertion.X.(*ast.Ident)
+			if ok {
+				rawPath = alias.Obj
+			}
+		}
+		return true
+	})
+	// A configured path needs one field write and one resolvable local source value.
+	if writes != 1 || rawPath == nil {
+		return false
+	}
+	return aliasComesFromPathConfig(body, rawPath)
+}
+
+// aliasComesFromPathConfig checks the raw config lookup that a user supplied during auth setup.
+// A secret from another key, request or environment cannot satisfy this exact source proof.
+func aliasComesFromPathConfig(body *ast.BlockStmt, alias *ast.Object) bool {
+	writes := 0
+	fromPathKey := false
+	ast.Inspect(body, func(node ast.Node) bool {
+		assignment, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		// An alias overwritten before logging no longer carries a proven path value.
+		for index, target := range assignment.Lhs {
+			name, ok := target.(*ast.Ident)
+			if !ok || name.Obj != alias {
+				continue
+			}
+			writes++
+			if index >= len(assignment.Rhs) {
+				continue
+			}
+			lookup, ok := assignment.Rhs[index].(*ast.IndexExpr)
+			if !ok {
+				continue
+			}
+			key, ok := stringLiteral(lookup.Index)
+			if !ok || key != "password_file_path" {
+				continue
+			}
+			config, ok := lookup.X.(*ast.SelectorExpr)
+			if !ok || config.Sel.Name != "Config" {
+				continue
+			}
+			owner, ok := config.X.(*ast.Ident)
+			fromPathKey = ok && owner.Obj != nil
+		}
+		return true
+	})
+	return writes == 1 && fromPathKey
+}
+
+// methodReadsPasswordFile requires the same struct type to pass its field to the imported os.ReadFile.
+// The bytes returned by that call remain a separate secret value if they are logged.
+func methodReadsPasswordFile(file *ast.File, methodType string, osPackages map[string]bool) bool {
+	// Check methods declared in this file; an unrelated receiver cannot prove the path's role.
+	for _, declaration := range file.Decls {
+		method, ok := declaration.(*ast.FuncDecl)
+		if !ok || method.Recv == nil || len(method.Recv.List) != 1 || method.Body == nil {
+			continue
+		}
+		receiver := method.Recv.List[0]
+		pointer, ok := receiver.Type.(*ast.StarExpr)
+		if !ok || len(receiver.Names) != 1 {
+			continue
+		}
+		kind, ok := pointer.X.(*ast.Ident)
+		if !ok || kind.Name != methodType {
+			continue
+		}
+		found := false
+		ast.Inspect(method.Body, func(node ast.Node) bool {
+			// Once this method proves the path role, later reads on another receiver cannot undo it.
+			if found {
+				return false
+			}
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "ReadFile" {
+				return true
+			}
+			packageName, ok := selector.X.(*ast.Ident)
+			// A locally shadowed os name cannot establish a real filesystem read.
+			if !ok || packageName.Obj != nil || !osPackages[packageName.Name] {
+				return true
+			}
+			path, ok := call.Args[0].(*ast.SelectorExpr)
+			if !ok || path.Sel.Name != "passwordFilePath" {
+				return true
+			}
+			owner, ok := path.X.(*ast.Ident)
+			found = ok && owner.Obj == receiver.Names[0].Obj
+			return !found
+		})
+		// The path was used to read the password file, matching the user's configuration role.
+		if found {
+			return true
+		}
+	}
+	return false
 }
 
 // loggingSinkName reports a sink label when call is a recognised logging or print
@@ -277,11 +534,8 @@ func hasSecretIdentifier(arg ast.Expr) bool {
 	return found
 }
 
-// isRedactionCall reports whether node is a call whose name matches a redaction or
-// hashing word (mask, hash, sha, hmac, ...). The secret scans prune such a call's
-// subtree, treating only that wrapped sub-expression as neutralised. Scoping to the
-// subtree — rather than disqualifying the whole logging argument — keeps a hashed
-// sibling (e.g. a checksum) from masking a raw credential interpolated alongside it.
+// isRedactionCall identifies a masking or hashing wrapper so its value stays quiet in scan results.
+// Only that wrapped value is skipped; a raw password beside a hash still warns.
 func isRedactionCall(node ast.Node) bool {
 	call, ok := node.(*ast.CallExpr)
 	return ok && callNameMatchesAny(call, loggingRedactionWords)

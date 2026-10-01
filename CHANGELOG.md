@@ -2,10 +2,39 @@
 
 ## v0.6.0 - Unreleased
 
+- Workflow secret warnings skip jobs or steps whose own event guard proves them unreachable for every detected PR event.
+
+- **Private-key parser patterns avoid credential warnings** - Isolated PEM headers in resolved Go `regexp.Compile` or
+  `regexp.MustCompile` patterns no longer look like embedded keys. The existing `strings` delimiter and caller-payload re-wrap
+  exceptions now require the matched parsed literal. Bare headers, shadowed calls, missing syntax and authored key bodies still warn.
+
+- **Fixed storage prefixes avoid logging warnings** - Vault's tidy log may show a fixed package-constant prefix used to list storage keys.
+  A secret-derived caller, changed sibling constant, closure alias, or credential beside the prefix, including a captured request header, still warns.
+
+- **Seal share counts avoid logging warnings** - A structured seal log may show the required number of shares when the same function proves its
+configuration source, progress comparison and returned count. Secret integers and request or environment credentials still warn.
+
+- **Configured password file paths avoid logging warnings** - A structured auth log can name the path to a password file when the same Go file proves its config origin and filesystem-read role. Logging password contents, a secret-derived field, or request or environment credentials still warns.
+
+- **Numbered buckets avoid weak-key warnings** - A digest byte used only for a decimal bucket stays quiet; secret or full-digest keys still report.
+  Rebound or borrowed inputs, secret aliases and digest bytes passed to unknown functions retain warnings.
+
+- **Stored help-article links avoid false entropy warnings** - Complete article paths accept bounded titles, including the short words `a`, `to` and `in`.
+Extra URL components and opaque title suffixes remain eligible for warnings. The exact lowercase-letter-then-digit alphabet is also recognized.
+
+- **Entropy warnings recognize complete public formats and bounded names** - Public alphabets, structured identifiers and repository paths stay quiet
+only when the entire value qualifies; opaque suffixes remain reportable. Property names alone grant no exception.
+The bounded names include EC2 import paths and up to two parent-directory prefixes; the exact observed Hashids alphabet is also recognized.
+The standard Base64 decoder alphabet with one trailing `=`, the exact observed UUID alphabet and bounded help-category routes also stay quiet.
+Complete GitHub commit references use bounded owner, repository and revision formats; additional URL components grant no exception.
+The exact uppercase/lowercase/digit alphabet and nine complete Symfony signature service IDs also stay quiet.
+Complete Entra application-management links require the bounded UUID route and fixed navigation flags.
+Complete quoted help-article and SQS URLs stay quiet only when their full path and allowed options pass the public-format checks.
+
 Upgrading from 0.5.x: this release changes every machine-readable contract at once. `UPGRADING.md` in this repository gives each break's migration command and the way back: pin the 0.5 line and keep the pre-upgrade configuration and baseline files, which 0.5 still reads.
 
 - **Sensitive-data rules skip test, fixture and example files** - A scan of the family's 57-repository corpus found this pillar's findings in test code were overwhelmingly sample keys and placeholder credentials. Every sensitive-data rule, `sensitive-data.pii-pattern` included, now skips a file under a directory named `test`, `tests`, `__tests__`, `spec`, `testdata`, `fixtures` or `examples` (any letter case), or a file named like a test: `*_test.go`, `test_*.py`, `*_test.py`, `*Test.php`, `*.test.*` or `*.spec.*` for JavaScript and TypeScript. **The trade-off is deliberate: a real credential committed under one of those paths is no longer reported.** The skip is counted, never silent: each skipped file and rule is published as an audit row with `source: "built-in"`, after the lockfile rows. The family exempts only a fixture-specific PII rule, which gruff-go does not have.
-- **Vendor-documented sample values no longer report** - AWS's two example access key ids and secret keys, the sample token jwt.io shows, and fourteen test card numbers the card networks publish are documentation, not credentials. A value that equals one of these 19 exactly and whole is no longer reported by any sensitive-data rule. Card numbers are compared as digits only, so a spaced or dashed test card is matched too. The values are held as SHA-256 digests, so gruff-go's detectors carry none of them. A real key that merely resembles one still reports.
+- **Vendor-documented sample values no longer report** - AWS's two example access key ids and secret keys, the sample token jwt.io shows, Google's published reCAPTCHA v2 test site key, and fourteen test card numbers the card networks publish are documentation, not credentials. A value that equals one of these 20 exactly and whole is no longer reported by any sensitive-data rule. Card numbers are compared as digits only, so a spaced or dashed test card is matched too. The values are held as SHA-256 digests, so gruff-go's detectors carry none of them. A real key that merely resembles one still reports.
 - **`sensitive-data.high-entropy-string` skips package-manager lockfiles by name** - A lockfile records one published integrity digest per resolved package. Every one of them is high-entropy by construction and none is a credential, so a real project's lockfile buried the rule's true findings under thousands of false ones. The rule, and no other, is now skipped in a file whose base name is one of nine ratified lockfile names at any depth: `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `composer.lock`, `Cargo.lock`, `go.sum`, `uv.lock`, `poetry.lock`. **The skip is counted, never silent:** every surface that applies it publishes one audit row per lockfile that had findings, carrying `source: "built-in"`, which is how a consumer tells it from an entry you configured. **Every other sensitive-data rule still reads the file**, so a credential pasted into a lockfile is reported exactly as it would be anywhere else, and the identical bytes under any other file name keep reporting the entropy rule too.
 - **A scope the run could not read is one diagnostic, `changed-region`, with no findings beside it** - A `--changed-ranges` value the run cannot scope to used to arrive under a different type in almost every port, and some published their unscoped findings alongside it, so a caller could not tell a narrowed scan from a whole-tree one. The run now exits `2` with exactly one `changed-region` diagnostic and no findings, on the analyse surface and the hook alike.
 - **BREAKING: an empty `--changed-ranges` is refused instead of scanning everything** - `--changed-ranges=` asks for a scoped run and names no range, and it was read as "no filter": the run silently widened to the whole tree and exited `0`. It now exits `2` with the same `changed-region` diagnostic, on analyse and on the hook. A string flag cannot tell an absent flag from one passed empty, which is why the option now records that it was given. The hazard is worse on the hook, where a silently widened scope hands an agent a whole-tree finding list attributed to the edit it just made. The shipped `.goat-flow/hooks/gruff-code-quality.sh` wrapper guards the value before invoking the binary, so no managed hook could produce this input.

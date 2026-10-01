@@ -579,6 +579,7 @@ import "crypto/md5"
 func deriveKey(input []byte) [16]byte {
 	return md5.Sum(input)
 }
+
 `,
 			want: 1,
 		},
@@ -605,6 +606,230 @@ func checksum(input []byte) [16]byte {
 }
 `,
 			want: 0,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			unit := parseOne(t, "crypto.go", test.code)
+			findings := WeakCryptoRule{}.AnalyzeUnit(unit, Context{})
+			if len(findings) != test.want {
+				t.Fatalf("findings = %#v, want %d", findings, test.want)
+			}
+		})
+	}
+}
+
+// TestWeakCryptoBucketProofRejectsEscapingValues keeps aliases and unknown digest consumers reportable.
+func TestWeakCryptoBucketProofRejectsEscapingValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		index string
+	}{
+		{"secret through alias", "input := []byte(secretToken)", "digest.Sum(nil)[0]"},
+		{"rebound input", "input := []byte(itemID); input = []byte(secretToken)", "digest.Sum(nil)[0]"},
+		{"rebound parameter", "itemID = secretToken; input := []byte(itemID)", "digest.Sum(nil)[0]"},
+		{"borrowed input", "input := []byte(itemID); change(input)", "digest.Sum(nil)[0]"},
+		{"unknown byte consumer", "input := []byte(itemID)", "saveToken(digest.Sum(nil)[0])"},
+		{"shadowed byte conversion", "uint8 := saveToken; input := []byte(itemID)", "uint8(digest.Sum(nil)[0])"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code := fmt.Sprintf(`package sample
+import ("crypto/md5"; "strconv")
+func BucketKey(itemID, secretToken string) string {
+    digest := md5.New()
+    %s
+    _, _ = digest.Write(input)
+    bucketIndex := %s
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`, test.input, test.index)
+			findings := WeakCryptoRule{}.AnalyzeUnit(parseOne(t, "crypto.go", code), Context{})
+			if len(findings) != 1 {
+				t.Fatalf("got %d weak-crypto warnings, want 1", len(findings))
+			}
+		})
+	}
+}
+
+// TestWeakCryptoRuleDistinguishesBucketIndexFromKeyMaterial checks what a developer sees when a storage bucket uses one digest byte.
+// A full digest key or secret input still needs a security warning.
+func TestWeakCryptoRuleDistinguishesBucketIndexFromKeyMaterial(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+		want int
+	}{
+		{
+			name: "storage bucket index",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+type StoragePacker struct { viewPrefix string }
+// BucketKey returns the storage key of the bucket where the item will be stored.
+func (s *StoragePacker) BucketKey(itemID string) string {
+    hf := md5.New()
+    input := []byte(itemID)
+    _, _ = hf.Write(input)
+    index := uint8(hf.Sum(nil)[0])
+    return s.viewPrefix + strconv.Itoa(int(index))
+}
+`,
+			want: 0,
+		},
+		{
+			name: "aliased sha1 bucket index",
+			code: `package sample
+import (
+    hash "crypto/sha1"
+    "strconv"
+)
+type Store struct { prefix string }
+func (s *Store) BucketKey(itemID string) string {
+    digest := hash.New()
+    _, _ = digest.Write([]byte(itemID))
+    bucketIndex := digest.Sum(nil)[0]
+    return s.prefix + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 0,
+		},
+		{
+			name: "full digest key",
+			code: `package sample
+import (
+    "crypto/md5"
+    "encoding/hex"
+)
+func BucketKey(itemID string) string {
+    digest := md5.New()
+    _, _ = digest.Write([]byte(itemID))
+    return hex.EncodeToString(digest.Sum(nil))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "secret input to bucket index",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+func BucketKey(secretToken string) string {
+    digest := md5.New()
+    _, _ = digest.Write([]byte(secretToken))
+    bucketIndex := digest.Sum(nil)[0]
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "authentication bucket key",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+func AuthBucketKey(itemID string) string {
+    digest := md5.New()
+    _, _ = digest.Write([]byte(itemID))
+    bucketIndex := digest.Sum(nil)[0]
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "authentication suffix after bucket key",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+func BucketKeyAuth(itemID string) string {
+    digest := md5.New()
+    _, _ = digest.Write([]byte(itemID))
+    bucketIndex := digest.Sum(nil)[0]
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "security named hasher in bucket flow",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+func BucketKey(itemID string) string {
+    keyHasher := md5.New()
+    _, _ = keyHasher.Write([]byte(itemID))
+    bucketIndex := keyHasher.Sum(nil)[0]
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "authentication comment on bucket index",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+// BucketKey builds a token for authentication.
+func BucketKey(itemID string) string {
+    digest := md5.New()
+    _, _ = digest.Write([]byte(itemID))
+    bucketIndex := digest.Sum(nil)[0]
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "bucket index reused as token",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+func BucketKey(itemID string) string {
+    digest := md5.New()
+    _, _ = digest.Write([]byte(itemID))
+    bucketIndex := digest.Sum(nil)[0]
+    token := strconv.Itoa(int(bucketIndex))
+    _ = token
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
+		},
+		{
+			name: "local conversion shadows strconv",
+			code: `package sample
+import (
+    "crypto/md5"
+    "strconv"
+)
+var _ = strconv.Itoa
+type localFormatter struct{}
+func (localFormatter) Itoa(value int) string { return "credential" }
+func BucketKey(itemID string) string {
+    strconv := localFormatter{}
+    digest := md5.New()
+    _, _ = digest.Write([]byte(itemID))
+    bucketIndex := digest.Sum(nil)[0]
+    return "bucket" + strconv.Itoa(int(bucketIndex))
+}
+`,
+			want: 1,
 		},
 	}
 	for _, test := range tests {

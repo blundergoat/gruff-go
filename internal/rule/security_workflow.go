@@ -243,13 +243,14 @@ func (GitHubActionsSecretsInPRRule) AnalyzeUnit(unit parser.Unit, _ Context) []f
 		return nil
 	}
 	findings := []finding.Finding{}
+	unreachable := workflowUnreachableSecretLines(unit.Source)
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
 		// Strip YAML comments first so an inert documentation line such as
 		// `# do not use ${{ secrets.DEPLOY_KEY }} on PRs` is not reported as a
 		// secret reference, matching the remote-shell and broad-permissions rules.
 		code := stripYAMLComment(line)
 		for _, match := range workflowSecretPattern.FindAllStringSubmatch(code, -1) {
-			if match[1] == "GITHUB_TOKEN" {
+			if match[1] == "GITHUB_TOKEN" || unreachable[lineNumber+1] {
 				continue
 			}
 			findings = append(findings, finding.Finding{

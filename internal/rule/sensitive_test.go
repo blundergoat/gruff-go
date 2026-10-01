@@ -1,3 +1,6 @@
+// Package rule tests how credential detectors turn source text into redacted findings for a developer's scan.
+// This file covers private keys, provider tokens, connection strings and their sample or placeholder controls.
+// The private-key cases exercise both text files and Go syntax so parser definitions do not hide embedded key material.
 package rule
 
 import (
@@ -34,6 +37,7 @@ const (
 }`
 )
 
+// TestPrivateKeyRuleDetectsPEMHeader keeps a text-file key header visible without exposing its bytes in a finding.
 func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -69,9 +73,7 @@ func TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks(t *testing.T) {
 // TestPrivateKeyRuleSkipsGoDelimiterManipulation avoids flagging code that
 // strips or re-wraps caller-provided PEM data without embedding key material.
 func TestPrivateKeyRuleSkipsGoDelimiterManipulation(t *testing.T) {
-	unit := parser.Unit{
-		File: source.File{Path: "pem.go", Type: source.FileTypeGo},
-		Source: `package pem
+	unit := parseOne(t, "pem.go", `package pem
 
 import "strings"
 
@@ -79,8 +81,7 @@ func clean(privateKeyPEM string) []byte {
 	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "-----BEGIN PRIVATE KEY-----", "")
 	return []byte("-----BEGIN PRIVATE KEY-----\n" + privateKeyPEM + "\n-----END PRIVATE KEY-----")
 }
-`,
-	}
+`)
 	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
 		t.Fatalf("PEM delimiter manipulation should not flag, got %#v", got)
 	}

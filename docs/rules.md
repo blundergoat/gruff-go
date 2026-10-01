@@ -826,6 +826,8 @@ Flags workflow run steps that download a remote script with `curl`/`wget`/`Invok
 
 Flags workflows triggered by `pull_request_target` that reference a named secret other than the auto-provided `GITHUB_TOKEN`, exposing it to fork-controlled runs. A plain `pull_request` run from a fork receives no secrets, so it is not reported. Each finding's metadata carries the referenced secret name.
 
+An own job or step `if:` guard can silence a secret reference when exact `github.event_name` comparisons prove that scope unreachable for the detected PR event. Comparisons ignore case and support a whole expression wrapper, parentheses, negation, AND and OR. Unknown, malformed or unsupported guards and ambiguous YAML ownership retain warnings; a step guard cannot cover job/workflow env or siblings.
+
 **Remediation.** Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or `workflow_run`.
 
 **Known precision limit.** A secret reference in a pull-request workflow can sit behind a trusted-actor condition the text scanner does not evaluate. Gate the secret-bearing job explicitly or move it to a separate trusted workflow. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
@@ -981,6 +983,18 @@ Each finding's metadata carries the HTTP sink and request source label.
 
 Flags logging and print calls (`log.*`, `fmt.Print*`/`Fprint*`, `log/slog`, and methods on a logger-named receiver) whose arguments carry credentials: identifiers whose name contains `password`/`secret`/`credential`/`bearer`/`passphrase`, secret-named `os.Getenv`/`os.LookupEnv` reads, or request `Authorization`/`Cookie` reads. Static text-only messages, non-secret values, plain form values, and values wrapped in a redaction/hash helper are ignored. Candidate wording, bounded same-function evidence.
 
+A structured `password_file_path` value stays quiet only when this file shows it came from the matching config key and a method on the same type passes the field to `os.ReadFile`. The path points to the password file; the bytes read from it remain eligible for a warning. A missing path origin, another field write, or a request or environment credential keeps the warning.
+
+A structured seal log can report `config.SecretThreshold` as a share count when the same function gets an unseeded `SealConfig`
+from its recovery or barrier seal, compares the count with collected-share progress, and returns that count as `Required`.
+An alternate source, overwrite, pointer escape, missing progress proof, secret integer, or request or environment credential still warns.
+
+Vault's role-HMAC tidy log can show `secretIDPrefixToUse` when every direct closure call passes one of the fixed `secret_id/` or
+`secret_id_local/` package constants from a production sibling file and the closure uses that value to list storage keys.
+A missing sibling, changed constant, closure alias, parameter write, secret-derived caller, or credential beside the prefix keeps the warning.
+That includes an auth header or cookie captured from outside the closure, even through a local name, when its request source cannot be proved there.
+An explicit-file scan loads the same-package sibling for this proof but reports findings only for the selected file.
+
 Each finding's metadata carries only the logging sink and a classification reason; the raw value is never included.
 
 **Remediation.** Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential.
@@ -1077,11 +1091,17 @@ Each finding's metadata carries the decoded format and request source label.
 - **Capability:** parser
 - **Tags:** `crypto`, `security`
 
-Flags weak cryptographic primitives when the parser-only evidence is concrete: `crypto/md5` or `crypto/sha1` calls in password, token, signature, key, session, CSRF, or other security-looking contexts; direct DES, 3DES, or RC4 cipher construction; and `rsa.GenerateKey(..., bits)` with a literal key size below 2048. Plain checksum-style MD5/SHA1 use is ignored unless the surrounding function, target, comment, or call argument carries a security context word.
+Flags weak cryptographic primitives when parser-only evidence is concrete: `crypto/md5` or `crypto/sha1` in security contexts;
+direct DES, 3DES, or RC4 construction; and `rsa.GenerateKey(..., bits)` with a literal key size below 2048.
+
+Plain checksum-style MD5/SHA1 use is ignored unless the function, target, comment, or call argument carries a security context word.
+A local bucket key that hashes a nonsecret input and uses only the first digest byte as a decimal storage suffix is also ignored.
+Full digest keys and secret inputs still report.
 
 Each finding's metadata carries the primitive and reason.
 
-**Remediation.** Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits.
+**Remediation.** Use SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption,
+and RSA keys of at least 2048 bits.
 
 **Known precision limit.** MD5 or SHA-1 used only for a non-security checksum can appear security-sensitive when nearby names imply credentials or integrity. Use a modern digest for security work, or make the non-security checksum context explicit before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
@@ -1227,7 +1247,24 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern - the catch-all for rotated, custom, or vendor-less credentials the exact-prefix rules miss. In Go source only string literals, interpreted and raw, and comments are scored, so a long identifier is never reported. A token must hold a letter and a digit, the floor FAMILY-CONTRACT section 12 sets for all five ports, because a run of one character class clears the entropy bar by construction. Text inside a PEM block whose label names no private key (a certificate, public key, certificate request, PKCS7 bundle or CRL) never reports, because it is public by construction; a private key's block is still scanned. A block ends at the next marker, which must close the same label, and holds only base64, a PGP checksum or armour headers once string quoting is stripped, so a secret between two marker constants still reports. A comment token is skipped when the Go code in the same directory uses it as an identifier, because a doc comment opens with the name it documents. A file with no Go syntax tree, such as `.env` or YAML, is scanned line by line. A token is scored by Shannon entropy (bits per character); the `4.2` default sits above random hex (max `4.0`) and ordinary prose (~1-3) while still catching random base64 secrets (~5-6). To bound false positives the rule skips all-hex ids, UUIDs, SRI/digest prefixes, and path/URL fragments, and defers to the provider-specific rules so one embedded AWS key or JWT is reported once by its precise rule, not twice. Ships enabled at `warning`, below the confirmed-token rules' `error`, because entropy is a heuristic that cannot prove a token is live.
+Flags long, random-looking values that no provider-specific rule covers. In parsed Go source, the rule reads string literals and comments, preserving
+native identifier distinctions. Comments naming identifiers used in the same directory stay quiet. Other supported text files retain their line scan.
+
+The rule requires a letter and a digit, the configured minimum length and sufficient Shannon entropy. Defaults are 32 characters and 4.2 bits per
+character, at warning severity and medium confidence. Complete quoted candidates include dots so an accepted public prefix cannot hide an opaque
+suffix.
+
+Whole-value exceptions cover finite public alphabets and formats, bounded structured names and repository paths. Every name segment must pass its
+casing and numeric bounds, fit within 32 characters, and contribute to a strict word-letter majority across at least two segments. A property name
+such as path or clientId grants no exception. Hex values, UUIDs, integrity prefixes, documented samples and provider-specific handling keep their
+existing decisions.
+
+Complete quoted help-article and SQS URLs are checked before punctuation splits them into tokens. The complete route must qualify; credentials,
+unknown query options, fragments and opaque queue or article suffixes grant no exception. Relative paths allow at most two parent components.
+
+Public PEM bodies remain quiet only when the next marker closes the same non-private label and each body line is PEM-shaped after stripping source
+quoting. A private key, mismatched markers or ordinary code between marker constants remains scannable. Findings publish a fixed redaction marker
+without matched characters or statistics.
 
 **Remediation.** Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the `entropy`/`minLength` thresholds or add an inline `#nosec` / `//nolint:gosec` suppression.
 
@@ -1304,7 +1341,11 @@ Flags personally identifiable information embedded in source or text: email addr
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", and Go code that only strips or re-wraps PEM header delimiters are skipped; a raw PEM block still fires. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
+Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files.
+Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", is skipped.
+In parsed Go files, an isolated marker in an imported `regexp.Compile` or `regexp.MustCompile` call, a supported `strings` delimiter
+call, or a caller-payload PEM re-wrap is also skipped. The exemption belongs to that exact literal and requires no authored key body.
+A second unproven header, an unresolved or shadowed call, a full or truncated key, and a Go file without parsed syntax still warn.
 
 Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized path. Neither state includes key type, header, or body bytes.
 
