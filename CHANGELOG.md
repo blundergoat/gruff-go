@@ -18,6 +18,7 @@ configuration source, progress comparison and returned count. Secret integers an
 
 - **Numbered buckets avoid weak-key warnings** - A digest byte used only for a decimal bucket stays quiet; secret or full-digest keys still report.
   Rebound or borrowed inputs, secret aliases and digest bytes passed to unknown functions retain warnings.
+  Built-in input-length checks preserve the bucket proof; shadowed length calls still warn.
 
 - **Stored help-article links avoid false entropy warnings** - Complete article paths accept bounded titles, including the short words `a`, `to` and `in`.
 Extra URL components and opaque title suffixes remain eligible for warnings. The exact lowercase-letter-then-digit alphabet is also recognized.

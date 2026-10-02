@@ -1,4 +1,7 @@
-// Package rule tests crypto and random security rules.
+// Package rule tests the security warnings developers receive for random values and weak crypto.
+//
+// These cases distinguish existing-key selection and storage buckets from generated secrets and key material.
+// Run them when changing crypto detection so safe lookalikes stay quiet and security uses remain visible.
 package rule
 
 import (
@@ -6,8 +9,8 @@ import (
 	"testing"
 )
 
-// lowerAlphanumerics is the keyspace the generator fixtures draw from. It is joined from two halves so
-// gruff-go's own entropy rule never reads one 36-character literal as a possible secret.
+// lowerAlphanumerics is the keyspace the generator fixtures draw from.
+// It is joined from two halves so gruff-go's own entropy rule never reads one 36-character literal as a possible secret.
 const lowerAlphanumerics = "abcdefghijklmnopqr" + "stuvwxyz0123456789"
 
 // TestInsecureRandomSecretRule covers math/rand in secret contexts and safe random lookalikes.
@@ -130,19 +133,21 @@ func TestProductionTokenFixture(t *testing.T) {
 			want: 1,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			unit := parseOne(t, tt.file, tt.code)
+	// Scan each fixture to check which random uses produce a security warning.
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			unit := parseOne(t, testCase.file, testCase.code)
 			findings := InsecureRandomSecretRule{}.AnalyzeUnit(unit, Context{})
-			if len(findings) != tt.want {
-				t.Fatalf("findings = %#v, want %d", findings, tt.want)
+			// An unexpected warning count means the developer would see missing or extra security advice.
+			if len(findings) != testCase.want {
+				t.Fatalf("findings = %#v, want %d", findings, testCase.want)
 			}
 		})
 	}
 }
 
-// TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration pins the
-// narrow boundary between choosing an existing key and generating key material.
+// TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration pins the narrow boundary between choosing an existing key and generating key
+// material.
 func TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration(t *testing.T) {
 	tests := []struct {
 		name string
@@ -369,10 +374,12 @@ func chooseKey(values []string) string {
 			want: 1,
 		},
 	}
+	// Check both existing-key selection and generated key material against their expected scan results.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			unit := parseOne(t, "selection.go", test.code)
 			findings := InsecureRandomSecretRule{}.AnalyzeUnit(unit, Context{})
+			// Keep selection quiet while generated secrets retain the expected warning.
 			if len(findings) != test.want {
 				t.Fatalf("findings = %#v, want %d", findings, test.want)
 			}
@@ -380,10 +387,8 @@ func chooseKey(values []string) string {
 	}
 }
 
-// TestInsecureRandomSecretRuleIgnoresDestinationBufferName pins that a
-// generator named for its secret still reports when the buffer it fills is
-// named neutrally, and that the indexed and append spellings of the same
-// generator never disagree.
+// TestInsecureRandomSecretRuleIgnoresDestinationBufferName keeps secret generators visible with neutral buffer names.
+// Indexed and append forms must give the developer the same warning.
 func TestInsecureRandomSecretRuleIgnoresDestinationBufferName(t *testing.T) {
 	indexedGenerator := `package sample
 
@@ -411,18 +416,22 @@ func generateToken(size int) string {
 	return string(%[1]s)
 }
 `
+	// Try each observed buffer name so a neutral destination cannot hide secret generation.
 	for _, bufferName := range []string{"token", "buf", "out", "result"} {
 		t.Run(bufferName, func(t *testing.T) {
 			indexed := InsecureRandomSecretRule{}.AnalyzeUnit(
 				parseOne(t, "indexed.go", fmt.Sprintf(indexedGenerator, bufferName)), Context{})
 			appended := InsecureRandomSecretRule{}.AnalyzeUnit(
 				parseOne(t, "append.go", fmt.Sprintf(appendGenerator, bufferName)), Context{})
+			// The indexed generator must still warn when the developer chooses this buffer name.
 			if len(indexed) != 1 {
 				t.Errorf("indexed %q findings = %#v, want 1", bufferName, indexed)
 			}
+			// The append generator must expose the same security risk.
 			if len(appended) != 1 {
 				t.Errorf("append %q findings = %#v, want 1", bufferName, appended)
 			}
+			// Equivalent generation forms must show the developer the same warning count.
 			if len(indexed) != len(appended) {
 				t.Errorf("indexed %q reported %d findings but append reported %d; both spell the same generator",
 					bufferName, len(indexed), len(appended))
@@ -551,19 +560,20 @@ func buildKey() {
 			want: 0,
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			unit := parseOne(t, "crypto.go", tt.code)
+	// Scan each weak primitive and safe checksum fixture against its expected warning count.
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			unit := parseOne(t, "crypto.go", testCase.code)
 			findings := WeakCryptoRule{}.AnalyzeUnit(unit, Context{})
-			if len(findings) != tt.want {
-				t.Fatalf("findings = %#v, want %d", findings, tt.want)
+			// A count mismatch changes the security advice the developer receives.
+			if len(findings) != testCase.want {
+				t.Fatalf("findings = %#v, want %d", findings, testCase.want)
 			}
 		})
 	}
 }
 
-// TestWeakCryptoRulePreservesKeyContext keeps key-only weak-digest derivation
-// visible while a neutral checksum remains outside the contextual rule.
+// TestWeakCryptoRulePreservesKeyContext keeps key-only weak-digest derivation visible while a neutral checksum remains outside the contextual rule.
 func TestWeakCryptoRulePreservesKeyContext(t *testing.T) {
 	tests := []struct {
 		name string
@@ -608,10 +618,12 @@ func checksum(input []byte) [16]byte {
 			want: 0,
 		},
 	}
+	// Check that key derivation stays visible while a neutral checksum remains quiet.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			unit := parseOne(t, "crypto.go", test.code)
 			findings := WeakCryptoRule{}.AnalyzeUnit(unit, Context{})
+			// A key-shaped digest must retain the expected security warning.
 			if len(findings) != test.want {
 				t.Fatalf("findings = %#v, want %d", findings, test.want)
 			}
@@ -633,6 +645,7 @@ func TestWeakCryptoBucketProofRejectsEscapingValues(t *testing.T) {
 		{"unknown byte consumer", "input := []byte(itemID)", "saveToken(digest.Sum(nil)[0])"},
 		{"shadowed byte conversion", "uint8 := saveToken; input := []byte(itemID)", "uint8(digest.Sum(nil)[0])"},
 	}
+	// Try each alias or escaping value that prevents a complete storage-only proof.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			code := fmt.Sprintf(`package sample
@@ -646,6 +659,7 @@ func BucketKey(itemID, secretToken string) string {
 }
 `, test.input, test.index)
 			findings := WeakCryptoRule{}.AnalyzeUnit(parseOne(t, "crypto.go", code), Context{})
+			// An unproved bucket-shaped flow must still show the developer one weak-crypto warning.
 			if len(findings) != 1 {
 				t.Fatalf("got %d weak-crypto warnings, want 1", len(findings))
 			}
@@ -832,12 +846,54 @@ func BucketKey(itemID string) string {
 			want: 1,
 		},
 	}
+	// Compare storage-only bucket flows with nearby uses that return key material.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			unit := parseOne(t, "crypto.go", test.code)
 			findings := WeakCryptoRule{}.AnalyzeUnit(unit, Context{})
+			// The warning count must match the value's proved role in the scanned function.
 			if len(findings) != test.want {
 				t.Fatalf("findings = %#v, want %d", findings, test.want)
+			}
+		})
+	}
+}
+
+// TestWeakCryptoBucketInputLengthObservations preserves Vault's error check without permitting a shadowed mutator.
+func TestWeakCryptoBucketInputLengthObservations(t *testing.T) {
+	tests := []struct {
+		name        string
+		declaration string
+		extraUse    string
+		want        int
+	}{
+		{name: "built-in input length", want: 0},
+		{name: "global shadowed length", declaration: "func len(value []byte) int { value[0] = 0; return 0 }", want: 1},
+		{name: "local shadowed length", extraUse: "len := func(value []byte) int { value[0] = 0; return 0 }", want: 1},
+		{name: "input rebound before length", extraUse: "input = []byte(secretToken)", want: 1},
+	}
+	// Check ordinary length reads alongside shadowed or mutating lookalikes.
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code := fmt.Sprintf(`package sample
+import ("crypto/md5"; "strconv")
+type StoragePacker struct { viewPrefix string }
+%s
+// BucketKey returns the storage key of the bucket where the given item will be stored.
+func (s *StoragePacker) BucketKey(itemID string) string {
+ hf := md5.New()
+ input := []byte(itemID)
+ %s
+ n, err := hf.Write(input)
+ if err != nil || n != len(input) { return "" }
+ index := uint8(hf.Sum(nil)[0])
+ return s.viewPrefix + strconv.Itoa(int(index))
+}
+`, test.declaration, test.extraUse)
+			got := WeakCryptoRule{}.AnalyzeUnit(parseOne(t, "crypto.go", code), Context{})
+			// Only a proved nonmutating input read may keep the bucket-shaped digest quiet.
+			if len(got) != test.want {
+				t.Fatalf("got %d weak-crypto warnings, want %d", len(got), test.want)
 			}
 		})
 	}
