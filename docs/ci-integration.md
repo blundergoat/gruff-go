@@ -73,7 +73,7 @@ jobs:
           go-version: '1.25'
 
       - name: Install gruff-go
-        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
 
       - name: Scan (diff-mode for PRs, full for push)
         run: |
@@ -127,7 +127,7 @@ gruff-go:
   image: golang:1.25
   stage: test
   script:
-    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
     - gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif
   artifacts:
     when: always
@@ -156,7 +156,7 @@ jobs:
       - checkout
       - run:
           name: Install gruff-go
-          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
       - run:
           name: Scan
           command: gruff-go analyse --baseline gruff-baseline.json .
@@ -180,7 +180,7 @@ pipeline {
     stages {
         stage('gruff-go') {
             steps {
-                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0'
+                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0'
                 sh 'gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif'
             }
             post {

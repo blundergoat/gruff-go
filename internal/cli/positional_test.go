@@ -16,6 +16,7 @@ import (
 func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, projectRoot, "old.yaml", "schemaVersion: gruff-go.config.v0.1\n")
 	t.Chdir(projectRoot)
 
 	testCases := []struct {
@@ -40,11 +41,21 @@ func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 			arguments:       []string{"completion", "bash", "zsh"},
 			expectedMessage: "completion takes at most one shell argument",
 		},
+		{
+			// The stray operand once ended flag parsing, so the trailing -dry-run was dropped and the
+			// command wrote new.yaml when the user had asked it to write nothing.
+			name:            "migrate-config",
+			arguments:       []string{"migrate-config", "-config", "old.yaml", "-output", "new.yaml", "main.go", "-dry-run"},
+			expectedMessage: "migrate-config takes no positional arguments",
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			exitCode, stdout, stderr := captureCLIResult(testCase.arguments)
+			if _, err := os.Stat(filepath.Join(projectRoot, "new.yaml")); err == nil {
+				t.Fatal("new.yaml exists, want a rejected command to write nothing")
+			}
 			if exitCode != 2 {
 				t.Fatalf("exit = %d, want 2; stdout=%s stderr=%s", exitCode, stdout, stderr)
 			}
@@ -62,6 +73,7 @@ func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 // The dashboard is absent by necessity: its accepted form binds a listener and never returns.
 func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 	projectRoot := t.TempDir()
+	writeFile(t, projectRoot, "old.yaml", "schemaVersion: gruff-go.config.v0.1\n")
 	t.Chdir(projectRoot)
 
 	testCases := []struct {
@@ -71,6 +83,7 @@ func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 		{name: "list-rules text", arguments: []string{"list-rules", "--no-config", "--format", "text"}},
 		{name: "completion explicit shell", arguments: []string{"completion", "bash"}},
 		{name: "completion default shell", arguments: []string{"completion"}},
+		{name: "migrate-config dry run", arguments: []string{"migrate-config", "-dry-run", "-config", "old.yaml"}},
 	}
 
 	for _, testCase := range testCases {

@@ -35,7 +35,12 @@ func runMigrateConfig(args []string, stdout, stderr io.Writer) int {
 	inputPath := flags.String("config", "", "the 0.5 config to read; it is never modified")
 	outputPath := flags.String("output", "", "where to write the migrated config; required unless -dry-run")
 	dryRun := flags.Bool("dry-run", false, "print what would change and write nothing")
-	if err := flags.Parse(args); err != nil {
+	if err := parseCommandArguments(flags, args); err != nil {
+		return 2
+	}
+	// Every input is named by a flag, so an operand here is a path the user expected the command to use.
+	if flags.NArg() > 0 {
+		fmt.Fprintln(stderr, "migrate-config takes no positional arguments; name the files with -config and -output")
 		return 2
 	}
 

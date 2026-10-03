@@ -1,6 +1,6 @@
 # Glossary - gruff-go
 
-Last reviewed 2026-07-13.
+Last reviewed 2026-10-03.
 
 This glossary defines terms used by `gruff-go`, its public reports, and local project memory. Keep shared gruff-family terms aligned with the sibling implementations; keep Go-specific differences explicit rather than making them look identical.
 
@@ -12,11 +12,11 @@ This glossary defines terms used by `gruff-go`, its public reports, and local pr
 
 ### Analysis Report
 
-The complete result of one scan: schema version, tool metadata, run metadata, paths, summary counts, score data, diagnostics, findings, baseline state, and optional diff state. Native JSON uses `gruff.analysis.v2`.
+The complete result of one scan: schema version, tool metadata, run metadata, paths, summary counts, score data, diagnostics, findings, baseline state, and optional diff state. Native JSON uses `gruff.analysis.v3`; summary JSON uses `gruff.summary.v3`.
 
 ### Baseline
 
-A reviewed-finding suppression file. `gruff-go` writes and reads `gruff-go.baseline.v0.1`; entries match by stable finding identity so known findings can be suppressed without disabling rules.
+A reviewed-finding suppression file. `gruff-go` writes and reads `gruff.baseline.v3`; entries match by stable finding identity so known findings can be suppressed without disabling rules. A 0.5 baseline (`gruff-go.baseline.v0.1`) is read only by `gruff-go baseline --migrate-baseline <old> --out <new>`, which carries its reviews into a separate v3 file and leaves the original untouched.
 
 ### Changed-Code Scan
 
@@ -124,7 +124,7 @@ A skipped-path record whose reason is `gitignored`. Discovery reads repository `
 
 ### Go Flag Parsing
 
-Go's standard `flag` package stops parsing at the first non-flag argument. Put CLI flags before paths unless a command explicitly documents otherwise.
+Go's standard `flag` package stops parsing at the first non-flag argument. `gruff-go` routes every command that takes flags through `parseCommandArguments` (`internal/cli/flags.go`), so flags work before or after paths and `--` ends flag parsing. `init`, `list-rules`, `dashboard`, and `migrate-config` take flags but no operands and reject a stray operand with exit `2` rather than dropping it.
 
 ## Agent Workflow Terms
 

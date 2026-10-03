@@ -1,6 +1,6 @@
 ---
 category: security-rules
-last_reviewed: 2026-08-16
+last_reviewed: 2026-10-03
 ---
 
 # Security-Rule Footguns
@@ -9,19 +9,19 @@ last_reviewed: 2026-08-16
 
 **Status:** active | **Created:** 2026-06-05 | **Evidence:** OBSERVED
 
-`security.github-actions-unpinned-action` is a parser-only text rule. It cannot ask GitHub whether `owner/action@ref` names a tag or a branch, so the regexes in `internal/rule/security_workflow.go` (search: `isMutableActionRef`, `actionShaRefPattern`, `actionVersionTagPattern`) are the security boundary. Broad "looks pinned" patterns create false negatives: short SHA prefixes and digit-prefixed branch names can otherwise be misclassified as safe pins.
+`security.github-actions-unpinned-action` is a parser-only text rule. It cannot ask GitHub whether `owner/action@ref` names a tag or a branch, so the classifier `internal/rule/security_workflow.go` (search: `isMutableActionRef`) and its regexes `internal/rule/security_workflow.go` (search: `actionShaRefPattern`) and `internal/rule/security_workflow.go` (search: `actionVersionTagPattern`) are the security boundary. Broad "looks pinned" patterns create false negatives: short SHA prefixes and digit-prefixed branch names can otherwise be misclassified as safe pins.
 
 How to avoid:
-- Keep commit pins to a full 40-character hex SHA and keep version-tag recognition narrow. When touching `isMutableActionRef`, add adversarial cases to `internal/rule/security_workflow_test.go` (search: `third-party short sha prefix`, `third-party digit-prefixed branch`) as well as positive release-tag cases, because a parser-only rule cannot recover later with API truth.
+- Keep commit pins to a full 40-character hex SHA and keep version-tag recognition narrow. When touching `isMutableActionRef`, add adversarial cases beside `internal/rule/security_workflow_test.go` (search: `third-party short sha prefix`) and `internal/rule/security_workflow_test.go` (search: `third-party digit-prefixed branch`) as well as positive release-tag cases, because a parser-only rule cannot recover later with API truth.
 
 ## Footgun: Template XSS must classify Execute receivers, not file imports
 
 **Status:** active | **Created:** 2026-06-05 | **Evidence:** OBSERVED
 
-Importing `html/template` in a file does not make `text/template` auto-escaped. The `security.template-injection-xss` rule must decide whether an `Execute` call is backed by `text/template` from the call receiver, not from package presence alone. The relevant boundary is `internal/rule/security_template_xss.go` (search: `textTemplateXSSHit`, `templateExecuteReceiverKind`, `collectTemplateValueKinds`).
+Importing `html/template` in a file does not make `text/template` auto-escaped. The `security.template-injection-xss` rule must decide whether an `Execute` call is backed by `text/template` from the call receiver, not from package presence alone. The relevant boundary is `internal/rule/security_template_xss.go` (search: `textTemplateXSSHit`), with receiver classification in `internal/rule/security_template_xss.go` (search: `templateExecuteReceiverKind`) and value tracking in `internal/rule/security_template_xss.go` (search: `collectTemplateValueKinds`).
 
 How to avoid:
-- In mixed-import files, require same-file evidence that the `Execute` receiver came from `text/template`, while preserving `html/template` auto-escape as a no-finding case. Pin both sides in `internal/rule/security_template_xss_test.go` (search: `text template still flags when html template is also imported`, `html template execute stays safe when text template is also imported`).
+- In mixed-import files, require same-file evidence that the `Execute` receiver came from `text/template`, while preserving `html/template` auto-escape as a no-finding case. Pin both sides: `internal/rule/security_template_xss_test.go` (search: `text template still flags when html template is also imported`) and `internal/rule/security_template_xss_test.go` (search: `html template execute stays safe when text template is also imported`).
 
 ## Footgun: secret-pattern precision guards are Go-only; config files and test fixtures both bite
 
@@ -102,7 +102,7 @@ How to avoid:
 
 The request-URL rules expire a guard once the guarded value can change before the sink, via `anyNameAssignedBetween` (`internal/rule/security_request_url_constraints.go`, search: `func anyNameAssignedBetween`). That helper answers one question - "was this name written?" - but the file proves three different properties, and they do not all expire on the same writes.
 
-The redirect proofs are statements about a *prefix*: a committed `/segment` start (search: `func bodyHasCommittedRelativePrefix`) and a loop that strips every leading slash (search: `func bodyStripsProtocolRelativePrefix`). Appending to the value cannot put `//` back at the front, so a query-string append does not expire them. Using the generic write check anyway reported Caddy's file server (`modules/caddyhttp/fileserver/staticfiles.go`, search: `func redirect`), which writes the canonical safe form: strip in a loop, then `toPath += "?" + r.URL.RawQuery`. That is a false positive on the exact pattern the rule exists to bless, in the kind of production Go server gruff-go is aimed at.
+The redirect proofs are statements about a *prefix*: a committed `/segment` start (search: `func bodyHasCommittedRelativePrefix`) and a loop that strips every leading slash (search: `func bodyStripsProtocolRelativePrefix`). Appending to the value cannot put `//` back at the front, so a query-string append does not expire them. Using the generic write check anyway reported Caddy's file server (the `redirect` function in Caddy's modules/caddyhttp/fileserver/staticfiles.go, part of the external calibration corpus rather than this repository), which writes the canonical safe form: strip in a loop, then `toPath += "?" + r.URL.RawQuery`. That is a false positive on the exact pattern the rule exists to bless, in the kind of production Go server gruff-go is aimed at.
 
 The scheme-and-host proof is different: it is about a parsed struct, and `anyNameAssignedBetween` is still correct there because `parsed.Host = …` really does change the destination.
 
@@ -146,7 +146,7 @@ The gap was invisible because the sibling proof already knew about it: `isSafeRe
 
 Resolution: the loop now clears a redirect only when a fold (`strings.ReplaceAll(v, "\\", "/")`, or `strings.Replace` with a negative count) precedes it (search: `func bodyFoldsBackslashBefore`). Order is load-bearing - a fold after the loop re-creates the prefix the loop removed.
 
-The fix needed a second bound, and the corpus is what surfaced it. Requiring the fold unconditionally reported Caddy's file server (`modules/caddyhttp/fileserver/staticfiles.go`, search: `func redirect`), where the only request-controlled data is `?`+`RawQuery` appended *after* normalisation. A suffix cannot grow an authority at the front, so the fold is now required only when request data reaches the leading characters (search: `func requestControlsLeadingCharacters`) - the same prefix-versus-suffix distinction `assignmentPreservesPrefix` already drew.
+The fix needed a second bound, and the corpus is what surfaced it. Requiring the fold unconditionally reported Caddy's file server (the same external-corpus `redirect` function), where the only request-controlled data is `?`+`RawQuery` appended *after* normalisation. A suffix cannot grow an authority at the front, so the fold is now required only when request data reaches the leading characters (search: `func requestControlsLeadingCharacters`) - the same prefix-versus-suffix distinction `assignmentPreservesPrefix` already drew.
 
 Evidence:
 - `internal/rule/security_request_url_constraints_test.go` (search: `slash-only stripping leaves a backslash authority`) pins the unfolded loop to a finding.

@@ -1,4 +1,4 @@
-version: "1.15.1"
+version: "1.17.0"
 
 skills:
   install: all
@@ -11,4 +11,6 @@ hooks:
   gruff-code-quality:
     enabled: true
   post-turn-safety:
+    enabled: true
+  deny-git-mutations:
     enabled: true
