@@ -16,8 +16,8 @@ import (
 
 // TestSummarySchemaVersion locks down the cross-port summary digest schema string.
 func TestSummarySchemaVersion(t *testing.T) {
-	if SummarySchemaVersion != "gruff.summary.v2" {
-		t.Fatalf("SummarySchemaVersion = %q, want %q", SummarySchemaVersion, "gruff.summary.v2")
+	if SummarySchemaVersion != "gruff.summary.v3" {
+		t.Fatalf("SummarySchemaVersion = %q, want %q", SummarySchemaVersion, "gruff.summary.v3")
 	}
 }
 
@@ -63,14 +63,23 @@ func TestBuildPillarSummaryRowsCleanScan(t *testing.T) {
 	}
 }
 
+// pillarDetail fills in the nullable score and grade the ratified contract publishes, so a fixture
+// can state its counts as a plain literal without repeating the address dance for two pointers.
+func pillarDetail(base scoring.PillarDetail, score float64, grade string) scoring.PillarDetail {
+	base.Applicable = true
+	base.Score = &score
+	base.Grade = &grade
+	return base
+}
+
 // TestBuildPillarSummaryRowsMergesPillarDetails confirms PillarDetail entries
 // override the default zero rows and that rows sort by findings DESC.
 func TestBuildPillarSummaryRowsMergesPillarDetails(t *testing.T) {
 	report := analysis.Report{
 		Score: scoring.Score{
 			PillarDetails: []scoring.PillarDetail{
-				{Pillar: "complexity", Score: 70, Grade: "C", Findings: 2, Advisory: 0, Warning: 2, Error: 0, Penalty: 30},
-				{Pillar: "documentation", Score: 0, Grade: "F", Findings: 5, Advisory: 4, Warning: 1, Error: 0, Penalty: 200},
+				pillarDetail(scoring.PillarDetail{Pillar: "complexity", Findings: 2, Warning: 2, Penalty: 30}, 70, "C"),
+				pillarDetail(scoring.PillarDetail{Pillar: "documentation", Findings: 5, Advisory: 4, Warning: 1, Penalty: 200}, 51, "F"),
 			},
 		},
 	}
@@ -148,8 +157,8 @@ func TestWritePillarsBlockEmptyEmitsHeader(t *testing.T) {
 	}
 }
 
-// TestWriteSummaryV01JSONShape locks the dedicated digest payload shape and
-// confirms the schema version constant flows into the rendered JSON.
+// TestWriteSummaryV01JSONShape locks the canonical analysis projection used by
+// the summary command.
 func TestWriteSummaryV01JSONShape(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -164,40 +173,24 @@ func TestWriteSummaryV01JSONShape(t *testing.T) {
 	if err := WriteSummaryV01JSON(&buf, report); err != nil {
 		t.Fatalf("WriteSummaryV01JSON: %v", err)
 	}
-	var parsed struct {
-		SchemaVersion string             `json:"schemaVersion"`
-		Pillars       []PillarSummaryRow `json:"pillars"`
-	}
+	var parsed map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
 	}
-	if parsed.SchemaVersion != "gruff.summary.v2" {
-		t.Fatalf("schemaVersion = %q, want gruff.summary.v2", parsed.SchemaVersion)
+	if parsed["schemaVersion"] != "gruff.summary.v3" {
+		t.Fatalf("schemaVersion = %q, want gruff.summary.v3", parsed["schemaVersion"])
 	}
-	if len(parsed.Pillars) != 10 {
-		t.Fatalf("pillars length = %d, want 10", len(parsed.Pillars))
+	if _, present := parsed["findings"]; present {
+		t.Fatal("summary projection retained the per-finding array")
 	}
 	body := buf.String()
-	for _, key := range []string{`"schemaVersion"`, `"pillars"`, `"applicable"`, `"grade"`, `"score"`, `"findings"`, `"advisory"`, `"warning"`, `"error"`, `"penalty"`} {
+	for _, key := range []string{`"schemaVersion"`, `"tool"`, `"run"`, `"summary"`, `"score"`, `"diagnostics"`, `"paths"`, `"suppressions"`} {
 		if !strings.Contains(body, key) {
 			t.Errorf("JSON missing %s; got:\n%s", key, body)
 		}
 	}
-	// The summary v0.1 digest must not leak the heavier analysis payload.
-	// Top-level fields use 2-space indent ("  "); per-pillar fields use 6-space
-	// indent ("      "), so we anchor the forbidden checks to the outer indent.
-	for _, forbidden := range []string{
-		"\n  \"tool\":",
-		"\n  \"run\":",
-		"\n  \"summary\":",
-		"\n  \"baseline\":",
-		"\n  \"diff\":",
-		"\n  \"diagnostics\":",
-		"\n  \"score\":",
-	} {
-		if strings.Contains(body, forbidden) {
-			t.Errorf("JSON unexpectedly contains analysis-schema field %s; got:\n%s", forbidden, body)
-		}
+	if strings.Contains(body, "\n  \"findings\": [") {
+		t.Errorf("JSON unexpectedly contains analysis findings; got:\n%s", body)
 	}
 }
 

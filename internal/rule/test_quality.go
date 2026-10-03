@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"path"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -69,19 +70,46 @@ func (NoFailurePathTestRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"tests"},
-		Remediation:    "Add an assertion or document why the test cannot fail.",
+		// The former text also offered "or document why the test cannot fail", which nothing
+		// checks: no doc comment, build tag or annotation suppresses this rule, so the advice
+		// named a remedy that does not work.
+		Remediation: "Add an assertion, or disable this rule for a package whose tests deliberately assert nothing.",
 	}
 }
 
-// AnalyzeUnit reports each test function whose body never reaches a testing failure method.
-func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
-		return nil
+// AnalyzeProject reports every runnable test that cannot fail, judging each one
+// against its whole package rather than its own file.
+//
+// This is a project rule and not a unit rule for one reason: Go test suites
+// routinely put shared assertion helpers in a sibling `_test.go`, and a helper
+// the rule cannot see is a helper it cannot credit. Reading one file at a time
+// reported such tests as assertion-free when they delegate every assertion to a
+// helper one file away.
+func (NoFailurePathTestRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+	findings := []finding.Finding{}
+	for _, group := range groupTestUnitsByPackage(units) {
+		findings = append(findings, group.analyseNoFailurePath()...)
 	}
+	return findings
+}
+
+// analyseNoFailurePath reports the package's tests that have no failure path,
+// crediting helpers declared anywhere in the package.
+func (g testPackageGroup) analyseNoFailurePath() []finding.Finding {
+	findings := []finding.Finding{}
+	failureHelpers := g.failureHelperNames()
+	for _, unit := range g.units {
+		findings = append(findings, noFailurePathFindingsForUnit(unit, failureHelpers)...)
+	}
+	return findings
+}
+
+// noFailurePathFindingsForUnit reports one file's assertion-free tests, using a
+// helper set the caller has already resolved across the package.
+func noFailurePathFindingsForUnit(unit parser.Unit, failureHelpers map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	testingPackages := testingPackageNames(unit.AST)
 	assertionPackages := assertionPackageNames(unit.AST)
-	failureHelpers := localFailureHelperNames(unit.AST, testingPackages, assertionPackages)
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || !isRunnableFailurePathTestFunction(fn, testingPackages) {
@@ -199,33 +227,86 @@ func capturedHelperObjectAvailableBefore(positions []token.Pos, before token.Pos
 	return false
 }
 
-// localFailureHelperNames summarises same-file helpers that accept a testing
-// receiver and can fail the test. This suppresses no-failure-path false
-// positives on tests that delegate all assertions to non-Assert-prefixed local
-// helpers such as runMigrationCompatibilityTest(t, ...).
-func localFailureHelperNames(file *ast.File, testingPackages, assertionPackages map[string]bool) map[string]bool {
-	candidates := map[string]*ast.FuncDecl{}
-	if file == nil {
-		return map[string]bool{}
+// testPackageGroup is the `_test.go` files of one Go package, which is the scope
+// a failure helper is actually visible in.
+type testPackageGroup struct {
+	units []parser.Unit
+}
+
+// methodHelperKey prefixes a method helper's name, keeping it in its own namespace so a
+// method is never matched by a bare call and a package-qualified call is never matched by a
+// method. One map carries both kinds without widening every signature that passes it.
+const methodHelperKey = "\x00method:"
+
+// helperKey names a helper declaration by kind, so methods and functions cannot collide.
+func helperKey(fn *ast.FuncDecl) string {
+	if fn.Recv != nil {
+		return methodHelperKey + fn.Name.Name
 	}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name == nil || fn.Body == nil || fn.Recv != nil || isRunnableTestFunction(fn, testingPackages) {
+	return fn.Name.Name
+}
+
+// groupTestUnitsByPackage buckets parsed test files by the package they compile
+// into, keyed by directory and package clause.
+//
+// The package clause is part of the key because `foo` and `foo_test` are two
+// packages in one directory and cannot see each other's unexported helpers.
+func groupTestUnitsByPackage(units []parser.Unit) []testPackageGroup {
+	order := []string{}
+	byKey := map[string][]parser.Unit{}
+	for _, unit := range units {
+		if unit.AST == nil || unit.FileSet == nil || unit.AST.Name == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 			continue
 		}
-		if receivers := testingReceiverNames(fn, testingPackages); len(receivers) > 0 {
-			candidates[fn.Name.Name] = fn
+		key := path.Dir(unit.File.Path) + "\x00" + unit.AST.Name.Name
+		if _, seen := byKey[key]; !seen {
+			order = append(order, key)
+		}
+		byKey[key] = append(byKey[key], unit)
+	}
+	groups := make([]testPackageGroup, 0, len(order))
+	for _, key := range order {
+		groups = append(groups, testPackageGroup{units: byKey[key]})
+	}
+	return groups
+}
+
+// failureHelperNames summarises every helper in the package that accepts a
+// testing receiver and can fail the test, whichever file declares it.
+//
+// This suppresses no-failure-path false positives on tests that delegate all
+// assertions to non-Assert-prefixed helpers such as
+// runMigrationCompatibilityTest(t, ...). Methods count as well as functions: a
+// harness type's `func (h *harness) check(t *testing.T)` fails the test exactly
+// as a free function does, and skipping methods reported every suite built that
+// way. Both are keyed by bare name, because that is what a call site presents.
+func (g testPackageGroup) failureHelperNames() map[string]bool {
+	candidates := map[string]*ast.FuncDecl{}
+	perFilePackages := map[*ast.FuncDecl][2]map[string]bool{}
+	for _, unit := range g.units {
+		testingPackages := testingPackageNames(unit.AST)
+		assertionPackages := assertionPackageNames(unit.AST)
+		for _, decl := range unit.AST.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name == nil || fn.Body == nil || isRunnableTestFunction(fn, testingPackages) {
+				continue
+			}
+			if receivers := testingReceiverNames(fn, testingPackages); len(receivers) > 0 {
+				candidates[helperKey(fn)] = fn
+				perFilePackages[fn] = [2]map[string]bool{testingPackages, assertionPackages}
+			}
 		}
 	}
 	resolved := map[string]bool{}
 	for changed := true; changed; {
 		changed = false
-		for name, fn := range candidates {
-			if resolved[name] {
+		for key, fn := range candidates {
+			if resolved[key] {
 				continue
 			}
-			if hasFailureCallWithHelpers(fn, testingPackages, assertionPackages, resolved) {
-				resolved[name] = true
+			packages := perFilePackages[fn]
+			if hasFailureCallWithHelpers(fn, packages[0], packages[1], resolved) {
+				resolved[key] = true
 				changed = true
 			}
 		}
@@ -233,14 +314,27 @@ func localFailureHelperNames(file *ast.File, testingPackages, assertionPackages 
 	return resolved
 }
 
-// isLocalFailureHelperCall reports whether call invokes a same-file helper that
-// was proven to fail through a testing receiver.
+// isLocalFailureHelperCall reports whether call invokes a helper from this package
+// that was proven to fail through a testing receiver.
+//
+// Both spellings count. `checkBuild(t, ...)` is the free function; `h.verify(t, ...)`
+// is the same helper declared as a method on a harness type, which fails the test in
+// exactly the same way. Passing the testing receiver stays required for both, and a
+// method is matched only against methods, so `helpers.checkBuild(t, ...)` through an
+// imported package stays reported: that is a different function wearing the same name.
 func isLocalFailureHelperCall(call *ast.CallExpr, receivers map[string]bool, failureHelpers map[string]bool) bool {
 	if len(failureHelpers) == 0 || !callPassesTestingReceiver(call, receivers) {
 		return false
 	}
-	fn, ok := call.Fun.(*ast.Ident)
-	return ok && failureHelpers[fn.Name]
+	switch fn := call.Fun.(type) {
+	case *ast.Ident:
+		return failureHelpers[fn.Name]
+	case *ast.SelectorExpr:
+		// Only a method declared in this package counts. A selector whose qualifier is an
+		// imported package names a different function that happens to share a helper's name.
+		return failureHelpers[methodHelperKey+fn.Sel.Name]
+	}
+	return false
 }
 
 // collectTestingReceiverVariables records local variables initialised as

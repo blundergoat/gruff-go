@@ -123,6 +123,9 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 			return nil, index, fmt.Errorf("duplicate YAML key %q: first defined at line %d, duplicated at line %d", key, firstLine, line.number)
 		}
 		firstLines[key] = line.number
+		if err := yamlFlowMappingError(fmt.Sprintf("key %q", key), valueText, line.number); err != nil {
+			return nil, index, err
+		}
 		if valueText != "" {
 			out[key] = parseYAMLScalar(valueText)
 			index++
@@ -144,7 +147,10 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 	return out, index, nil
 }
 
-// parseYAMLList parses a sequence block of dash-prefixed scalar entries.
+// parseYAMLList parses a sequence block of dash-prefixed entries. An item is a
+// scalar unless its text opens a mapping, in which case the item and every
+// following deeper-indented line parse as one map - the shape
+// sensitiveExclusions needs (FAMILY-CONTRACT.md section 13a).
 func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) {
 	out := []any{}
 	for index < len(lines) {
@@ -156,10 +162,69 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 			return nil, index, fmt.Errorf("unexpected YAML list item at line %d", line.number)
 		}
 		valueText := strings.TrimSpace(strings.TrimPrefix(line.text, "- "))
-		out = append(out, parseYAMLScalar(valueText))
-		index++
+		if err := yamlFlowMappingError("list item", valueText, line.number); err != nil {
+			return nil, index, err
+		}
+		if !yamlListItemOpensMap(valueText) {
+			out = append(out, parseYAMLScalar(valueText))
+			index++
+			continue
+		}
+		value, next, err := parseYAMLListItemMap(lines, index, indent, valueText)
+		if err != nil {
+			return nil, index, err
+		}
+		out = append(out, value)
+		index = next
 	}
 	return out, index, nil
+}
+
+// yamlFlowMappingError names a flow mapping - `{}` or `{ignore: []}` - as the shape this parser
+// declines, so the refusal describes the user's file. Without it a flow mapping fell through
+// parseYAMLScalar as a plain string and failed later at unmarshal time, reporting an internal Go
+// struct field name that says nothing about what to write instead.
+func yamlFlowMappingError(subject string, valueText string, lineNumber int) error {
+	if !strings.HasPrefix(valueText, "{") {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s at line %d uses the YAML flow mapping %s, which this configuration parser does not read; write its entries as an indented block on the following lines, or omit the value entirely to leave the mapping empty",
+		subject,
+		lineNumber,
+		valueText,
+	)
+}
+
+// yamlListItemOpensMap reports whether a list item's text starts a mapping
+// rather than a scalar. A quoted item stays a scalar even when it contains a
+// colon, so the existing string lists keep their meaning.
+func yamlListItemOpensMap(text string) bool {
+	if strings.HasPrefix(text, "'") || strings.HasPrefix(text, "\"") {
+		return false
+	}
+	return strings.Contains(text, ": ") || strings.HasSuffix(text, ":")
+}
+
+// parseYAMLListItemMap parses one dash-introduced mapping item: its first
+// key/value plus every following line indented deeper than the dash. Returns
+// the map and the cursor positioned on the next list item.
+func parseYAMLListItemMap(lines []yamlLine, index int, indent int, firstText string) (map[string]any, int, error) {
+	itemIndent := indent + 2
+	item := []yamlLine{{number: lines[index].number, indent: itemIndent, text: firstText}}
+	next := index + 1
+	for next < len(lines) && lines[next].indent > indent {
+		item = append(item, lines[next])
+		next++
+	}
+	value, cursor, err := parseYAMLMap(item, 0, itemIndent)
+	if err != nil {
+		return nil, index, err
+	}
+	if cursor != len(item) {
+		return nil, index, fmt.Errorf("unexpected YAML indentation at line %d", item[cursor].number)
+	}
+	return value, next, nil
 }
 
 // parseYAMLScalar converts a raw token into a string, bool, number, or null.

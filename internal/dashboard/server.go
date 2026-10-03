@@ -49,6 +49,8 @@ type Options struct {
 	SkipBaseline bool
 	// IncludeIgnored disables gitignore filtering when true.
 	IncludeIgnored bool
+	// DeepScanBudget is the optional atomic CLI override applied above project config.
+	DeepScanBudget string
 	// DiffMode enables changed-lines-only scans by default when true.
 	DiffMode bool
 	// FailOn is the default severity threshold used for scan exit codes.

@@ -188,6 +188,10 @@ func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
 	}
 }
 
+// syntheticSecretValue is the fake credential body the keyword-rule tables assign. It is joined from two
+// halves so gruff-go's own entropy rule never reads one 32-character literal as a possible secret.
+const syntheticSecretValue = "abcdefghijklmnop" + "qrstuvwxyz123456"
+
 // TestSensitiveDataRule verifies the rule flags common secret-like assignment lines.
 func TestSensitiveDataRule(t *testing.T) {
 	tests := []struct {
@@ -196,12 +200,12 @@ func TestSensitiveDataRule(t *testing.T) {
 	}{
 		{name: "api key env", line: "api_key = \"12345678901234567890\""},
 		{name: "api key short declaration", line: "apiKey := \"12345678901234567890\""},
-		{name: "auth token", line: "auth_token = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "access token", line: "access-token = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "refresh token camel", line: "refreshToken = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "client secret", line: "client_secret: \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "bearer value", line: "bearer = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "authorization bearer value", line: "authorization = \"Bearer abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "auth token", line: "auth_token = \"" + syntheticSecretValue + "\""},
+		{name: "access token", line: "access-token = \"" + syntheticSecretValue + "\""},
+		{name: "refresh token camel", line: "refreshToken = \"" + syntheticSecretValue + "\""},
+		{name: "client secret", line: "client_secret: \"" + syntheticSecretValue + "\""},
+		{name: "bearer value", line: "bearer = \"" + syntheticSecretValue + "\""},
+		{name: "authorization bearer value", line: "authorization = \"Bearer " + syntheticSecretValue + "\""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,10 +232,10 @@ func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	}{
 		{name: "plain non secret", line: "name = \"not-secret\""},
 		{name: "token refresh bool", line: "enabled_token_refresh = true"},
-		{name: "token refresh long value", line: "enabled_token_refresh = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "token refresh long value", line: "enabled_token_refresh = \"" + syntheticSecretValue + "\""},
 		{name: "token ttl", line: "token_ttl = 3600"},
-		{name: "access token enabled", line: "access_token_enabled = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "bearer mode", line: "bearer_mode = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "access token enabled", line: "access_token_enabled = \"" + syntheticSecretValue + "\""},
+		{name: "bearer mode", line: "bearer_mode = \"" + syntheticSecretValue + "\""},
 		{name: "short bearer authorization", line: "authorization = \"Bearer short\""},
 	}
 	for _, tt := range tests {
@@ -266,7 +270,11 @@ func TestSensitiveDataRuleSkipsGoCommentOnlyLines(t *testing.T) {
 }
 
 // TestSensitiveDataRuleStillFlagsCodeBearingAssignments keeps the generic rule
-// strict on real source/config assignments and Go raw strings.
+// strict on real source and config assignments.
+//
+// The raw-string case changed on 2026-09-07: a backtick literal holds documentation, templates
+// and sample payloads, so its interior is no longer scanned. The fixture below names its own
+// literal `docs`, which is the case the change is about. Interpreted strings are untouched.
 func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 	tokenValue := secretPatternFixtureValue()
 	goUnit := parseOne(t, "pkg/secrets.go", "package pkg\n\n"+
@@ -274,8 +282,8 @@ func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 		"const accessToken = \""+tokenValue+"\" // fixture comment\n"+
 		"const docs = `auth_token = \""+tokenValue+"\"`\n")
 	goFindings := SensitiveDataRule{}.AnalyzeUnit(goUnit, Context{})
-	if len(goFindings) != 3 {
-		t.Fatalf("go assignments and raw string should still flag, got %#v", goFindings)
+	if len(goFindings) != 2 {
+		t.Fatalf("the two interpreted-string assignments should flag and the raw string should not, got %#v", goFindings)
 	}
 
 	textUnit := parser.Unit{

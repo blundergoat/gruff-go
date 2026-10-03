@@ -376,22 +376,9 @@ func isExportedFunc(fn *ast.FuncDecl) bool {
 		return false
 	}
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
-		return ast.IsExported(receiverTypeName(fn.Recv.List[0]))
+		return ast.IsExported(parser.ReceiverTypeName(fn.Recv.List[0]))
 	}
 	return true
-}
-
-// receiverTypeName extracts the type name of a method receiver field.
-func receiverTypeName(field *ast.Field) string {
-	switch expr := field.Type.(type) {
-	case *ast.Ident:
-		return expr.Name
-	case *ast.StarExpr:
-		if ident, ok := expr.X.(*ast.Ident); ok {
-			return ident.Name
-		}
-	}
-	return ""
 }
 
 // hasDoc reports whether a comment group contains any non-whitespace text.

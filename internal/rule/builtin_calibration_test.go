@@ -64,6 +64,33 @@ func wired() {
 	}
 }
 
+// TestFunctionLengthNolintAndSymbolAgreeOnGenericMethods confirms `//nolint:funlen` suppresses a generic method, and
+// that without it the finding names the method `Stack.Wired`, so the nolint lookup and the reported symbol come from
+// one renderer.
+func TestFunctionLengthNolintAndSymbolAgreeOnGenericMethods(t *testing.T) {
+	rule := FunctionLengthRule{MaxLines: 3}
+	body := `
+	a := 1
+	b := 2
+	c := 3
+	d := 4
+	_ = a
+	_ = b
+	_ = c
+	_ = d
+}
+`
+	suppressed := parseOne(t, "generic_nolint.go", "// Package sample is a test package.\npackage sample\n\n//nolint:funlen // setup needs to stay linear\nfunc (s *Stack[T]) Wired() {"+body)
+	if got := rule.AnalyzeUnit(suppressed, Context{}); len(got) != 0 {
+		t.Fatalf("nolint:funlen should suppress the generic method, got %#v", got)
+	}
+	reported := parseOne(t, "generic.go", "// Package sample is a test package.\npackage sample\n\nfunc (s *Stack[T]) Wired() {"+body)
+	got := rule.AnalyzeUnit(reported, Context{})
+	if len(got) != 1 || got[0].Symbol != "Stack.Wired" {
+		t.Fatalf("findings = %#v, want one finding on Stack.Wired", got)
+	}
+}
+
 // TestFunctionLengthNolintAcceptsAllShape confirms `//nolint:all` (golangci-lint's
 // "suppress every linter" form) also suppresses the function-length rule.
 func TestFunctionLengthNolintAcceptsAllShape(t *testing.T) {

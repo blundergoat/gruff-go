@@ -20,7 +20,7 @@ func funcDeclsBySymbol(file *ast.File) map[string]*ast.FuncDecl {
 		if !ok {
 			continue
 		}
-		out[funcDeclSymbol(fn)] = fn
+		out[functionName(fn)] = fn
 	}
 	return out
 }
@@ -209,7 +209,7 @@ func funlenNolintNames(file *ast.File) map[string]bool {
 		if !docMentionsFunlenNolint(fn.Doc) {
 			continue
 		}
-		out[funcDeclSymbol(fn)] = true
+		out[functionName(fn)] = true
 	}
 	return out
 }
@@ -241,22 +241,4 @@ func docMentionsFunlenNolint(doc *ast.CommentGroup) bool {
 		}
 	}
 	return false
-}
-
-// funcDeclSymbol mirrors parser.functions' Name construction so nolint
-// lookups align with the symbols attached to parser.Function entries.
-func funcDeclSymbol(fn *ast.FuncDecl) string {
-	name := fn.Name.Name
-	if fn.Recv == nil || len(fn.Recv.List) == 0 {
-		return name
-	}
-	switch expr := fn.Recv.List[0].Type.(type) {
-	case *ast.Ident:
-		return expr.Name + "." + name
-	case *ast.StarExpr:
-		if ident, ok := expr.X.(*ast.Ident); ok {
-			return ident.Name + "." + name
-		}
-	}
-	return "receiver." + name
 }

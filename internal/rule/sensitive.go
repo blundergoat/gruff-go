@@ -1,19 +1,12 @@
 // Package rule defines gruff-go's rule registry and analysers.
-//
-// This file implements the `sensitive-data.*` rules: the ones that tell a user
-// a real credential is sitting in a file they are about to commit. They ship at
-// error severity, so a false positive fails the grade and blocks the user's CI
-// or agent gate - precision matters more here than anywhere else in the scanner.
-//
-// Two judgements do most of the work. A finding is redacted before it is shown,
-// so no report, dashboard, or JSON payload ever echoes the secret back. And an
-// obvious local-development placeholder on an obviously local host is exempted,
-// because `postgres://app:placeholder@localhost/dev` in a sample config is not
-// a leak. Both halves are required: a placeholder word pointed at a production
-// host is still reported.
+// This file scans source for embedded credentials before a developer commits or reviews the code.
+// Findings use redacted previews so reports and hooks never echo the matched secret.
+// Narrow source-proven exceptions keep documented samples and local placeholders out of a developer's warning list.
 package rule
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
 	"regexp"
 	"strings"
@@ -26,7 +19,13 @@ import (
 // Regular expressions used by the sensitive-data rules to detect embedded secrets in source.
 var (
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN[ A-Z]*PRIVATE KEY-----`)
-	awsAccessPattern  = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	// ASIA is AWS's prefix for temporary session credentials, and the body is the same fixed shape. Missing it
+	// left a live credential unnamed, which is the worse direction for this pillar.
+	awsAccessPattern = regexp.MustCompile(`(?:AKIA|ASIA)[0-9A-Z]{16}`)
+	// A masked key is one whose whole body is a run of X, written to show where a key goes (FAMILY-CONTRACT.md
+	// section 5). Only the whole body counts: a real key may contain a run of X, and hiding it would hide a live
+	// credential.
+	awsMaskedAccessPattern = regexp.MustCompile(`^(?:AKIA|ASIA)X{16}$`)
 	// JWT: three base64url segments separated by dots; first starts with `eyJ`
 	// (the literal base64 prefix for `{"`).
 	jwtPattern = regexp.MustCompile(`eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}`)
@@ -80,17 +79,19 @@ var connectionLocalHosts = []string{
 	"localhost", "127.0.0.1", "::1", "0.0.0.0", "db", "database", "postgres",
 }
 
-// PrivateKeyRule flags PEM-encoded private keys embedded in source or text files.
+// PrivateKeyRule flags PEM-encoded private keys that a developer may have embedded in source or text.
+// Use it in a scan before review or commit to locate a key that needs removal and rotation.
+// Parsed Go marker definitions are checked separately so naming a format does not look like a leak.
 type PrivateKeyRule struct{ previews sensitivePreviewPolicy }
 
-// Definition declares the sensitive-data.private-key rule that flags PEM-formatted private key headers as critical sensitive-data findings.
+// Definition describes the warning and remediation shown when a scan finds a possible embedded private key.
 func (PrivateKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.private-key",
 		Title:          "Embedded private key",
 		Description:    "Flags PEM-encoded private keys embedded directly in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -98,22 +99,23 @@ func (PrivateKeyRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit scans the unit's source for PEM private-key headers.
+// AnalyzeUnit scans a file for private-key headers and returns redacted warnings for headers that may contain authored key material.
+// A parser definition or delimiter use is exempt only when the matched Go literal and its native operation can be proven.
 func (r PrivateKeyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	return scanLinesForSecret(unit, privateKeyPattern, "private key literal detected", r.previews, previewPrivateKey)
 }
 
-// AWSAccessKeyRule flags AWS access key identifiers (AKIA...) embedded in source.
+// AWSAccessKeyRule flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source.
 type AWSAccessKeyRule struct{ previews sensitivePreviewPolicy }
 
-// Definition declares the sensitive-data.aws-access-key rule that flags AKIA-prefixed access key identifiers with high severity and high confidence.
+// Definition describes the AWS access-key warning, including both long-term and temporary key prefixes.
 func (AWSAccessKeyRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.aws-access-key",
 		Title:          "AWS access key id",
-		Description:    "Flags AWS access key identifiers (AKIA...) embedded in source or text files.",
+		Description:    "Flags AWS access key identifiers (AKIA... long-term, ASIA... session) embedded in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -136,7 +138,7 @@ func (JWTTokenRule) Definition() Definition {
 		Title:          "JWT token literal",
 		Description:    "Flags JWT-shaped literals (three base64url segments separated by dots) embedded in source or text files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -152,14 +154,14 @@ func (r JWTTokenRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 // ConnectionStringRule flags database or queue connection URIs that embed credentials.
 type ConnectionStringRule struct{ previews sensitivePreviewPolicy }
 
-// Definition declares the sensitive-data.connection-string rule that flags database/queue URIs whose user:password credentials are embedded in the URL.
+// Definition describes the warning for a database or queue URL with an embedded password.
 func (ConnectionStringRule) Definition() Definition {
 	return Definition{
 		ID:             "sensitive-data.connection-string",
 		Title:          "Connection string with embedded password",
 		Description:    "Flags database/queue connection URLs that embed a username and password in the URI.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"secrets"},
@@ -231,12 +233,18 @@ func secretMatchesOnCodeLines(unit parser.Unit, pattern *regexp.Regexp) []secret
 	}
 	matches := []secretLineMatch{}
 	inBlockComment := false
+	sourceOffset := 0
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		lineStart := sourceOffset
+		sourceOffset += len(line) + 1
 		if !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
-		for _, match := range pattern.FindAllString(line, -1) {
-			if isNonSecretPrivateKeyMention(unit, line, match) {
+		for _, matchRange := range pattern.FindAllStringIndex(line, -1) {
+			match := line[matchRange[0]:matchRange[1]]
+			// A key header named in prose, a masked AWS key or a vendor-documented sample is not a live credential, so none reports.
+			if isNonSecretPrivateKeyMention(unit, line, match, lineStart+matchRange[0], lineStart+matchRange[1]) ||
+				(pattern == awsAccessPattern && awsMaskedAccessPattern.MatchString(match)) || isDocumentedSample(match) {
 				continue
 			}
 			matches = append(matches, secretLineMatch{line: lineNumber + 1, value: match})
@@ -245,14 +253,48 @@ func secretMatchesOnCodeLines(unit parser.Unit, pattern *regexp.Regexp) []secret
 	return matches
 }
 
-// isNonSecretPrivateKeyMention accepts narrow documentation prose and delimiter
-// manipulation that name a private-key header without embedding key material.
-func isNonSecretPrivateKeyMention(unit parser.Unit, line string, match string) bool {
+// documentedSampleDigests are SHA-256 digests of the 20 values vendors publish as documentation samples, so code that pastes one never reports.
+//
+// They cover AWS and jwt.io examples, fourteen published test cards and Google's reCAPTCHA v2 test site key.
+// Digests keep the literals out of this source (FAMILY-CONTRACT.md section 5).
+var documentedSampleDigests = map[string]bool{
+	"03b970ed8171d73b58bbc9a5c72e3e4eec28503b56b3bb400a0801857dd45614": true,
+	"19ff47cc8024c133d5845d3f8938caca289929031e7d508c3adf7adff177f0c2": true,
+	"1a5d44a2dca19669d72edf4c4f1c27c4c1ca4b4408fbb17f6ce4ad452d78ddb3": true,
+	"1c9d38ed26cd808fa3b02b9b3b988a7caf474e2e42d95789c0fe07e267c80d8f": true,
+	"2f725bbd1f405a1ed0336abaf85ddfeb6902a9984a76fd877c3b5cc3b5085a82": true,
+	"304945e91de3deff52a61d08733141d72dd42ec9d47972f1060534d54c0c7f90": true,
+	"3a134ef77d4e2e4cdad2d2945ff1f76c1a23296c93c851f6244220a8cedea130": true,
+	"477bba133c182267fe5f086924abdc5db71f77bfc27f01f2843f2cdc69d89f05": true,
+	"51a4ae4c6ae999146474a67cbcb3b05fbcf4c17ab683043a066459da95513ea8": true,
+	"53a8fc816e63b7a5ccd17aaff93f28bcf13abbf418209dcd93947722d7c326ba": true,
+	"576c15a8072461c216efb9bd7306a6fc6039b43a6763c4c1a05930a2dd7b788f": true,
+	"78314b11be2e581549ac1c4f616563fad3fdf0c3b71678f6e2299182080e0598": true,
+	"7f75367e7881255134e1375e723d1dea8ad5f6a4fdb79d938df1f1754a830606": true,
+	"9bbef19476623ca56c17da75fd57734dbf82530686043a6e491c6d71befe8f6e": true,
+	"c6ea27c534f993d31f0aef882e3d200e7b87470c379ae79c8f9b19d3bd363dc9": true,
+	"d79449f462cec9af0d857c3e1af888d4fa8bbdaa511b9eaaafcd2805c4ea6471": true,
+	"d8086d483c15c711ebba19f966b97d3c2adcba74025ff8d7e07c3698c9531deb": true,
+	"dd13cdf9af9dd3baf46ce96aecd7163cabf381ccb21e63f15f0fa10b1c663fa9": true,
+	"e21b597ba6b9cafa59d9ebc4d65c0385f5eb3fa56abab2607fa76589ad849a33": true,
+	"f41e7ca4a3d71c4f047581f2ae2d6a8dbb8c58e51a020fa227edc724474aab6e": true,
+}
+
+// isDocumentedSample reports whether a matched value is, exactly and whole, a vendor-documented sample such as AWS's example key.
+// A value that merely contains one is compared whole, so it still reports.
+func isDocumentedSample(matchedValue string) bool {
+	digest := sha256.Sum256([]byte(matchedValue))
+	return documentedSampleDigests[hex.EncodeToString(digest[:])]
+}
+
+// isNonSecretPrivateKeyMention keeps a named PEM marker out of findings only when prose or parsed Go syntax proves it carries no key body.
+// A developer can define a parser pattern without embedding a credential; an unmatched header still needs review.
+func isNonSecretPrivateKeyMention(unit parser.Unit, line string, match string, matchStart int, matchEnd int) bool {
 	if !privateKeyPattern.MatchString(match) {
 		return false
 	}
 	if unit.File.Type == source.FileTypeGo {
-		return isGoPrivateKeyDelimiterUse(line, match)
+		return isGoPrivateKeyParserMarker(unit, match, matchStart, matchEnd)
 	}
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, match) {
@@ -271,37 +313,6 @@ func isNonSecretPrivateKeyMention(unit parser.Unit, line string, match string) b
 		}
 	}
 	return false
-}
-
-// pemKeyBodyPattern matches a run of base64 characters long enough to be real
-// PEM key material, distinguishing an embedded key literal from a line that
-// merely names the delimiter for stripping (a bare `-----BEGIN ...-----` string
-// has no such run).
-var pemKeyBodyPattern = regexp.MustCompile(`[A-Za-z0-9+/]{40,}`)
-
-// isGoPrivateKeyDelimiterUse reports common code paths that strip or re-wrap a
-// caller-provided PEM key using header/footer delimiter strings. These lines
-// name the delimiter but do not contain a private key. A line that also carries
-// inline key material (a long base64 run) is a real embedded key and is never
-// suppressed here, so committed single-line PEM literals still flag.
-func isGoPrivateKeyDelimiterUse(line string, match string) bool {
-	if index := strings.Index(line, match); index >= 0 {
-		before, after := line[:index], line[index+len(match):]
-		// Delimiter that opens an unclosed raw-string literal: the key body runs
-		// onto following lines, so this is a real multiline embedded key, not a
-		// delimiter passed to a strip helper.
-		if strings.Count(before, "`")%2 == 1 && !strings.Contains(after, "`") {
-			return false
-		}
-	}
-	// Inline key body on the same line is a real single-line embedded key.
-	if pemKeyBodyPattern.MatchString(line) {
-		return false
-	}
-	if strings.Contains(line, "ReplaceAll(") || strings.Contains(line, "TrimPrefix(") || strings.Contains(line, "TrimSuffix(") {
-		return true
-	}
-	return strings.Contains(line, match+`\\n" +`) || strings.Contains(line, match+`\n" +`)
 }
 
 // coOccurrenceSecretSpec groups a two-pattern detector and its preview categories.

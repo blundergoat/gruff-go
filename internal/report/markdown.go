@@ -24,11 +24,30 @@ func WriteMarkdown(writer io.Writer, report analysis.Report) error {
 	if err := writeMarkdownSeverityCounts(writer, report); err != nil {
 		return err
 	}
+	if err := writeMarkdownDiagnostics(writer, report.Diagnostics); err != nil {
+		return err
+	}
 	if err := writeMarkdownPillarsTable(writer, BuildPillarSummaryRows(report)); err != nil {
 		return err
 	}
 	if err := writeMarkdownTopRules(writer, computeTopRules(report, markdownTopRules)); err != nil {
 		return err
+	}
+	return nil
+}
+
+// writeMarkdownDiagnostics keeps degradation and failure messages visible in PR-comment output.
+func writeMarkdownDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) error {
+	if len(diagnostics) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(writer, "\n## Diagnostics"); err != nil {
+		return err
+	}
+	for _, diagnostic := range diagnostics {
+		if _, err := fmt.Fprintf(writer, "\n- `%s` `%s` - %s\n", escapeMarkdownCell(diagnosticLabel(diagnostic)), escapeMarkdownCell(diagnostic.File), diagnostic.Message); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -39,7 +58,12 @@ func writeMarkdownHeader(writer io.Writer, report analysis.Report) error {
 		return err
 	}
 	grade := gradeOrNA(report.Score.Grade)
-	if _, err := fmt.Fprintf(writer, "Composite: **%s (%.2f / 100)**\n", grade, float64(report.Score.Composite)); err != nil {
+	// A run that evaluated nothing renders no number, matching the text and machine views.
+	if report.Score.Composite == nil {
+		if _, err := fmt.Fprintf(writer, "Composite: **n/a (nothing evaluated)**\n"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintf(writer, "Composite: **%s (%.2f / 100)**\n", grade, *report.Score.Composite); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(writer, "**Schema:** `%s`\n", report.SchemaVersion); err != nil {

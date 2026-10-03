@@ -18,13 +18,13 @@ func defaultState(opts Options) report.DashboardState {
 	if opts.DiffMode {
 		scope = "diff"
 	}
-	// ADR-010 precedence: opts.FailOn (server --min-severity flag at dashboard
-	// startup) > config.MinimumSeverity["dashboard"] > binary default. The URL
+	// ADR-010 precedence: opts.FailOn (server --fail-on flag at dashboard
+	// startup) > config.FailOn["dashboard"] > binary default. The URL
 	// form input wins above all of these (handled in stateFromQuery, which uses
 	// this value only as a fallback when ?failOn= is absent).
 	failOn := opts.FailOn
 	if failOn == "" {
-		if cfgValue := loadDashboardConfigForDefault(opts).MinimumSeverity["dashboard"]; cfgValue != "" {
+		if cfgValue := loadDashboardConfigForDefault(opts).FailOn["dashboard"]; cfgValue != "" {
 			failOn = cfgValue
 		} else {
 			failOn = string(finding.DefaultFailThresholdFor("dashboard"))
@@ -73,7 +73,7 @@ func boolFlag(value bool) string {
 }
 
 // loadDashboardConfigForDefault loads the project config so defaultState can
-// consult minimumSeverity.dashboard. Best-effort: any error (missing file,
+// consult failOn.dashboard. Best-effort: any error (missing file,
 // invalid YAML, walk failure) returns a zero-value Config, which makes the
 // caller fall back to DefaultFailThresholdFor. Per-request load is cheap and
 // keeps the dashboard reactive to mid-session config edits.

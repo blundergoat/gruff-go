@@ -179,14 +179,15 @@ func summarisePreserved(cfg cfgpkg.Config) string {
 	if n := len(cfg.AcceptedAbbreviations); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d acceptedAbbreviations", n))
 	}
-	if n := len(cfg.SensitiveData.PreviewAllowlist); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d secretPreviews", n))
-	}
 	if n := len(cfg.Rules); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d per-rule overrides", n))
 	}
-	if n := len(cfg.MinimumSeverity); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d minimumSeverity entries", n))
+	if n := len(cfg.FailOn); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d failOn entries", n))
+	}
+	// The display floor is one value rather than a set, so it is reported as present rather than counted.
+	if cfg.MinimumSeverity.Value != "" {
+		parts = append(parts, "the minimumSeverity display floor")
 	}
 	if len(parts) == 0 {
 		return ""

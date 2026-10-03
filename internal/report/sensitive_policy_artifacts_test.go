@@ -16,24 +16,20 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestSensitiveRedactionPolicyAcrossRealArtifacts exercises empty,
-// nonmatching, and matching allowlists from raw source through every renderer.
+// TestSensitiveRedactionPolicyAcrossRealArtifacts carries the one unconditional marker policy from raw source
+// through every renderer, checking that no artifact leaks a reusable fragment of the matched value.
 func TestSensitiveRedactionPolicyAcrossRealArtifacts(t *testing.T) {
 	states := []struct {
-		name      string
-		allowlist []string
-		allowed   bool
+		name string
 	}{
-		{name: "empty"},
-		{name: "nonmatching", allowlist: []string{"other/**"}},
-		{name: "matching", allowlist: []string{"secrets/**"}, allowed: true},
+		{name: "unconditional"},
 	}
 
 	for _, state := range states {
 		t.Run(state.name, func(t *testing.T) {
 			fixture := sensitiveArtifactFixtureData()
-			reportData := analyzeSensitiveArtifactFixture(t, fixture.source, state.allowlist)
-			assertSensitiveArtifactMarkers(t, reportData.Findings, state.allowed)
+			reportData := analyzeSensitiveArtifactFixture(t, fixture.source)
+			assertSensitiveArtifactMarkers(t, reportData.Findings)
 			artifacts := renderSensitiveArtifacts(t, reportData)
 			for name, artifact := range artifacts {
 				t.Run(name, func(t *testing.T) {
@@ -114,7 +110,7 @@ func sensitiveArtifactFragments(raw, payload string) []string {
 
 // analyzeSensitiveArtifactFixture scans the runtime fixture with all three
 // opt-in sensitive detectors enabled.
-func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string, allowlist []string) analysis.Report {
+func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string) analysis.Report {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "secrets", "all.env")
@@ -130,7 +126,6 @@ func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string, allowlist 
 			"sensitive-data.pii-pattern":         true,
 			"sensitive-data.phi-pattern":         true,
 		},
-		SensitiveDataPreviewAllowlist: allowlist,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +141,7 @@ func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string, allowlist 
 }
 
 // assertSensitiveArtifactMarkers checks route coverage and exact marker values.
-func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding, allowed bool) {
+func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding) {
 	t.Helper()
 	wantRules := map[string]bool{
 		"sensitive-data.secret-pattern": false, "sensitive-data.private-key": false,
@@ -163,19 +158,12 @@ func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding, al
 			continue
 		}
 		wantRules[item.RuleID] = true
-		want := "[redacted]"
-		if allowed {
-			want = sensitiveArtifactAllowedMarker(item)
-		}
-		if got, _ := item.Metadata["preview"].(string); got != want {
+		if got, _ := item.Metadata["preview"].(string); got != sensitiveArtifactApprovedMarker(item) {
 			t.Fatalf("%s preview does not match approved marker", item.RuleID)
 		}
+		// A GCP service account carries a second secret field, and section 5 marks it independently.
 		if item.RuleID == "sensitive-data.gcp-service-account" {
-			secondaryWant := "[redacted]"
-			if allowed {
-				secondaryWant = "[redacted:private-key]"
-			}
-			if got, _ := item.Metadata["secondaryPreview"].(string); got != secondaryWant {
+			if got, _ := item.Metadata["secondaryPreview"].(string); got != "[redacted:private-key]" {
 				t.Fatal("GCP secondary preview does not match approved marker")
 			}
 		}
@@ -187,9 +175,8 @@ func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding, al
 	}
 }
 
-// sensitiveArtifactAllowedMarker maps rule/category metadata to the approved
-// matching-path marker vocabulary.
-func sensitiveArtifactAllowedMarker(item finding.Finding) string {
+// sensitiveArtifactApprovedMarker maps rule/category metadata to the closed marker vocabulary section 5 ratifies.
+func sensitiveArtifactApprovedMarker(item finding.Finding) string {
 	markers := map[string]string{
 		"sensitive-data.secret-pattern": "[redacted]", "sensitive-data.private-key": "[redacted:private-key]",
 		"sensitive-data.aws-access-key": "[redacted:aws-access-key]", "sensitive-data.jwt-token": "[redacted:jwt]",
@@ -217,7 +204,11 @@ func renderSensitiveArtifacts(t *testing.T, reportData analysis.Report) map[stri
 		t.Fatal(err)
 	}
 	artifacts["analysis-findings"] = string(findingJSON)
-	baselineJSON, err := baseline.Marshal(baseline.FromFindings(reportData.Findings))
+	baselineFile, err := baseline.FromFindings(reportData.Findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineJSON, err := baseline.Marshal(baselineFile)
 	if err != nil {
 		t.Fatal(err)
 	}

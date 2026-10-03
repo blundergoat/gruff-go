@@ -1,6 +1,6 @@
 ---
 category: cli
-last_reviewed: 2026-08-12
+last_reviewed: 2026-09-21
 ---
 
 # CLI Argument Footguns
@@ -98,3 +98,25 @@ How to avoid:
   preflight paths already do this.
 - In Go tests, call `Main(...)` directly — `internal/cli/flag_order_test.go` (search:
   `func captureCLIResult`) returns the real integer with no subprocess in the way.
+
+## Footgun: `size.function-length` and `size.parameter-count` trade against each other when you extract from `runAnalyse`
+
+**Status:** active | **Created:** 2026-09-21 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** When shortening a long CLI function by extracting a branch, make the extraction a method on
+the type that already holds the values it needs. A free function has to take them as parameters and trips the
+other size rule.
+**Trigger phase:** ACT
+
+The sibling entry in `setup.md` covers this rule firing when a value is threaded **through** the CLI. This is the
+opposite move and it fires too. `runAnalyse` (`internal/cli/cli.go`, search: `func runAnalyse`) reached 81 code
+lines against a threshold of 80 after M46's decisions 4 and 5 each added one, and the dogfood scan dropped to
+`size.function-length ... 81 code lines, above threshold 80`.
+
+Extracting the `--generate-baseline` branch into a free function cleared it and immediately produced
+`runGenerateBaseline function has 8 parameters, above threshold 5`, because that branch needs the flag values,
+the registry, the ignore paths, the config and the deep-scan budget. Making it a method on `analyseFlagValues`
+(search: `func (values analyseFlagValues) baselineScan`) left five parameters, which is at the threshold and
+passes, and the scan returned to `A 100.00/100, 0 findings`.
+
+Both thresholds are the port's own dogfood configuration, so the scan is the only thing that reports them: run
+`gruff-go analyse .` after any edit to a long CLI function, not only after adding a feature.

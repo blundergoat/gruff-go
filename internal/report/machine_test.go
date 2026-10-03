@@ -5,6 +5,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -46,9 +47,14 @@ func TestMachineReportFormats(t *testing.T) {
 	if parsed["version"] != "2.1.0" || !strings.Contains(sarif.String(), `"ruleId": "size.file-length"`) {
 		t.Fatalf("sarif output = %s", sarif.String())
 	}
-	if !strings.Contains(sarif.String(), `"gruffFingerprint": "abc123"`) ||
+	// Code scanning groups alerts by the ratified durable identity, not by the line-bearing fingerprint.
+	identity, err := item.ComputeBaselineIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sarif.String(), `"gruffFingerprint": "`+identity+`"`) ||
 		!strings.Contains(sarif.String(), `"ruleIndex":`) ||
-		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff.analysis.v2"`) {
+		!strings.Contains(sarif.String(), `"gruffSchemaVersion": "gruff.analysis.v3"`) {
 		t.Fatalf("sarif output missing contract fields = %s", sarif.String())
 	}
 
@@ -56,7 +62,11 @@ func TestMachineReportFormats(t *testing.T) {
 	if err := WriteSummaryJSON(&summary, report); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.String(), `"findingsCount": 1`) || strings.Contains(summary.String(), `"findings": [`) {
+	var summaryPayload map[string]any
+	if err := json.Unmarshal(summary.Bytes(), &summaryPayload); err != nil {
+		t.Fatalf("invalid summary json: %v\n%s", err, summary.String())
+	}
+	if summaryPayload["schemaVersion"] != analysis.SummarySchemaVersion || summaryPayload["findings"] != nil {
 		t.Fatalf("summary output = %s", summary.String())
 	}
 
@@ -66,6 +76,49 @@ func TestMachineReportFormats(t *testing.T) {
 	}
 	if !strings.Contains(github.String(), "::warning file=main.go,line=12,title=size.file-length::too long") {
 		t.Fatalf("github output = %s", github.String())
+	}
+}
+
+// TestBoundedDeepScanDiagnosticReachesEveryRenderer protects the visible degradation contract.
+func TestBoundedDeepScanDiagnosticReachesEveryRenderer(t *testing.T) {
+	nonFatal := false
+	diagnostic := analysis.Diagnostic{
+		DiagnosticType: "bounded-deep-scan",
+		Stage:          "analysis",
+		File:           "main.go",
+		Location:       &finding.Location{Line: 1},
+		Message:        "path=main.go; lines=2; bytes=30; maxLines=1; maxBytes=20; override=cli",
+		Severity:       finding.SeverityAdvisory,
+		InvalidatesRun: &nonFatal,
+	}
+	reportData := analysis.NewReport(analysis.ReportInput{
+		Root: "/repo", Inputs: []string{"main.go"}, Format: "json", FailOn: finding.FailThresholdNone,
+		Scanned: []string{"main.go"}, Diagnostics: []analysis.Diagnostic{diagnostic}, Definitions: defaultDefinitions(),
+	})
+	renderers := []struct {
+		name   string
+		render func(io.Writer) error
+	}{
+		{name: "json", render: func(writer io.Writer) error { return WriteJSON(writer, reportData) }},
+		{name: "summary-json", render: func(writer io.Writer) error { return WriteSummaryJSON(writer, reportData) }},
+		{name: "summary-v3", render: func(writer io.Writer) error { return WriteSummaryV01JSON(writer, reportData) }},
+		{name: "text", render: func(writer io.Writer) error { return WriteText(writer, reportData) }},
+		{name: "summary-text", render: func(writer io.Writer) error { return WriteSummaryText(writer, reportData, SummaryOptions{}) }},
+		{name: "html", render: func(writer io.Writer) error { return WriteHTML(writer, reportData, HTMLOptions{}) }},
+		{name: "markdown", render: func(writer io.Writer) error { return WriteMarkdown(writer, reportData) }},
+		{name: "github", render: func(writer io.Writer) error { return WriteGitHub(writer, reportData) }},
+		{name: "sarif", render: func(writer io.Writer) error { return WriteSARIF(writer, reportData) }},
+	}
+	for _, renderer := range renderers {
+		t.Run(renderer.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderer.render(&output); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(output.String(), "bounded-deep-scan") || !strings.Contains(output.String(), "override=cli") {
+				t.Fatalf("%s omitted the diagnostic: %s", renderer.name, output.String())
+			}
+		})
 	}
 }
 
@@ -97,10 +150,62 @@ func TestWriteSARIFContract(t *testing.T) {
 	requireSARIFResultIdentity(t, result, item)
 	requireSARIFRuleIndex(t, result, run.Tool.Driver.Rules)
 	requireNoRawSARIFResultKeys(t, rawSARIFResult(t, out, 0), "codeFlows", "threadFlows", "fixes")
-	requireSARIFFingerprints(t, result.PartialFingerprints, item.Fingerprint)
+	requireSARIFFingerprints(t, result.PartialFingerprints, baselineIdentityOf(t, item))
 	requireSARIFLocation(t, result.Locations, "pkg/main.go", *item.Location)
 	requireSARIFResultProperties(t, result.Properties, item)
 	requireSARIFRunProperties(t, run.Properties, report.Score.Composite)
+}
+
+// TestWriteSARIFWithholdsIdentityFromUnnameableFindings covers the two findings the family refuses to name.
+// A sensitive result carries no partialFingerprints and no fingerprint property, because a code-scanning system would
+// keep either as a durable name for a secret. A separator-bearing symbol keeps its port-local property and loses only
+// the family fingerprint. The ordinary result beside them keeps both, so the writer is not simply emitting nothing.
+func TestWriteSARIFWithholdsIdentityFromUnnameableFindings(t *testing.T) {
+	ordinary := sarifContractFinding()
+	sensitive := finding.Finding{
+		RuleID:     "sensitive-data.aws-access-key",
+		Message:    "Possible AWS access key [redacted:aws-access-key]",
+		File:       "config/app.env",
+		Location:   &finding.Location{Line: 3},
+		Severity:   finding.SeverityError,
+		Confidence: finding.ConfidenceHigh,
+		Pillar:     finding.PillarSensitiveData,
+	}.WithFingerprint()
+	separated := ordinary
+	separated.Symbol = "main#2"
+	separated = separated.WithFingerprint()
+	report := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "sarif",
+		FailOn:      finding.FailThresholdError,
+		Scanned:     []string{"pkg/main.go", "config/app.env"},
+		Findings:    []finding.Finding{ordinary, sensitive, separated},
+		Definitions: defaultDefinitions(),
+	})
+
+	run := requireSingleSARIFRun(t, decodeSARIFLog(t, writeSARIFBytes(t, report)))
+	if len(run.Results) != 3 {
+		t.Fatalf("results = %d, want 3", len(run.Results))
+	}
+	for _, result := range run.Results {
+		_, hasProperty := result.Properties["fingerprint"]
+		switch {
+		case result.RuleID == sensitive.RuleID:
+			if result.PartialFingerprints != nil || hasProperty {
+				t.Fatalf("sensitive result carries an identity: fingerprints %#v, fingerprint property %v", result.PartialFingerprints, hasProperty)
+			}
+		case result.Properties["symbol"] == "main#2":
+			if result.PartialFingerprints != nil || !hasProperty {
+				t.Fatalf("separator-bearing result: fingerprints %#v, fingerprint property %v; want none and present", result.PartialFingerprints, hasProperty)
+			}
+		default:
+			requireSARIFFingerprints(t, result.PartialFingerprints, baselineIdentityOf(t, ordinary))
+			if !hasProperty {
+				t.Fatal("ordinary result lost its fingerprint property")
+			}
+		}
+	}
 }
 
 // reversedDefinitions flips the rule definitions slice in place to prove the SARIF writer sorts rules itself.
@@ -164,7 +269,7 @@ func requireSingleSARIFRun(t *testing.T, payload sarifLog) sarifRun {
 // requireSARIFDriver asserts the driver identity matches the gruff-go tool and pinned semantic version.
 func requireSARIFDriver(t *testing.T, driver sarifDriver) {
 	t.Helper()
-	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.5.0" {
+	if driver.Name != "gruff-go" || driver.SemanticVersion != "0.6.0" {
 		t.Fatalf("unexpected driver identity: %#v", driver)
 	}
 }
@@ -231,6 +336,20 @@ func requireNoRawSARIFResultKeys(t *testing.T, result map[string]any, keys ...st
 			t.Fatalf("unexpected SARIF %s in result: %#v", key, result[key])
 		}
 	}
+}
+
+// baselineIdentityOf returns the ratified durable identity a SARIF result must publish for one finding.
+//
+// Code scanning groups alerts by it, so a hand-built finding is ranked the way the analysis pipeline
+// would have ranked it before the identity is computed.
+func baselineIdentityOf(t *testing.T, item finding.Finding) string {
+	t.Helper()
+	ranked := finding.EnsureSymbolOrdinals([]finding.Finding{item})
+	identity, err := ranked[0].ComputeBaselineIdentity()
+	if err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	return identity
 }
 
 // requireSARIFFingerprints asserts the gruffFingerprint key carries the finding fingerprint and no stale aliases exist.
@@ -302,13 +421,21 @@ func requireSARIFSecondaryPillars(t *testing.T, properties map[string]any) {
 }
 
 // requireSARIFRunProperties asserts run-level properties carry the schema version, grade, and score.
-func requireSARIFRunProperties(t *testing.T, properties sarifRunProperties, wantScore int) {
+// Both grade and score are nullable so a run that evaluated nothing reports null rather than a
+// perfect SARIF score; the caller passes the report's own composite, whichever of the two it is.
+func requireSARIFRunProperties(t *testing.T, properties sarifRunProperties, wantScore *float64) {
 	t.Helper()
-	if properties.GruffSchemaVersion != analysis.SchemaVersion || properties.Grade == "" {
+	if properties.GruffSchemaVersion != analysis.SchemaVersion || properties.Grade == nil || *properties.Grade == "" {
 		t.Fatalf("run properties not preserved: %#v", properties)
 	}
-	if properties.Score != wantScore {
-		t.Fatalf("run score = %d, want %d", properties.Score, wantScore)
+	if wantScore == nil {
+		if properties.Score != nil {
+			t.Fatalf("run score = %v, want null when nothing was evaluated", *properties.Score)
+		}
+		return
+	}
+	if properties.Score == nil || *properties.Score != *wantScore {
+		t.Fatalf("run score = %v, want %v", properties.Score, *wantScore)
 	}
 }
 
@@ -365,8 +492,8 @@ func TestWriteSARIFOmitRuleIndexWhenRuleMissing(t *testing.T) {
 	if _, exists := rawResult["ruleIndex"]; exists {
 		t.Fatalf("raw ruleIndex key present for missing rule: %#v", rawResult["ruleIndex"])
 	}
-	if got := result.PartialFingerprints["gruffFingerprint"]; got != item.Fingerprint {
-		t.Fatalf("gruffFingerprint = %q, want %q", got, item.Fingerprint)
+	if got, want := result.PartialFingerprints["gruffFingerprint"], baselineIdentityOf(t, item); got != want {
+		t.Fatalf("gruffFingerprint = %q, want %q", got, want)
 	}
 	if len(result.Locations) != 1 || result.Locations[0].PhysicalLocation.ArtifactLocation.URI != "custom/missing.go" {
 		t.Fatalf("location not well-formed: %#v", result.Locations)

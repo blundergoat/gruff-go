@@ -98,8 +98,18 @@ func piiLineFindings(path, line string, lineNumber int, previews sensitivePrevie
 	if phone := piiPhonePattern.FindString(line); phone != "" {
 		out = append(out, piiFinding(path, lineNumber, "phone", strings.TrimSpace(phone), previews))
 	}
-	if card := piiCardPattern.FindString(line); card != "" && isLuhnValid(card) {
-		out = append(out, piiFinding(path, lineNumber, "payment-card", card, previews))
+	// The first card-shaped number on a line decides it, as it always has.
+	// A card network's published test number is a documented sample, compared as digits so `4111-...` and `4111 ...` match.
+	for _, card := range piiCardPattern.FindAllString(line, -1) {
+		// A documented test card is stepped over, so it never hides the real card after it.
+		if isDocumentedSample(cardDigits(card)) {
+			continue
+		}
+		// Only a Luhn-valid number reports; either way this number decides the line.
+		if isLuhnValid(card) {
+			out = append(out, piiFinding(path, lineNumber, "payment-card", card, previews))
+		}
+		break
 	}
 	return out
 }
@@ -168,4 +178,15 @@ func isLuhnValid(card string) bool {
 		double = !double
 	}
 	return sum%10 == 0
+}
+
+// cardDigits drops a card candidate's spaces and dashes, so a card is compared as the digits its network publishes.
+func cardDigits(card string) string {
+	return strings.Map(func(character rune) rune {
+		// Keep digits; returning -1 drops a separator.
+		if character >= '0' && character <= '9' {
+			return character
+		}
+		return -1
+	}, card)
 }

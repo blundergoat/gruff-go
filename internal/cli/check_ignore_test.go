@@ -112,23 +112,29 @@ func TestCheckIgnoreSharesEngineWithAnalyse(t *testing.T) {
 	}
 	var report struct {
 		Paths struct {
-			Scanned []string `json:"scanned"`
-			Skipped []struct {
+			Details []struct {
 				Path    string `json:"path"`
 				Source  string `json:"source"`
 				Pattern string `json:"pattern"`
-			} `json:"skipped"`
+			} `json:"details"`
+			Extensions struct {
+				Go struct {
+					Paths struct {
+						Scanned []string `json:"scanned"`
+					} `json:"paths"`
+				} `json:"go"`
+			} `json:"extensions"`
 		} `json:"paths"`
 	}
 	if err := json.Unmarshal(anOut.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
 	scanned := map[string]bool{}
-	for _, p := range report.Paths.Scanned {
+	for _, p := range report.Paths.Extensions.Go.Paths.Scanned {
 		scanned[p] = true
 	}
 	skipPattern := map[string]string{}
-	for _, s := range report.Paths.Skipped {
+	for _, s := range report.Paths.Details {
 		if s.Source == "config" {
 			skipPattern[s.Path] = s.Pattern
 		}
@@ -190,23 +196,29 @@ func assertAnalyseConfigSkip(t *testing.T, inputs []string, skippedPath, pattern
 	}
 	var report struct {
 		Paths struct {
-			Scanned []string `json:"scanned"`
-			Skipped []struct {
+			Details []struct {
 				Path    string `json:"path"`
 				Source  string `json:"source"`
 				Pattern string `json:"pattern"`
-			} `json:"skipped"`
+			} `json:"details"`
+			Extensions struct {
+				Go struct {
+					Paths struct {
+						Scanned []string `json:"scanned"`
+					} `json:"paths"`
+				} `json:"go"`
+			} `json:"extensions"`
 		} `json:"paths"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("invalid analyse JSON: %v\n%s", err, out.String())
 	}
-	for _, scanned := range report.Paths.Scanned {
+	for _, scanned := range report.Paths.Extensions.Go.Paths.Scanned {
 		if scanned == skippedPath {
 			t.Fatalf("analyse %v scanned %q despite pattern %q", inputs, skippedPath, pattern)
 		}
 	}
-	for _, skipped := range report.Paths.Skipped {
+	for _, skipped := range report.Paths.Details {
 		if skipped.Path == skippedPath {
 			if skipped.Source != "config" || skipped.Pattern != pattern {
 				t.Fatalf("analyse %v skip = %#v, want source=config pattern=%q", inputs, skipped, pattern)
@@ -214,5 +226,5 @@ func assertAnalyseConfigSkip(t *testing.T, inputs []string, skippedPath, pattern
 			return
 		}
 	}
-	t.Fatalf("analyse %v skips = %#v, want %q from pattern %q", inputs, report.Paths.Skipped, skippedPath, pattern)
+	t.Fatalf("analyse %v skips = %#v, want %q from pattern %q", inputs, report.Paths.Details, skippedPath, pattern)
 }

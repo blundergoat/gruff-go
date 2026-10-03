@@ -1,4 +1,4 @@
-# gruff-go - Go code-quality scanner (v0.5.0)
+# gruff-go - Go code-quality scanner (v0.6.0)
 
 `gruff-go` is a parser-only Go static analysis CLI. Its mission is to govern AI-generated code: used as a coding-agent hook, it forces output a human who didn't write it can verify, trust, and sign off on — legible, secure where review misses, and honestly tested (no low-signal test bloat). Judge every default, threshold, and rule against that goal; full framing in [`.goat-flow/architecture.md`](.goat-flow/architecture.md) → Mission, recorded in [ADR-011](.goat-flow/learning-loop/decisions/ADR-011-mission-ai-generated-code-verifiability.md). The Go application lives under `cmd/gruff-go` (entrypoint) and `internal/` (analysis pipeline, rule registry, scoring, report rendering, dashboard). GOAT Flow lives alongside for agent guardrails and project memory under `.goat-flow/`, `.claude/`, `.agents/`, and `.github/`.
 
@@ -15,7 +15,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 ## Autonomy Tiers
 **Always:** Read relevant project files before changing them. Run `make check` after touching Go source. Preserve existing user edits.
 
-**Ask First:** Before changing `package.json`, `package-lock.json`, `.goat-flow/hooks/`, `.goat-flow/config.yaml`, schema versions (`SchemaVersion` constants, `gruff-go.*.v0.1`), the rule registry's `Defaults()` policy, or anything that flips the dogfood `go run ./cmd/gruff-go analyse .` from grade A. State the intended edit, the files read, any matching footgun/lesson entries, and the rollback command. For breaking CLI/schema changes, also note the `CHANGELOG.md` entry that will record the break.
+**Ask First:** Before changing `package.json`, `package-lock.json`, `.goat-flow/hooks/`, `.goat-flow/config.yaml`, schema versions (`SchemaVersion` constants, `gruff-go.*.v0.1`, and the family-contracted `gruff.analysis.v3`, `gruff.summary.v3`, `gruff.baseline.v3` and `gruff.hook.v2`, whose shapes `FAMILY-CONTRACT.md` owns), the rule registry's `Defaults()` policy, or anything that flips the dogfood `go run ./cmd/gruff-go analyse .` from grade A. State the intended edit, the files read, any matching footgun/lesson entries, and the rollback command. For breaking CLI/schema changes, also note the `CHANGELOG.md` entry that will record the break.
 
 **Never:** Do not edit `node_modules/`, `.idea/`, `.git/`, or other agents' instruction surfaces (`AGENTS.md`, `.codex/`, `GEMINI.md`, `.gemini/`) unless the user explicitly widens scope. Do not bypass safety hooks (`--no-verify`, `--no-gpg-sign`).
 
@@ -24,8 +24,11 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Keep `CLAUDE.md` concise; move domain and architecture detail to cold-path docs.
 - Use `rg`/`rg --files` for search. Open matching learning-loop entries before acting.
 - When a goat-* skill is active, its Step 0 replaces READ and selects mode/depth; SCOPE still gates writes, so the skill's mode or explicit user approval must permit them. Resume this loop at ACT.
-- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--min-severity` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
+- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--fail-on` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
+
+## Commit Messages
+When the user asks for a draft commit message, use Conventional `type(scope): subject` - imperative, ≤72 chars, concrete verbs not weak ones (*enhance, improve, update*); one change per subject. On a `<type>/<digits>` branch - feat, fix, chore, refactor, docs, test, perf, build, ci, or security - the subject starts `#<digits> `, from the branch name only; otherwise no prefix. Never add `Co-Authored-By:`, `Claude-Session:`, or other attribution lines; `attribution` in `.claude/settings.json` disables Claude's mechanically. Full rules: `docs/coding-standards/git-commit-message.md`.
 
 ## Key Resources
 - Learning loop: `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, `.goat-flow/learning-loop/decisions/`.
@@ -39,7 +42,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - `go run ./cmd/gruff-go analyse .` - dogfood scan; must return grade A with zero findings on `main`.
 - `UPDATE_GOLDEN=1 go test ./internal/cli/...` - regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
 - `scripts/bump-version.sh <new-version>` - update every in-tree version literal in one shot and regenerate goldens.
-- `bash .goat-flow/hooks/deny-dangerous.sh --self-test && bash .goat-flow/hooks/gruff-code-quality.sh --self-test=smoke && bash .goat-flow/hooks/post-turn-safety.sh --self-test` - verify all three hooks `.goat-flow/config.yaml` enables. `post-turn-safety.sh` accepts bare `--self-test` only; `--self-test=smoke` prints usage and exits 0 without running.
+- `bash .goat-flow/hooks/deny-dangerous.sh --self-test && bash .goat-flow/hooks/deny-git-mutations.sh --self-test && bash .goat-flow/hooks/gruff-code-quality.sh --self-test=smoke && bash .goat-flow/hooks/post-turn-safety.sh --self-test` - verify all four hooks `.goat-flow/config.yaml` enables. `post-turn-safety.sh` accepts bare `--self-test` only; `--self-test=smoke` prints usage and exits 2 without running.
 - `node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent claude` - GOAT Flow setup audit.
 
 ## Execution Loop: READ → SCOPE → ACT → VERIFY
@@ -67,7 +70,7 @@ On completion or "passing" claims, comply with the **Rationalisations to reject*
 ## Definition of Done
 - Changed files are listed in the final response.
 - `bash scripts/preflight-checks.sh` passes, or its exact blocker is recorded; `make check` remains the floor after Go source changes.
-- `CHANGELOG.md` carries an entry under `[Unreleased]` for any user-visible change.
+- `CHANGELOG.md` carries an entry in the top unreleased section (`## vX.Y.Z - Unreleased`) for any user-visible change.
 - Router Table paths resolve on disk.
 - New footgun, lesson, decision, or pattern entries include evidence.
 
@@ -84,6 +87,7 @@ On completion or "passing" claims, comply with the **Rationalisations to reject*
 | Instruction file | `CLAUDE.md` |
 | Architecture | `.goat-flow/architecture.md` |
 | Orientation | `.goat-flow/code-map.md`, `.goat-flow/glossary.md` |
+| Security policy (optional; read by `goat-security`) | `.goat-flow/security-policy.md` |
 | Learning loop | `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, `.goat-flow/learning-loop/decisions/` |
 | Skill reference (meta) | `.goat-flow/skill-docs/` |
 | Tool playbooks (CLI/MCP availability checks) | `.goat-flow/skill-docs/playbooks/` - read BEFORE declaring a tool unavailable |

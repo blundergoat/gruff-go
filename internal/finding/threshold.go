@@ -84,9 +84,11 @@ func (t FailThreshold) IsTriggeredBy(s Severity) bool {
 // their own boundary.
 func DefaultFailThresholdFor(cmd string) FailThreshold {
 	switch cmd {
-	case "analyse", "summary":
+	case "analyse":
 		return FailThresholdAdvisory
-	case "report", "dashboard":
+	// summary is the first command a new user runs, and the family CLI contract reserves exit 1 for a gate
+	// somebody asked for, so it reports findings and exits 0 until --fail-on or failOn.summary says otherwise.
+	case "summary", "report", "dashboard":
 		return FailThresholdNone
 	default:
 		return FailThresholdAdvisory

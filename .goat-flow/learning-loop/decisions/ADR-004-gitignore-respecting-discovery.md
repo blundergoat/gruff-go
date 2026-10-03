@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-05-16
-**Updated:** 2026-05-18
+**Updated:** 2026-08-23
 **Author(s):** Claude
 **Ticket/Context:** gitignore-respecting discovery work (workspace-local plan)
 
@@ -30,9 +30,9 @@ A tertiary concern is the discovery-time cost of running rules over files the de
 - `internal/source.Discover` consults a gitignore matcher for every directory and file it encounters. A path that the matcher reports as ignored is added to `paths.skipped` with reason `gitignored` and is not handed to the classifier, the parser, or any rule.
 - The matcher implements the gitignore spec as Git itself defines it: hierarchical `.gitignore` files at every depth, later rules override earlier rules within the same file, deeper files override shallower files, explicit `!pattern` re-includes a previously excluded path, anchored vs un-anchored patterns and directory-only `/` suffixes are honoured.
 - Only `.gitignore` files inside the discovery root participate. The user's global gitignore, `.git/info/exclude`, and `core.excludesFile` are not consulted. Discovery does not shell out to `git` and does not require the `.git` directory to exist.
-- VCS metadata directories (`.git`, `.hg`, `.svn`) and non-application metadata directories (`.agents`, `.claude`, `.codex`, `.github`, and `.goat-flow`) are always excluded unless `--include-ignored` is set; they are not project source. The broader hardcoded directory list (`vendor`, `node_modules`, `.idea`, etc.) remains in place only as a per-subtree fallback for trees lacking a `.gitignore` anywhere in the ancestor chain (extracted tarballs, vendored snapshots, build contexts where `.gitignore` was pruned). Once a `.gitignore` exists in the chain - either at the root or in a subtree - that file owns the project boundary for its subtree's broad cache, dependency, and build directories; the fallback steps aside so a monorepo subtree's `.gitignore` is not silently overridden by the rootless default.
+- VCS metadata directories (`.git`, `.hg`, `.svn`) are always excluded, including for explicit file operands and `--include-ignored`. The shared family fallback (`.fleet`, `.idea`, `.vscode`, `build`, `coverage`, `dist`, `node_modules`, and `vendor`) applies at any depth only when no `.gitignore` exists from the discovery root through the candidate's parent. Once a `.gitignore` exists in that chain, it alone owns those non-VCS names for the subtree. Committed control metadata such as `.agents`, `.claude`, `.codex`, `.github`, and `.goat-flow` remains scannable unless Git or config excludes it.
 - `paths.ignore` in `.gruff-go.yaml` continues to layer additively on top. A path matched by either source is skipped. Neither source can re-include a path the other has dropped; `paths.ignore` does not support negation in this revision.
-- A new boolean flag, `--include-ignored`, on `analyse`, `baseline`, `summary`, `report`, and the dashboard's `/scan` query bypasses the gitignore matcher, generated-file skip, and hardcoded default/fallback ignore lists. `paths.ignore` continues to apply because it is explicit scanner policy, not a working-tree ignore source. When the flag is set, the JSON output exposes `run.includeIgnored: true`; when unset, the field is omitted.
+- A new boolean flag, `--include-ignored`, on `analyse`, `baseline`, `summary`, `report`, and the dashboard's `/scan` query bypasses the gitignore matcher, generated-file skip, and non-VCS fallback ignore list. It does not bypass VCS internals or `paths.ignore`, because those are respectively a security boundary and explicit scanner policy. When the flag is set, the JSON output exposes `run.includeIgnored: true`; when unset, the field is omitted.
 - The JSON schema gains exactly one value: `gitignored` is added to the set of allowed strings on `paths.skipped[].reason`. The schema version is unchanged. No other field is added or renamed.
 - `gruff-go` does not modify `.gitignore` under any circumstance. The scanner reads; it never writes.
 - The matcher is a per-discovery artefact, not a process-wide singleton. Two scans against different roots in the same process do not share matcher state.
