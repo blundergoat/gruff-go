@@ -117,7 +117,7 @@ func (AWSAccessKeyRule) Definition() Definition {
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"secrets"},
 		Remediation:    "Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them.",
 	}
@@ -163,7 +163,7 @@ func (ConnectionStringRule) Definition() Definition {
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"secrets"},
 		Remediation:    "Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.",
 	}

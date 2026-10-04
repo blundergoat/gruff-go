@@ -72,14 +72,12 @@ func defaultSecurityUnitRules() []UnitRule {
 		HTTPServerNoTimeoutRule{},
 		PermissiveFileModeRule{},
 		RequestBodyWithoutLimitRule{},
-		SQLStringQueryRule{},
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
 		WeakCryptoRule{},
 		RequestControlledURLRule{},
 		PathTraversalFileAccessRule{},
 		OpenRedirectRule{},
-		SensitiveDataLoggingRule{},
 		UnsafeDeserializationRule{},
 		XXECandidateRule{},
 		TemplateInjectionXSSRule{},
@@ -187,13 +185,6 @@ func defaultTestQualityUnitRules() []UnitRule {
 // defaultProjectRules builds the project-level rule slice from strict config.
 func defaultProjectRules(config Config) []ProjectRule {
 	return []ProjectRule{
-		// Package-scoped since 2026-09-19: a comment token that the package's code uses as an
-		// identifier is a name, not a secret, and only the whole package shows which names it uses.
-		HighEntropyStringRule{
-			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
-			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
-			previews:  newSensitivePreviewPolicy(),
-		},
 		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
 		// that boundary in whichever file owns the entry point, not the one that panics.
 		ProductionPanicRule{},
@@ -337,22 +328,6 @@ func intThreshold(config Config, ruleID string, name string, fallback int) int {
 		return fallback
 	}
 	return int(value)
-}
-
-// floatThreshold reads a named positive floating-point threshold from strict
-// config, falling back when absent or non-positive. It mirrors intThreshold for
-// rules whose knob is fractional - e.g. the entropy rule's bits-per-character
-// cutoff, where rounding to an int would collapse the meaningful 4.0-6.0 range.
-func floatThreshold(config Config, ruleID string, name string, fallback float64) float64 {
-	values, ok := config.Thresholds[ruleID]
-	if !ok {
-		return fallback
-	}
-	value, ok := values[name]
-	if !ok || value <= 0 {
-		return fallback
-	}
-	return value
 }
 
 // intOption reads an integer rule option from strict config, accepting numeric forms (int, int64, float64).

@@ -63,12 +63,16 @@ func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	}
 }
 
-// sensitivePreviewRegistry enables the three opt-in sensitive detectors across the complete default rule family.
+// sensitivePreviewRegistry enables the opt-in sensitive detectors across the complete default rule family.
 func sensitivePreviewRegistry(t *testing.T) Registry {
 	t.Helper()
 	registry, err := DefaultsConfigured(Config{
 		Enabled: map[string]bool{
-			"sensitive-data.high-entropy-string": true,
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
 			"sensitive-data.pii-pattern":         true,
 			"sensitive-data.phi-pattern":         true,
 		},
@@ -151,7 +155,6 @@ func sensitivePreviewFixtures() []sensitivePreviewFixture {
 	anthropic := "sk-ant-" + strings.Repeat("V", 20)
 	npm := "npm_" + strings.Repeat("N", 20)
 	gitlab := "glpat-" + strings.Repeat("L", 20)
-	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	phone := "+1 (415) 867-5309"
 	card := "4539 5787 " + "6362 1486"
@@ -173,7 +176,6 @@ func sensitivePreviewFixtures() []sensitivePreviewFixture {
 		{name: "npm", ruleID: "sensitive-data.npm-token", path: "secrets/npm.env", source: "value = \"" + npm + "\"\n", secret: npm, allowedPreview: "[redacted:npm-token]"},
 		{name: "gitlab", ruleID: "sensitive-data.gitlab-token", path: "secrets/gitlab.env", source: "value = \"" + gitlab + "\"\n", secret: gitlab, allowedPreview: "[redacted:gitlab-token]"},
 		{name: "gcp", ruleID: "sensitive-data.gcp-service-account", path: "secrets/gcp.json", source: "{\n  \"type\": \"service_account\",\n  \"private_key\": \"" + privateKey + "\"\n}\n", secret: "\"type\": \"service_account\"", allowedPreview: "[redacted:gcp-service-account]", secondarySecret: privateKey, secondary: "[redacted:private-key]"},
-		{name: "entropy", ruleID: "sensitive-data.high-entropy-string", path: "secrets/entropy.env", source: "value = \"" + entropy + "\"\n", secret: entropy, allowedPreview: "[redacted]"},
 		{name: "email", ruleID: "sensitive-data.pii-pattern", category: "email", path: "secrets/pii-email.env", source: "value = \"" + email + "\"\n", secret: email, allowedPreview: "[redacted:email]"},
 		{name: "phone", ruleID: "sensitive-data.pii-pattern", category: "phone", path: "secrets/pii-phone.env", source: "value = \"" + phone + "\"\n", secret: phone, allowedPreview: "[redacted:phone]"},
 		{name: "payment-card", ruleID: "sensitive-data.pii-pattern", category: "payment-card", path: "secrets/pii-card.env", source: "value = \"" + card + "\"\n", secret: card, allowedPreview: "[redacted:payment-card]"},

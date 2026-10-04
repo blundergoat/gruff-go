@@ -157,7 +157,7 @@
             "severity": "advisory",
             "confidence": "high",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "dependency",
               "security",
@@ -759,7 +759,7 @@
             "severity": "advisory",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "random",
               "security"
@@ -845,25 +845,6 @@
             "remediation": "Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching."
           },
           {
-            "id": "security.sensitive-data-logging",
-            "title": "Sensitive data in logging",
-            "description": "Flags logging and print calls whose arguments are credential-bearing: secret-named identifiers, secret-named environment reads, or request auth headers and cookies. Static text-only messages and redaction-wrapped values are ignored. Candidate wording, bounded same-function evidence.",
-            "pillar": "security",
-            "secondaryPillars": [
-              "sensitive-data"
-            ],
-            "severity": "advisory",
-            "confidence": "medium",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "tags": [
-              "logging",
-              "security",
-              "sensitive-data"
-            ],
-            "remediation": "Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential."
-          },
-          {
             "id": "security.shell-command",
             "title": "Shell command execution",
             "description": "Flags exec.Command calls that invoke a shell interpreter with command strings.",
@@ -879,21 +860,6 @@
               "security"
             ],
             "remediation": "Call the target executable directly and pass arguments without shell interpretation."
-          },
-          {
-            "id": "security.sql-string-query",
-            "title": "SQL string query construction",
-            "description": "Flags SQL execution calls whose query argument is constructed with string formatting or concatenation.",
-            "pillar": "security",
-            "severity": "advisory",
-            "confidence": "medium",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "tags": [
-              "security",
-              "sql"
-            ],
-            "remediation": "Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text."
           },
           {
             "id": "security.template-injection-xss",
@@ -994,7 +960,7 @@
             "severity": "warning",
             "confidence": "high",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "secrets"
             ],
@@ -1008,7 +974,7 @@
             "severity": "warning",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "secrets"
             ],
@@ -1022,7 +988,7 @@
             "severity": "warning",
             "confidence": "high",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "secrets"
             ],
@@ -1036,7 +1002,7 @@
             "severity": "warning",
             "confidence": "high",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "secrets"
             ],
@@ -1064,29 +1030,11 @@
             "severity": "warning",
             "confidence": "high",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "secrets"
             ],
             "remediation": "Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager."
-          },
-          {
-            "id": "sensitive-data.high-entropy-string",
-            "title": "High-entropy string",
-            "description": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview.",
-            "pillar": "sensitive-data",
-            "severity": "warning",
-            "confidence": "medium",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "thresholds": {
-              "entropy": 4.2,
-              "minLength": 32
-            },
-            "tags": [
-              "secrets"
-            ],
-            "remediation": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
           },
           {
             "id": "sensitive-data.jwt-token",

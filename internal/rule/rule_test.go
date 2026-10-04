@@ -153,8 +153,8 @@ func TestDefaultsCapability(t *testing.T) {
 func TestDefaultsPrecisionGuidance(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
-	if len(definitions) != 83 {
-		t.Fatalf("definitions = %d, want 83", len(definitions))
+	if len(definitions) != 80 {
+		t.Fatalf("definitions = %d, want 80", len(definitions))
 	}
 
 	precisionRuleCount := 0
@@ -173,8 +173,8 @@ func TestDefaultsPrecisionGuidance(t *testing.T) {
 			}
 		}
 	}
-	if precisionRuleCount != 46 {
-		t.Fatalf("medium/low-confidence rules = %d, want 46", precisionRuleCount)
+	if precisionRuleCount != 43 {
+		t.Fatalf("medium/low-confidence rules = %d, want 43", precisionRuleCount)
 	}
 }
 

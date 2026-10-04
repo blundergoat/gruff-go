@@ -44,10 +44,14 @@ func TestHookSensitivePreviewPolicy(t *testing.T) {
 	}
 }
 
-// hookSensitiveConfig enables the three opt-in routes the fixture needs.
+// hookSensitiveConfig enables the opt-in routes the fixture needs.
 func hookSensitiveConfig() string {
 	return "schemaVersion: gruff-go.config.v0.1\nrules:\n" +
-		"  sensitive-data.high-entropy-string:\n    enabled: true\n" +
+		"  sensitive-data.aws-access-key:\n    enabled: true\n" +
+		"  sensitive-data.connection-string:\n    enabled: true\n" +
+		"  sensitive-data.gcp-service-account:\n    enabled: true\n" +
+		"  sensitive-data.github-token:\n    enabled: true\n" +
+		"  sensitive-data.google-api-key:\n    enabled: true\n" +
 		"  sensitive-data.pii-pattern:\n    enabled: true\n" +
 		"  sensitive-data.phi-pattern:\n    enabled: true\n"
 }
@@ -60,7 +64,6 @@ func hookSensitiveFixture() (string, []string) {
 	password := "db-pass-" + strings.Repeat("R8", 8)
 	connection := "postgres" + "://app:" + password + "@db.internal:5432/orders"
 	privateKey := "-----BEGIN " + "RSA PRIVATE KEY-----"
-	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	ssn := "536-90-4399"
 	lines := []string{
@@ -69,12 +72,11 @@ func hookSensitiveFixture() (string, []string) {
 		"database = \"" + connection + "\"",
 		"\"type\": \"service_account\"",
 		"\"private_key\": \"" + privateKey + "\"",
-		"entropy = \"" + entropy + "\"",
 		"email = \"" + email + "\"",
 		"ssn = \"" + ssn + "\"",
 	}
 	forbidden := []string{privateKey, privateKey[:6]}
-	for _, secret := range []string{generic, aws, password, entropy, email, ssn} {
+	for _, secret := range []string{generic, aws, password, email, ssn} {
 		forbidden = append(forbidden, secret, secret[:6], secret[len(secret)-4:])
 	}
 	return strings.Join(lines, "\n") + "\n", forbidden
@@ -89,7 +91,6 @@ func assertHookSensitiveMarkers(t *testing.T, findings []hookFinding) {
 		"sensitive-data.aws-access-key":      false,
 		"sensitive-data.connection-string":   false,
 		"sensitive-data.gcp-service-account": false,
-		"sensitive-data.high-entropy-string": false,
 		"sensitive-data.pii-pattern":         false,
 		"sensitive-data.phi-pattern":         false,
 	}

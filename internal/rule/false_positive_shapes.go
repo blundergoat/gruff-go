@@ -123,14 +123,6 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 		Shape:      "A request-derived URL validated by a helper outside the analyzed function can still appear unconstrained.",
 		Mitigation: "Keep the trusted-host or fixed-base check visible in the same function so the bounded detector can see it.",
 	},
-	"security.sensitive-data-logging": {
-		Shape:      "A secret-like identifier can carry already-redacted or non-secret domain data through a wrapper the syntax check does not recognise.",
-		Mitigation: "Use a recognised redaction call beside the log sink, avoid logging the value, or review the wrapper before disabling the rule.",
-	},
-	"security.sql-string-query": {
-		Shape:      "A query assembled from trusted static fragments or a vetted builder can look like interpolated SQL to the syntax check.",
-		Mitigation: "Parameterise untrusted values and keep a prepared or static query shape visible at the execution call.",
-	},
 	"security.template-injection-xss": {
 		Shape:      "A custom sanitizer or safe rendering abstraction outside the current function is not visible to the local taint proof.",
 		Mitigation: "Use html/template or html.EscapeString visibly before the response sink, or review the abstraction before disabling the rule.",
@@ -150,10 +142,6 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	"sensitive-data.connection-string": {
 		Shape:      "A non-secret fixture password embedded in a connection URL for a non-local host is indistinguishable from a credential.",
 		Mitigation: "Use runtime substitution or a local placeholder connection string instead of an embedded password.",
-	},
-	"sensitive-data.high-entropy-string": {
-		Shape:      "A legitimate random-looking constant outside the built-in hex, UUID, SRI, and path exclusions can exceed the entropy threshold.",
-		Mitigation: "Raise minLength or entropy for the project, or replace the fixture with a recognisable placeholder.",
 	},
 	"sensitive-data.jwt-token": {
 		Shape:      "A syntactically valid sample, expired, or test JWT is indistinguishable from a live token literal.",

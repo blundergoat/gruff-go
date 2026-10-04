@@ -44,6 +44,9 @@ func TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit(t *testing.T) {
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
 	writeFile(t, root, ".gruff-go.yaml", strings.Join([]string{
 		"schemaVersion: gruff-go.config.v0.1",
+		"rules:",
+		"  sensitive-data.aws-access-key:",
+		"    enabled: true",
 		"sensitiveExclusions:",
 		"  - rule: sensitive-data.aws-access-key",
 		"    path: fixture.go",
@@ -80,9 +83,11 @@ func TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit(t *testing.T) {
 func TestAnalyseKeepsUnexcludedSensitiveFinding(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
+	// The AWS rule is off by default since precision-floor M19, so the fixture enables it.
+	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  sensitive-data.aws-access-key:\n    enabled: true\n")
 	t.Chdir(root)
 
-	payload := analyseJSONReport(t, "--no-config", "fixture.go")
+	payload := analyseJSONReport(t, "fixture.go")
 
 	reported := false
 	for _, item := range payload["findings"].([]any) {
@@ -164,6 +169,9 @@ func TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse(t *testing.T) {
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
 	writeFile(t, root, ".gruff-go.yaml", strings.Join([]string{
 		"schemaVersion: gruff-go.config.v0.1",
+		"rules:",
+		"  sensitive-data.aws-access-key:",
+		"    enabled: true",
 		"sensitiveExclusions:",
 		"  - rule: sensitive-data.aws-access-key",
 		"    path: fixture.go",

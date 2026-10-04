@@ -28,7 +28,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 83 rules across 11 pillars; 71 enabled by default |
+| Rule catalogue | 80 rules across 11 pillars; 61 enabled by default |
 | Primary config | `.gruff-go.yaml` |
 | Analysis schema | `gruff.analysis.v3` |
 | Baseline schema | `gruff.baseline.v3` |
@@ -187,7 +187,7 @@ See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/
 
 ## Rules And Pillars
 
-The current checkout contains 83 rules across 11 pillars. 71 rules are enabled by default; the 12 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
+The current checkout contains 80 rules across 11 pillars. 61 rules are enabled by default; the 19 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, the static-analysis-redundant test candidate, and seven rules turned off in 0.6.0 because they were right less than half the time on fewer than ten findings.
 
 | Pillar | Rules |
 | --- | ---: |
@@ -198,8 +198,8 @@ The current checkout contains 83 rules across 11 pillars. 71 rules are enabled b
 | `maintainability` | 6 |
 | `modernisation` | 2 |
 | `naming` | 8 |
-| `security` | 24 |
-| `sensitive-data` | 16 |
+| `security` | 22 |
+| `sensitive-data` | 15 |
 | `size` | 3 |
 | `test-quality` | 9 |
 

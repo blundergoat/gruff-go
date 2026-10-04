@@ -6,21 +6,12 @@
 package analysis
 
 import (
-	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
-
-// BuiltInLockfileRule is the one rule the built-in lockfile skip covers. Every other sensitive-data rule still
-// reads a lockfile, because a credential pasted into one is as live as anywhere else.
-const BuiltInLockfileRule = "sensitive-data.high-entropy-string"
-
-// BuiltInLockfileReason is the rationale every port publishes on a built-in lockfile audit row.
-const BuiltInLockfileReason = "Lockfile digests are published integrity hashes, so the entropy rule skips package-manager lockfiles by name."
 
 // BuiltInTestPathReason is the reason a user reads on each builtInTestPath audit row; every port publishes these exact words.
 const BuiltInTestPathReason = "Test, fixture and example files hold sample credentials, so sensitive-data rules skip them by path."
@@ -38,19 +29,6 @@ var builtInTestFileName = regexp.MustCompile(`^(?:.*_test\.go|test_.*\.py|.*_tes
 
 // SuppressionSourceBuiltIn marks an audit row no configured entry produced.
 const SuppressionSourceBuiltIn = "built-in"
-
-// builtInLockfileNames is the ratified list of package-manager lockfiles, matched by exact base name at any depth.
-var builtInLockfileNames = map[string]bool{
-	"package-lock.json":   true,
-	"npm-shrinkwrap.json": true,
-	"yarn.lock":           true,
-	"pnpm-lock.yaml":      true,
-	"composer.lock":       true,
-	"Cargo.lock":          true,
-	"go.sum":              true,
-	"uv.lock":             true,
-	"poetry.lock":         true,
-}
 
 // SensitiveExclusion is one validated sensitive-data suppression scope. The
 // config package owns validation, so every field here has already been checked
@@ -104,42 +82,6 @@ func ApplySensitiveExclusions(findings []finding.Finding, exclusions []Sensitive
 			continue
 		}
 		summaries[index].Suppressed++
-	}
-	return kept, summaries
-}
-
-// ApplyBuiltInLockfileSkip removes the entropy rule's findings from package-manager lockfiles and appends one audit
-// row per lockfile that had any, after the configured rows. A lockfile digest is a published integrity hash, and a
-// real project carries thousands of them; the skip is counted on every surface rather than applied in silence, and
-// a lockfile with nothing to skip publishes no row (FAMILY-CONTRACT.md section 13a).
-func ApplyBuiltInLockfileSkip(findings []finding.Finding, summaries []SuppressionSummary) ([]finding.Finding, []SuppressionSummary) {
-	skippedByPath := map[string]int{}
-	kept := make([]finding.Finding, 0, len(findings))
-	for _, item := range findings {
-		// A display path may carry a Windows separator, which path.Base does not split on, so it is normalised
-		// first: php, py and rs normalise too, and a lockfile must be one lockfile in every port.
-		if item.RuleID == BuiltInLockfileRule && builtInLockfileNames[path.Base(filepath.ToSlash(item.File))] {
-			skippedByPath[item.File]++
-			continue
-		}
-		kept = append(kept, item)
-	}
-	// Built-in rows are numbered among themselves, so the index means the same thing in every port however many
-	// entries the user configured. `source` is what tells a consumer which channel a row came from.
-	paths := make([]string, 0, len(skippedByPath))
-	for lockfile := range skippedByPath {
-		paths = append(paths, lockfile)
-	}
-	sort.Strings(paths)
-	for builtInIndex, lockfile := range paths {
-		summaries = append(summaries, SuppressionSummary{
-			Index:      builtInIndex,
-			Rule:       BuiltInLockfileRule,
-			Paths:      []string{lockfile},
-			Reason:     BuiltInLockfileReason,
-			Suppressed: skippedByPath[lockfile],
-			Source:     SuppressionSourceBuiltIn,
-		})
 	}
 	return kept, summaries
 }

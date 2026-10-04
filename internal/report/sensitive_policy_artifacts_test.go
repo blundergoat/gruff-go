@@ -67,7 +67,6 @@ func sensitiveArtifactFixtureData() sensitiveArtifactFixture {
 	anthropic := "sk-ant-" + strings.Repeat("V4", 10)
 	npm := "npm_" + strings.Repeat("N3", 10)
 	gitlab := "glpat-" + strings.Repeat("L2", 10)
-	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	phone := "+1 (415) 867-9026"
 	card := "4000 0000 0000 0002"
@@ -84,7 +83,7 @@ func sensitiveArtifactFixtureData() sensitiveArtifactFixture {
 		"google = \"" + google + "\"", "anthropic = \"" + anthropic + "\"",
 		"npm = \"" + npm + "\"", "gitlab = \"" + gitlab + "\"",
 		"\"type\": \"service_account\"", "\"private_key\": \"" + privateKey + "\"",
-		"entropy = \"" + entropy + "\"", "email = \"" + email + "\"",
+		"email = \"" + email + "\"",
 		"phone = \"" + phone + "\"", "card = \"" + card + "\"",
 		"ssn = \"" + ssn + "\"", "mbi = \"" + medicare + "\"",
 		"record = \"MRN: " + mrn + "\"",
@@ -94,7 +93,7 @@ func sensitiveArtifactFixtureData() sensitiveArtifactFixture {
 		{generic, generic}, {aws, aws[4:]}, {jwt, jwt}, {password, password},
 		{github, github[4:]}, {slack, slack[5:]}, {stripe, stripe[8:]},
 		{google, google[4:]}, {anthropic, anthropic[7:]}, {npm, npm[4:]},
-		{gitlab, gitlab[6:]}, {entropy, entropy}, {email, email}, {phone, phone},
+		{gitlab, gitlab[6:]}, {email, email}, {phone, phone},
 		{card, card}, {ssn, ssn}, {medicare, medicare}, {mrn, mrn}, {keyBody, keyBody},
 	}
 	for _, secret := range secrets {
@@ -122,7 +121,11 @@ func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string) analysis.R
 	}
 	registry, err := rule.DefaultsConfigured(rule.Config{
 		Enabled: map[string]bool{
-			"sensitive-data.high-entropy-string": true,
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
 			"sensitive-data.pii-pattern":         true,
 			"sensitive-data.phi-pattern":         true,
 		},
@@ -150,8 +153,8 @@ func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding) {
 		"sensitive-data.slack-token": false, "sensitive-data.stripe-key": false,
 		"sensitive-data.google-api-key": false, "sensitive-data.anthropic-api-key": false,
 		"sensitive-data.npm-token": false, "sensitive-data.gitlab-token": false,
-		"sensitive-data.gcp-service-account": false, "sensitive-data.high-entropy-string": false,
-		"sensitive-data.pii-pattern": false, "sensitive-data.phi-pattern": false,
+		"sensitive-data.gcp-service-account": false,
+		"sensitive-data.pii-pattern":         false, "sensitive-data.phi-pattern": false,
 	}
 	for _, item := range findings {
 		if _, tracked := wantRules[item.RuleID]; !tracked {
@@ -184,7 +187,7 @@ func sensitiveArtifactApprovedMarker(item finding.Finding) string {
 		"sensitive-data.slack-token": "[redacted:slack-token]", "sensitive-data.stripe-key": "[redacted:stripe-live-key]",
 		"sensitive-data.google-api-key": "[redacted:google-api-key]", "sensitive-data.anthropic-api-key": "[redacted:anthropic-api-key]",
 		"sensitive-data.npm-token": "[redacted:npm-token]", "sensitive-data.gitlab-token": "[redacted:gitlab-token]",
-		"sensitive-data.gcp-service-account": "[redacted:gcp-service-account]", "sensitive-data.high-entropy-string": "[redacted]",
+		"sensitive-data.gcp-service-account": "[redacted:gcp-service-account]",
 	}
 	if marker, ok := markers[item.RuleID]; ok {
 		return marker

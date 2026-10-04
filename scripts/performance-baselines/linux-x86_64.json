@@ -159,14 +159,8 @@
     "security.request-controlled-url": {
       "median_ms": 21.703523900000004
     },
-    "security.sensitive-data-logging": {
-      "median_ms": 21.970308040000003
-    },
     "security.shell-command": {
       "median_ms": 21.423408920000004
-    },
-    "security.sql-string-query": {
-      "median_ms": 22.37660732
     },
     "security.template-injection-xss": {
       "median_ms": 20.877757660000004
@@ -203,9 +197,6 @@
     },
     "sensitive-data.google-api-key": {
       "median_ms": 22.507080600000002
-    },
-    "sensitive-data.high-entropy-string": {
-      "median_ms": 22.78145644
     },
     "sensitive-data.jwt-token": {
       "median_ms": 21.774511240000002

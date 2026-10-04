@@ -33,7 +33,7 @@ func (GCPServiceAccountRule) Definition() Definition {
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"secrets"},
 		Remediation:    "Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity.",
 	}

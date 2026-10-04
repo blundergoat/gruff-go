@@ -67,9 +67,7 @@ func defaultRuleIDsSecurityOnward() []string {
 		"security.permissive-file-mode",
 		"security.request-body-without-limit",
 		"security.request-controlled-url",
-		"security.sensitive-data-logging",
 		"security.shell-command",
-		"security.sql-string-query",
 		"security.template-injection-xss",
 		"security.tls-insecure-config",
 		"security.unsafe-deserialization",
@@ -82,7 +80,6 @@ func defaultRuleIDsSecurityOnward() []string {
 		"sensitive-data.github-token",
 		"sensitive-data.gitlab-token",
 		"sensitive-data.google-api-key",
-		"sensitive-data.high-entropy-string",
 		"sensitive-data.jwt-token",
 		"sensitive-data.npm-token",
 		"sensitive-data.phi-pattern",
@@ -109,10 +106,16 @@ func defaultRuleIDsSecurityOnward() []string {
 // defaultDisabledRuleIDs returns rules that ship opt-in because they enforce
 // house-style conventions or candidate checks that still need calibration.
 func defaultDisabledRuleIDs() map[string]bool {
-	// sensitive-data.high-entropy-string left this list on 2026-09-07, when the contract the
-	// operator ratified on 2026-09-02 landed: enabled by default in all five ports, because a
-	// secret scanner that is off by default finds no secrets.
+	// Precision-floor M19 added seven rules on 2026-10-04: each was right less than half the time
+	// on fewer than ten findings, so it is off by default rather than deleted (ADR-021).
 	return map[string]bool{
+		"dependency.go-mod-local-replace":             true,
+		"security.insecure-random-secret":             true,
+		"sensitive-data.aws-access-key":               true,
+		"sensitive-data.connection-string":            true,
+		"sensitive-data.gcp-service-account":          true,
+		"sensitive-data.github-token":                 true,
+		"sensitive-data.google-api-key":               true,
 		"dead-code.unused-private-const":              true,
 		"dead-code.unused-private-type":               true,
 		"dead-code.unused-private-var":                true,

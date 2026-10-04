@@ -266,7 +266,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "dependency",
                   "security",
@@ -1252,7 +1252,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "random",
                   "security"
@@ -1401,37 +1401,6 @@
               }
             },
             {
-              "id": "security.sensitive-data-logging",
-              "name": "Sensitive data in logging",
-              "shortDescription": {
-                "text": "Sensitive data in logging"
-              },
-              "fullDescription": {
-                "text": "Flags logging and print calls whose arguments are credential-bearing: secret-named identifiers, secret-named environment reads, or request auth headers and cookies. Static text-only messages and redaction-wrapped values are ignored. Candidate wording, bounded same-function evidence."
-              },
-              "help": {
-                "text": "Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential."
-              },
-              "properties": {
-                "pillar": "security",
-                "secondaryPillars": [
-                  "sensitive-data"
-                ],
-                "defaultSeverity": "advisory",
-                "confidence": "medium",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "logging",
-                  "security",
-                  "sensitive-data"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "security.shell-command",
               "name": "Shell command execution",
               "shortDescription": {
@@ -1458,33 +1427,6 @@
               },
               "defaultConfiguration": {
                 "level": "warning"
-              }
-            },
-            {
-              "id": "security.sql-string-query",
-              "name": "SQL string query construction",
-              "shortDescription": {
-                "text": "SQL string query construction"
-              },
-              "fullDescription": {
-                "text": "Flags SQL execution calls whose query argument is constructed with string formatting or concatenation."
-              },
-              "help": {
-                "text": "Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text."
-              },
-              "properties": {
-                "pillar": "security",
-                "defaultSeverity": "advisory",
-                "confidence": "medium",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "security",
-                  "sql"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
               }
             },
             {
@@ -1667,7 +1609,7 @@
                 "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "secrets"
                 ]
@@ -1693,7 +1635,7 @@
                 "defaultSeverity": "warning",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "secrets"
                 ]
@@ -1719,7 +1661,7 @@
                 "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "secrets"
                 ]
@@ -1745,7 +1687,7 @@
                 "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "secrets"
                 ]
@@ -1797,40 +1739,10 @@
                 "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "secrets"
                 ]
-              },
-              "defaultConfiguration": {
-                "level": "warning"
-              }
-            },
-            {
-              "id": "sensitive-data.high-entropy-string",
-              "name": "High-entropy string",
-              "shortDescription": {
-                "text": "High-entropy string"
-              },
-              "fullDescription": {
-                "text": "Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern. Tune minLength and entropy. Emits only a redacted preview."
-              },
-              "help": {
-                "text": "Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the entropy/minLength thresholds or add an inline suppression."
-              },
-              "properties": {
-                "pillar": "sensitive-data",
-                "defaultSeverity": "warning",
-                "confidence": "medium",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "secrets"
-                ],
-                "thresholds": {
-                  "entropy": 4.2,
-                  "minLength": 32
-                }
               },
               "defaultConfiguration": {
                 "level": "warning"
@@ -2482,7 +2394,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 72,
+          "ruleIndex": 69,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"

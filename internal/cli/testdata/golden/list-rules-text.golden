@@ -45,9 +45,7 @@ security.path-traversal-file-access	security	advisory	parser	Path traversal in f
 security.permissive-file-mode	security	advisory	parser	Permissive file mode
 security.request-body-without-limit	security	advisory	parser	Request body read without limit
 security.request-controlled-url	security	advisory	parser	Request-controlled request URL
-security.sensitive-data-logging	security	advisory	parser	Sensitive data in logging
 security.shell-command	security	warning	parser	Shell command execution
-security.sql-string-query	security	advisory	parser	SQL string query construction
 security.template-injection-xss	security	advisory	parser	Template injection / reflected XSS
 security.tls-insecure-config	security	warning	parser	TLS insecure config
 security.unsafe-deserialization	security	advisory	parser	Unsafe deserialization
@@ -60,7 +58,6 @@ sensitive-data.gcp-service-account	sensitive-data	warning	parser	GCP service-acc
 sensitive-data.github-token	sensitive-data	warning	parser	GitHub token literal
 sensitive-data.gitlab-token	sensitive-data	warning	parser	GitLab token literal
 sensitive-data.google-api-key	sensitive-data	warning	parser	Google API key literal
-sensitive-data.high-entropy-string	sensitive-data	warning	parser	High-entropy string
 sensitive-data.jwt-token	sensitive-data	warning	parser	JWT token literal
 sensitive-data.npm-token	sensitive-data	warning	parser	npm token literal
 sensitive-data.phi-pattern	sensitive-data	warning	parser	PHI pattern

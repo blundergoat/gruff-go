@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **83 rules** across **11 pillars**. **71 rules are enabled by default** and 12 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **80 rules** across **11 pillars**. **61 rules are enabled by default** and 19 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
@@ -67,9 +67,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | advisory | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
 | [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
-| [`security.sensitive-data-logging`](#securitysensitive-data-logging) | security | advisory | parser | - | Logging calls whose arguments carry secret-named values, secret env reads, or request auth headers/cookies. |
 | [`security.shell-command`](#securityshell-command) | security | warning | parser | - | `exec.Command` invocations that route through a shell interpreter. |
-| [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
 | [`security.unsafe-deserialization`](#securityunsafe-deserialization) | security | advisory | parser | - | Decoding request-controlled input via `encoding/gob` or `gopkg.in/yaml`. |
@@ -82,7 +80,6 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | warning | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
 | [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | warning | parser | - | GitLab personal, trigger, runner, and application token literals. |
 | [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | warning | parser | - | Google API key literals (`AIza…`). |
-| [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 32`, `entropy: 4.2` | Long high-entropy tokens no provider rule covers. |
 | [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | warning | parser | - | JWT-shaped literals (`eyJ…`). |
 | [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | warning | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
 | [`sensitive-data.phi-pattern`](#sensitive-dataphi-pattern) | sensitive-data | warning | parser | - | Opt-in. US SSN, Medicare MBI, and labelled MRN identifiers. |
@@ -255,7 +252,7 @@ Opt-in candidate for package-private top-level variables whose names are not ref
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `dependency`, `security`, `supply-chain`
@@ -875,7 +872,7 @@ Flags production `http.Server` composite literals that omit all explicit timeout
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `random`, `security`
@@ -971,36 +968,6 @@ Each finding's metadata carries the HTTP sink and request source label.
 
 **Known precision limit.** A request-derived URL validated by a helper outside the analyzed function can still appear unconstrained. Keep the trusted-host or fixed-base check visible in the same function so the bounded detector can see it. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
-### `security.sensitive-data-logging`
-
-- **Pillar:** security
-- **Secondary pillar:** sensitive-data
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `logging`, `security`, `sensitive-data`
-
-Flags logging and print calls (`log.*`, `fmt.Print*`/`Fprint*`, `log/slog`, and methods on a logger-named receiver) whose arguments carry credentials: identifiers whose name contains `password`/`secret`/`credential`/`bearer`/`passphrase`, secret-named `os.Getenv`/`os.LookupEnv` reads, or request `Authorization`/`Cookie` reads. Static text-only messages, non-secret values, plain form values, and values wrapped in a redaction/hash helper are ignored. Candidate wording, bounded same-function evidence.
-
-A structured `password_file_path` value stays quiet only when this file shows it came from the matching config key and a method on the same type passes the field to `os.ReadFile`. The path points to the password file; the bytes read from it remain eligible for a warning. A missing path origin, another field write, or a request or environment credential keeps the warning.
-
-A structured seal log can report `config.SecretThreshold` as a share count when the same function gets an unseeded `SealConfig`
-from its recovery or barrier seal, compares the count with collected-share progress, and returns that count as `Required`.
-An alternate source, overwrite, pointer escape, missing progress proof, secret integer, or request or environment credential still warns.
-
-Vault's role-HMAC tidy log can show `secretIDPrefixToUse` when every direct closure call passes one of the fixed `secret_id/` or
-`secret_id_local/` package constants from a production sibling file and the closure uses that value to list storage keys.
-A missing sibling, changed constant, closure alias, parameter write, secret-derived caller, or credential beside the prefix keeps the warning.
-That includes an auth header or cookie captured from outside the closure, even through a local name, when its request source cannot be proved there.
-An explicit-file scan loads the same-package sibling for this proof but reports findings only for the selected file.
-
-Each finding's metadata carries only the logging sink and a classification reason; the raw value is never included.
-
-**Remediation.** Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential.
-
-**Known precision limit.** A secret-like identifier can carry already-redacted or non-secret domain data through a wrapper the syntax check does not recognise. Use a recognised redaction call beside the log sink, avoid logging the value, or review the wrapper before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
 ### `security.shell-command`
 
 - **Pillar:** security
@@ -1015,23 +982,6 @@ Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpr
 **Known precision limit.** Intentional shell orchestration whose interpreter and command text are fixed and reviewed can still look like injection-prone execution. Call the target executable directly where possible, or disable the rule for the reviewed path when shell syntax is required. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 **Remediation.** Call the target executable directly and pass arguments without shell interpretation.
-
-### `security.sql-string-query`
-
-- **Pillar:** security
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `security`, `sql`
-
-Flags SQL execution calls (`Query`, `QueryRow`, `Exec` and `*Context` forms) whose query argument is built with `fmt.Sprintf`, string concatenation, or a same-function variable initialized from those forms. The constructed expression must contain SQL statement keyword evidence, so non-SQL `Exec` calls and literal parameterized queries are ignored. The rule handles both standard `database/sql` argument positions and pgx-style calls where a context value appears before the query. `_test.go` files and `testutil` helpers may build `CREATE SCHEMA ` statements from fixed `test_*_%d` names using `time.Now().UnixNano()` without firing; arbitrary schema variables still fire.
-
-Each finding's metadata carries the call name and construction kind.
-
-**Remediation.** Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text.
-
-**Known precision limit.** A query assembled from trusted static fragments or a vetted builder can look like interpolated SQL to the syntax check. Parameterise untrusted values and keep a prepared or static query shape visible at the execution call. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.template-injection-xss`
 
@@ -1155,7 +1105,7 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 
 - **Pillar:** sensitive-data
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1168,7 +1118,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 
 - **Pillar:** sensitive-data
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1185,7 +1135,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the bare 
 
 - **Pillar:** sensitive-data
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1202,7 +1152,7 @@ The finding is located at the line of the `"type"` marker. Empty/nonmatching pat
 
 - **Pillar:** sensitive-data
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1228,7 +1178,7 @@ Flags GitLab personal, trigger, runner, and application token literals with prov
 
 - **Pillar:** sensitive-data
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1236,39 +1186,6 @@ Flags GitLab personal, trigger, runner, and application token literals with prov
 Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embedded in source or text files. The fixed-width suffix prevents a bare `AIza` prefix from triggering a false positive on unrelated identifiers.
 
 **Remediation.** Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager.
-
-### `sensitive-data.high-entropy-string`
-
-- **Pillar:** sensitive-data
-- **Default severity:** warning
-- **Default-enabled:** yes
-- **Threshold:** `minLength` (default `32`), `entropy` (default `4.2` bits/char)
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `secrets`
-
-Flags long, random-looking values that no provider-specific rule covers. In parsed Go source, the rule reads string literals and comments, preserving
-native identifier distinctions. Comments naming identifiers used in the same directory stay quiet. Other supported text files retain their line scan.
-
-The rule requires a letter and a digit, the configured minimum length and sufficient Shannon entropy. Defaults are 32 characters and 4.2 bits per
-character, at warning severity and medium confidence. Complete quoted candidates include dots so an accepted public prefix cannot hide an opaque
-suffix.
-
-Whole-value exceptions cover finite public alphabets and formats, bounded structured names and repository paths. Every name segment must pass its
-casing and numeric bounds, fit within 32 characters, and contribute to a strict word-letter majority across at least two segments. A property name
-such as path or clientId grants no exception. Hex values, UUIDs, integrity prefixes, documented samples and provider-specific handling keep their
-existing decisions.
-
-Complete quoted help-article and SQS URLs are checked before punctuation splits them into tokens. The complete route must qualify; credentials,
-unknown query options, fragments and opaque queue or article suffixes grant no exception. Relative paths allow at most two parent components.
-
-Public PEM bodies remain quiet only when the next marker closes the same non-private label and each body line is PEM-shaped after stripping source
-quoting. A private key, mismatched markers or ordinary code between marker constants remains scannable. Findings publish a fixed redaction marker
-without matched characters or statistics.
-
-**Remediation.** Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the `entropy`/`minLength` thresholds or add an inline `#nosec` / `//nolint:gosec` suppression.
-
-**Known precision limit.** A legitimate random-looking constant outside the built-in hex, UUID, SRI, and path exclusions can exceed the entropy threshold. Raise minLength or entropy for the project, or replace the fixture with a recognisable placeholder. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `sensitive-data.jwt-token`
 

@@ -141,17 +141,16 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("analysis run: %v", err)
 	}
-	// Two findings since 2026-09-07: sensitive-data.high-entropy-string is enabled by default
-	// under the ratified contract, and the same artifact trips it alongside the secret-pattern
-	// rule. Both must redact, which is what this test is really about.
-	if len(reportData.Findings) != 2 {
-		t.Fatalf("findings = %#v, want the secret-pattern and high-entropy findings", reportData.Findings)
+	// One finding since precision-floor M19 retired sensitive-data.high-entropy-string in gruff-go:
+	// the secret-pattern rule's. It must redact, which is what this test is really about.
+	if len(reportData.Findings) != 1 {
+		t.Fatalf("findings = %#v, want the secret-pattern finding", reportData.Findings)
 	}
 	byRule := map[string]bool{}
 	for _, item := range reportData.Findings {
 		byRule[item.RuleID] = true
 	}
-	for _, wanted := range []string{"sensitive-data.secret-pattern", "sensitive-data.high-entropy-string"} {
+	for _, wanted := range []string{"sensitive-data.secret-pattern"} {
 		if !byRule[wanted] {
 			t.Fatalf("findings = %#v, want one %s finding", reportData.Findings, wanted)
 		}
@@ -177,9 +176,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		t.Fatalf("apply baseline: %v", err)
 	}
 	// A secret is never baseline-eligible: it is counted, never stored as an entry, and never hidden on the next run.
-	// Both sensitive findings are covered since the high-entropy rule became default-enabled on 2026-09-07, which
-	// strengthens this control rather than weakening it: two secrets must now stay visible where one did.
-	if applyResult.NotEligibleFindings != 2 || applyResult.SuppressedFindings != 0 || len(applyResult.Findings) != 2 || len(baselineFile.Occurrences) != 0 {
+	if applyResult.NotEligibleFindings != 1 || applyResult.SuppressedFindings != 0 || len(applyResult.Findings) != 1 || len(baselineFile.Occurrences) != 0 {
 		t.Fatalf("baseline apply = %#v, want the sensitive finding counted and still visible", applyResult)
 	}
 

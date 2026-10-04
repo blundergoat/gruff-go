@@ -425,8 +425,16 @@ func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 		GitLabTokenRule{}.Definition(),
 		GCPServiceAccountRule{}.Definition(),
 	} {
-		if !definition.DefaultEnabled {
-			t.Errorf("rule %q must be default-enabled", definition.ID)
+		// Five provider rules are off by default since precision-floor M19 (ADR-021); the rest stay on.
+		wantEnabled := !map[string]bool{
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
+		}[definition.ID]
+		if definition.DefaultEnabled != wantEnabled {
+			t.Errorf("rule %q defaultEnabled = %v, want %v", definition.ID, definition.DefaultEnabled, wantEnabled)
 		}
 	}
 }

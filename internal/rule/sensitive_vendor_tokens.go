@@ -46,7 +46,7 @@ func (GitHubTokenRule) Definition() Definition {
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"secrets"},
 		Remediation:    "Revoke the token, then load credentials from a secret manager or environment-specific runtime configuration.",
 	}
@@ -115,7 +115,7 @@ func (GoogleAPIKeyRule) Definition() Definition {
 		Pillar:         finding.PillarSensitiveData,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"secrets"},
 		Remediation:    "Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager.",
 	}
