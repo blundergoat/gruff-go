@@ -555,9 +555,9 @@ rules:
   - `accumulatorNames []string` - accumulator names to check. Default: `[out, result]`
   - `requireMultiple bool` - require at least two matching accumulator declarations in a long function before flagging. Default: `true`
 
-Flags generic range value names only when the loop body exceeds `minBodyLines`. Short loops such as `for _, item := range items { ... }` pass because the range expression provides enough context; longer loops ask for a more specific role name. Test files and generated files are skipped.
+Flags generic range value names only when the loop body has more than `minBodyLines` code lines. Blank lines and comment-only lines inside the body do not count, and the finding's `bodyLines` metadata reports the code-line count. Short loops such as `for _, item := range items { ... }` pass because the range expression provides enough context; longer loops ask for a more specific role name. Test files and generated files are skipped.
 
-The optional accumulator branch flags `:=` declarations of names such as `out` or `result` only in functions longer than `minFunctionLines`. By default, the function also needs multiple matching accumulator declarations so ordinary small builders do not produce noise.
+The optional accumulator branch flags `:=` declarations of names such as `out` or `result` only in functions with more than `minFunctionLines` code lines, again leaving out blank lines and comment-only lines; the finding's `functionLines` metadata reports that count. By default, the function also needs multiple matching accumulator declarations so ordinary small builders do not produce noise.
 
 ```yaml
 rules:

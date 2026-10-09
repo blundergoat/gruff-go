@@ -45,6 +45,8 @@ type contextualGenericContext struct {
 	accumulatorNames map[string]bool
 	minFunctionLines int
 	requireMultiple  bool
+	// codeLines marks the unit's code-bearing lines, so both size gates count code lines only.
+	codeLines map[int]bool
 }
 
 // accumulatorDecl records one accumulator identifier together with its enclosing function context.
@@ -88,6 +90,7 @@ func (r ContextualGenericRule) AnalyzeUnit(unit parser.Unit, runCtx Context) []f
 	if len(ctx.genericNames) == 0 && len(ctx.accumulatorNames) == 0 {
 		return nil
 	}
+	ctx.codeLines = codeBearingLines(unit.Source)
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -139,7 +142,7 @@ func (c contextualGenericContext) rangeFinding(unit parser.Unit, stmt *ast.Range
 	if !ok || ident.Name == "_" || !c.genericNames[strings.ToLower(ident.Name)] {
 		return finding.Finding{}, false
 	}
-	bodyLines := blockBodyLines(unit, stmt.Body)
+	bodyLines := c.blockBodyLines(unit, stmt.Body)
 	if bodyLines <= c.minBodyLines {
 		return finding.Finding{}, false
 	}
@@ -161,7 +164,7 @@ func (c contextualGenericContext) rangeFinding(unit parser.Unit, stmt *ast.Range
 
 // accumulatorFindings collects findings for generic accumulator identifiers inside long functions.
 func (c contextualGenericContext) accumulatorFindings(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
-	functionLines := nodeLineCount(unit, fn)
+	functionLines := c.nodeLineCount(unit, fn)
 	if functionLines <= c.minFunctionLines {
 		return nil
 	}
@@ -216,8 +219,9 @@ func (c contextualGenericContext) accumulatorDecls(fn *ast.FuncDecl, functionLin
 	return decls
 }
 
-// blockBodyLines counts the lines strictly inside a block, excluding its braces.
-func blockBodyLines(unit parser.Unit, block *ast.BlockStmt) int {
+// blockBodyLines counts the code lines strictly inside a block, excluding its braces. Blank and comment-only
+// lines are free (FAMILY-CONTRACT section 12, search `Code lines in every line count`).
+func (c contextualGenericContext) blockBodyLines(unit parser.Unit, block *ast.BlockStmt) int {
 	if block == nil {
 		return 0
 	}
@@ -226,17 +230,17 @@ func blockBodyLines(unit parser.Unit, block *ast.BlockStmt) int {
 	if end <= start {
 		return 0
 	}
-	return end - start - 1
+	return countLinesInRange(c.codeLines, start+1, end-1)
 }
 
-// nodeLineCount returns the inclusive line span of a syntax node in the unit's file set.
-func nodeLineCount(unit parser.Unit, node ast.Node) int {
+// nodeLineCount counts the code lines in a syntax node's inclusive line span; blank and comment-only lines are free.
+func (c contextualGenericContext) nodeLineCount(unit parser.Unit, node ast.Node) int {
 	start := unit.FileSet.Position(node.Pos()).Line
 	end := unit.FileSet.Position(node.End()).Line
 	if end < start {
 		return 0
 	}
-	return end - start + 1
+	return countLinesInRange(c.codeLines, start, end)
 }
 
 // rangeExpressionName extracts a readable name from a range expression for use in finding messages.

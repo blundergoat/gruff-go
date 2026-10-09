@@ -8,6 +8,8 @@
   `regexp.MustCompile` patterns no longer look like embedded keys. The existing `strings` delimiter and caller-payload re-wrap
   exceptions now require the matched parsed literal. Bare headers, shadowed calls, missing syntax and authored key bodies still warn.
 
+- **`naming.contextual-generic` counts code lines only** - Its `minBodyLines` loop-body gate and `minFunctionLines` function gate no longer count blank lines or comment-only lines, so commenting a long loop or function cannot push it over either threshold. The `bodyLines` and `functionLines` metadata report the code-line counts; the defaults stay `15` and `50`.
+
 - **BREAKING: seven rules are off by default** - `dependency.go-mod-local-replace`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key` were each right less than half the time on fewer than ten
   findings in the 0.6.0 precision measurement, too few to delete on, so they ship opt-in (ADR-021). Enable one with
   `rules.<id>.enabled: true`; a config that already sets it keeps it on.
