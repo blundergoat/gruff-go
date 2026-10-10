@@ -49,7 +49,7 @@ func (r ParameterCountRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxParameters": float64(maximumParameters)},
-		Remediation:    "Group related parameters into a struct, accept an options type, or split the function.",
+		Remediation:    "Group the parameters that travel together into one object, or split the function by caller.",
 		FalsePositiveShapes: []FalsePositiveShape{{
 			Shape:      "A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature the user cannot reshape.",
 			Mitigation: "Keep the required signature, then raise maxParameters or disable size.parameter-count in project configuration after review.",
@@ -66,10 +66,9 @@ func (r ParameterCountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 	maximumParameters := r.maxParameters()
 	findings := []finding.Finding{}
 	// Each declaration can represent a separate API a caller must understand.
-	for _, decl := range unit.AST.Decls {
-		functionDeclaration, isFunction := decl.(*ast.FuncDecl)
-		// Types and variables have no callable parameter list to assess.
-		if !isFunction || functionDeclaration.Type == nil {
+	for _, functionDeclaration := range measuredFuncDecls(unit.AST) {
+		// A declaration without a signature has no parameter list to assess.
+		if functionDeclaration.Type == nil {
 			continue
 		}
 		parameterTotal := paramCount(functionDeclaration)
@@ -79,13 +78,13 @@ func (r ParameterCountRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		}
 		start := unit.FileSet.Position(functionDeclaration.Pos())
 		end := unit.FileSet.Position(functionDeclaration.End())
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function has %d parameters, above threshold %d", parameterTotal, maximumParameters),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
 			Symbol:   functionName(functionDeclaration),
 			Metadata: map[string]any{"parameters": parameterTotal, "threshold": maximumParameters},
-		})
+		}, parameterTotal, maximumParameters, lowerBandParameterAdvice, r.Definition().Remediation))
 	}
 	return findings
 }
@@ -139,7 +138,7 @@ func (r NestingDepthRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxDepth": float64(max)},
-		Remediation:    "Extract nested branches into named helpers or return early on guard conditions.",
+		Remediation:    simplifyExecutionPathAdvice,
 	}
 }
 
@@ -150,9 +149,8 @@ func (r NestingDepthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 	}
 	max := r.maxDepth()
 	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
+	for _, fn := range measuredFuncDecls(unit.AST) {
+		if fn.Body == nil {
 			continue
 		}
 		depth := blockNestingDepth(fn.Body, 0)
@@ -161,13 +159,13 @@ func (r NestingDepthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fin
 		}
 		start := unit.FileSet.Position(fn.Pos())
 		end := unit.FileSet.Position(fn.End())
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function nesting depth is %d, above threshold %d", depth, max),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
 			Symbol:   functionName(fn),
 			Metadata: map[string]any{"depth": depth, "threshold": max},
-		})
+		}, depth, max, lowerBandFunctionAdvice, simplifyExecutionPathAdvice))
 	}
 	return findings
 }

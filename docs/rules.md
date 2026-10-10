@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **80 rules** across **11 pillars**. **61 rules are enabled by default** and 19 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **80 rules** across **11 pillars**. **60 rules are enabled by default** and 20 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
@@ -21,7 +21,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
 | [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 25` | Functions whose nested control flow and boolean decisions exceed the threshold. |
-| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
+| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Opt-in: functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | advisory | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
@@ -103,6 +103,10 @@ Generated Go files are skipped by default when their leading comments contain bo
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Warning-severity size findings in `_test.go` files still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Advisory defaults such as `size.file-length` are already softened, and non-warning severity overrides in config apply to test files too.
 
+**Two bands for size and complexity.** Every `size.*` and `complexity.*` finding reports in one of two bands (FAMILY-CONTRACT.md section 12, "Size and complexity findings in two bands"). Under one and a half times its limit, the finding is an advisory notice whatever the configured severity, carries `limitBand: lower` in its metadata, and asks you not to add to the unit. At one and a half times the limit or more it keeps its severity, including the `_test.go` softening above, carries `limitBand: upper`, and asks you to split the unit or simplify its execution path. The comparison does not round: a function of 119 code lines against the 80-line limit is in the lower band, and one of 120 is in the upper. The message and fingerprint are the same in both bands, so a baseline entry keeps matching when a unit crosses the boundary. A `--fail-on warning` or `--fail-on error` gate no longer fails on a lower-band notice; the default `analyse` gate, `advisory`, still does.
+
+**Function literals assigned to package-level vars.** `size.function-length`, `size.parameter-count`, `complexity.cognitive`, `complexity.cyclomatic` and `complexity.nesting-depth` also measure a function literal assigned to a package-level `var`, such as `var Mix = func(seed int) int { ... }`, and name it after the var. The documentation rules do not see it (FAMILY-CONTRACT.md section 12, "function literal assigned to a package-level").
+
 ## Severity tiers
 
 Every rule has a default severity; configs can override per rule. ADR-009 collapsed the internal scale to three buckets that match the cross-port canonical model used by gruff-rs / gruff-ts / gruff-py / gruff-php:
@@ -127,26 +131,28 @@ The `--fail-on` flag sets the threshold at which findings flip the exit code fro
 - **Capability:** parser
 - **Tags:** `metric`
 
-Flags Go functions whose parser-only cognitive complexity exceeds the configured threshold. The metric adds one point for each `if`, loop, `switch`, type switch, and `select`, adds the current nesting level for nested control flow, and adds one point for each `&&` / `||` operator inside conditions. Function literals reset the count.
+Flags Go functions whose parser-only cognitive complexity exceeds the configured threshold. The metric adds one point for each `if`, loop, `switch`, type switch, and `select`, adds the current nesting level for nested control flow, and adds one point for each `&&` / `||` operator inside conditions. Function literals reset the count. Two shapes are softened because they were the commonest findings not worth acting on: the cases of a `switch`, type switch or `select` stay at the statement's own nesting level, and an early-exit guard (an `if` with no `else` whose body is one `return`, `continue`, `break` or `panic`) adds one point with no nesting penalty. `_test.go` files are not measured.
 
 This is intentionally separate from `complexity.cyclomatic`: cyclomatic counts independent branch paths, while cognitive complexity emphasizes nesting and review difficulty.
 
-**Remediation.** Flatten nested branches, return early on guard conditions, or extract cohesive helper functions.
+**Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
 
 ### `complexity.cyclomatic`
 
 - **Pillar:** complexity
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Threshold:** `maxComplexity` (default `20`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions whose branch count exceeds the configured cyclomatic complexity threshold. The metric counts `if`, `for`, `range`, `case` (when the case has labels), `select` cases, and `&&` / `||` short-circuit operators.
+Opt-in since precision-floor M14: measured on the 0.6.0 corpus after its repair, its findings at one and a half times the limit were worth acting on 23 times in 40, under the 0.60 floor, so it is off by default rather than deleted. `complexity.cognitive` stays on and covers the same functions. Enable it with `rules.complexity.cyclomatic.enabled: true`.
+
+Flags Go functions whose branch count exceeds the configured cyclomatic complexity threshold. The metric counts `if`, `for`, `range`, each `switch`, type switch and `select` once however many cases it has, and `&&` / `||` short-circuit operators. A flat dispatch over many cases is one decision, as gruff-rs counts one per `match`. `_test.go` files are not measured.
 
 Each finding's metadata carries the measured `complexity` and the active `threshold`. The score object's `complexityDistribution` is finding-only: it bins over-threshold `complexity.cyclomatic` findings, not every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
 
-**Remediation.** Split independent decisions, move branches into named helpers, or return early on guard conditions.
+**Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
 
 ### `complexity.nesting-depth`
 
@@ -159,7 +165,7 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 
 Flags functions whose maximum control-flow nesting depth exceeds the threshold. Function literals reset the depth counter so callbacks aren't double-counted as part of their enclosing function.
 
-**Remediation.** Extract nested branches into named helpers or return early on guard conditions.
+**Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
 
 ### `dead-code.empty-block`
 
@@ -199,7 +205,9 @@ Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` i
 
 Opt-in candidate for package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, iota groups, and multi-name const specs are excluded to keep parser-only evidence precision-first.
 
-**Remediation.** Delete the constant if it is abandoned, or leave the candidate disabled where grouped constants or build tags make parser-only certainty too weak.
+**Remediation.** Delete the constant if nothing uses it. If it is used from a file behind a build tag, or kept on purpose as part of a constant group, keep it and accept this finding in the baseline.
+
+**When to keep it off.** The rule is opt-in because grouped constants and build tags make parser-only certainty too weak; leave it off for a package where they decide whether a constant is used.
 
 **Known precision limit.** A package-private constant referenced through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the declaration, or leave this opt-in rule disabled for that package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
@@ -229,7 +237,9 @@ Flags package-private top-level functions whose names are not referenced anywher
 
 Opt-in candidate for package-private top-level types whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, and reflection-heavy packages are excluded, and name collisions elsewhere in the package suppress the finding because the rule does not resolve bindings.
 
-**Remediation.** Delete the type if it is abandoned, or keep the rule opt-in until reflective and build-tagged references are ruled out for the package.
+**Remediation.** Delete the type if nothing uses it. If it is referenced only from generated code, through reflection, or from a file behind a build tag, keep it and accept this finding in the baseline.
+
+**When to keep it off.** The rule is opt-in because parser-only evidence cannot see generated, reflective or build-tagged references; enable it for a package only once those are not part of its contract.
 
 **Known precision limit.** A package-private type referenced through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the type, or leave this opt-in rule disabled for that package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
@@ -244,7 +254,9 @@ Opt-in candidate for package-private top-level types whose names are not referen
 
 Opt-in candidate for package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, blank identifiers, and common registration tables are excluded to avoid noisy parser-only false positives.
 
-**Remediation.** Delete the variable if it is abandoned, or keep the rule opt-in where indirect registration or build-tagged references are part of the package contract.
+**Remediation.** Delete the variable if nothing reads it. If it is used only through indirect registration, reflection, or a file behind a build tag, keep it and accept this finding in the baseline.
+
+**When to keep it off.** The rule is opt-in because parser-only evidence cannot prove a variable is not used through indirect registration or a build-tagged file; leave it off for a package where either is part of the contract.
 
 **Known precision limit.** A package-private variable referenced through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the variable, or leave this opt-in rule disabled for that package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
@@ -1321,9 +1333,9 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files whose substantive line count exceeds the configured threshold. Blank lines and comment-only lines are free (family ratification, 2026-08-05), so required documentation can never push a file over the size bar; strings containing comment markers still count because comment spans come from the parsed AST. Long files frequently mix unrelated responsibilities. In `_test.go` files the default severity is calibrated down to advisory, matching the existing size-rule test calibration; an explicitly configured severity is applied as configured.
+Flags Go files whose substantive line count exceeds the configured threshold. Blank lines and comment-only lines are free (family ratification, 2026-08-05), so required documentation can never push a file over the size bar; strings containing comment markers still count because comment spans come from the parsed AST. Long files frequently mix unrelated responsibilities. In `_test.go` files the default severity is calibrated down to advisory, matching the existing size-rule test calibration; an explicitly configured severity is applied as configured. Only Go source files are measured; JSON, YAML and other data files never are.
 
-**Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
+**Remediation.** In the upper band: split this file by responsibility, one responsibility per file. In the lower band: do not add to this file; put new code in a new file.
 
 ### `size.function-length`
 
@@ -1334,11 +1346,11 @@ Flags Go files whose substantive line count exceeds the configured threshold. Bl
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
+Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. In every file, a struct or map literal written with keys and passed straight to a call counts as one line, so a run of calls that each pass an options literal does not read as a long function; the metadata's `literalArgumentLines` records that discount, and a literal inside a discounted test table is not discounted twice. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
 
 `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
 
-**Remediation.** Extract cohesive helper functions or split independent branches.
+**Remediation.** In the upper band: split this function at its steps, one step per function. In the lower band: do not add to this function; put new code in a new function.
 
 ### `size.parameter-count`
 
@@ -1353,7 +1365,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 
 **Known precision limit.** A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature the user cannot reshape. Keep the required signature, then raise maxParameters or disable size.parameter-count in project configuration after review. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
-**Remediation.** Group related parameters into a struct, accept an options type, or split the function.
+**Remediation.** In the upper band: group the parameters that travel together into one object, or split the function by caller. In the lower band: do not add another parameter to this function.
 
 ### `test-quality.empty-test`
 

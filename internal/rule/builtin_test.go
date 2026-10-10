@@ -127,11 +127,23 @@ _ = x`, want: 1},
 		{name: "nested branches", body: `if a {
 	if b {}
 }`, want: 3},
-		{name: "switch", body: `switch {
+		{name: "switch counts once", body: `switch {
 case a:
 case b:
 default:
-}`, want: 3},
+}`, want: 2},
+		{name: "type switch counts once", body: `var v any = a
+switch v.(type) {
+case int:
+case string:
+case bool:
+}`, want: 2},
+		{name: "select counts once", body: `ch := make(chan int)
+select {
+case <-ch:
+case ch <- 1:
+default:
+}`, want: 2},
 		{name: "loops", body: `for i := 0; i < 1; i++ {}
 for range []int{} {}`, want: 3},
 		{name: "early return", body: `if a {

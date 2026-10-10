@@ -5,6 +5,7 @@ package rule
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -33,27 +34,27 @@ func (r CognitiveComplexityRule) Definition() Definition {
 	return Definition{
 		ID:             "complexity.cognitive",
 		Title:          "Cognitive complexity",
-		Description:    "Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
+		Description:    "Flags functions outside test files whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
 		Pillar:         finding.PillarComplexity,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxComplexity": float64(max)},
 		Tags:           []string{"metric"},
-		Remediation:    "Flatten nested branches, return early, or extract cohesive helper functions.",
+		Remediation:    simplifyExecutionPathAdvice,
 	}
 }
 
 // AnalyzeUnit emits findings for functions above the cognitive complexity threshold.
 func (r CognitiveComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil {
+	// A test's branches are its assertion sequence, which M14's measurement found not worth splitting.
+	if unit.AST == nil || unit.FileSet == nil || isGoTestFile(unit.File.Path) {
 		return nil
 	}
 	max := r.maxComplexity()
 	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
+	for _, fn := range measuredFuncDecls(unit.AST) {
+		if fn.Body == nil {
 			continue
 		}
 		complexity := cognitiveComplexity(fn)
@@ -62,13 +63,13 @@ func (r CognitiveComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 		}
 		start := unit.FileSet.Position(fn.Pos())
 		end := unit.FileSet.Position(fn.End())
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function cognitive complexity is %d, above threshold %d", complexity, max),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
 			Symbol:   functionName(fn),
 			Metadata: map[string]any{"complexity": complexity, "threshold": max},
-		})
+		}, complexity, max, lowerBandFunctionAdvice, simplifyExecutionPathAdvice))
 	}
 	return findings
 }
@@ -76,6 +77,9 @@ func (r CognitiveComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 // cognitiveComplexity computes a Sonar-inspired parser-only approximation:
 // each control structure adds one point plus the current nesting level, boolean
 // operators in conditions add one point, and function literals reset the count.
+// Two shapes M14's measurement found not worth acting on are softened: the cases
+// of a switch, type switch or select stay at the statement's own nesting level,
+// and an early-exit guard adds one point with no nesting penalty.
 func cognitiveComplexity(fn *ast.FuncDecl) int {
 	return cognitiveBlockComplexity(fn.Body, 0)
 }
@@ -96,7 +100,12 @@ func cognitiveBlockComplexity(block *ast.BlockStmt, nesting int) int {
 func cognitiveStmtComplexity(stmt ast.Stmt, nesting int) int {
 	switch value := stmt.(type) {
 	case *ast.IfStmt:
-		score := 1 + nesting + booleanOperatorComplexity(value.Cond)
+		penalty := nesting
+		// Returning early is the advice this rule gives, so a guard that exits pays no nesting penalty.
+		if isEarlyExitGuard(value) {
+			penalty = 0
+		}
+		score := 1 + penalty + booleanOperatorComplexity(value.Cond)
 		score += cognitiveBlockComplexity(value.Body, nesting+1)
 		if value.Else != nil {
 			if elseIf, ok := value.Else.(*ast.IfStmt); ok {
@@ -110,12 +119,13 @@ func cognitiveStmtComplexity(stmt ast.Stmt, nesting int) int {
 		return 1 + nesting + booleanOperatorComplexity(value.Cond) + cognitiveBlockComplexity(value.Body, nesting+1)
 	case *ast.RangeStmt:
 		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting+1)
+	// Dispatch cases are siblings, so their bodies keep the switch's own nesting level.
 	case *ast.SwitchStmt:
-		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting+1)
+		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting)
 	case *ast.TypeSwitchStmt:
-		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting+1)
+		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting)
 	case *ast.SelectStmt:
-		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting+1)
+		return 1 + nesting + cognitiveBlockComplexity(value.Body, nesting)
 	case *ast.CaseClause:
 		return cognitiveStmtListComplexity(value.Body, nesting)
 	case *ast.CommClause:
@@ -124,6 +134,28 @@ func cognitiveStmtComplexity(stmt ast.Stmt, nesting int) int {
 		return cognitiveBlockComplexity(value, nesting)
 	}
 	return 0
+}
+
+// isEarlyExitGuard reports whether an if statement is a guard clause: no else,
+// and a body of one return, continue, break or panic call.
+func isEarlyExitGuard(stmt *ast.IfStmt) bool {
+	if stmt.Else != nil || stmt.Body == nil || len(stmt.Body.List) != 1 {
+		return false
+	}
+	switch exit := stmt.Body.List[0].(type) {
+	case *ast.ReturnStmt:
+		return true
+	case *ast.BranchStmt:
+		return exit.Tok == token.CONTINUE || exit.Tok == token.BREAK
+	case *ast.ExprStmt:
+		call, ok := exit.X.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		name, ok := call.Fun.(*ast.Ident)
+		return ok && name.Name == "panic"
+	}
+	return false
 }
 
 // cognitiveStmtListComplexity scores switch/select clause bodies.

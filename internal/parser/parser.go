@@ -139,7 +139,8 @@ func parseDiagnostics(path string, err error) []Diagnostic {
 	}}
 }
 
-// functions extracts top-level function metadata from a parsed AST file.
+// functions extracts top-level function metadata from a parsed AST file, including each function literal assigned to a
+// package-level var, so its findings take their identity and changed scope from the var's span.
 func functions(fset *token.FileSet, file *ast.File) []Function {
 	out := []Function{}
 	for _, decl := range file.Decls {
@@ -150,6 +151,57 @@ func functions(fset *token.FileSet, file *ast.File) []Function {
 		start := fset.Position(fn.Pos())
 		end := fset.Position(fn.End())
 		out = append(out, Function{Name: FuncDeclSymbol(fn), Line: start.Line, EndLine: end.Line})
+	}
+	for _, varFunc := range PackageVarFuncs(file) {
+		start := fset.Position(varFunc.Name.Pos())
+		end := fset.Position(varFunc.Lit.End())
+		out = append(out, Function{Name: varFunc.Name.Name, Line: start.Line, EndLine: end.Line})
+	}
+	return out
+}
+
+// VarFunc is a function literal assigned to a package-level var, such as `var Mix = func(seed int) int { ... }`. The
+// size and complexity rules measure it like a declared function; the documentation rules do not see it
+// (FAMILY-CONTRACT.md section 12, search `function literal assigned to a package-level`).
+type VarFunc struct {
+	// Name is the var the literal is assigned to, which names the function in findings.
+	Name *ast.Ident
+	// Doc is the comment above the var, or above its declaration when that declaration has only this one spec.
+	Doc *ast.CommentGroup
+	// Lit is the assigned function literal.
+	Lit *ast.FuncLit
+}
+
+// PackageVarFuncs lists every function literal assigned by name to a package-level var, in source order.
+func PackageVarFuncs(file *ast.File) []VarFunc {
+	out := []VarFunc{}
+	if file == nil {
+		return out
+	}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			// Only a one-to-one pairing of names and values says which name a literal is assigned to.
+			if !ok || len(value.Names) != len(value.Values) {
+				continue
+			}
+			for index, name := range value.Names {
+				lit, isLiteral := value.Values[index].(*ast.FuncLit)
+				// The blank identifier names nothing a reader could find.
+				if !isLiteral || name.Name == "_" {
+					continue
+				}
+				doc := value.Doc
+				if doc == nil && len(gen.Specs) == 1 {
+					doc = gen.Doc
+				}
+				out = append(out, VarFunc{Name: name, Doc: doc, Lit: lit})
+			}
+		}
 	}
 	return out
 }

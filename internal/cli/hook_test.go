@@ -366,6 +366,15 @@ func TestHookMetadataDirection(t *testing.T) {
 	}
 }
 
+// TestHookMetadataKeepsLimitBand pins that the hook's measurement object keeps a size
+// or complexity finding's band, so an agent can tell a lower-band notice from a finding.
+func TestHookMetadataKeepsLimitBand(t *testing.T) {
+	notice := hookMetadata("size.function-length", map[string]any{"lines": 94, "threshold": 80, "limitBand": "lower"})
+	if notice["limitBand"] != "lower" || notice["measured"] != 94 {
+		t.Fatalf("banded metadata = %#v, want measured 94 with limitBand lower", notice)
+	}
+}
+
 // TestHookScopeAndDirectionRuleIDsExist guards the hook layer's hardcoded rule-ID
 // tables against registry drift: a renamed or removed rule must not silently
 // leave hookScope / hookThresholdDirection pointing at a dead ID.

@@ -109,6 +109,8 @@ func defaultDisabledRuleIDs() map[string]bool {
 	// Precision-floor M19 added seven rules on 2026-10-04: each was right less than half the time
 	// on fewer than ten findings, so it is off by default rather than deleted (ADR-021).
 	return map[string]bool{
+		// Precision-floor M14 turned it off on 2026-10-09: after its repair its upper band was right on 23 of 40.
+		"complexity.cyclomatic":                       true,
 		"dependency.go-mod-local-replace":             true,
 		"security.insecure-random-secret":             true,
 		"sensitive-data.aws-access-key":               true,

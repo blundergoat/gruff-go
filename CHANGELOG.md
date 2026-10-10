@@ -2,6 +2,40 @@
 
 ## v0.6.0 - Unreleased
 
+- **BREAKING: size and complexity findings report in two bands** - A unit over its limit but under one and a half times it now
+  reports as an advisory notice, `limitBand: lower`, that asks you not to add to it. At one and a half times the limit or more the
+  finding keeps its severity, `limitBand: upper`, and asks you to split the unit or simplify its execution path (FAMILY-CONTRACT.md
+  section 12). This covers `size.file-length`, `size.function-length`, `size.parameter-count`, `complexity.cyclomatic`,
+  `complexity.cognitive` and `complexity.nesting-depth`, whatever severity a config sets. Messages and fingerprints are unchanged,
+  so baselines keep matching. A `--fail-on warning` or `--fail-on error` gate stops failing on lower-band findings; the default
+  `analyse` gate still fails on them. Complexity advice no longer suggests extracting helpers.
+
+- **Function literals assigned to package-level vars are measured** - `size.function-length`, `size.parameter-count` and the
+  complexity rules now measure `var Mix = func(seed int) int { ... }` at package level, named after the var. Documentation rules
+  still skip it.
+
+- **Unused private const, type and var advice names an action** - The opt-in `dead-code.unused-private-const`,
+  `dead-code.unused-private-type` and `dead-code.unused-private-var` findings now say to delete the symbol, or to keep it and
+  accept the finding in the baseline when build tags, reflection or registration use it. When to leave each rule off moved to
+  `docs/rules.md`.
+
+- **BREAKING: `complexity.cyclomatic` is off by default** - Re-measured after the repair below, its findings at one and a
+  half times the limit were worth acting on 23 times in 40, under the 0.60 floor, so it ships opt-in rather than deleted.
+  `complexity.cognitive`, repaired the same way, passed at 30 of 47 and stays on. Enable it with
+  `rules.complexity.cyclomatic.enabled: true`; a config that already sets it keeps it on.
+
+- **`complexity.cyclomatic` and `complexity.cognitive` stop counting flat dispatch and test files** - Measured on the
+  0.6.0 corpus, both rules were right on fewer than half of their findings at one and a half times the limit, mostly
+  because flat `switch` dispatch and test assertion sequences read as complex. A `switch`, type switch or `select` now
+  adds one decision to cyclomatic complexity however many cases it has; cognitive complexity keeps case bodies at the
+  switch's nesting level and charges an early-exit guard no nesting penalty; neither rule measures `_test.go` files.
+  Findings on dispatch-heavy functions and in tests can disappear.
+
+- **`size.function-length` counts a keyed literal argument as one line** - A struct or map literal written with keys and passed
+  straight to a call counts as one line in any file, so twelve calls that each pass a request struct no longer read as an
+  87-line function. A finding whose length came from such literals can disappear; the metadata's `literalArgumentLines`
+  records the discount.
+
 - Workflow secret warnings skip jobs or steps whose own event guard proves them unreachable for every detected PR event.
 
 - **Private-key parser patterns avoid credential warnings** - Isolated PEM headers in resolved Go `regexp.Compile` or

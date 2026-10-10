@@ -54,7 +54,7 @@ func (r FileLengthRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
-		Remediation:    "Split the file by responsibility or move focused behavior into smaller files.",
+		Remediation:    "Split this file by responsibility, one responsibility per file.",
 	}
 }
 
@@ -77,7 +77,7 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	if isGoTestFile(unit.File.Path) {
 		metadata["testFile"] = true
 	}
-	return []finding.Finding{{
+	return []finding.Finding{withLimitBand(finding.Finding{
 		Message: fmt.Sprintf("file has %d substantive lines, above threshold %d", substantiveLines, maxLines),
 		File:    unit.File.Path,
 		Location: &finding.Location{
@@ -87,7 +87,7 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			Line: codeLines[maxLines],
 		},
 		Metadata: metadata,
-	}}
+	}, substantiveLines, maxLines, lowerBandFileAdvice, r.Definition().Remediation)}
 }
 
 // substantiveLineNumbers returns the 1-based physical line number of every line
@@ -197,7 +197,7 @@ func (r FunctionLengthRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
-		Remediation:    "Extract cohesive helper functions or split independent branches.",
+		Remediation:    "Split this function at its steps, one step per function.",
 	}
 }
 
@@ -238,28 +238,33 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		if length <= maxLines {
 			continue
 		}
-		metadata := map[string]any{"lines": length, "threshold": maxLines, "rawLines": rawLength}
+		metadata := map[string]any{"threshold": maxLines, "rawLines": rawLength}
+		decl := funcDecls[fn.Name]
+		var tableRanges []lineRange
 		if isGoTestFile(unit.File.Path) {
 			metadata["testFile"] = true
-			if decl := funcDecls[fn.Name]; decl != nil {
-				tableLines := countLinesInLineRanges(codeLines, tableFixtureLineRanges(unit.FileSet, decl))
-				if tableLines > 0 {
-					length -= tableLines
-					metadata["tableFixtureLines"] = tableLines
-					metadata["lines"] = length
-				}
+			tableRanges = tableFixtureLineRanges(unit.FileSet, decl)
+			if tableLines := countLinesInLineRanges(codeLines, tableRanges); tableLines > 0 {
+				length -= tableLines
+				metadata["tableFixtureLines"] = tableLines
 			}
 		}
+		// A keyed literal passed straight to a call is data, so it counts as one line in every file.
+		if literalLines := countLinesInLineRangesExcept(codeLines, keyedLiteralArgumentLineRanges(unit.FileSet, decl), tableRanges); literalLines > 0 {
+			length -= literalLines
+			metadata["literalArgumentLines"] = literalLines
+		}
+		metadata["lines"] = length
 		if length <= maxLines {
 			continue
 		}
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function has %d code lines, above threshold %d", length, maxLines),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: fn.Line, EndLine: fn.EndLine},
 			Symbol:   fn.Name,
 			Metadata: metadata,
-		})
+		}, length, maxLines, lowerBandFunctionAdvice, r.Definition().Remediation))
 	}
 	return findings
 }
@@ -284,26 +289,45 @@ func (r CyclomaticComplexityRule) Definition() Definition {
 	return Definition{
 		ID:             "complexity.cyclomatic",
 		Title:          "Cyclomatic complexity",
-		Description:    "Flags Go functions whose branch count exceeds the default cyclomatic threshold.",
+		Description:    "Flags Go functions outside test files whose branch count exceeds the default cyclomatic threshold; a switch, type switch or select counts once.",
 		Pillar:         finding.PillarComplexity,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Thresholds:     map[string]float64{"maxComplexity": float64(maxComplexity)},
-		Remediation:    "Split independent decisions or move branches into named helpers.",
+		Remediation:    simplifyExecutionPathAdvice,
 	}
+}
+
+// measuredFuncDecls returns the file's function and method declarations, then each function literal assigned to a
+// package-level var as a declaration named after the var. Only the size and complexity rules read it, so the
+// documentation rules never see a literal (FAMILY-CONTRACT.md section 12, search `function literal assigned to a package-level`).
+func measuredFuncDecls(file *ast.File) []*ast.FuncDecl {
+	out := []*ast.FuncDecl{}
+	if file == nil {
+		return out
+	}
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			out = append(out, fn)
+		}
+	}
+	for _, varFunc := range parser.PackageVarFuncs(file) {
+		out = append(out, &ast.FuncDecl{Doc: varFunc.Doc, Name: varFunc.Name, Type: varFunc.Lit.Type, Body: varFunc.Lit.Body})
+	}
+	return out
 }
 
 // AnalyzeUnit emits findings for every function whose cyclomatic complexity exceeds the threshold.
 func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil {
+	// A test's branches are its assertion sequence, which M14's measurement found not worth splitting.
+	if unit.AST == nil || unit.FileSet == nil || isGoTestFile(unit.File.Path) {
 		return nil
 	}
 	maxComplexity := r.maxComplexity()
 	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
+	for _, fn := range measuredFuncDecls(unit.AST) {
+		if fn.Body == nil {
 			continue
 		}
 		complexity := cyclomaticComplexity(fn)
@@ -312,13 +336,13 @@ func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []fin
 		}
 		start := unit.FileSet.Position(fn.Pos())
 		end := unit.FileSet.Position(fn.End())
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function cyclomatic complexity is %d, above threshold %d", complexity, maxComplexity),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
 			Symbol:   functionName(fn),
 			Metadata: map[string]any{"complexity": complexity, "threshold": maxComplexity},
-		})
+		}, complexity, maxComplexity, lowerBandFunctionAdvice, simplifyExecutionPathAdvice))
 	}
 	return findings
 }
@@ -570,20 +594,16 @@ func secretAssignmentValue(match string) string {
 	return ""
 }
 
-// cyclomaticComplexity counts the cyclomatic complexity of a function body.
+// cyclomaticComplexity counts the cyclomatic complexity of a function body. A switch, type switch or
+// select is one dispatch decision however many cases it has, as gruff-rs counts one per match: a flat
+// dispatch over many cases was the commonest finding not worth acting on when M14 measured the rule.
 func cyclomaticComplexity(fn *ast.FuncDecl) int {
 	complexity := 1
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
 		switch current := node.(type) {
 		case *ast.FuncLit:
 			return false
-		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
-			complexity++
-		case *ast.CaseClause:
-			if len(current.List) > 0 {
-				complexity++
-			}
-		case *ast.CommClause:
+		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
 			complexity++
 		case *ast.BinaryExpr:
 			if current.Op.String() == "&&" || current.Op.String() == "||" {

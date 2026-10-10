@@ -15,10 +15,10 @@
                 "text": "Cognitive complexity"
               },
               "fullDescription": {
-                "text": "Flags functions whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold."
+                "text": "Flags functions outside test files whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold."
               },
               "help": {
-                "text": "Flatten nested branches, return early, or extract cohesive helper functions."
+                "text": "Simplify the execution path: return early, merge branches that lead to the same result, and drop flags that steer later branches. Moving branches into helpers leaves the path as hard to follow."
               },
               "properties": {
                 "pillar": "complexity",
@@ -30,7 +30,7 @@
                   "metric"
                 ],
                 "thresholds": {
-                  "maxComplexity": 25
+                  "maxComplexity": 2
                 }
               },
               "defaultConfiguration": {
@@ -44,19 +44,19 @@
                 "text": "Cyclomatic complexity"
               },
               "fullDescription": {
-                "text": "Flags Go functions whose branch count exceeds the default cyclomatic threshold."
+                "text": "Flags Go functions outside test files whose branch count exceeds the default cyclomatic threshold; a switch, type switch or select counts once."
               },
               "help": {
-                "text": "Split independent decisions or move branches into named helpers."
+                "text": "Simplify the execution path: return early, merge branches that lead to the same result, and drop flags that steer later branches. Moving branches into helpers leaves the path as hard to follow."
               },
               "properties": {
                 "pillar": "complexity",
                 "defaultSeverity": "warning",
                 "confidence": "high",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "thresholds": {
-                  "maxComplexity": 2
+                  "maxComplexity": 20
                 }
               },
               "defaultConfiguration": {
@@ -73,7 +73,7 @@
                 "text": "Flags functions whose maximum control-flow nesting depth exceeds the configured threshold. Function literals reset the count."
               },
               "help": {
-                "text": "Extract nested branches into named helpers or return early on guard conditions."
+                "text": "Simplify the execution path: return early, merge branches that lead to the same result, and drop flags that steer later branches. Moving branches into helpers leaves the path as hard to follow."
               },
               "properties": {
                 "pillar": "complexity",
@@ -148,7 +148,7 @@
                 "text": "Flags package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Iota groups, multi-name const specs, test files, generated files, vendor paths, and reflection-heavy packages are excluded."
               },
               "help": {
-                "text": "Delete the constant if it is abandoned, or leave the candidate rule opt-in where grouped constants or build tags make parser-only certainty too weak."
+                "text": "Delete the constant if nothing uses it. If it is used from a file behind a build tag, or kept on purpose as part of a constant group, keep it and accept this finding in the baseline."
               },
               "properties": {
                 "pillar": "dead-code",
@@ -203,7 +203,7 @@
                 "text": "Flags package-private top-level types whose names are not referenced anywhere else in the same parsed package. Generated, test, vendor, and reflection-heavy packages are excluded so the parser-only candidate stays precision-first."
               },
               "help": {
-                "text": "Delete the type if it is abandoned, or enable the rule only after confirming generated, reflective, and build-tagged references are not part of the package contract."
+                "text": "Delete the type if nothing uses it. If it is referenced only from generated code, through reflection, or from a file behind a build tag, keep it and accept this finding in the baseline."
               },
               "properties": {
                 "pillar": "dead-code",
@@ -231,7 +231,7 @@
                 "text": "Flags package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, registration tables, blank identifiers, vendor paths, and reflection-heavy packages are excluded."
               },
               "help": {
-                "text": "Delete the variable if it is abandoned, or keep the rule opt-in until parser-only evidence can prove indirect registration use is not involved."
+                "text": "Delete the variable if nothing reads it. If it is used only through indirect registration, reflection, or a file behind a build tag, keep it and accept this finding in the baseline."
               },
               "properties": {
                 "pillar": "dead-code",
@@ -1965,7 +1965,7 @@
                 "text": "Flags Go files whose substantive line count (blank and comment-only lines are free) exceeds the threshold."
               },
               "help": {
-                "text": "Split the file by responsibility or move focused behavior into smaller files."
+                "text": "Split this file by responsibility, one responsibility per file."
               },
               "properties": {
                 "pillar": "size",
@@ -1991,7 +1991,7 @@
                 "text": "Flags Go functions that exceed the default line-count threshold."
               },
               "help": {
-                "text": "Extract cohesive helper functions or split independent branches."
+                "text": "Split this function at its steps, one step per function."
               },
               "properties": {
                 "pillar": "size",
@@ -2017,7 +2017,7 @@
                 "text": "Flags functions and methods whose parameter list exceeds the configured maximum, excluding the method receiver."
               },
               "help": {
-                "text": "Group related parameters into a struct, accept an options type, or split the function."
+                "text": "Group the parameters that travel together into one object, or split the function by caller."
               },
               "properties": {
                 "pillar": "size",
@@ -2296,65 +2296,26 @@
             "confidence": "medium",
             "fingerprint": "adb30add240e33eb",
             "metadata": {
-              "findings": 3,
+              "findings": 2,
               "minFindings": 2,
               "minPillars": 2,
               "pillars": [
-                "complexity",
                 "documentation",
                 "size"
               ],
               "primaryLine": 4,
               "ruleIds": [
-                "complexity.cyclomatic",
                 "docs.exported-symbol-comment",
                 "size.function-length"
               ],
               "underlyingFingerprints": [
                 "470a3d967e37e18b",
-                "6c2b61fff900ee69",
-                "d8293925f32a0f34"
+                "6c2b61fff900ee69"
               ]
             },
             "pillar": "design",
             "remediation": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit.",
             "severity": "advisory"
-          }
-        },
-        {
-          "ruleId": "complexity.cyclomatic",
-          "ruleIndex": 1,
-          "level": "warning",
-          "message": {
-            "text": "function cyclomatic complexity is 3, above threshold 2"
-          },
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "composite.go"
-                },
-                "region": {
-                  "startLine": 4,
-                  "endLine": 11
-                }
-              }
-            }
-          ],
-          "partialFingerprints": {
-            "gruffFingerprint": "cdadcb949b3186bb"
-          },
-          "properties": {
-            "confidence": "high",
-            "fingerprint": "d8293925f32a0f34",
-            "metadata": {
-              "complexity": 3,
-              "threshold": 2
-            },
-            "pillar": "complexity",
-            "remediation": "Split independent decisions or move branches into named helpers.",
-            "severity": "warning",
-            "symbol": "Hot"
           }
         },
         {
@@ -2419,12 +2380,13 @@
             "confidence": "high",
             "fingerprint": "6c2b61fff900ee69",
             "metadata": {
+              "limitBand": "upper",
               "lines": 8,
               "rawLines": 8,
               "threshold": 4
             },
             "pillar": "size",
-            "remediation": "Extract cohesive helper functions or split independent branches.",
+            "remediation": "Split this function at its steps, one step per function.",
             "severity": "warning",
             "symbol": "Hot"
           }
@@ -2432,8 +2394,8 @@
       ],
       "properties": {
         "gruffSchemaVersion": "gruff.analysis.v3",
-        "score": 87.33,
-        "grade": "B"
+        "score": 91.55,
+        "grade": "A"
       }
     }
   ]

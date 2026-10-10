@@ -24,12 +24,18 @@ func hookThresholdDirection(ruleID string) string {
 func hookMetadata(ruleID string, metadata map[string]any) map[string]any {
 	if measured, unit, ok := hookMeasured(metadata); ok {
 		if threshold, ok := hookNumber(metadata["threshold"]); ok {
-			return map[string]any{
+			out := map[string]any{
 				"measured":  measured,
 				"threshold": threshold,
 				"unit":      unit,
 				"direction": hookThresholdDirection(ruleID),
 			}
+			// A banded size or complexity finding keeps its band beside the measurement
+			// (FAMILY-CONTRACT.md section 12, search `The band key`).
+			if band, ok := metadata["limitBand"].(string); ok {
+				out["limitBand"] = band
+			}
+			return out
 		}
 	}
 	if measured, ok := hookNumber(metadata["findings"]); ok {

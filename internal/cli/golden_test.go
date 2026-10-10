@@ -53,7 +53,7 @@ func TestGoldenConfigLoading(t *testing.T) {
 	writeFile(t, root, ".gruff-go.yaml", `
 schemaVersion: gruff-go.config.v0.1
 rules:
-  complexity.cyclomatic:
+  complexity.cognitive:
     threshold: 100
 `)
 	t.Chdir(root)
@@ -199,7 +199,7 @@ schemaVersion: gruff-go.config.v0.1
 rules:
   size.function-length:
     threshold: 4
-  complexity.cyclomatic:
+  complexity.cognitive:
     threshold: 2
   design.hotspot-file:
     enabled: true

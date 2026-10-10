@@ -351,6 +351,10 @@ func applyDefinition(item finding.Finding, definition Definition, severityConfig
 		item.Severity = finding.SeverityAdvisory
 		item.Confidence = finding.ConfidenceMedium
 	}
+	// A unit just over its limit gets an advisory notice whatever the default or configured severity.
+	if isLowerBandFinding(item) {
+		item.Severity = finding.SeverityAdvisory
+	}
 	return item.WithFingerprint()
 }
 

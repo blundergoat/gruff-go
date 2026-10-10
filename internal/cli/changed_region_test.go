@@ -120,98 +120,166 @@ func doubleComplexFixture() string {
 	return `// Package sample is a test package.
 package sample
 
-// RiskyOne is intentionally over the cyclomatic threshold for fixture use.
+// RiskyOne is intentionally over the cognitive threshold for fixture use, with independent branches.
 func RiskyOne(a int) {
-	switch a {
-	case 1:
+	if a == 1 {
 		_ = a
-	case 2:
+	}
+	if a == 2 {
 		_ = a
-	case 3:
+	}
+	if a == 3 {
 		_ = a
-	case 4:
+	}
+	if a == 4 {
 		_ = a
-	case 5:
+	}
+	if a == 5 {
 		_ = a
-	case 6:
+	}
+	if a == 6 {
 		_ = a
-	case 7:
+	}
+	if a == 7 {
 		_ = a
-	case 8:
+	}
+	if a == 8 {
 		_ = a
-	case 9:
+	}
+	if a == 9 {
 		_ = a
-	case 10:
+	}
+	if a == 10 {
 		_ = a
-	case 11:
+	}
+	if a == 11 {
 		_ = a
-	case 12:
+	}
+	if a == 12 {
 		_ = a
-	case 13:
+	}
+	if a == 13 {
 		_ = a
-	case 14:
+	}
+	if a == 14 {
 		_ = a
-	case 15:
+	}
+	if a == 15 {
 		_ = a
-	case 16:
+	}
+	if a == 16 {
 		_ = a
-	case 17:
+	}
+	if a == 17 {
 		_ = a
-	case 18:
+	}
+	if a == 18 {
 		_ = a
-	case 19:
+	}
+	if a == 19 {
 		_ = a
-	case 20:
+	}
+	if a == 20 {
 		_ = a
-	case 21:
+	}
+	if a == 21 {
+		_ = a
+	}
+	if a == 22 {
+		_ = a
+	}
+	if a == 23 {
+		_ = a
+	}
+	if a == 24 {
+		_ = a
+	}
+	if a == 25 {
+		_ = a
+	}
+	if a == 26 {
 		_ = a
 	}
 }
 
-// RiskyTwo is intentionally over the cyclomatic threshold for fixture use.
+// RiskyTwo is intentionally over the cognitive threshold for fixture use, with independent branches.
 func RiskyTwo(a int) {
-	switch a {
-	case 1:
+	if a == 1 {
 		_ = a
-	case 2:
+	}
+	if a == 2 {
 		_ = a
-	case 3:
+	}
+	if a == 3 {
 		_ = a
-	case 4:
+	}
+	if a == 4 {
 		_ = a
-	case 5:
+	}
+	if a == 5 {
 		_ = a
-	case 6:
+	}
+	if a == 6 {
 		_ = a
-	case 7:
+	}
+	if a == 7 {
 		_ = a
-	case 8:
+	}
+	if a == 8 {
 		_ = a
-	case 9:
+	}
+	if a == 9 {
 		_ = a
-	case 10:
+	}
+	if a == 10 {
 		_ = a
-	case 11:
+	}
+	if a == 11 {
 		_ = a
-	case 12:
+	}
+	if a == 12 {
 		_ = a
-	case 13:
+	}
+	if a == 13 {
 		_ = a
-	case 14:
+	}
+	if a == 14 {
 		_ = a
-	case 15:
+	}
+	if a == 15 {
 		_ = a
-	case 16:
+	}
+	if a == 16 {
 		_ = a
-	case 17:
+	}
+	if a == 17 {
 		_ = a
-	case 18:
+	}
+	if a == 18 {
 		_ = a
-	case 19:
+	}
+	if a == 19 {
 		_ = a
-	case 20:
+	}
+	if a == 20 {
 		_ = a
-	case 21:
+	}
+	if a == 21 {
+		_ = a
+	}
+	if a == 22 {
+		_ = a
+	}
+	if a == 23 {
+		_ = a
+	}
+	if a == 24 {
+		_ = a
+	}
+	if a == 25 {
+		_ = a
+	}
+	if a == 26 {
 		_ = a
 	}
 }

@@ -101,7 +101,7 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	html := string(body)
-	if !strings.Contains(html, "complexity.cyclomatic") {
+	if !strings.Contains(html, "complexity.cognitive") {
 		t.Fatalf("scan should include ignored fixture finding; body:\n%s", html)
 	}
 	metadata := extractScanMetadata(t, html)
@@ -425,8 +425,10 @@ func extractScanMetadata(t *testing.T, html string) struct {
 
 // dashboardComplexFixture returns Go source intentionally violating complexity rules.
 func dashboardComplexFixture() string {
+	// Forty branches put cognitive complexity at 40, past one and a half times the limit of 25,
+	// so the finding keeps its warning severity instead of becoming a lower-band advisory notice.
 	return "// Package sample is a test package.\npackage sample\n\nfunc risky(a bool) {\n" +
-		strings.Repeat("\tif a {}\n", 21) +
+		strings.Repeat("\tif a {}\n", 40) +
 		"}\n"
 }
 

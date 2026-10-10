@@ -264,7 +264,7 @@ func TestListRulesListsBuiltInCatalogueUnderAProjectConfig(t *testing.T) {
 		if code := Main([]string{"list-rules", "--no-config", "--format", format}, &builtIn, &builtInErr); code != 0 {
 			t.Fatalf("list-rules --no-config --format %s exit = %d, stderr = %s", format, code, builtInErr.String())
 		}
-		config := "schemaVersion: gruff-go.config.v0.1\nrules:\n  sensitive-data.private-key:\n    enabled: false\n    severity: error\n  complexity.cyclomatic:\n    threshold: 3\n"
+		config := "schemaVersion: gruff-go.config.v0.1\nrules:\n  sensitive-data.private-key:\n    enabled: false\n    severity: error\n  complexity.cognitive:\n    threshold: 3\n"
 		if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(config), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -367,7 +367,7 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 		t.Fatalf("findings = %#v, want one", parsed.Findings)
 	}
 	finding := parsed.Findings[0]
-	if finding.RuleID != "complexity.cyclomatic" || finding.Fingerprint == "" || finding.Remediation == "" {
+	if finding.RuleID != "complexity.cognitive" || finding.Fingerprint == "" || finding.Remediation == "" {
 		t.Fatalf("finding = %#v, want complete complexity finding", finding)
 	}
 	// Every rule-backed pillar now carries a row, so the finding-bearing count is read from the rows
@@ -390,7 +390,7 @@ func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	writeFile(t, root, "config.yaml", `
 schemaVersion: gruff-go.config.v0.1
 rules:
-  complexity.cyclomatic:
+  complexity.cognitive:
     thresholds:
       maxComplexity: 100
 `)
@@ -482,8 +482,8 @@ func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
 		// --diff=- must be rejected before the stdin patch is read, so an interactive
 		// or hook invocation returns the error instead of blocking on stdin.
 		{"analyse", "--generate-baseline", "baseline.json", "--diff", "-", "complex.go"},
-		{"analyse", "--generate-baseline", "baseline.json", "--include-rules", "complexity.cyclomatic", "complex.go"},
-		{"analyse", "--generate-baseline", "baseline.json", "--exclude-rules", "complexity.cyclomatic", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--include-rules", "complexity.cognitive", "complex.go"},
+		{"analyse", "--generate-baseline", "baseline.json", "--exclude-rules", "complexity.cognitive", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--include-pillars", "complexity", "complex.go"},
 		{"analyse", "--generate-baseline", "baseline.json", "--exclude-pillars", "complexity", "complex.go"},
 	}
@@ -507,7 +507,7 @@ func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	writeFile(t, root, ".gruff-go.yaml", `
 schemaVersion: gruff-go.config.v0.1
 rules:
-  complexity.cyclomatic:
+  complexity.cognitive:
     threshold: 100
 `)
 	t.Chdir(root)
@@ -550,7 +550,7 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	t.Chdir(root)
 
 	var out, errOut bytes.Buffer
-	if code := Main([]string{"analyse", "--format", "json", "--exclude-rules", "complexity.cyclomatic", "complex.go"}, &out, &errOut); code != 1 {
+	if code := Main([]string{"analyse", "--format", "json", "--exclude-rules", "complexity.cognitive", "complex.go"}, &out, &errOut); code != 1 {
 		t.Fatalf("exit = %d, stderr = %s, stdout = %s", code, errOut.String(), out.String())
 	}
 	var parsed machineAnalysisReport
@@ -599,56 +599,91 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 }
 
 // complexFixture returns a Go source string that triggers a complexity finding.
-// The switch shape keeps complexity.cyclomatic above threshold; the exported
+// The run of independent ifs keeps complexity.cognitive above threshold; the exported
 // name keeps dead-code.unused-private-function from firing.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
 
-// Risky is intentionally over the cyclomatic threshold for fixture use.
+// Risky is intentionally over the cognitive threshold for fixture use: twenty-six independent
+// branches, since complexity.cyclomatic is off by default and a switch counts once.
 func Risky(a int) {
-	switch a {
-	case 1:
+	if a == 1 {
 		_ = a
-	case 2:
+	}
+	if a == 2 {
 		_ = a
-	case 3:
+	}
+	if a == 3 {
 		_ = a
-	case 4:
+	}
+	if a == 4 {
 		_ = a
-	case 5:
+	}
+	if a == 5 {
 		_ = a
-	case 6:
+	}
+	if a == 6 {
 		_ = a
-	case 7:
+	}
+	if a == 7 {
 		_ = a
-	case 8:
+	}
+	if a == 8 {
 		_ = a
-	case 9:
+	}
+	if a == 9 {
 		_ = a
-	case 10:
+	}
+	if a == 10 {
 		_ = a
-	case 11:
+	}
+	if a == 11 {
 		_ = a
-	case 12:
+	}
+	if a == 12 {
 		_ = a
-	case 13:
+	}
+	if a == 13 {
 		_ = a
-	case 14:
+	}
+	if a == 14 {
 		_ = a
-	case 15:
+	}
+	if a == 15 {
 		_ = a
-	case 16:
+	}
+	if a == 16 {
 		_ = a
-	case 17:
+	}
+	if a == 17 {
 		_ = a
-	case 18:
+	}
+	if a == 18 {
 		_ = a
-	case 19:
+	}
+	if a == 19 {
 		_ = a
-	case 20:
+	}
+	if a == 20 {
 		_ = a
-	case 21:
+	}
+	if a == 21 {
+		_ = a
+	}
+	if a == 22 {
+		_ = a
+	}
+	if a == 23 {
+		_ = a
+	}
+	if a == 24 {
+		_ = a
+	}
+	if a == 25 {
+		_ = a
+	}
+	if a == 26 {
 		_ = a
 	}
 }
