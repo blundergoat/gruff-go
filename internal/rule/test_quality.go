@@ -13,15 +13,15 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// EmptyTestRule flags Go test functions whose body contains no executable statements.
+// EmptyTestRule flags Go tests with no work beyond scheduling themselves in parallel.
 type EmptyTestRule struct{}
 
-// Definition declares the test-quality.empty-test rule that fires on Test/Benchmark/Fuzz functions whose body holds zero statements.
+// Definition describes empty runnable tests, including a sole testing.T.Parallel call.
 func (EmptyTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.empty-test",
 		Title:          "Empty test",
-		Description:    "Flags Go test functions whose body contains no executable statements.",
+		Description:    "Flags Go test functions with no statements or only a testing.T.Parallel() call.",
 		Pillar:         finding.PillarTestQuality,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
@@ -31,7 +31,7 @@ func (EmptyTestRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit reports each Test/Benchmark/Fuzz function in the unit that has an empty body.
+// AnalyzeUnit reports empty runnable tests and tests whose only action schedules parallel execution.
 func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -43,7 +43,7 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 		if !ok || !isRunnableTestFunction(fn, testingPackages) {
 			continue
 		}
-		if fn.Body == nil || len(fn.Body.List) == 0 {
+		if fn.Body == nil || len(fn.Body.List) == 0 || isParallelOnlyTest(fn, testingPackages) {
 			position := unit.FileSet.Position(fn.Name.NamePos)
 			findings = append(findings, finding.Finding{
 				Message:  fmt.Sprintf("test %s has an empty body", fn.Name.Name),
@@ -54,6 +54,28 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 		}
 	}
 	return findings
+}
+
+// isParallelOnlyTest binds the sole call to the test's declared testing.T handle.
+// A one-statement body cannot rebind or shadow that handle before the call.
+func isParallelOnlyTest(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
+	if !strings.HasPrefix(fn.Name.Name, "Test") || fn.Body == nil || len(fn.Body.List) != 1 {
+		return false
+	}
+	statement, ok := fn.Body.List[0].(*ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := statement.X.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Parallel" {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	return ok && testingReceiverNames(fn, testingPackages)[receiver.Name]
 }
 
 // NoFailurePathTestRule flags Go test functions whose bodies cannot reach a failure call.

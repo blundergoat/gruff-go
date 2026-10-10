@@ -2,6 +2,10 @@
 
 ## v0.6.0 - Unreleased
 
+- **Go build toolchain 1.26.9** - Clears seven current standard-library vulnerability findings, with CI verification and release builds selecting the same Go version.
+
+- **Parallel scheduling alone is an empty test** - `test-quality.empty-test` now reports a test whose sole statement calls `Parallel()` on its declared `testing.T` handle, including renamed handles and testing imports. A call on another receiver or a body with additional work remains outside this shape.
+
 - **BREAKING: size and complexity findings report in two bands** - A unit over its limit but under one and a half times it now
   reports as an advisory notice, `limitBand: lower`, that asks you not to add to it. At one and a half times the limit or more the
   finding keeps its severity, `limitBand: upper`, and asks you to split the unit or simplify its execution path (FAMILY-CONTRACT.md

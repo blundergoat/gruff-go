@@ -78,6 +78,36 @@ func TestDotSkip(t *T) {
 	}
 }
 
+// TestEmptyTestParallelOnly binds scheduling-only bodies to the real testing handle.
+// Other receivers, nested scopes and additional work must retain their ordinary classification.
+func TestEmptyTestParallelOnly(t *testing.T) {
+	cases := []struct {
+		name    string
+		imports string
+		param   string
+		body    string
+		want    int
+	}{
+		{"parallel only", `import "testing"`, "t *testing.T", "t.Parallel()", 1},
+		{"renamed receiver", `import "testing"`, "ctx *testing.T", "ctx.Parallel()", 1},
+		{"aliased import", `import check "testing"`, "t *check.T", "t.Parallel()", 1},
+		{"dot import", `import . "testing"`, "t *T", "t.Parallel()", 1},
+		{"foreign receiver", `import "testing"`, "t *testing.T", "other.Parallel()", 0},
+		{"assertion after parallel", `import "testing"`, "t *testing.T", `t.Parallel(); if run() != 1 { t.Fatal("wrong result") }`, 0},
+		{"action after parallel", `import "testing"`, "t *testing.T", "t.Parallel(); run()", 0},
+		{"nested shadow receiver", `import "testing"`, "t *testing.T", "func(t *Other) { t.Parallel() }(other)", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			unit := parseOne(t, "pkg/parallel_test.go", "package pkg\n"+tc.imports+"\nfunc TestEntry("+tc.param+") { "+tc.body+" }")
+			findings := (EmptyTestRule{}).AnalyzeUnit(unit, Context{})
+			if len(findings) != tc.want {
+				t.Fatalf("empty-test findings = %#v, want %d", findings, tc.want)
+			}
+		})
+	}
+}
+
 // TestNoFailurePathRuleRequiresKnownAssertionImport verifies selector-style
 // assertions depend on actual assertion-library imports, not local names.
 func TestNoFailurePathRuleRequiresKnownAssertionImport(t *testing.T) {

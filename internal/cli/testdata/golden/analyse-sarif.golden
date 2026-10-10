@@ -2040,7 +2040,7 @@
                 "text": "Empty test"
               },
               "fullDescription": {
-                "text": "Flags Go test functions whose body contains no executable statements."
+                "text": "Flags Go test functions with no statements or only a testing.T.Parallel() call."
               },
               "help": {
                 "text": "Add an assertion that exercises the behaviour the test name claims, or remove the empty test."

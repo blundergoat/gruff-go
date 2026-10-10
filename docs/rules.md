@@ -91,7 +91,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | Empty runnable tests, including a sole `testing.T.Parallel()` call. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
 | [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | advisory | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
@@ -1376,7 +1376,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body contains no executable statements. An empty test is either an unfinished scaffold left behind by IDE generators or a stub waiting for content - both should be removed or filled in before the build is considered green.
+Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions with no statements. It also reports a test whose sole statement calls `Parallel()` on its declared `testing.T` handle: scheduling the test supplies no verification. Additional work, other receivers and nested callbacks stay outside that scheduling-only shape.
 
 **Remediation.** Add an assertion that exercises the behaviour the test name claims, or remove the empty test entirely.
 

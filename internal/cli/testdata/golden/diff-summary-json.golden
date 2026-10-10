@@ -1190,7 +1190,7 @@
           {
             "id": "test-quality.empty-test",
             "title": "Empty test",
-            "description": "Flags Go test functions whose body contains no executable statements.",
+            "description": "Flags Go test functions with no statements or only a testing.T.Parallel() call.",
             "pillar": "test-quality",
             "severity": "advisory",
             "confidence": "high",
