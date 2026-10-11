@@ -339,7 +339,7 @@ func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 // It returns "" when the signature asks for none of these.
 func signatureDocAsks(fnType *ast.FuncType) string {
 	asks := []string{}
-	if params := unnamedParameters(fnType, nil); len(params) > 0 {
+	if params := undocumentedParameters(fnType, nil); len(params) > 0 {
 		asks = append(asks, "describe "+parameterPhrase(params))
 	}
 	gap := undocumentedReturns(fnType, nil)

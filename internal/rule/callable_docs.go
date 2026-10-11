@@ -39,7 +39,7 @@ func (MissingParamDocRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 	}
 	findings := []finding.Finding{}
 	for _, callable := range documentedCallables(unit.AST) {
-		missing := unnamedParameters(callable.fnType, callable.doc)
+		missing := undocumentedParameters(callable.fnType, callable.doc)
 		if len(missing) == 0 {
 			continue
 		}
@@ -110,9 +110,9 @@ func funcLiteralVars(decl *ast.GenDecl) []documentedCallable {
 	return callables
 }
 
-// unnamedParameters returns, in signature order, the named parameters the doc comment never mentions.
+// undocumentedParameters returns, in signature order, the named parameters the doc comment never mentions.
 // Blank and unnamed parameters and context, HTTP request and response, and testing handles are skipped.
-func unnamedParameters(fnType *ast.FuncType, doc *ast.CommentGroup) []string {
+func undocumentedParameters(fnType *ast.FuncType, doc *ast.CommentGroup) []string {
 	if fnType == nil || fnType.Params == nil {
 		return nil
 	}
@@ -310,7 +310,8 @@ func describesReturnedValue(doc *ast.CommentGroup) bool {
 	return false
 }
 
-// leadsToError reports whether the first word after a return word, skipping articles and nil, names an error.
+// leadsToError reports whether the first word after a return word, skipping returnLeadWords such as articles, "any",
+// and the halves of "non-nil", names an error.
 func leadsToError(rest []string) bool {
 	for _, word := range rest {
 		if returnLeadWords[word] {

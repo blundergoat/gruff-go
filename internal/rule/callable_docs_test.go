@@ -9,18 +9,18 @@ import (
 )
 
 // analyseMissingParamDoc parses one source file and runs the docs.missing-param-doc rule over it.
-func analyseMissingParamDoc(t *testing.T, path string, source string) []paramDocView {
+func analyseMissingParamDoc(t *testing.T, path string, source string) []callableDocView {
 	t.Helper()
 	unit := parseOne(t, path, source)
-	views := []paramDocView{}
+	views := []callableDocView{}
 	for _, current := range (MissingParamDocRule{}).AnalyzeUnit(unit, Context{}) {
-		views = append(views, paramDocView{symbol: current.Symbol, message: current.Message, line: current.Location.Line})
+		views = append(views, callableDocView{symbol: current.Symbol, message: current.Message, line: current.Location.Line})
 	}
 	return views
 }
 
-// paramDocView keeps the fields these tests assert on.
-type paramDocView struct {
+// callableDocView keeps the fields these tests assert on.
+type callableDocView struct {
 	// symbol is the reported callable name.
 	symbol string
 	// message is the rendered finding message.
@@ -52,7 +52,7 @@ func ConvertCents(amount int, rate int) int { return amount * rate }
 }
 
 // TestMissingParamDocRuleNamesEachMissingParameterOnPublicFunction confirms one finding per callable that
-// names every unnamed parameter in signature order, without calling the callable public.
+// names every parameter the doc comment leaves out, in signature order, without calling the callable public.
 func TestMissingParamDocRuleNamesEachMissingParameterOnPublicFunction(t *testing.T) {
 	findings := analyseMissingParamDoc(t, "pricing/pricing.go", `package pricing
 
@@ -173,18 +173,18 @@ func convert(amount int) int { return amount }
 }
 
 // analyseMissingReturnDoc parses one source file and runs the docs.missing-return-doc rule over it.
-func analyseMissingReturnDoc(t *testing.T, path string, source string) []paramDocView {
+func analyseMissingReturnDoc(t *testing.T, path string, source string) []callableDocView {
 	t.Helper()
 	unit := parseOne(t, path, source)
-	views := []paramDocView{}
+	views := []callableDocView{}
 	for _, current := range (MissingReturnDocRule{}).AnalyzeUnit(unit, Context{}) {
-		views = append(views, paramDocView{symbol: current.Symbol, message: current.Message, line: current.Location.Line})
+		views = append(views, callableDocView{symbol: current.Symbol, message: current.Message, line: current.Location.Line})
 	}
 	return views
 }
 
 // assertReturnDocMessages fails unless the findings carry exactly the wanted messages in order.
-func assertReturnDocMessages(t *testing.T, findings []paramDocView, want []string) {
+func assertReturnDocMessages(t *testing.T, findings []callableDocView, want []string) {
 	t.Helper()
 	if len(findings) != len(want) {
 		t.Fatalf("findings = %#v, want %d findings %q", findings, len(want), want)
