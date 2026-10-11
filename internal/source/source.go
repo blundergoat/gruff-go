@@ -255,7 +255,10 @@ func (w *discoveryWalker) visitDir(current string) error {
 func (w *discoveryWalker) visitFile(path string, explicit bool) {
 	rel := displayPath(w.rootAbs, path)
 	if decision := w.decideIgnore(rel, false, explicit); decision.Ignored {
-		w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
+		// A minified file is listed only when gruff-go would otherwise scan it, so `jquery.min.js` stays unsupported.
+		if _, eligible := classify(path); eligible || decision.Source != OriginDefault || decision.Reason != minifiedReason {
+			w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
+		}
 		return
 	}
 	w.addFile(path)
@@ -286,8 +289,9 @@ func (w *discoveryWalker) normalize() {
 // decideIgnore is the single ignore engine shared by discovery and the
 // check-ignore command. Precedence, highest first: config paths.ignore
 // (authoritative in every invocation mode), VCS internals (always blocked),
-// repository .gitignore, then the no-gitignore fallback. Explicit files bypass
-// gitignore and fallback decisions. Generated-file detection lives in addFile, not here,
+// repository .gitignore, third-party, build-output and minified names (which never
+// defer to a .gitignore), then the no-gitignore fallback. Explicit files bypass
+// every decision after VCS internals. Generated-file detection lives in addFile, not here,
 // because it must read the file - keeping this engine O(1) and path-only so
 // check-ignore can reuse it verbatim.
 func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) IgnoreDecision {
@@ -307,6 +311,15 @@ func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) Ig
 	if w.gitignoreActive && repoRelative(rel) {
 		if ignored, _ := w.matcher.Match(rel, isDir); ignored {
 			return IgnoreDecision{Ignored: true, Reason: "gitignored", Source: OriginGitignore}
+		}
+	}
+	// A committed copy is still someone else's code, so these classes skip whatever the .gitignore says (section 7).
+	if reason, ignored := thirdPartyDir(rel, isDir); ignored {
+		return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
+	}
+	if !isDir {
+		if reason, ignored := minifiedFile(rel); ignored {
+			return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 		}
 	}
 	if isDir {
