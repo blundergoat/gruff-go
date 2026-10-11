@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **80 rules** across **11 pillars**. **60 rules are enabled by default** and 20 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **82 rules** across **11 pillars**. **60 rules are enabled by default** and 22 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
@@ -14,7 +14,7 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 Generated Go files are skipped by default when their leading comments contain both `generated` and `DO NOT EDIT`, case-insensitive. `--include-ignored` opts those files back into scanning, and rule-level generated-file guards respect that run setting.
 
-`docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
+`docs.comment-rubric` inspects every file unless its `includePaths` option narrows the set, and `excludePaths` removes paths from that set. Each of its checks is opt-in (`requirePackageSummary`, `requireFunctionComments`, `requireNamedTypeComments`, `requireStructComments`, `requireInterfaceComments`, `requireConstComments`, `requireVarComments`, all `false` by default), so its default-on status reports nothing until you turn one on.
 
 `docs.config-field-comment` is path-scoped: it enforces doc comments on exported struct fields only for files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected configuration schema files in.
 
@@ -35,6 +35,8 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | advisory | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | advisory | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
+| [`docs.missing-param-doc`](#docsmissing-param-doc) | documentation | advisory | parser | - | Documented callables whose doc comment does not name each parameter. |
+| [`docs.missing-return-doc`](#docsmissing-return-doc) | documentation | advisory | parser | - | Documented callables whose doc comment does not explain the returned values or when an error is returned. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | advisory | parser | - | Packages with no package-level comment in any file. |
 | [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | advisory | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
 | [`maintainability.context-todo-production`](#maintainabilitycontext-todo-production) | maintainability | advisory | parser | - | `context.TODO()` calls in production files. |
@@ -385,11 +387,45 @@ rules:
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
 
+For a function or method, the message also lists what the new comment should cover, built from the signature: each parameter by name, skipping blank and unnamed parameters and context, HTTP request and response, and testing handles; the returned value or values, only when a non-error result exists; and when an error is returned, only when a result has the type `error`. A function or method with none of these keeps the bare message.
+
 Set `ignoreInternalPackages: false` when internal package exports should follow the same documentation bar as public API packages.
 
 **Remediation.** Add a Go-style doc comment that begins with the symbol name.
 
 **Known precision limit.** A generated or externally constrained exported declaration outside the built-in generated, internal, and test exclusions can lack a local doc comment. Add the Go doc comment, mark generated source canonically, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
+### `docs.missing-param-doc`
+
+- **Pillar:** documentation
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+
+Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not name each parameter; context, HTTP request and response, and testing handles are skipped.
+
+The rule reads the doc comment as plain prose: a parameter counts as named when its name appears in the comment as a word, in any letter case, and no tag format is required. Only callables whose doc comment passes the `docs.comment-rubric` usefulness test are inspected; undocumented callables are left to `docs.exported-symbol-comment` and `docs.comment-rubric`. A package-level var holding a function literal is read through the var's own doc comment, and closures inside function bodies are out of scope. Blank and unnamed parameters are skipped, and so are parameters whose type expression is `context.Context`, `*http.Request`, `http.ResponseWriter`, or a `testing` handle (`*testing.T`, `*testing.B`, `*testing.F`, `*testing.M`, `testing.TB`, `*testing.PB`). One finding per callable names every missing parameter.
+
+**Remediation.** Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required.
+
+**Known precision limit.** A doc comment can describe a parameter by its role instead of its name, or leave a self-explanatory parameter unmentioned, so the parameter name never appears as a word. Name the parameter in the doc comment, rename it to the word the prose already uses, or keep this opt-in rule disabled for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
+### `docs.missing-return-doc`
+
+- **Pillar:** documentation
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+
+Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not explain the returned values or, when an error is returned, when that happens; callables that return nothing are skipped.
+
+The rule reads the doc comment as plain prose and requires no tag format. A non-error result counts as described when a sentence uses a return word (`return`, `returns`, `returned`, `returning`, `result`, `results`, `reports`, `yields`, `gives`) whose object is not an error, or when the comment names a named result. An `error` result counts as explained when the comment uses a failure word (`error`, `errors`, `err`, `fail`, `fails`, `failed`, `failing`, `failure`, `failures`) or names the named error result, so "returns an error when the file is missing" explains the error case but does not describe a returned value. The message asks for the returned value only when a non-error result exists and for the error case only when a result has the type `error`. It inspects the same documented functions, methods, and package-level function-literal vars as `docs.missing-param-doc`, and one finding per callable asks for what is missing.
+
+**Remediation.** Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required.
+
+**Known precision limit.** A doc comment can explain the result without a return word, such as a constructor summary or an interface-implementation note, so the prose is not recognised as describing it. Say what the callable returns in plain words, or keep this opt-in rule disabled for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `docs.package-comment`
 

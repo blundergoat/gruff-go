@@ -317,19 +317,42 @@ func exportedDeclFindings(unit parser.Unit, decl ast.Decl) []finding.Finding {
 	return nil
 }
 
-// exportedFuncFinding emits a finding when an exported function or method has no doc comment.
+// exportedFuncFinding emits a finding when an exported function or method has no doc comment. The message
+// appends what the new comment should cover, built from the signature by signatureDocAsks.
 func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	if !isExportedFunc(fn) || hasDoc(fn.Doc) {
 		return nil
 	}
 	position := unit.FileSet.Position(fn.Pos())
 	return []finding.Finding{{
-		Message:  fmt.Sprintf("exported %s %q has no doc comment", funcKind(fn), fn.Name.Name),
+		Message:  fmt.Sprintf("exported %s %q has no doc comment", funcKind(fn), fn.Name.Name) + signatureDocAsks(fn.Type),
 		File:     unit.File.Path,
 		Location: &finding.Location{Line: position.Line},
 		Symbol:   functionName(fn),
 		Metadata: map[string]any{"symbol": fn.Name.Name, "kind": funcKind(fn)},
 	}}
+}
+
+// signatureDocAsks returns the message suffix listing what a doc comment for this signature should cover:
+// each named parameter, skipping blank parameters and context, HTTP and testing handles; the returned value(s)
+// only when a non-error result exists; and when an error is returned only when a result has the type error.
+// It returns "" when the signature asks for none of these.
+func signatureDocAsks(fnType *ast.FuncType) string {
+	asks := []string{}
+	if params := unnamedParameters(fnType, nil); len(params) > 0 {
+		asks = append(asks, "describe "+parameterPhrase(params))
+	}
+	gap := undocumentedReturns(fnType, nil)
+	if gap.value {
+		asks = append(asks, "describe "+returnedValuePhrase(gap.values))
+	}
+	if gap.failure {
+		asks = append(asks, "say when an error is returned")
+	}
+	if len(asks) == 0 {
+		return ""
+	}
+	return "; " + strings.Join(asks, "; ")
 }
 
 // exportedGenDeclFindings emits findings for exported types, vars, and consts missing doc comments.

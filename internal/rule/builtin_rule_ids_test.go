@@ -28,6 +28,8 @@ func defaultRuleIDsThroughNaming() []string {
 		"docs.comment-rubric",
 		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
+		"docs.missing-param-doc",
+		"docs.missing-return-doc",
 		"docs.package-comment",
 		"docs.suppression-without-rationale",
 		"maintainability.context-todo-production",
@@ -110,8 +112,11 @@ func defaultDisabledRuleIDs() map[string]bool {
 	// on fewer than ten findings, so it is off by default rather than deleted (ADR-021).
 	return map[string]bool{
 		// Precision-floor M14 turned it off on 2026-10-09: after its repair its upper band was right on 23 of 40.
-		"complexity.cyclomatic":                       true,
-		"dependency.go-mod-local-replace":             true,
+		"complexity.cyclomatic":           true,
+		"dependency.go-mod-local-replace": true,
+		// Precision-floor M13 builds the parameter- and return-prose rules off by default until their own measurement passes.
+		"docs.missing-param-doc":                      true,
+		"docs.missing-return-doc":                     true,
 		"security.insecure-random-secret":             true,
 		"sensitive-data.aws-access-key":               true,
 		"sensitive-data.connection-string":            true,

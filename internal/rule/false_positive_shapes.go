@@ -46,6 +46,14 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 			"can lack a local doc comment.",
 		Mitigation: "Add the Go doc comment, mark generated source canonically, or disable the rule for the reviewed path.",
 	},
+	"docs.missing-param-doc": {
+		Shape:      "A doc comment can describe a parameter by its role instead of its name, or leave a self-explanatory parameter unmentioned, so the parameter name never appears as a word.",
+		Mitigation: "Name the parameter in the doc comment, rename it to the word the prose already uses, or keep this opt-in rule disabled for the reviewed path.",
+	},
+	"docs.missing-return-doc": {
+		Shape:      "A doc comment can explain the result without a return word, such as a constructor summary or an interface-implementation note, so the prose is not recognised as describing it.",
+		Mitigation: "Say what the callable returns in plain words, or keep this opt-in rule disabled for the reviewed path.",
+	},
 	"docs.suppression-without-rationale": {
 		Shape: "A suppression with its explanation in a non-adjacent comment, or without a reason:, rationale:, or because: prefix, " +
 			"is not recognised as justified.",

@@ -2,6 +2,15 @@
 
 ## v0.6.0 - Unreleased
 
+- **Two opt-in prose checks for parameters and return values** - `docs.missing-param-doc` reports a documented function,
+  method or package-level function variable whose doc comment does not name each parameter; context, HTTP request and
+  response, and testing handles are skipped. `docs.missing-return-doc` reports one whose comment does not describe the
+  returned value or say when it returns an error. Both read natural prose, need no tags, and are off by default; enable them
+  with `rules.<id>.enabled: true`.
+- **Missing-doc messages say what the comment should cover** - `docs.exported-symbol-comment` now adds, for a function or
+  method, what its new doc comment should cover, worked out from the signature. Baselines keep matching, because a function
+  finding's identity is its symbol.
+
 - **Go build toolchain 1.26.9** - Clears seven current standard-library vulnerability findings, with CI verification and release builds selecting the same Go version.
 
 - **Parallel scheduling alone is an empty test** - `test-quality.empty-test` now reports a test whose sole statement calls `Parallel()` on its declared `testing.T` handle, including renamed handles and testing imports. A call on another receiver or a body with additional work remains outside this shape.

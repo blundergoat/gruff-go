@@ -13,6 +13,8 @@ design.hotspot-file	design	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric
 docs.config-field-comment	documentation	advisory	parser	Config field comment
 docs.exported-symbol-comment	documentation	advisory	parser	Exported symbol comment
+docs.missing-param-doc	documentation	advisory	parser	Missing parameter doc
+docs.missing-return-doc	documentation	advisory	parser	Missing return doc
 docs.package-comment	documentation	advisory	parser	Package comment
 docs.suppression-without-rationale	documentation	advisory	parser	Suppression without rationale
 maintainability.context-todo-production	maintainability	advisory	parser	Context TODO in production

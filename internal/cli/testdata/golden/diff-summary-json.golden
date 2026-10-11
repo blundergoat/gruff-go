@@ -264,6 +264,28 @@
             "remediation": "Add a Go-style doc comment that begins with the symbol name."
           },
           {
+            "id": "docs.missing-param-doc",
+            "title": "Missing parameter doc",
+            "description": "Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not name each parameter; context, HTTP request and response, and testing handles are skipped.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "remediation": "Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required."
+          },
+          {
+            "id": "docs.missing-return-doc",
+            "title": "Missing return doc",
+            "description": "Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not explain the returned values or, when an error is returned, when that happens; callables that return nothing are skipped.",
+            "pillar": "documentation",
+            "severity": "advisory",
+            "confidence": "medium",
+            "capability": "parser",
+            "defaultEnabled": false,
+            "remediation": "Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required."
+          },
+          {
             "id": "docs.package-comment",
             "title": "Package comment",
             "description": "Flags Go packages that do not have a package-level comment in any file.",

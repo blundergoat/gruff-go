@@ -104,6 +104,8 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		SuppressionWithoutRationaleRule{},
 		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
+		MissingParamDocRule{},
+		MissingReturnDocRule{},
 		ConfigFieldCommentRule{
 			IncludePaths: stringSliceOption(config, "docs.config-field-comment", "includePaths"),
 			ExcludePaths: stringSliceOption(config, "docs.config-field-comment", "excludePaths"),

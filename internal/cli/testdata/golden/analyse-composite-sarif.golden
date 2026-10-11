@@ -438,6 +438,52 @@
               }
             },
             {
+              "id": "docs.missing-param-doc",
+              "name": "Missing parameter doc",
+              "shortDescription": {
+                "text": "Missing parameter doc"
+              },
+              "fullDescription": {
+                "text": "Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not name each parameter; context, HTTP request and response, and testing handles are skipped."
+              },
+              "help": {
+                "text": "Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
+              "id": "docs.missing-return-doc",
+              "name": "Missing return doc",
+              "shortDescription": {
+                "text": "Missing return doc"
+              },
+              "fullDescription": {
+                "text": "Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not explain the returned values or, when an error is returned, when that happens; callables that return nothing are skipped."
+              },
+              "help": {
+                "text": "Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required."
+              },
+              "properties": {
+                "pillar": "documentation",
+                "defaultSeverity": "advisory",
+                "confidence": "medium",
+                "capability": "parser",
+                "defaultEnabled": false
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            },
+            {
               "id": "docs.package-comment",
               "name": "Package comment",
               "shortDescription": {
@@ -2309,8 +2355,8 @@
                 "size.function-length"
               ],
               "underlyingFingerprints": [
-                "470a3d967e37e18b",
-                "6c2b61fff900ee69"
+                "6c2b61fff900ee69",
+                "8c89cc01abef3b78"
               ]
             },
             "pillar": "design",
@@ -2323,7 +2369,7 @@
           "ruleIndex": 14,
           "level": "note",
           "message": {
-            "text": "exported function \"Hot\" has no doc comment"
+            "text": "exported function \"Hot\" has no doc comment; describe parameters \"a\", \"b\""
           },
           "locations": [
             {
@@ -2342,7 +2388,7 @@
           },
           "properties": {
             "confidence": "medium",
-            "fingerprint": "470a3d967e37e18b",
+            "fingerprint": "8c89cc01abef3b78",
             "metadata": {
               "kind": "function",
               "symbol": "Hot"
@@ -2355,7 +2401,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 69,
+          "ruleIndex": 71,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"
