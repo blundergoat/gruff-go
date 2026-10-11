@@ -163,7 +163,7 @@ equal. Full scans omit both fields and omit `diff`.
 The family's built-in test-path skip also publishes rows, after the configured ones,
 numbered from `0` among themselves and marked `source: "built-in"`, which a
 configured row never carries. It adds one row per file and rule it removed,
-because every sensitive-data rule skips test, fixture and example files. Text
+because every sensitive-data and security rule skips test, fixture and example files. Text
 output labels them `builtInTestPath[<path>]`. The lockfile skip was removed in
 0.6.0 with the entropy rule it existed for.
 

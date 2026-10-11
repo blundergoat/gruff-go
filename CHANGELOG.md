@@ -2,6 +2,8 @@
 
 ## v0.6.0 - Unreleased
 
+- **Security rules skip test, fixture and example files** - Every security rule, `dependency.go-mod-local-replace` and `dependency.go-mod-remote-replace` included, now skips the test, fixture and example paths the sensitive-data rules already skip, because a test exercises insecure calls on purpose. **The trade-off is deliberate: a real injection, weak-crypto or TLS mistake committed under one of those paths is no longer reported.** Each skip is counted, never silent: one audit row per file and rule with `source: "built-in"` and the reason "Test, fixture and example files exercise insecure calls on purpose, so security rules skip them by path." (FAMILY-CONTRACT.md section 13a).
+
 - **Two opt-in prose checks for parameters and return values** - `docs.missing-param-doc` reports a documented function,
   method or package-level function variable whose doc comment does not name each parameter; context, HTTP request and
   response, and testing handles are skipped. `docs.missing-return-doc` reports one whose comment does not describe the

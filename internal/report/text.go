@@ -51,7 +51,7 @@ func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSum
 		if summary.Source == analysis.SuppressionSourceBuiltIn && len(summary.Paths) > 0 {
 			label := "builtInLockfile"
 			// The reason tells a test-path skip from a lockfile skip, so the label names the class the user is reading.
-			if summary.Reason == analysis.BuiltInTestPathReason {
+			if analysis.IsBuiltInTestPathReason(summary.Reason) {
 				label = "builtInTestPath"
 			}
 			clauses = append(clauses, fmt.Sprintf("%s[%s] %s: %d (%s)", label, summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))

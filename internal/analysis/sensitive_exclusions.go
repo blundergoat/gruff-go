@@ -13,8 +13,11 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// BuiltInTestPathReason is the reason a user reads on each builtInTestPath audit row; every port publishes these exact words.
+// BuiltInTestPathReason is the reason a user reads on each sensitive-data builtInTestPath audit row; every port publishes these exact words.
 const BuiltInTestPathReason = "Test, fixture and example files hold sample credentials, so sensitive-data rules skip them by path."
+
+// BuiltInSecurityTestPathReason is the reason on each security builtInTestPath audit row; every port publishes these exact words.
+const BuiltInSecurityTestPathReason = "Test, fixture and example files exercise insecure calls on purpose, so security rules skip them by path."
 
 // builtInTestPathExemptRule is the family's fixture-PII rule, which keeps reading test paths; gruff-go has no rule with this id.
 const builtInTestPathExemptRule = "sensitive-data.pii-test-fixture"
@@ -86,19 +89,23 @@ func ApplySensitiveExclusions(findings []finding.Finding, exclusions []Sensitive
 	return kept, summaries
 }
 
-// ApplyBuiltInTestPathSkip hides sensitive-data findings in test, fixture and example files, and publishes one audit row per hidden file and rule.
+// ApplyBuiltInTestPathSkip hides sensitive-data and security findings in test, fixture and example files, and publishes one audit row per hidden file and rule.
 //
-// A user scanning a project with sample keys in `testdata/` sees builtInTestPath[...] rows instead of findings.
-// The skip is never silent, and it covers every gruff-go sensitive-data rule, pii-pattern included (FAMILY-CONTRACT.md section 13a).
+// A user scanning a project with sample keys or a deliberate shell call in `testdata/` sees builtInTestPath[...] rows instead of findings.
+// The skip is never silent, and it covers every gruff-go sensitive-data rule, pii-pattern included, and every security rule (FAMILY-CONTRACT.md section 13a).
 func ApplyBuiltInTestPathSkip(findings []finding.Finding, summaries []SuppressionSummary) ([]finding.Finding, []SuppressionSummary) {
-	type fileAndRule struct{ file, rule string }
+	// A rule has one pillar, so carrying it in the key adds no rows; it picks the row's reason.
+	type fileAndRule struct {
+		file, rule string
+		security   bool
+	}
 	skippedCountByFileAndRule := map[fileAndRule]int{}
 	kept := make([]finding.Finding, 0, len(findings))
 	// Each finding either stays in the report or is folded into its file's audit row.
 	for _, item := range findings {
-		// Only the pillar's findings in test code are skipped, and never the family's fixture-PII rule.
-		if strings.HasPrefix(item.RuleID, "sensitive-data.") && item.RuleID != builtInTestPathExemptRule && IsBuiltInTestPath(item.File) {
-			skippedCountByFileAndRule[fileAndRule{item.File, item.RuleID}]++
+		// Only the two pillars' findings in test code are skipped, and never the family's fixture-PII rule.
+		if isSkippedOnTestPaths(item) && IsBuiltInTestPath(item.File) {
+			skippedCountByFileAndRule[fileAndRule{item.File, item.RuleID, item.Pillar == finding.PillarSecurity}]++
 			continue
 		}
 		kept = append(kept, item)
@@ -127,12 +134,35 @@ func ApplyBuiltInTestPathSkip(findings []finding.Finding, summaries []Suppressio
 			Index:      nextIndex + offset,
 			Rule:       skipped.rule,
 			Paths:      []string{skipped.file},
-			Reason:     BuiltInTestPathReason,
+			Reason:     builtInTestPathReasonFor(skipped.security),
 			Suppressed: skippedCountByFileAndRule[skipped],
 			Source:     SuppressionSourceBuiltIn,
 		})
 	}
 	return kept, summaries
+}
+
+// isSkippedOnTestPaths reports whether the test-path class covers a finding: every sensitive-data rule except the
+// fixture-PII rule, and every security-pillar rule, `dependency.go-mod-local-replace` included.
+func isSkippedOnTestPaths(item finding.Finding) bool {
+	if item.Pillar == finding.PillarSecurity {
+		return true
+	}
+	return strings.HasPrefix(item.RuleID, "sensitive-data.") && item.RuleID != builtInTestPathExemptRule
+}
+
+// builtInTestPathReasonFor returns the audit reason for a skipped finding, so a security row says why a test may call
+// an insecure API on purpose rather than repeating the sample-credential reason.
+func builtInTestPathReasonFor(security bool) string {
+	if security {
+		return BuiltInSecurityTestPathReason
+	}
+	return BuiltInTestPathReason
+}
+
+// IsBuiltInTestPathReason reports whether reason belongs to a test-path audit row, of either pillar.
+func IsBuiltInTestPathReason(reason string) bool {
+	return reason == BuiltInTestPathReason || reason == BuiltInSecurityTestPathReason
 }
 
 // IsBuiltInTestPath reports whether a finding's file is test, fixture or example code, e.g. a file under `testdata/` or one named `keys_test.go`.
