@@ -539,3 +539,49 @@ func rawSARIFResult(t *testing.T, data []byte, index int) map[string]any {
 	}
 	return result
 }
+
+// TestWriteSARIFKeepsInlineSuppressedFindingsAsSuppressedResults proves section 13c's SARIF rule: a finding another
+// tool's comment suppressed stays a result with an inSource suppression carrying the audit reason, after the open
+// results, so a code-scanning tool shows it as suppressed rather than fixed.
+func TestWriteSARIFKeepsInlineSuppressedFindingsAsSuppressedResults(t *testing.T) {
+	open := finding.Finding{RuleID: "security.shell-command", Message: "shell", File: "main.go", Location: &finding.Location{Line: 9},
+		Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity}
+	quiet := open
+	quiet.Location = &finding.Location{Line: 4}
+	report := analysis.NewReport(analysis.ReportInput{
+		Root: "/repo", Inputs: []string{"."}, Format: "sarif", FailOn: finding.FailThresholdError, Scanned: []string{"main.go"},
+		Findings: []finding.Finding{open}, Definitions: defaultDefinitions(),
+		Suppressed: []analysis.SuppressedFinding{{Finding: quiet, Justification: analysis.InlineSuppressionReason}},
+	})
+
+	var out bytes.Buffer
+	if err := WriteSARIF(&out, report); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Runs []struct {
+			Results []struct {
+				Locations    []sarifLocation `json:"locations"`
+				Suppressions []struct {
+					Kind          string `json:"kind"`
+					Justification string `json:"justification"`
+				} `json:"suppressions"`
+			} `json:"results"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("invalid sarif json: %v\n%s", err, out.String())
+	}
+	results := payload.Runs[0].Results
+	if len(results) != 2 || len(results[0].Suppressions) != 0 {
+		t.Fatalf("results = %#v, want the open result unsuppressed and then the suppressed one", results)
+	}
+	suppression := results[1].Suppressions
+	if len(suppression) != 1 || suppression[0].Kind != "inSource" || suppression[0].Justification != analysis.InlineSuppressionReason ||
+		results[1].Locations[0].PhysicalLocation.Region.StartLine != 4 {
+		t.Fatalf("suppressed result = %#v, want one inSource suppression with the audit reason on line 4", results[1])
+	}
+	if _, exists := rawSARIFResult(t, out.Bytes(), 0)["suppressions"]; exists {
+		t.Fatal("an open result must not carry a suppressions key")
+	}
+}

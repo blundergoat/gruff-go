@@ -92,6 +92,19 @@ func targetsForRoot(projectRoot string, paths []string) []string {
 	return resolved
 }
 
+// baselinePathForRun returns the root-relative baseline this run applies: the one --baseline names, or a
+// gruff-baseline.json at the project root when no flag chose one, so committed accepted debt applies without being
+// asked for and the report names it (ADR-006, FAMILY-CONTRACT.md section 13c). --no-baseline declines it.
+func baselinePathForRun(projectRoot string, values analyseFlagValues) string {
+	if values.baselinePath != "" || values.noBaseline || values.generateBaselinePath != "" {
+		return rootRelativePath(projectRoot, values.baselinePath)
+	}
+	if info, err := os.Stat(filepath.Join(projectRoot, analysis.DefaultBaselineFileName)); err == nil && info.Mode().IsRegular() {
+		return analysis.DefaultBaselineFileName
+	}
+	return ""
+}
+
 // rootRelativePath rewrites a path the user typed, such as --baseline, so that joined to the project root it names the
 // file the user meant from the launch directory. It stays relative so the report never publishes a host path; a file
 // outside the project keeps its ../ form, which the machine renderers leave out.

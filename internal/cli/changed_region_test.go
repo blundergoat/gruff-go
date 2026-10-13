@@ -285,3 +285,32 @@ func RiskyTwo(a int) {
 }
 `
 }
+
+// TestAnalyseAppliesADiscoveredBaselineAndNamesIt pins ADR-006: a gruff-baseline.json at the project root applies
+// without --baseline, the text report names it and its source, and --no-baseline declines it.
+func TestAnalyseAppliesADiscoveredBaselineAndNamesIt(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "complex.go", complexFixture())
+	t.Chdir(root)
+
+	var baselineOut, baselineErr bytes.Buffer
+	if code := Main([]string{"baseline", "--out", analysis.DefaultBaselineFileName, "complex.go"}, &baselineOut, &baselineErr); code != 0 {
+		t.Fatalf("baseline exit = %d, stderr = %s, stdout = %s", code, baselineErr.String(), baselineOut.String())
+	}
+
+	report := runAnalyseReport(t, "analyse", "--format", "json", "--fail-on", "none", "complex.go")
+	if !report.Baseline.Applied || report.Baseline.Source != "default" || len(report.Findings) != 0 {
+		t.Fatalf("discovered baseline = %#v, findings = %#v; want it applied with source default", report.Baseline, report.Findings)
+	}
+	var text, textErr bytes.Buffer
+	if code := Main([]string{"analyse", "--fail-on", "none", "complex.go"}, &text, &textErr); code != 0 {
+		t.Fatalf("text exit = %d, stderr = %s", code, textErr.String())
+	}
+	if !strings.Contains(text.String(), "baseline: default gruff-baseline.json; suppressed 1 findings") {
+		t.Fatalf("text report does not name the discovered baseline:\n%s", text.String())
+	}
+	declined := runAnalyseReport(t, "analyse", "--format", "json", "--fail-on", "none", "--no-baseline", "complex.go")
+	if declined.Baseline.Applied || len(declined.Findings) != 1 {
+		t.Fatalf("--no-baseline baseline = %#v, findings = %#v; want the finding back", declined.Baseline, declined.Findings)
+	}
+}

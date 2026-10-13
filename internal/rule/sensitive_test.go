@@ -393,20 +393,21 @@ func TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleHonorsNoSecAnnotation asserts a #nosec annotation
-// on the type marker line silences the finding, mirroring the suppression
-// contract of the other sensitive-data.* rules.
-func TestGCPServiceAccountRuleHonorsNoSecAnnotation(t *testing.T) {
+// TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter asserts the rule still
+// reports a key whose marker line carries `#nosec`, so the inline filter can
+// suppress and count it (FAMILY-CONTRACT.md section 13c) instead of the rule
+// dropping it silently.
+func TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter(t *testing.T) {
 	src := `{
-  "type": "service_account", // #nosec G101 -- fixture
+  "type": "service_account", // #nosec -- fixture
   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
 }`
 	unit := parser.Unit{
 		File:   source.File{Path: "fixture.json", Type: source.FileTypeText},
 		Source: src,
 	}
-	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("expected #nosec to suppress finding, got %#v", got)
+	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("expected one finding for the inline filter to judge, got %#v", got)
 	}
 }
 
@@ -489,9 +490,10 @@ func TestScanLinesForSecretSkipsComments(t *testing.T) {
 	}
 }
 
-// TestScanLinesForSecretHonoursSuppressions asserts inline annotations silence findings.
-// gosec's `#nosec` and golangci-lint's `//nolint:gosec` / `//nolint:all` are both honored.
-func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
+// TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter asserts a line carrying `#nosec` or `//nolint` still
+// reports at rule level: analysis.ApplyInlineSuppressions decides which comments suppress it and counts each one
+// (FAMILY-CONTRACT.md section 13c) rather than the rule dropping them uncounted.
+func TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter(t *testing.T) {
 	cases := []string{
 		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders // #nosec G101 -- fixture",
 		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders //nolint:gosec",
@@ -504,8 +506,8 @@ func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
 				File:   source.File{Path: "main.go", Type: source.FileTypeGo},
 				Source: line + "\n",
 			}
-			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-				t.Fatalf("expected suppressed line to produce no findings, got %#v", got)
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+				t.Fatalf("expected one finding for the inline filter to judge, got %#v", got)
 			}
 		})
 	}

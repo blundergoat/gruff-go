@@ -141,6 +141,8 @@ func Analyze(opts Options) (Report, error) {
 	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
 	// A configured entry claims its findings first, so its count stays what the user wrote it for.
 	findings, suppressions = ApplyBuiltInTestPathSkip(findings, suppressions)
+	// Another tool's comment naming the same check suppresses a finding where it was written (section 13c).
+	findings, suppressions, suppressedFindings := ApplyInlineSuppressions(findings, suppressions, sourcesByFile(units))
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
@@ -160,6 +162,7 @@ func Analyze(opts Options) (Report, error) {
 		FailOnNew:       opts.FailOnNew,
 		IncludeIgnored:  opts.IncludeIgnored,
 		Suppressions:    suppressions,
+		Suppressed:      suppressedFindings,
 		Scanned:         scannedPaths(discovery.Files),
 		Skipped:         skippedPaths(discovery.Skipped),
 		Missing:         discovery.Missing,

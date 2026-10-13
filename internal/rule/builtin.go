@@ -202,8 +202,9 @@ func (r FunctionLengthRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for functions longer than the threshold, measured
-// in code-bearing lines. Direct `//nolint:funlen` or `//nolint:all` doc comments
-// suppress the rule for one function without global configuration.
+// in code-bearing lines. A `//nolint:funlen`, `//nolint:all` or bare `//nolint` on
+// the func line, or alone on the line above, is honoured and counted after the rules run
+// (analysis.ApplyInlineSuppressions).
 func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.File.Type != source.FileTypeGo {
 		return nil
@@ -220,15 +221,11 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		return nil
 	}
 	codeLines := codeBearingLines(unit.Source)
-	nolintNames := funlenNolintNames(unit.AST)
 	funcDecls := funcDeclsBySymbol(unit.AST)
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {
 		rawLength := fn.EndLine - fn.Line + 1
 		if rawLength <= maxLines {
-			continue
-		}
-		if nolintNames[fn.Name] {
 			continue
 		}
 		length := countLinesInRange(codeLines, fn.Line, fn.EndLine)

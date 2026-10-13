@@ -77,6 +77,9 @@ type Report struct {
 	Diagnostics []Diagnostic `json:"diagnostics"`
 	// Findings is the sorted list of rule findings produced by the run.
 	Findings []finding.Finding `json:"findings"`
+	// Suppressed holds the findings another tool's comment suppressed. The JSON envelope counts them only in
+	// Suppressions; SARIF keeps each as a result marked suppressed (FAMILY-CONTRACT.md section 13c).
+	Suppressed []SuppressedFinding `json:"-"`
 }
 
 // Tool identifies the scanner binary that produced a report.
@@ -265,8 +268,10 @@ type ReportInput struct {
 	Diff DiffSummary
 	// SuppressedCount is present when changed-region filtering ran.
 	SuppressedCount *int
-	// Suppressions is the audit row set produced by ApplySensitiveExclusions.
+	// Suppressions carries configured sensitiveExclusions rows, then built-in test-path and inline rows.
 	Suppressions []SuppressionSummary
+	// Suppressed is the findings ApplyInlineSuppressions removed, kept for SARIF.
+	Suppressed []SuppressedFinding
 }
 
 // ConfigErrorDiagnosticType is the type every port publishes when it cannot load the configuration it was given.
@@ -342,6 +347,7 @@ func NewReport(input ReportInput) Report {
 		Diff:            input.Diff,
 		SuppressedCount: input.SuppressedCount,
 		Suppressions:    nonNilSuppressions(input.Suppressions),
+		Suppressed:      input.Suppressed,
 		Score:           scoring.Calculate(findings, evaluatedFileCount(scanned, diagnostics), ruleBackedPillars(definitions)...),
 		Rules:           definitions,
 		Paths: Paths{

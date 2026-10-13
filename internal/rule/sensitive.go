@@ -200,9 +200,9 @@ func (r ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding
 
 // scanLinesForSecret walks the unit source line by line, emitting a finding for
 // each pattern match with preview metadata supplied by the shared policy.
-// Lines that are entirely Go comments, or that carry a suppression annotation
-// (`#nosec`, `//nolint:gosec`, `//nolint:all`), are skipped to keep noise down
-// in dev/test fixtures and inline documentation.
+// Lines that are entirely Go comments are skipped to keep noise down in inline
+// documentation. A suppression comment such as `#nosec` is honoured, and
+// counted, after the rules run (analysis.ApplyInlineSuppressions).
 func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string, previews sensitivePreviewPolicy, category sensitivePreviewCategory) []finding.Finding {
 	matches := secretMatchesOnCodeLines(unit, pattern)
 	findings := make([]finding.Finding, 0, len(matches))
@@ -367,9 +367,8 @@ func firstCodeMatch(source string, pattern *regexp.Regexp) (int, string) {
 }
 
 // lineIsCodeBearing reports whether a line should be examined for secret patterns,
-// advancing the block-comment state machine and honoring inline suppression annotations.
-// Returns false for comment-only lines, lines inside an unclosed /* */ block, and
-// lines carrying #nosec or //nolint:{gosec,all}. The block-comment state mutates
+// advancing the block-comment state machine. Returns false for comment-only lines
+// and lines inside an unclosed /* */ block. The block-comment state mutates
 // through the pointer so the caller can walk a file with a single shared boolean.
 func lineIsCodeBearing(line string, inBlockComment *bool) bool {
 	trimmed := strings.TrimLeft(line, " \t")
@@ -395,42 +394,7 @@ func lineIsCodeBearing(line string, inBlockComment *bool) bool {
 			return false
 		}
 	}
-	if strings.HasPrefix(trimmed, "//") {
-		return false
-	}
-	if hasSecretSuppressionAnnotation(line) {
-		return false
-	}
-	return true
-}
-
-// hasSecretSuppressionAnnotation reports whether a source line carries an
-// inline suppression marker. gruff-go honors both gosec's `#nosec` form and
-// golangci-lint's `//nolint:gosec` / `//nolint:all` forms so authors don't have
-// to add a tool-specific annotation just for this scanner.
-func hasSecretSuppressionAnnotation(line string) bool {
-	if strings.Contains(line, "#nosec") {
-		return true
-	}
-	if !strings.Contains(line, "//nolint") {
-		return false
-	}
-	idx := strings.Index(line, "//nolint")
-	rest := line[idx+len("//nolint"):]
-	if rest == "" || rest[0] != ':' {
-		return false
-	}
-	rest = rest[1:]
-	if i := strings.IndexAny(rest, " \t/"); i >= 0 {
-		rest = rest[:i]
-	}
-	for _, name := range strings.Split(rest, ",") {
-		name = strings.TrimSpace(name)
-		if name == "gosec" || name == "all" {
-			return true
-		}
-	}
-	return false
+	return !strings.HasPrefix(trimmed, "//")
 }
 
 // isPlaceholderConnection returns true when the URL embeds an obvious

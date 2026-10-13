@@ -33,7 +33,7 @@ func WriteSARIF(writer io.Writer, report analysis.Report) error {
 				Rules:           sarifRules(report.Rules),
 			}},
 			Invocations: sarifInvocations(report.Diagnostics),
-			Results:     sarifResults(report.Findings, report.Rules, report.Baseline.Applied),
+			Results:     append(sarifResults(report.Findings, report.Rules, report.Baseline.Applied), sarifSuppressedResults(report.Suppressed, report.Rules)...),
 			Properties:  sarifRunPropertiesFromReport(report),
 		}},
 	}
@@ -252,6 +252,17 @@ type sarifResult struct {
 	// BaselineState is the SARIF 2.1.0 baselineState ("new") set only when a
 	// baseline was applied; omitted otherwise so non-baseline runs are unchanged.
 	BaselineState string `json:"baselineState,omitempty"`
+	// Suppressions marks a result another tool's comment suppressed, so a code-scanning tool shows it as
+	// suppressed rather than fixed (SARIF 2.1.0 §3.27.23, FAMILY-CONTRACT.md section 13c).
+	Suppressions []sarifSuppression `json:"suppressions,omitempty"`
+}
+
+// sarifSuppression records why a result is suppressed; kind "inSource" means a comment in the scanned file.
+type sarifSuppression struct {
+	// Kind is "inSource" for a suppression comment written in the source.
+	Kind string `json:"kind"`
+	// Justification is the audit reason the suppressions row carries.
+	Justification string `json:"justification"`
 }
 
 // sarifRunProperties carries gruff-go metadata at the SARIF run level.
@@ -355,6 +366,20 @@ func sarifResults(findings []finding.Finding, definitions []rule.Definition, bas
 	results := make([]sarifResult, 0, len(findings))
 	for _, findingItem := range findings {
 		results = append(results, sarifResultFor(findingItem, ruleIndices, baselineApplied))
+	}
+	return results
+}
+
+// sarifSuppressedResults projects each suppressed finding into a result that carries its inSource suppression.
+func sarifSuppressedResults(suppressed []analysis.SuppressedFinding, definitions []rule.Definition) []sarifResult {
+	findings := make([]finding.Finding, 0, len(suppressed))
+	for _, item := range suppressed {
+		findings = append(findings, item.Finding)
+	}
+	results := sarifResults(findings, definitions, false)
+	// sarifResults preserves input order, so results[index] describes suppressed[index]'s finding.
+	for index := range results {
+		results[index].Suppressions = []sarifSuppression{{Kind: "inSource", Justification: suppressed[index].Justification}}
 	}
 	return results
 }

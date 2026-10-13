@@ -26,6 +26,9 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextSuppressions(writer, report.Suppressions); err != nil {
 		return err
 	}
+	if err := writeTextAppliedBaseline(writer, report.Baseline); err != nil {
+		return err
+	}
 	if err := writeTextBaselineStatus(writer, report.Baseline); err != nil {
 		return err
 	}
@@ -57,9 +60,24 @@ func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSum
 			clauses = append(clauses, fmt.Sprintf("%s[%s] %s: %d (%s)", label, summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
 			continue
 		}
+		// An inline row names the file whose comment suppressed the findings, as `inline[main.go] security.shell-command: 1`.
+		if summary.Source == analysis.SuppressionSourceInline && len(summary.Paths) > 0 {
+			clauses = append(clauses, fmt.Sprintf("inline[%s] %s: %d (%s)", summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			continue
+		}
 		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, summary.Reason))
 	}
 	_, err := fmt.Fprintf(writer, "suppressed findings: %d via %s\n", total, strings.Join(clauses, "; "))
+	return err
+}
+
+// writeTextAppliedBaseline names an applied baseline and how it was chosen, so a run that hid accepted findings never
+// reads as a clean scan, e.g. `baseline: default gruff-baseline.json; suppressed 2 findings` (ADR-006).
+func writeTextAppliedBaseline(writer io.Writer, summary analysis.BaselineSummary) error {
+	if !summary.Applied {
+		return nil
+	}
+	_, err := fmt.Fprintf(writer, "baseline: %s %s; suppressed %d findings\n", summary.Source, summary.Path, summary.SuppressedFindings)
 	return err
 }
 

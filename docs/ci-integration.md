@@ -24,6 +24,10 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    gruff-go analyse --baseline gruff-baseline.json .
    ```
 
+   A `gruff-baseline.json` at the project root also applies without `--baseline`,
+   and the text report names it, as `baseline: default gruff-baseline.json;
+   suppressed N findings`. Pass `--no-baseline` to see every finding.
+
    Gruff pairs exact fingerprints first, then remaining line-insensitive contract
    identities, consuming one current and one prior occurrence per match. Harmless
    line or measured-value shifts therefore stay reviewed, while a single baseline

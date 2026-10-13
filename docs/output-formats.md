@@ -167,6 +167,21 @@ because every sensitive-data and security rule skips test, fixture and example f
 output labels them `builtInTestPath[<path>]`. The lockfile skip was removed in
 0.6.0 with the entropy rule it existed for.
 
+Another tool's suppression comment that names the same check as a gruff-go rule
+suppresses that finding where it was written (FAMILY-CONTRACT.md section 13c):
+gosec `#nosec G112`, `G402` or `G204`, gosec `G101` for every sensitive-data
+rule, golangci-lint `//nolint:funlen`, zizmor
+`# zizmor: ignore[unpinned-uses]` or `ignore[dangerous-triggers]`, and a bare
+`#nosec`, `//nolint`, `//nolint:all` or `//nolint:gosec` for every security and
+sensitive-data rule. The comment must be on the reported line or alone on the
+line above it; a `#nosec` naming only other checks, such as `G304`, suppresses
+nothing. Each suppression is counted in one row per file and rule,
+after the built-in rows and numbered on from them, with `source: "inline"` and
+the reason "Another tool's suppression comment names this check, so the finding
+is suppressed where it was written." Text output labels these rows
+`inline[<path>]`, and SARIF keeps each suppressed finding as a result carrying
+`"suppressions": [{"kind": "inSource", "justification": <reason>}]`.
+
 ### Migrating v2 consumers
 
 Version 3 is a hard break with no v2 writer or compatibility flag:

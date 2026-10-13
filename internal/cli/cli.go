@@ -249,7 +249,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		DeepScanBudget:         deepScanBudget,
 		IncludeIgnored:         values.includeIgnored,
 		ReportAllSkippedInputs: true,
-		BaselinePath:           rootRelativePath(projectRoot, values.baselinePath),
+		BaselinePath:           baselinePathForRun(projectRoot, values),
 		DiffBase:               values.diffBase,
 		DiffMode:               values.resolvedDiffMode(),
 		DiffPatch:              values.diffPatch,

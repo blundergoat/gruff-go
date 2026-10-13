@@ -60,3 +60,24 @@ func TestTextOmitsSuppressionLineWithoutExclusions(t *testing.T) {
 		t.Fatalf("text output added a suppression line without exclusions:\n%s", buf.String())
 	}
 }
+
+// TestTextNamesInlineRowsByTheirFile verifies an inline row reads `inline[file] rule: n (reason)` beside the
+// built-in rows, so the human surface counts another tool's suppression comments (FAMILY-CONTRACT.md section 13c).
+func TestTextNamesInlineRowsByTheirFile(t *testing.T) {
+	report := analysis.NewReport(analysis.ReportInput{
+		Root: "/repo", Inputs: []string{"."}, Format: "text", FailOn: finding.FailThresholdWarning, Scanned: []string{"main.go"},
+		Definitions: defaultDefinitions(),
+		Suppressions: []analysis.SuppressionSummary{
+			{Index: 0, Rule: "size.function-length", Paths: []string{"main.go"}, Reason: analysis.InlineSuppressionReason, Suppressed: 1, Source: analysis.SuppressionSourceInline},
+		},
+	})
+
+	var buf bytes.Buffer
+	if err := WriteText(&buf, report); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
+	want := "suppressed findings: 1 via inline[main.go] size.function-length: 1 (" + analysis.InlineSuppressionReason + ")\n"
+	if !strings.Contains(buf.String(), want) {
+		t.Fatalf("text output missing the inline clause:\n%s", buf.String())
+	}
+}

@@ -30,7 +30,7 @@ var builtInTestPathDirectories = map[string]bool{
 // builtInTestFileName matches a whole base name that marks a test file in any family language, e.g. `keys_test.go` or `login.spec.ts`.
 var builtInTestFileName = regexp.MustCompile(`^(?:.*_test\.go|test_.*\.py|.*_test\.py|.*Test\.php|.*\.(?:test|spec)\.(?:js|jsx|ts|tsx|mjs|cjs))$`)
 
-// SuppressionSourceBuiltIn marks an audit row no configured entry produced.
+// SuppressionSourceBuiltIn marks an audit row the family's built-in test-path skip produced (section 13a).
 const SuppressionSourceBuiltIn = "built-in"
 
 // SensitiveExclusion is one validated sensitive-data suppression scope. The
@@ -51,7 +51,7 @@ type SensitiveExclusion struct {
 // findings it removed this run. It carries configuration text only - never a
 // message excerpt, preview, or matched value (FAMILY-CONTRACT.md section 5).
 type SuppressionSummary struct {
-	// Index is the entry's position in the configured sensitiveExclusions list.
+	// Index is the configured entry's position; built-in and inline rows share a separate sequence, built-in first.
 	Index int `json:"index"`
 	// Rule is the configured rule ID.
 	Rule string `json:"rule"`
@@ -63,7 +63,7 @@ type SuppressionSummary struct {
 	Reason string `json:"reason"`
 	// Suppressed counts the findings this entry removed from the report.
 	Suppressed int `json:"suppressed"`
-	// Source is "built-in" on a row the family's lockfile skip produced, and empty on a configured entry's row.
+	// Source is "built-in" for a test-path skip, "inline" for another tool's comment, and empty for a configured entry.
 	Source string `json:"source,omitempty"`
 }
 
