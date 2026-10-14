@@ -545,44 +545,6 @@
             "remediation": "Replace the misspelled token with the suggested correction. Use the `ignore` option for project-specific terms that look like misspellings but are intentional (proper nouns, vendor-specific terms)."
           },
           {
-            "id": "naming.negated-boolean",
-            "title": "Negated boolean",
-            "description": "Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites.",
-            "pillar": "naming",
-            "severity": "advisory",
-            "confidence": "medium",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "options": {
-              "allowList": [
-                "NoOp",
-                "Notify",
-                "Notice",
-                "Now",
-                "NoCopy",
-                "Notation",
-                "Notebook",
-                "NoConfig",
-                "NoBaseline",
-                "NoInteraction"
-              ],
-              "prefixes": [
-                "No",
-                "Not",
-                "Disable",
-                "Disallow",
-                "Without",
-                "Suppress"
-              ],
-              "scope": "exported"
-            },
-            "tags": [
-              "go-style",
-              "naming"
-            ],
-            "remediation": "Rename to the positive form (e.g. Skip… instead of No…) so call sites read without double negation."
-          },
-          {
             "id": "naming.package-stutter",
             "title": "Package stutter",
             "description": "Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry).",
@@ -713,7 +675,7 @@
               "github-actions",
               "security"
             ],
-            "remediation": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
+            "remediation": "Keep named secrets out of pull-request-triggered workflows. Run secret-using jobs only on trusted events such as push, and when a workflow_run job follows a pull-request workflow, check the triggering repository and branch before it uses secrets."
           },
           {
             "id": "security.github-actions-unpinned-action",
@@ -784,7 +746,7 @@
             "severity": "advisory",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "http",
               "redirect",
@@ -831,7 +793,7 @@
             "severity": "advisory",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": true,
+            "defaultEnabled": false,
             "tags": [
               "http",
               "security"
@@ -1242,20 +1204,6 @@
             "remediation": "Call t.Helper() at the start of the helper so failures report the caller's line."
           },
           {
-            "id": "test-quality.no-failure-path",
-            "title": "Test cannot fail",
-            "description": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.).",
-            "pillar": "test-quality",
-            "severity": "advisory",
-            "confidence": "medium",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "tags": [
-              "tests"
-            ],
-            "remediation": "Add an assertion, or disable this rule for a package whose tests deliberately assert nothing."
-          },
-          {
             "id": "test-quality.parallel-range-capture",
             "title": "Parallel subtest captures range variable",
             "description": "Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics.",
@@ -1268,20 +1216,6 @@
               "tests"
             ],
             "remediation": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics."
-          },
-          {
-            "id": "test-quality.skipped-test",
-            "title": "Skipped test",
-            "description": "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.",
-            "pillar": "test-quality",
-            "severity": "advisory",
-            "confidence": "medium",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "tags": [
-              "tests"
-            ],
-            "remediation": "Remove the skip or document and track the condition outside the test body."
           },
           {
             "id": "test-quality.sleep-in-test",

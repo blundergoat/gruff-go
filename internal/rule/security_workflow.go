@@ -233,7 +233,7 @@ func (GitHubActionsSecretsInPRRule) Definition() Definition {
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Tags:           []string{"ci", "github-actions", "security"},
-		Remediation:    "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run.",
+		Remediation:    "Keep named secrets out of pull-request-triggered workflows. Run secret-using jobs only on trusted events such as push, and when a workflow_run job follows a pull-request workflow, check the triggering repository and branch before it uses secrets.",
 	}
 }
 

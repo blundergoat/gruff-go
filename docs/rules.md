@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **82 rules** across **11 pillars**. **60 rules are enabled by default** and 22 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **79 rules** across **11 pillars**. **55 rules are enabled by default** and 24 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
@@ -51,7 +51,6 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`naming.get-prefix`](#namingget-prefix) | modernisation | advisory | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | advisory | parser | - | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | advisory | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
-| [`naming.negated-boolean`](#namingnegated-boolean) | naming | advisory | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
 | [`naming.package-stutter`](#namingpackage-stutter) | naming | advisory | parser | - | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | advisory | parser | - | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | advisory | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
@@ -64,10 +63,10 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | advisory | parser | - | `http.Client` literals in production files without `Timeout`. |
 | [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | advisory | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | advisory | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
-| [`security.open-redirect-candidate`](#securityopen-redirect-candidate) | security | advisory | parser | - | Request-derived values used as a redirect target without validation. |
+| [`security.open-redirect-candidate`](#securityopen-redirect-candidate) | security | advisory | parser | - | Opt-in: request-derived values used as a redirect target without validation. |
 | [`security.path-traversal-file-access`](#securitypath-traversal-file-access) | security | advisory | parser | - | Request-derived paths reaching filesystem sinks without containment evidence. |
 | [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | advisory | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
-| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
+| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Opt-in: full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
 | [`security.shell-command`](#securityshell-command) | security | warning | parser | - | `exec.Command` invocations that route through a shell interpreter. |
 | [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
@@ -96,9 +95,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | Empty runnable tests, including a sole `testing.T.Parallel()` call. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
-| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | advisory | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
 | [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | advisory | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
-| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | advisory | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 | [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | advisory | parser | - | `time.Sleep` calls in tests. |
 | [`test-quality.static-analysis-redundant-test`](#test-qualitystatic-analysis-redundant-test) | test-quality | advisory | parser | - | Opt-in candidate for test assertions that restate parser-visible code-shape facts. |
 | [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | advisory | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
@@ -703,40 +700,6 @@ rules:
 
 **Known precision limit.** A proper noun, vendor term, or domain word can collide with a built-in misspelling entry. Add the exact token to ignore or extra, or correct the identifier when the match is a typo. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
-### `naming.negated-boolean`
-
-- **Pillar:** naming
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `go-style`, `naming`
-- **Options:**
-  - `prefixes []string` - default `[No, Not, Disable, Disallow, Without, Suppress]`
-  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook, NoConfig, NoBaseline, NoInteraction]` (English words and CLI/config flag vocabulary that begin with a prefix but are not negations)
-  - `scope string` - default `"exported"`; alternatives `"all"` and `"locals"`
-
-Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if !state.NoCache`) and obscure the actual intent. Public CLI/config vocabulary that mirrors flags such as `--no-config`, `--no-baseline`, and `--no-interaction` is accepted by default.
-
-Type-aware: only flags identifiers whose syntactic type is `bool`, so `NoOp func()` and `Notify chan struct{}` are correctly ignored. The default `scope: exported` checks struct fields and exported declarations; switch to `"locals"` to additionally flag local `var` declarations inside function bodies, or `"all"` for both.
-
-```yaml
-rules:
-  naming.negated-boolean:
-    enabled: true
-    options:
-      # Extend the prefix list.
-      prefixes: ["No", "Not", "Disable", "Without", "Skip"]
-      # Whitelist a project-specific identifier that collides with a prefix.
-      allowList: ["NoOp", "Notify", "NoticeBoard"]
-      # Also check locals.
-      scope: "locals"
-```
-
-**Remediation.** Rename to the positive form: `NoCache` → `SkipCache` if the boolean still means "skip", or `EnableCache` with inverted truth values if you want callers to read positive logic. CLI/config flag names like `--no-config` can stay as the public surface.
-
-**Known precision limit.** An established public API can intentionally use a negative boolean name to preserve compatibility or express policy. Add the exact name to allowList, adjust prefixes, or rename only when the API contract permits it. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
 ### `naming.package-stutter`
 
 - **Pillar:** naming
@@ -873,7 +836,7 @@ Flags workflows triggered by `pull_request_target` that reference a named secret
 
 An own job or step `if:` guard can silence a secret reference when exact `github.event_name` comparisons prove that scope unreachable for the detected PR event. Comparisons ignore case and support a whole expression wrapper, parentheses, negation, AND and OR. Unknown, malformed or unsupported guards and ambiguous YAML ownership retain warnings; a step guard cannot cover job/workflow env or siblings.
 
-**Remediation.** Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or `workflow_run`.
+**Remediation.** Keep named secrets out of pull-request-triggered workflows. Run secret-using jobs only on trusted events such as `push`, and when a `workflow_run` job follows a pull-request workflow, check the triggering repository and branch before it uses secrets.
 
 **Known precision limit.** A secret reference in a pull-request workflow can sit behind a trusted-actor condition the text scanner does not evaluate. Gate the secret-bearing job explicitly or move it to a separate trusted workflow. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
@@ -937,12 +900,16 @@ Each finding's metadata carries the random API and context word.
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `http`, `redirect`, `security`
 
+Opt-in since precision-floor M02: it reported four findings on the 0.6.0 precision corpus before its repair, too few to show it is right often enough to report by default, so it is off rather than deleted. Enable it with `rules.security.open-redirect-candidate.enabled: true`.
+
 Flags request-derived values passed to `http.Redirect` or a `Location` response header without an affirmative allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. Safe evidence is a literal committed path segment such as `"/account/" + value`, an exiting `HasPrefix(value, "/account/")` guard, a loop that strips every leading protocol-relative `//`, an exact validator/allowlist/local/relative identifier token, or an explicit parsed HTTP scheme-and-host allowlist. A bare `HasPrefix(value, "/")`, `url.Parse`, or a helper whose name merely contains `parse`, `prefix`, `allow`, or `trusted` is not destination validation. Candidate wording.
+
+An HTTPS upgrade is not reported: a redirect to `"https://" + r.Host + r.URL.RequestURI()` on the handler's own request, or with the host passed through a port helper whose whole body is `net.SplitHostPort`, a return of the original host on error, and `net.JoinHostPort(host, "443")`. A helper's name alone is not enough. A write to the request earlier in the handler keeps the finding; a write made inside a closure, a called function or through another name for the request is not seen.
 
 Each finding's metadata carries the redirect sink and request source label, never a raw value.
 
@@ -984,12 +951,14 @@ Flags literal file and directory modes in `os.OpenFile`, `os.Chmod`, `os.Mkdir`,
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `http`, `security`
 
-Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Request.Body` directly in production files without local evidence of `http.MaxBytesReader` or `io.LimitReader`. Reads of unrelated `io.Reader` values, test files, and already-limited wrapper expressions are ignored.
+Opt-in since precision-floor M02: it reported seven findings on the 0.6.0 precision corpus before its repair, too few to show it is right often enough to report by default, so it is off rather than deleted. Enable it with `rules.security.request-body-without-limit.enabled: true`.
+
+Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Request.Body` directly in production files without local evidence of `http.MaxBytesReader` or `io.LimitReader`. Reads of unrelated `io.Reader` values, test files, and already-limited wrapper expressions are ignored. A function that reads a request this program built is not reported either: an `http.RoundTripper` method with the exact `RoundTrip(*http.Request) (*http.Response, error)` signature, which receives the client's own outgoing request, and a helper taking a `testing.TB` or `*testing.T`, `*testing.B` or `*testing.F` parameter, which only runs under `go test`.
 
 Each finding's metadata carries the request parameter name and read call.
 
@@ -1440,28 +1409,11 @@ Flags `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines in `_test.g
 
 Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`, or `*testing.B`, can fail the test through a testing failure call, and never call `Helper`. Runnable `Test…`, `Benchmark…`, and `Fuzz…` entrypoints are out of scope.
 
+A whole benchmark or parameterized test body is not a helper, because `Helper` would only move each failure off the line that failed: a function that runs the benchmark loop or timer (`b.N`, `b.Loop`, `ResetTimer`, `StartTimer`, `StopTimer`, `ReportAllocs`, `ReportMetric` or `RunParallel`), and a function named `testXxx` that returns nothing and spans 30 lines or more. A `Helper` call reached through a type assertion, such as `if h, ok := ti.(tHelper); ok { h.Helper() }`, counts as calling `Helper`. A failure inside a closure that declares its own testing handle, such as `t.Run`'s `func(t *testing.T)`, belongs to the subtest, so it does not make the outer function a failing helper.
+
 **Remediation.** Call `t.Helper()` at the start of the helper so failures report the caller's line.
 
 **Known precision limit.** A failing helper can intentionally report its own location, or use a custom testing wrapper the syntax check does not recognise. Call Helper on the testing object, or review and disable the rule for the intentional reporting helper. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
-### `test-quality.no-failure-path`
-
-- **Pillar:** test-quality
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `tests`
-
-Flags `Test…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. Benchmarks are excluded because many legitimate benchmarks measure setup or throughput without assertions. A test that cannot fail is asserting nothing and provides false confidence.
-
-When a runnable test or fuzz target's body consists solely of a direct call to `Skip`, `Skipf`, or `SkipNow` on its entrypoint testing receiver, `test-quality.skipped-test` owns that exact signal and this rule does not emit a duplicate. Comments do not add a statement; conditionals, nested callbacks, explicit empty statements, setup, and any other second statement remain outside this exception.
-
-The rule walks the function body looking for those methods on the test function's `*testing.T` or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`, and same-file helpers that accept the active testing receiver and contain a parser-visible failure path. Captured helper objects are recognised only when they were initialized with the active testing receiver before the assertion call and the called method has an assertion-like name. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
-
-**Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
-
-**Known precision limit.** An assertion helper in a sibling file, method, dot import, or custom harness can be invisible to the file-local helper index. Keep a recognised failure call visible in the test, or disable the rule while the external assertion path is reviewed. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `test-quality.parallel-range-capture`
 
@@ -1482,23 +1434,6 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 
 **Known precision limit.** The nearest go.mod syntax version can differ from the effective build semantics selected by an external toolchain override. Update the go directive or copy the range value before t.Parallel, then review against the effective Go version. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
-### `test-quality.skipped-test`
-
-- **Pillar:** test-quality
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `tests`
-
-Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless a physical line of a string-literal message is introduced by a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). The marker may follow an optional list bullet and must be bare or followed by `:`, `(`, whitespace, or a delimiter hyphen. Conventional forms such as `TODO(username): restore coverage` remain findings; quoted, backticked, mid-sentence, plural (`TODOs`), and hyphenated-name (`todo-without-tracking`) mentions stay quiet. Ordinary Go comments are not scanned by this rule. Skipped tests are easy to forget and often hide real regressions.
-
-Receiver-aware skip detection retains its broader ownership in helpers, benchmarks, wrong-signature test-like functions, nested callbacks, and fuzz targets. Only the duplicate `no-failure-path` finding is removed for a runnable Test/Fuzz entrypoint whose entire body is the direct skip call.
-
-**Known precision limit.** A legitimate conditional skip reason whose first physical line begins with TODO/FIXME-style product terminology. Put explanatory words before the quoted marker, or disable the rule for that path when the external wording must stay first. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
-**Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
-
 ### `test-quality.sleep-in-test`
 
 - **Pillar:** test-quality
@@ -1508,7 +1443,9 @@ Receiver-aware skip detection retains its broader ownership in helpers, benchmar
 - **Capability:** parser
 - **Tags:** `flake`, `tests`
 
-Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load. The rule accepts bounded polling loops when the parser can see all three safety signals: a finite deadline or explicit attempt counter, an observable state-based exit condition, and a failure path after the loop. Blind sleeps, state-comparison loops without a real bound, and polling that never fails still emit findings.
+Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load. The rule accepts bounded polling loops when the parser can see all three safety signals: a finite deadline, elapsed-time check, explicit attempt counter or `for range N` count; an observable state-based exit condition, in the `if` condition or its init statement; and a failure path after the loop, or a polling helper's `return false` or non-nil error that hands the timeout to its caller. Blind sleeps, state-comparison loops without a real bound, and polling that never fails still emit findings.
+
+Deliberate sleeps are not reported either: a sleep inside a function passed to `synctest.Test` or `synctest.Run`, where time is a fake clock; a test double method sleeping for its own receiver's field, such as `time.Sleep(m.delay)` (a suite's `Test` method stays reported); and a sleep between `start := time.Now()` and a later `time.Since(start)` in the same block, which the test times. A sleep whose effect the test observes some other way, such as two log timestamps or an expiry, is still reported, because the parser cannot tell it from a wait standing in for synchronisation. Random jitter is still reported too, because a randomly timed test is worth making deterministic.
 
 **Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
 

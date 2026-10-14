@@ -221,11 +221,6 @@ rules:
     enabled: true
     severity: advisory
 
-  # Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites.
-  naming.negated-boolean:
-    enabled: true
-    severity: advisory
-
   # Flags exported identifiers whose lowercase form starts with their own package name (config.ConfigOptions, rule.RuleRegistry).
   naming.package-stutter:
     enabled: false
@@ -449,18 +444,8 @@ rules:
     enabled: true
     severity: advisory
 
-  # Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.).
-  test-quality.no-failure-path:
-    enabled: true
-    severity: advisory
-
   # Flags t.Parallel subtests that close over range variables without an explicit shadow copy in modules using pre-Go 1.22 loop-variable semantics.
   test-quality.parallel-range-capture:
-    enabled: true
-    severity: advisory
-
-  # Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.
-  test-quality.skipped-test:
     enabled: true
     severity: advisory
 

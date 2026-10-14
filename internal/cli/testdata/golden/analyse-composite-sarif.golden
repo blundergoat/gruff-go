@@ -921,56 +921,6 @@
               }
             },
             {
-              "id": "naming.negated-boolean",
-              "name": "Negated boolean",
-              "shortDescription": {
-                "text": "Negated boolean"
-              },
-              "fullDescription": {
-                "text": "Flags boolean identifiers whose names start with negation prefixes (No, Not, Disable, etc.), which force double-negation at call sites."
-              },
-              "help": {
-                "text": "Rename to the positive form (e.g. Skip… instead of No…) so call sites read without double negation."
-              },
-              "properties": {
-                "pillar": "naming",
-                "defaultSeverity": "advisory",
-                "confidence": "medium",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "go-style",
-                  "naming"
-                ],
-                "options": {
-                  "allowList": [
-                    "NoOp",
-                    "Notify",
-                    "Notice",
-                    "Now",
-                    "NoCopy",
-                    "Notation",
-                    "Notebook",
-                    "NoConfig",
-                    "NoBaseline",
-                    "NoInteraction"
-                  ],
-                  "prefixes": [
-                    "No",
-                    "Not",
-                    "Disable",
-                    "Disallow",
-                    "Without",
-                    "Suppress"
-                  ],
-                  "scope": "exported"
-                }
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "naming.package-stutter",
               "name": "Package stutter",
               "shortDescription": {
@@ -1181,7 +1131,7 @@
                 "text": "Flags workflows triggered by pull_request_target that reference a named secret other than the auto-provided GITHUB_TOKEN, exposing it to fork-controlled runs. A plain pull_request run from a fork receives no secrets."
               },
               "help": {
-                "text": "Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or workflow_run."
+                "text": "Keep named secrets out of pull-request-triggered workflows. Run secret-using jobs only on trusted events such as push, and when a workflow_run job follows a pull-request workflow, check the triggering repository and branch before it uses secrets."
               },
               "properties": {
                 "pillar": "security",
@@ -1325,7 +1275,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "http",
                   "redirect",
@@ -1408,7 +1358,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": true,
+                "defaultEnabled": false,
                 "tags": [
                   "http",
                   "security"
@@ -2158,32 +2108,6 @@
               }
             },
             {
-              "id": "test-quality.no-failure-path",
-              "name": "Test cannot fail",
-              "shortDescription": {
-                "text": "Test cannot fail"
-              },
-              "fullDescription": {
-                "text": "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.)."
-              },
-              "help": {
-                "text": "Add an assertion, or disable this rule for a package whose tests deliberately assert nothing."
-              },
-              "properties": {
-                "pillar": "test-quality",
-                "defaultSeverity": "advisory",
-                "confidence": "medium",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "tests"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "test-quality.parallel-range-capture",
               "name": "Parallel subtest captures range variable",
               "shortDescription": {
@@ -2194,32 +2118,6 @@
               },
               "help": {
                 "text": "Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics."
-              },
-              "properties": {
-                "pillar": "test-quality",
-                "defaultSeverity": "advisory",
-                "confidence": "medium",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "tests"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
-              "id": "test-quality.skipped-test",
-              "name": "Skipped test",
-              "shortDescription": {
-                "text": "Skipped test"
-              },
-              "fullDescription": {
-                "text": "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow."
-              },
-              "help": {
-                "text": "Remove the skip or document and track the condition outside the test body."
               },
               "properties": {
                 "pillar": "test-quality",
@@ -2401,7 +2299,7 @@
         },
         {
           "ruleId": "size.function-length",
-          "ruleIndex": 71,
+          "ruleIndex": 70,
           "level": "warning",
           "message": {
             "text": "function has 8 code lines, above threshold 4"

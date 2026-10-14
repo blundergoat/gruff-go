@@ -47,31 +47,6 @@ func isRunnableTestFunction(fn *ast.FuncDecl, testingPackages map[string]bool) b
 	return ok && isSpecificTestingReceiverType(paramType, testingPackages, kind)
 }
 
-// isRunnableFailurePathTestFunction reports whether no-failure-path should
-// inspect fn. Benchmarks are excluded here only; other test-quality rules still
-// use isRunnableTestFunction so their benchmark scope does not change.
-func isRunnableFailurePathTestFunction(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
-	if fn == nil || fn.Name == nil || strings.HasPrefix(fn.Name.Name, "Benchmark") {
-		return false
-	}
-	return isRunnableTestFunction(fn, testingPackages)
-}
-
-// isExactSkipOnlyFailurePathTest reports the one duplicate-ownership shape:
-// a runnable Test/Fuzz body whose sole AST statement directly skips through
-// its entrypoint testing receiver.
-func isExactSkipOnlyFailurePathTest(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
-	if !isRunnableFailurePathTestFunction(fn, testingPackages) || fn.Body == nil || len(fn.Body.List) != 1 {
-		return false
-	}
-	expression, ok := fn.Body.List[0].(*ast.ExprStmt)
-	if !ok {
-		return false
-	}
-	call, ok := expression.X.(*ast.CallExpr)
-	return ok && isTestingSkipCall(call, testingReceiverNames(fn, testingPackages))
-}
-
 // testFunctionReceiverKind maps a runnable Go test function name to its required
 // receiver type name: T for tests, B for benchmarks, and F for fuzz targets.
 func testFunctionReceiverKind(name string) (string, bool) {

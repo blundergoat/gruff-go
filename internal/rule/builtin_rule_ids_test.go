@@ -2,6 +2,39 @@
 // Keeping the long sorted lists here keeps builtin_test.go within the size budget.
 package rule
 
+import (
+	"testing"
+
+	"github.com/blundergoat/gruff-go/internal/parser"
+)
+
+// TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch covers both catalogue
+// membership and runtime execution on code each retired detector reported.
+func TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch(t *testing.T) {
+	retired := map[string]bool{
+		"naming.negated-boolean":       true,
+		"test-quality.no-failure-path": true,
+		"test-quality.skipped-test":    true,
+	}
+	registry := Defaults()
+	for _, definition := range registry.Definitions() {
+		if retired[definition.ID] {
+			t.Errorf("retired rule %s remains in the catalogue", definition.ID)
+		}
+	}
+	unit := parseOne(t, "pkg/retirement_test.go", `package sample
+import "testing"
+type Settings struct { DisableCache bool }
+func TestSkipped(t *testing.T) { t.Skip("later") }
+func TestLogging(t *testing.T) { t.Log("running") }
+`)
+	for _, item := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+		if retired[item.RuleID] {
+			t.Errorf("retired rule %s still emits a finding", item.RuleID)
+		}
+	}
+}
+
 // defaultRuleIDs returns the sorted built-in rule IDs expected from Defaults.
 // The catalogue is split into two halves at the security pillar boundary so each
 // helper stays within the function-length threshold.
@@ -44,7 +77,6 @@ func defaultRuleIDsThroughNaming() []string {
 		"naming.get-prefix",
 		"naming.identifier-quality",
 		"naming.misspelling",
-		"naming.negated-boolean",
 		"naming.package-stutter",
 		"naming.package-underscore",
 		"naming.receiver-consistency",
@@ -96,9 +128,7 @@ func defaultRuleIDsSecurityOnward() []string {
 		"test-quality.empty-test",
 		"test-quality.fatal-in-goroutine",
 		"test-quality.helper-missing-t-helper",
-		"test-quality.no-failure-path",
 		"test-quality.parallel-range-capture",
-		"test-quality.skipped-test",
 		"test-quality.sleep-in-test",
 		"test-quality.static-analysis-redundant-test",
 		"test-quality.tempdir-misuse",
@@ -115,9 +145,13 @@ func defaultDisabledRuleIDs() map[string]bool {
 		"complexity.cyclomatic":           true,
 		"dependency.go-mod-local-replace": true,
 		// Precision-floor M13 builds the parameter- and return-prose rules off by default until their own measurement passes.
-		"docs.missing-param-doc":                      true,
-		"docs.missing-return-doc":                     true,
-		"security.insecure-random-secret":             true,
+		"docs.missing-param-doc":          true,
+		"docs.missing-return-doc":         true,
+		"security.insecure-random-secret": true,
+		// Precision-floor M02 turned it off on 2026-10-14: fewer than ten findings remain after its repair.
+		"security.open-redirect-candidate": true,
+		// Precision-floor M02 turned it off on 2026-10-14: fewer than ten findings remain after its repair.
+		"security.request-body-without-limit":         true,
 		"sensitive-data.aws-access-key":               true,
 		"sensitive-data.connection-string":            true,
 		"sensitive-data.gcp-service-account":          true,

@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-10-04
+**Updated:** 2026-10-14
 **Author(s):** Claude, user direction
 **Ticket/Context:** precision-floor M19 under family lock M82. The operator ruled on 2026-10-04 that a rule right less than
 half the time is deleted, and accepted the gruff-go table with "Accept all (Recommended)".
@@ -28,3 +29,21 @@ record as `retired` (workspace ADR-010).
 
 The rule can return as a new, measured rule; `.goat-flow/plans/0.7.0-roadmap/rules-to-rebuild.md` in the workspace keeps
 its wrong shapes and what a rebuilt rule needs.
+
+## M02 retirement decision, 2026-10-14
+
+The operator accepted all five M02 tables with "i approve, continue", including Go rows go-002, go-006 and go-007. Under family lock M92, retire these additional Go rules:
+
+| Rule | Judged | Right | Not worth | Wrong | Unresolved | Score | Current right findings removed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `naming.negated-boolean` | 25 | 0 | 25 | 0 | 0 | 0.000 | 0 |
+| `test-quality.no-failure-path` | 28 | 4 | 16 | 8 | 22 | 0.143 | 4 |
+| `test-quality.skipped-test` | 25 | 8 | 17 | 0 | 0 | 0.320 | 8 |
+
+The no-failure-path sample remains unresolved on 22 cards; its score is conditional on the 28 judged cards. The accepted table records that limit. The operator saw the full prospective loss list before approving: four currently emitting right-labelled no-failure-path findings and eight skipped-test findings are removed. None was confirmed right for negated-boolean naming. Retiring a noisy rule does not mean it had no useful findings.
+
+The rule code, obsolete tests, registry wiring, guidance and dogfood config blocks are removed. Shared assertion and testing-receiver helpers remain for the surviving test-quality rules. The family specification preserves every historical review record as retired, score-neutral and ineligible for exit or hook blocking, using workspace ADR-010 catalogue transitions. A rebuilt rule needs new precision evidence before returning.
+
+Workspace evidence: .goat-flow/plans/0.6.0-precision-floor/evidence/m02/table-answers.json (search: acceptedRows), tables.json (search: go-006), and table-recall.json (search: currentRightIds). Native runtime regression: internal/rule/builtin_rule_ids_test.go (search: TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch).
+
+The fresh M02 capture also removes 35 derived hotspot annotations. One, design.hotspot-file at go/testify/mock/mock_test.go, was labelled right: its underlying group falls from five findings to two, below the unchanged minimum of three. The operator accepted this additional loss with M93, bringing current Go right-label losses to 13. The original TP classification is preserved. Workspace evidence: .goat-flow/plans/0.6.0-precision-floor/evidence/m02/go-retirement-recall.json (search: additionalLossOperatorApproval) and activation-approval-m93.json (search: additionalDerivedRightLoss). The unchanged predicate is internal/rule/composite.go (search: hotspotFileMinFindings).

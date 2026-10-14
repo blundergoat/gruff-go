@@ -329,8 +329,8 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 			t.Fatalf("%s false-positive guidance = %#v", listedRule.ID, listedRule.FalsePositiveShapes)
 		}
 	}
-	if len(catalogue.Rules) != 82 || precisionRuleCount != 45 {
-		t.Fatalf("list-rules counts = %d total, %d medium/low; want 82 and 45", len(catalogue.Rules), precisionRuleCount)
+	if len(catalogue.Rules) != 79 || precisionRuleCount != 42 {
+		t.Fatalf("list-rules counts = %d total, %d medium/low; want 79 and 42", len(catalogue.Rules), precisionRuleCount)
 	}
 
 	var missingOut, missingErr bytes.Buffer

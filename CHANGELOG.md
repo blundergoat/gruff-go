@@ -2,6 +2,36 @@
 
 ## v0.6.0 - Unreleased
 
+- **`security.github-actions-secrets-in-pr` advice names the workflow_run check** - The remediation now says to run
+  secret-using jobs only on trusted events such as push, and, when a `workflow_run` job follows a pull-request
+  workflow, to check the triggering repository and branch before it uses secrets. Gating on `workflow_run` alone
+  does not keep fork-controlled data away from secrets.
+
+- **`test-quality.helper-missing-t-helper` skips whole test bodies** - A function that drives the benchmark loop or timer,
+  and a `testXxx` function that returns nothing and spans 30 lines or more, are test bodies rather than helpers, so they
+  are no longer reported. A `Helper` call reached through a type assertion now counts, and a failure that only happens
+  inside a `t.Run` closure's own `t` no longer makes the outer function a failing helper.
+
+- **`test-quality.sleep-in-test` skips deliberate sleeps and more bounded polls** - A sleep inside `synctest.Test` or
+  `synctest.Run`, a test double's own configured delay, and a sleep the test times with `time.Now()` and
+  `time.Since` are no longer reported. Bounded polling now also accepts `for range N`, `time.Since`
+  deadlines, an exit check in an `if` init statement, and a helper that returns `false` or a non-nil error on timeout.
+
+- **BREAKING: `security.open-redirect-candidate` is off by default** - It reported four findings on the 0.6.0 precision
+  corpus before its repair, too few to show it is right often enough to report by default, so it ships opt-in rather
+  than deleted. Its repair stops reporting an HTTPS upgrade: a redirect to `"https://"` plus the handler request's own
+  `Host` and `URL.RequestURI()`, directly or through a port helper built from `net.SplitHostPort` and
+  `net.JoinHostPort(host, "443")`, because a crafted link cannot change either part. Enable it with
+  `rules.security.open-redirect-candidate.enabled: true`; a config that already sets it keeps it on.
+- **BREAKING: `security.request-body-without-limit` is off by default** - It reported seven findings on the 0.6.0
+  precision corpus before its repair, too few to show it is right often enough to report by default, so it ships opt-in
+  rather than deleted. Its repair stops reporting a read of a request the program built itself: an `http.RoundTripper`'s
+  `RoundTrip(*http.Request) (*http.Response, error)` method, which receives the client's own outgoing request, and a
+  helper taking a `testing` handle, which only runs under `go test`. Enable it with
+  `rules.security.request-body-without-limit.enabled: true`; a config that already sets it keeps it on.
+
+- **BREAKING: three low-precision checks are retired** - `naming.negated-boolean`, `test-quality.no-failure-path` and `test-quality.skipped-test` no longer report findings or appear in `list-rules`. Each was right less than half the time in its judged sample. Remove their IDs from configuration and stored baseline entries before upgrading; a configuration naming one is rejected as an unknown rule (ADR-021).
+
 - **A committed `gruff-baseline.json` applies without `--baseline`** - `analyse` now discovers `gruff-baseline.json` at the project root, as every other port does, reports it with `source: "default"`, and every applied baseline, an explicit one included, adds `baseline: <explicit|default> <path>; suppressed N findings`, and `--no-baseline` declines it. A project that committed the file without passing `--baseline` will see those findings hidden from now on (ADR-006, FAMILY-CONTRACT.md section 13c).
 - **Other tools' suppression comments are honoured and counted** - gosec `#nosec G112`, `G402` and `G204`, gosec `G101` for every sensitive-data rule, golangci-lint `//nolint:funlen`, and zizmor `ignore[unpinned-uses]` and `ignore[dangerous-triggers]` suppress the gruff-go finding making the same claim, and a bare `#nosec`, `//nolint`, `//nolint:all` or `//nolint:gosec` suppresses every security and sensitive-data finding. The comment must be on the reported line or alone on the line above it. Suppressed findings are counted in `suppressions`, one `inline` row per file and rule and in the text `suppressed findings` line, and SARIF keeps it as a suppressed result. **A `#nosec` naming only other checks, such as `#nosec G304`, no longer silences a sensitive-data finding, and a `//nolint:funlen` must sit on the `func` line or alone directly above it** (FAMILY-CONTRACT.md section 13c).
 - **Vendored, built and minified files are skipped by default** - Directories named `vendor`, `vendors`, `third_party`, `third-party`, `bower_components` or `dist`, at any depth and in any letter case, and files with `.min.` directly before the final extension, such as `jquery.min.js`, are no longer scanned, even under a `.gitignore`, which used to bring `dist` and `vendor` back into the scan. Skipped paths are listed in `paths.details` with the reason `dependency`, `build-output` or `generated`; `--include-ignored` or naming a file scans it (FAMILY-CONTRACT.md section 7).
@@ -126,7 +156,6 @@ Upgrading from 0.5.x: this release changes every machine-readable contract at on
 
 - **`--help` no longer offers `--min-severity`** - The `analyse`, `analyze`, `report` and `summary` usage lines advertised `[--fail-on severity|--min-severity severity]` while the same binary refused `--min-severity` outright, so help named a flag no run accepts. The usage lines now name `--fail-on` alone. The refusal message, which names `--fail-on` and the 0.7.0 return, is unchanged.
 - **A YAML flow mapping in a config is refused by name instead of by Go type** - `rules: {}` or `paths: {ignore: []}` is valid YAML that gruff-php, gruff-py, gruff-rs and gruff-ts all read, and that this parser deliberately does not: it reads a documented subset so it can ship without a YAML dependency. The refusal used to arrive from the JSON decoder as `json: cannot unmarshal string into Go struct field Config.rules of type map[string]config.RuleConfig`, which named an internal type and no remedy. It now names the key, the line, the flow mapping itself, and the indented block to write instead. The parser accepts exactly what it accepted before.
-- **`test-quality.no-failure-path` judges a test against its whole package** - It read one file at a time, so a test delegating every assertion to a helper declared in a sibling `_test.go` was reported as unable to fail. It now credits a helper anywhere in the package, whether declared as a function or a method; a subtest handed a function value rather than a literal body, as `t.Run(name, tc.test)`; a Ginkgo bootstrap that calls `RunSpecs` or `RegisterFailHandler`, qualified or dot-imported; a dot-imported assertion library, which was discarded outright; and an assertion library's own tests calling its assertions unqualified. Across the family's eleven-target Go corpus this removed 294 findings and added none.
 - **`dead-code.empty-block` no longer reports deliberate idioms** - An empty body is now reported for `if`, `switch` and type-switch, and for a bare `for {}`. A `for` with any header clause does its work in that header; `for range ch {}` drains or waits on a channel; `select {}` parks a goroutine forever; and a block whose braces contain a comment has been documented by its author. Across the same corpus this removed 84 findings and added none.
 - **`maintainability.production-panic` exempts a package that recovers into an error** - A package that panics deliberately declares the matching handler wherever its entry point lives, which is rarely the file that panics. A package is now exempt when any function it declares both calls `recover()` and assigns through a pointer, which is how a panic becomes a returned error. A handler that only logs exempts nothing, because swallowing the failure is what this rule reports. This removed 34 findings across the corpus, all in two packages, and added none.
 - **`docs.suppression-without-rationale` accepts an explanation written as prose** - It required a `reason:`, `rationale:` or `because:` prefix and looked only one comment either side of the directive, so an ordinary two-sentence explanation above a `#nosec` did not count. It now reads the contiguous free-standing comment block above the directive. A gap in the lines, another directive, a declaration's doc comment, and a comment trailing code all still fail to explain a suppression. This removed 20 findings across the corpus and added none.

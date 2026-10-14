@@ -29,7 +29,6 @@ naming.contextual-generic	naming	advisory	parser	Contextual generic name
 naming.get-prefix	modernisation	advisory	parser	Get prefix
 naming.identifier-quality	naming	advisory	parser	Identifier quality
 naming.misspelling	naming	advisory	parser	Misspelled identifier or comment
-naming.negated-boolean	naming	advisory	parser	Negated boolean
 naming.package-stutter	naming	advisory	parser	Package stutter
 naming.package-underscore	naming	advisory	parser	Package name contains underscore
 naming.receiver-consistency	naming	advisory	parser	Receiver consistency
@@ -74,9 +73,7 @@ size.parameter-count	size	advisory	parser	Parameter count
 test-quality.empty-test	test-quality	advisory	parser	Empty test
 test-quality.fatal-in-goroutine	test-quality	advisory	parser	Fatal call in goroutine
 test-quality.helper-missing-t-helper	test-quality	advisory	parser	Test helper missing t.Helper
-test-quality.no-failure-path	test-quality	advisory	parser	Test cannot fail
 test-quality.parallel-range-capture	test-quality	advisory	parser	Parallel subtest captures range variable
-test-quality.skipped-test	test-quality	advisory	parser	Skipped test
 test-quality.sleep-in-test	test-quality	advisory	parser	Sleep in test
 test-quality.static-analysis-redundant-test	test-quality	advisory	parser	Static-analysis-redundant test candidate
 test-quality.tempdir-misuse	test-quality	advisory	parser	Test temp dir misuse

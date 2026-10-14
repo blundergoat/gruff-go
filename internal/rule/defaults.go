@@ -152,11 +152,6 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 			ExcludeNames: stringSliceOption(config, "naming.get-prefix", "excludeNames"),
 		},
 		IdentifierQualityRule{PlaceholderNames: stringSliceOption(config, "naming.identifier-quality", "placeholderNames")},
-		NegatedBooleanRule{
-			Prefixes:  stringSliceOption(config, "naming.negated-boolean", "prefixes"),
-			AllowList: stringSliceOption(config, "naming.negated-boolean", "allowList"),
-			Scope:     stringOption(config, "naming.negated-boolean", "scope", "exported"),
-		},
 		MisspellingRule{
 			Extra:  stringMapOption(config, "naming.misspelling", "extra"),
 			Ignore: stringSliceOption(config, "naming.misspelling", "ignore"),
@@ -174,7 +169,6 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 // defaultTestQualityUnitRules returns unit-level test-quality checks.
 func defaultTestQualityUnitRules() []UnitRule {
 	return []UnitRule{
-		SkippedTestRule{},
 		EmptyTestRule{},
 		HelperMissingTHelperRule{},
 		ParallelRangeCaptureRule{},
@@ -190,9 +184,6 @@ func defaultProjectRules(config Config) []ProjectRule {
 		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
 		// that boundary in whichever file owns the entry point, not the one that panics.
 		ProductionPanicRule{},
-		// Package-scoped since 2026-09-07: a failure helper in a sibling _test.go is
-		// still a failure helper, and reading one file at a time could not see it.
-		NoFailurePathTestRule{},
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
 		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},

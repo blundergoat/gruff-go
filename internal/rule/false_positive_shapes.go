@@ -87,10 +87,6 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 		Shape:      "A proper noun, vendor term, or domain word can collide with a built-in misspelling entry.",
 		Mitigation: "Add the exact token to ignore or extra, or correct the identifier when the match is a typo.",
 	},
-	"naming.negated-boolean": {
-		Shape:      "An established public API can intentionally use a negative boolean name to preserve compatibility or express policy.",
-		Mitigation: "Add the exact name to allowList, adjust prefixes, or rename only when the API contract permits it.",
-	},
 	"naming.package-stutter": {
 		Shape:      "An exported compatibility name or accepted domain noun can intentionally repeat its package name.",
 		Mitigation: "Add the exact symbol to allowStutter, rename it when compatible, or keep this opt-in rule disabled.",
@@ -170,10 +166,6 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	"test-quality.helper-missing-t-helper": {
 		Shape:      "A failing helper can intentionally report its own location, or use a custom testing wrapper the syntax check does not recognise.",
 		Mitigation: "Call Helper on the testing object, or review and disable the rule for the intentional reporting helper.",
-	},
-	"test-quality.no-failure-path": {
-		Shape:      "An assertion helper in a sibling file, method, dot import, or custom harness can be invisible to the file-local helper index.",
-		Mitigation: "Keep a recognised failure call visible in the test, or disable the rule while the external assertion path is reviewed.",
 	},
 	"test-quality.parallel-range-capture": {
 		Shape:      "The nearest go.mod syntax version can differ from the effective build semantics selected by an external toolchain override.",
