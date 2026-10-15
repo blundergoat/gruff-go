@@ -4,8 +4,11 @@
 **Date:** 2026-10-04
 **Updated:** 2026-10-14
 **Author(s):** Claude, user direction
-**Ticket/Context:** precision-floor M19 under family lock M82. The operator ruled on 2026-10-04 that a rule right less than
-half the time is deleted, and accepted the gruff-go table with "Accept all (Recommended)".
+**Ticket/Context:** precision-floor M19 under family lock M82.
+
+## Context
+
+The 0.6.0 precision measurement evaluated default-enabled rules against judged corpus findings. The operator ruled on 2026-10-04 that a rule right less than half the time is deleted rather than tuned in place, and accepted the gruff-go table with "Accept all (Recommended)".
 
 ## Decision
 
