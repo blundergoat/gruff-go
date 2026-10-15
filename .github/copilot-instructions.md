@@ -91,6 +91,7 @@ Every line in this hot-path file must be a behavioral rule, scope boundary, comm
 | Orientation | `.goat-flow/code-map.md`, `.goat-flow/glossary.md` |
 | Learning loop | `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, `.goat-flow/learning-loop/decisions/` |
 | Skill reference (meta) | `.goat-flow/skill-docs/` |
+| Security policy (optional; read by `goat-security`) | `.goat-flow/security-policy.md` |
 | Tool playbooks (CLI/MCP availability checks) | `.goat-flow/skill-docs/playbooks/` — read BEFORE declaring a tool unavailable |
 | Copilot skills/config/hooks | `.github/skills/`, `.github/hooks/hooks.json`, `.goat-flow/hooks/` |
 | Application entrypoint | `cmd/gruff-go/main.go` |
