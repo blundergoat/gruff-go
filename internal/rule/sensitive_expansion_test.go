@@ -42,74 +42,32 @@ func assertNoRawLeak(t *testing.T, findings []finding.Finding, raw string) {
 	}
 }
 
-// TestHighEntropyStringFlagsRandomToken verifies the entropy detector fires on a
-// long random token and redacts it.
-func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
-	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	findings := HighEntropyStringRule{}.AnalyzeUnit(unit, Context{})
-	if len(findings) != 1 {
-		t.Fatalf("findings = %#v, want 1", findings)
+// TestDocumentedSamplesAreNotReported verifies AWS's example key id, the jwt.io token and a published test card never report.
+//
+// A key of the same shape and a value that merely contains the sample still report (FAMILY-CONTRACT.md section 5).
+// Every value is assembled from parts, so this file holds none of them whole.
+func TestDocumentedSamplesAreNotReported(t *testing.T) {
+	example := "AKIA" + "IOSFODNN7" + "EXAMPLE"
+	live := "AKIA" + "Q7R2M8N4" + "P6T9V1X3"
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + "." + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ" + "." + "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	card := "4111" + " 1111 1111 " + "1111"
+	cases := []struct {
+		name    string
+		rule    UnitRule
+		source  string
+		reports int
+	}{
+		{name: "aws example", rule: AWSAccessKeyRule{}, source: "key = " + example + "\n", reports: 0},
+		{name: "aws live-shaped", rule: AWSAccessKeyRule{}, source: "key = " + live + "\n", reports: 1},
+		{name: "jwt sample", rule: JWTTokenRule{}, source: "token = " + jwt + "\n", reports: 0},
+		{name: "jwt sample with a suffix", rule: JWTTokenRule{}, source: "token = " + jwt + "x\n", reports: 1},
+		{name: "test card", rule: PIIPatternRule{}, source: "card = " + card + "\n", reports: 0},
 	}
-	assertNoRawLeak(t, findings, randomSecretToken)
-}
-
-// TestHighEntropyStringSkipsNonSecretShapes verifies the detector stays quiet on
-// the identifier and structural shapes that look random but are not secrets.
-func TestHighEntropyStringSkipsNonSecretShapes(t *testing.T) {
-	cases := map[string]string{
-		"hex digest":  "d41d8cd98f00b204e9800998ecf8427ed41d8cd9",
-		"uuid":        "550e8400-e29b-41d4-a716-446655440000",
-		"sri hash":    "sha256-47DEQpj8HBSaTImW1OD2tz6O5Kz9SzaQ1bln",
-		"import path": "github.com/blundergoat/gruff-go/internal/rule/sensitive",
-		"short token": "abc123def456",
-		"repetitive":  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	}
-	for name, value := range cases {
-		t.Run(name, func(t *testing.T) {
-			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
-			if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-				t.Fatalf("findings = %#v, want 0 for %s", got, name)
-			}
-		})
-	}
-}
-
-// TestHighEntropyStringDefersToProviderRules verifies precedence: a token a
-// provider-specific rule already owns (here a high-entropy GitHub token) is not
-// also reported as a generic high-entropy string, so one secret yields one finding.
-func TestHighEntropyStringDefersToProviderRules(t *testing.T) {
-	// randomSecretToken is 41 alphanumeric chars, clearing githubTokenPattern's
-	// 36-char body floor so the provider rule claims it.
-	token := "ghp_" + randomSecretToken
-	unit := sensitiveTextUnit("x.env", "token = \""+token+"\"\n")
-	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("entropy findings = %#v, want 0 (GitHubTokenRule owns this token)", got)
-	}
-	if got := (GitHubTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
-		t.Fatalf("github findings = %#v, want 1 (provider rule should own it)", got)
-	}
-}
-
-// TestHighEntropyThresholdIsConfigurable verifies the minLength knob takes effect
-// both as a struct field and when wired through DefaultsConfigured: raising
-// minLength above the token length silences the finding.
-func TestHighEntropyThresholdIsConfigurable(t *testing.T) {
-	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	if got := (HighEntropyStringRule{MinLength: 200}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("findings = %#v, want 0 with minLength 200", got)
-	}
-	registry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"sensitive-data.high-entropy-string": true},
-		Thresholds: map[string]map[string]float64{
-			"sensitive-data.high-entropy-string": {"minLength": 200},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range registry.Analyze([]parser.Unit{unit}, Context{}) {
-		if f.RuleID == "sensitive-data.high-entropy-string" {
-			t.Fatalf("entropy finding fired despite configured minLength 200: %#v", f)
+	for _, testCase := range cases {
+		unit := sensitiveTextUnit("x.env", testCase.source)
+		findings := testCase.rule.AnalyzeUnit(unit, Context{})
+		if len(findings) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
 		}
 	}
 }
@@ -124,7 +82,7 @@ func TestPIIPatternFlagsRealValues(t *testing.T) {
 	}{
 		{"email", "contact = \"jane.roe@acmecorp.co\"\n", "jane.roe@acmecorp.co"},
 		{"phone", "phone = \"+1 (415) 555-0137\"\n", "(415) 555-0137"},
-		{"card", "card = \"4242 4242 4242 4242\"\n", "4242 4242 4242 4242"},
+		{"card", "card = \"4539 5787 6362 1486\"\n", "4539 5787 6362 1486"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -202,5 +160,14 @@ func TestPHIOwnsSSNNotPII(t *testing.T) {
 	}
 	if got := (PHIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
 		t.Fatalf("PHI findings = %#v, want 1", got)
+	}
+}
+
+// TestDocumentedCardDoesNotHideARealCard verifies a published test card first on a line leaves the real card after it reported.
+func TestDocumentedCardDoesNotHideARealCard(t *testing.T) {
+	source := "cards = " + "4111" + " 1111 1111 " + "1111" + " / " + "4539 5787 " + "6362 1486\n"
+	findings := PIIPatternRule{}.AnalyzeUnit(sensitiveTextUnit("x.env", source), Context{})
+	if len(findings) != 1 || findings[0].Metadata["category"] != "payment-card" {
+		t.Fatalf("findings = %+v, want one payment-card finding", findings)
 	}
 }

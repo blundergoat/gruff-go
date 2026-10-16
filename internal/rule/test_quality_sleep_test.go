@@ -358,3 +358,168 @@ func TestNoProgressPolling(t *testing.T) {
 		t.Fatalf("a counter that never advances (i = i) is not a finite bound; the sleep must flag, got %d: %#v", len(findings), findings)
 	}
 }
+
+// TestSleepInTestRuleSkipsDeliberateSleeps covers the sleeps M02 measured as not
+// worth acting on: a fake-clock bubble, a test double's configured delay, a sleep
+// the test times itself, and bounded polls in observed forms.
+func TestSleepInTestRuleSkipsDeliberateSleeps(t *testing.T) {
+	cases := map[string]string{
+		"synctest test bubble": `func TestBubble(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(time.Second)
+		synctest.Wait()
+	})
+}`,
+		"synctest run bubble": `func TestRun(t *testing.T) {
+	synctest.Run(func() { go func() { time.Sleep(time.Second) }() })
+}`,
+		"test double delay": `type slowWriter struct{ delay time.Duration }
+
+func (w *slowWriter) Write(p []byte) (int, error) {
+	time.Sleep(w.delay)
+	return len(p), nil
+}`,
+		"sleep the test times": `func TestElapsed(t *testing.T) {
+	start := time.Now()
+	time.Sleep(10 * time.Millisecond)
+	if time.Since(start) < 10*time.Millisecond {
+		t.Fatal("slept too little")
+	}
+}`,
+		"poll helper returns false on timeout": `func waitForLog(t *testing.T) bool {
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if scan(t) {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}`,
+		"labelled range poll exits from an if init": `func TestStarted(t *testing.T) {
+	started := false
+Loop:
+	for range 10 {
+		if _, err := probe(); err == nil {
+			started = true
+			break Loop
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if !started {
+		t.Fatal("never started")
+	}
+}`,
+		"elapsed-time deadline poll": `func TestSince(t *testing.T) {
+	start := time.Now()
+	for time.Since(start) < time.Second {
+		if ready() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("never ready")
+}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			unit := parseOne(t, "deliberate_test.go", sleepFixture(body))
+			if got := (SleepInTestRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("findings = %#v, want none", got)
+			}
+		})
+	}
+}
+
+// TestSleepInTestRuleKeepsLookalikeSleeps keeps each skipped shape's near miss reported.
+func TestSleepInTestRuleKeepsLookalikeSleeps(t *testing.T) {
+	cases := map[string]string{
+		"sleep before the bubble opens": `func TestBubble(t *testing.T) {
+	time.Sleep(time.Second)
+	synctest.Test(t, func(t *testing.T) {})
+}`,
+		"bubble call from another package": `func TestFake(t *testing.T) {
+	fake.Test(t, func(t *testing.T) { time.Sleep(time.Second) })
+}`,
+		"delay field of a parameter, not the receiver": `func wait(cfg *slowWriter) {
+	time.Sleep(cfg.delay)
+}`,
+		"random jitter stays reported": `func jitter() {
+	time.Sleep(time.Duration(rand.Intn(300)) * time.Millisecond)
+}`,
+		"fixed sleep in a method": `func (w *slowWriter) Flush() {
+	time.Sleep(time.Second)
+}`,
+		"suite test method sleeping on its own field": `func (w *slowWriter) TestFlush(t *testing.T) {
+	time.Sleep(w.delay)
+}`,
+		"start time never read again": `func TestStartOnly(t *testing.T) {
+	start := time.Now()
+	time.Sleep(10 * time.Millisecond)
+	_ = start
+}`,
+		"poll helper returns true on timeout": `func waitForLog(t *testing.T) bool {
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if scan(t) {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return true
+}`,
+		"poll helper returns a nil error on timeout": `func waitForLog(t *testing.T) error {
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if scan(t) {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
+}`,
+		"range over a slice is not a bounded poll": `func TestEach(t *testing.T) {
+	for range []int{1, 2} {
+		if _, err := probe(); err == nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("never started")
+}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			unit := parseOne(t, "lookalike_test.go", sleepFixture(body))
+			if got := (SleepInTestRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+				t.Fatalf("findings = %#v, want one", got)
+			}
+		})
+	}
+}
+
+// sleepFixture wraps one case body in a test file importing every package the cases name.
+func sleepFixture(body string) string {
+	return `package sample
+
+import (
+	"math/rand"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	fake "example.com/fake"
+)
+
+var _ = rand.Intn
+var _ = synctest.Wait
+var _ = fake.Test
+
+type slowWriter struct{ delay time.Duration }
+
+func scan(*testing.T) bool { return true }
+func probe() (int, error) { return 0, nil }
+func ready() bool { return true }
+
+` + body + "\n"
+}

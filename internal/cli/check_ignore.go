@@ -55,7 +55,7 @@ func runCheckIgnore(args []string, stdout, stderr io.Writer) int {
 
 	// Share the exact config resolution analyse uses, so the ignore patterns are
 	// identical to a real scan - no second source of truth.
-	_, ignorePaths, _, err := configuredRegistry(*configPath, *noConfig)
+	_, ignorePaths, _, err := configuredRegistry(*configPath, *noConfig, nil)
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
 		return 2

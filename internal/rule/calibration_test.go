@@ -49,9 +49,10 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 		t.Fatal(err)
 	}
 	unit := parser.Unit{
-		File:      source.File{Path: "long_test.go", Type: source.FileTypeGo},
-		LineCount: fileLengthThreshold + 1,
-		Source:    strings.Repeat("line\n", fileLengthThreshold+1),
+		File: source.File{Path: "long_test.go", Type: source.FileTypeGo},
+		// Twice the limit keeps the finding in the upper band, where the configured severity applies.
+		LineCount: 2 * fileLengthThreshold,
+		Source:    strings.Repeat("line\n", 2*fileLengthThreshold),
 	}
 
 	findings := registry.Analyze([]parser.Unit{unit}, Context{})

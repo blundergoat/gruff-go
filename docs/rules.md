@@ -1,10 +1,10 @@
 # Rule Catalog
 
-`gruff-go` ships **83 rules** across **11 pillars**. **70 rules are enabled by default** and 13 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **79 rules** across **11 pillars**. **55 rules are enabled by default** and 24 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `sensitive-data.high-entropy-string`, `sensitive-data.pii-pattern`, `sensitive-data.phi-pattern`, and `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
-Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). Add `--no-config` to see the built-in release defaults without project `.gruff-go.yaml` overrides.
+Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
 The first summary sentence, the `Opt-in rules:` line, catalog rows, `### <rule-id>` headings, and exact `Pillar`, `Default severity`, `Default-enabled`, `Threshold`, `Confidence`, `Capability`, and `Tags` bullets form a narrow structured authoring contract. Tests compare those markers with the built-in no-config registry, including counts and the exact opt-in set. Keep both the catalog row and per-rule bullets in the same change as intentional registry metadata updates. Descriptions, remediation, examples, options, secondary pillars, and other explanatory prose remain free-form and are not parsed by this contract.
 
@@ -14,14 +14,14 @@ Composite `design.*` rules are score-neutral annotations: they appear in finding
 
 Generated Go files are skipped by default when their leading comments contain both `generated` and `DO NOT EDIT`, case-insensitive. `--include-ignored` opts those files back into scanning, and rule-level generated-file guards respect that run setting.
 
-`docs.comment-rubric` is path-scoped: it fires only on files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected files in.
+`docs.comment-rubric` inspects every file unless its `includePaths` option narrows the set, and `excludePaths` removes paths from that set. Each of its checks is opt-in (`requirePackageSummary`, `requireFunctionComments`, `requireNamedTypeComments`, `requireStructComments`, `requireInterfaceComments`, `requireConstComments`, `requireVarComments`, all `false` by default), so its default-on status reports nothing until you turn one on.
 
 `docs.config-field-comment` is path-scoped: it enforces doc comments on exported struct fields only for files listed in its `includePaths` option. Without configured paths it inspects nothing, so its default-on status is a no-op until you opt selected configuration schema files in.
 
 | Rule ID | Pillar | Severity | Capability | Default threshold | Description |
 |---------|--------|----------|------------|-------------------|-------------|
 | [`complexity.cognitive`](#complexitycognitive) | complexity | warning | parser | `maxComplexity: 25` | Functions whose nested control flow and boolean decisions exceed the threshold. |
-| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Functions whose branch count exceeds the threshold. |
+| [`complexity.cyclomatic`](#complexitycyclomatic) | complexity | warning | parser | `maxComplexity: 20` | Opt-in: functions whose branch count exceeds the threshold. |
 | [`complexity.nesting-depth`](#complexitynesting-depth) | complexity | warning | parser | `maxDepth: 5` | Functions whose nesting depth exceeds the threshold. |
 | [`dead-code.empty-block`](#dead-codeempty-block) | dead-code | advisory | parser | - | Empty control-flow blocks that usually indicate unfinished code. |
 | [`dead-code.unreachable-code`](#dead-codeunreachable-code) | dead-code | advisory | parser | - | Statements after terminal control flow in the same block. |
@@ -35,6 +35,8 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | advisory | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | advisory | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
+| [`docs.missing-param-doc`](#docsmissing-param-doc) | documentation | advisory | parser | - | Documented callables whose doc comment does not name each parameter. |
+| [`docs.missing-return-doc`](#docsmissing-return-doc) | documentation | advisory | parser | - | Documented callables whose doc comment does not explain the returned values or when an error is returned. |
 | [`docs.package-comment`](#docspackage-comment) | documentation | advisory | parser | - | Packages with no package-level comment in any file. |
 | [`docs.suppression-without-rationale`](#docssuppression-without-rationale) | documentation | advisory | parser | - | `nolint` and `nosec` suppression comments that do not explain why the suppression is intentional. |
 | [`maintainability.context-todo-production`](#maintainabilitycontext-todo-production) | maintainability | advisory | parser | - | `context.TODO()` calls in production files. |
@@ -49,7 +51,6 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`naming.get-prefix`](#namingget-prefix) | modernisation | advisory | parser | - | Accessor-style receiver methods with a discouraged `Get` prefix. |
 | [`naming.identifier-quality`](#namingidentifier-quality) | naming | advisory | parser | - | Local identifiers matching a placeholder name list. |
 | [`naming.misspelling`](#namingmisspelling) | naming | advisory | parser | - | Identifiers, doc comments, and struct tags containing common programming misspellings. |
-| [`naming.negated-boolean`](#namingnegated-boolean) | naming | advisory | parser | - | Boolean identifiers using negation prefixes (No/Not/Disable…) that force double-negation at call sites. |
 | [`naming.package-stutter`](#namingpackage-stutter) | naming | advisory | parser | - | Exported identifiers whose lowercase form starts with their own package name (`config.ConfigOptions`). |
 | [`naming.package-underscore`](#namingpackage-underscore) | naming | advisory | parser | - | Package names containing underscores. |
 | [`naming.receiver-consistency`](#namingreceiver-consistency) | naming | advisory | parser | - | Methods on the same type with inconsistent receiver names or pointer/value forms. |
@@ -57,54 +58,53 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.github-actions-broad-permissions`](#securitygithub-actions-broad-permissions) | security | advisory | parser | - | Workflows granting blanket write access (permissions: write-all or bare write). |
 | [`security.github-actions-pull-request-target`](#securitygithub-actions-pull-request-target) | security | advisory | parser | - | pull_request_target workflows that also check out or run code. |
 | [`security.github-actions-remote-shell`](#securitygithub-actions-remote-shell) | security | advisory | parser | - | Workflow run steps piping a remote download into a shell. |
-| [`security.github-actions-secrets-in-pr`](#securitygithub-actions-secrets-in-pr) | security | advisory | parser | - | Pull-request workflows referencing a named secret other than GITHUB_TOKEN. |
+| [`security.github-actions-secrets-in-pr`](#securitygithub-actions-secrets-in-pr) | security | advisory | parser | - | pull_request_target workflows referencing a named secret other than GITHUB_TOKEN. |
 | [`security.github-actions-unpinned-action`](#securitygithub-actions-unpinned-action) | security | advisory | parser | - | Third-party actions pinned to a mutable branch ref instead of a tag or SHA. |
 | [`security.http-client-no-timeout`](#securityhttp-client-no-timeout) | security | advisory | parser | - | `http.Client` literals in production files without `Timeout`. |
 | [`security.http-server-no-timeout`](#securityhttp-server-no-timeout) | security | advisory | parser | - | Production `http.Server` literals and `ListenAndServe` helpers without explicit timeout controls. |
 | [`security.insecure-random-secret`](#securityinsecure-random-secret) | security | advisory | parser | - | `math/rand` calls used in token, nonce, session, key, or other secret-looking contexts. |
-| [`security.open-redirect-candidate`](#securityopen-redirect-candidate) | security | advisory | parser | - | Request-derived values used as a redirect target without validation. |
+| [`security.open-redirect-candidate`](#securityopen-redirect-candidate) | security | advisory | parser | - | Opt-in: request-derived values used as a redirect target without validation. |
 | [`security.path-traversal-file-access`](#securitypath-traversal-file-access) | security | advisory | parser | - | Request-derived paths reaching filesystem sinks without containment evidence. |
 | [`security.permissive-file-mode`](#securitypermissive-file-mode) | security | advisory | parser | - | File and directory calls using world-writable or overly permissive literal modes. |
-| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Full reads of `http.Request.Body` without local size-limit evidence. |
+| [`security.request-body-without-limit`](#securityrequest-body-without-limit) | security | advisory | parser | - | Opt-in: full reads of `http.Request.Body` without local size-limit evidence. |
 | [`security.request-controlled-url`](#securityrequest-controlled-url) | security | advisory | parser | - | Request-derived values used as an outbound HTTP request URL without allowlist/validation (SSRF). |
-| [`security.sensitive-data-logging`](#securitysensitive-data-logging) | security | advisory | parser | - | Logging calls whose arguments carry secret-named values, secret env reads, or request auth headers/cookies. |
 | [`security.shell-command`](#securityshell-command) | security | warning | parser | - | `exec.Command` invocations that route through a shell interpreter. |
-| [`security.sql-string-query`](#securitysql-string-query) | security | advisory | parser | - | SQL execution calls with query arguments built by formatting or concatenation. |
 | [`security.template-injection-xss`](#securitytemplate-injection-xss) | security | advisory | parser | - | Request-derived values reaching an HTML response without escaping (text/template, unsafe `template.HTML`, raw writes). |
 | [`security.tls-insecure-config`](#securitytls-insecure-config) | security | warning | parser | - | `tls.Config` literals that disable verification or allow obsolete TLS versions. |
 | [`security.unsafe-deserialization`](#securityunsafe-deserialization) | security | advisory | parser | - | Decoding request-controlled input via `encoding/gob` or `gopkg.in/yaml`. |
 | [`security.weak-crypto`](#securityweak-crypto) | security | advisory | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
 | [`security.xxe-candidate`](#securityxxe-candidate) | security | advisory | parser | - | `xml.Decoder` configured with a custom entity map (possible XXE); stdlib XML is safe by default. |
-| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | error | parser | - | Anthropic API key literals (`sk-ant-…`). |
-| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | error | parser | - | AWS access key id (AKIA…) literals. |
-| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | error | parser | - | Database/queue URLs with embedded passwords. |
-| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | error | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
-| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | error | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
-| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | error | parser | - | GitLab personal, trigger, runner, and application token literals. |
-| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | error | parser | - | Google API key literals (`AIza…`). |
-| [`sensitive-data.high-entropy-string`](#sensitive-datahigh-entropy-string) | sensitive-data | warning | parser | `minLength: 20`, `entropy: 4.5` | Opt-in. Long high-entropy tokens no provider rule covers. |
-| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | error | parser | - | JWT-shaped literals (`eyJ…`). |
-| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | error | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
+| [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | warning | parser | - | Anthropic API key literals (`sk-ant-…`). |
+| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | warning | parser | - | AWS access key id (AKIA…) literals. |
+| [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | warning | parser | - | Database/queue URLs with embedded passwords. |
+| [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | warning | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
+| [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | warning | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
+| [`sensitive-data.gitlab-token`](#sensitive-datagitlab-token) | sensitive-data | warning | parser | - | GitLab personal, trigger, runner, and application token literals. |
+| [`sensitive-data.google-api-key`](#sensitive-datagoogle-api-key) | sensitive-data | warning | parser | - | Google API key literals (`AIza…`). |
+| [`sensitive-data.jwt-token`](#sensitive-datajwt-token) | sensitive-data | warning | parser | - | JWT-shaped literals (`eyJ…`). |
+| [`sensitive-data.npm-token`](#sensitive-datanpm-token) | sensitive-data | warning | parser | - | npm access token literals (`npm_…` / `npm_pat_…`). |
 | [`sensitive-data.phi-pattern`](#sensitive-dataphi-pattern) | sensitive-data | warning | parser | - | Opt-in. US SSN, Medicare MBI, and labelled MRN identifiers. |
 | [`sensitive-data.pii-pattern`](#sensitive-datapii-pattern) | sensitive-data | warning | parser | - | Opt-in. Email, phone, and Luhn-valid payment-card numbers. |
-| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | error | parser | - | PEM-encoded private keys embedded in source. |
-| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | error | parser | - | High-risk secret-like key/value assignments. |
-| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | error | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
-| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | error | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
+| [`sensitive-data.private-key`](#sensitive-dataprivate-key) | sensitive-data | warning | parser | - | PEM-encoded private keys embedded in source. |
+| [`sensitive-data.secret-pattern`](#sensitive-datasecret-pattern) | sensitive-data | warning | parser | - | High-risk secret-like key/value assignments. |
+| [`sensitive-data.slack-token`](#sensitive-dataslack-token) | sensitive-data | warning | parser | - | Slack bot / user / app / refresh tokens (`xox[bpar]-…`). |
+| [`sensitive-data.stripe-key`](#sensitive-datastripe-key) | sensitive-data | warning | parser | - | Stripe live secret / publishable / restricted keys (`(sk\|pk\|rk)_live_…`). |
 | [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | `Test…` / `Benchmark…` / `Fuzz…` functions with empty bodies. |
+| [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | Empty runnable tests, including a sole `testing.T.Parallel()` call. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
-| [`test-quality.no-failure-path`](#test-qualityno-failure-path) | test-quality | advisory | parser | - | Test functions that contain code but never reach a failure call or recognised assertion helper. |
 | [`test-quality.parallel-range-capture`](#test-qualityparallel-range-capture) | test-quality | advisory | parser | - | Parallel subtests in pre-Go 1.22 modules that capture range variables without an explicit shadow copy. |
-| [`test-quality.skipped-test`](#test-qualityskipped-test) | test-quality | advisory | parser | - | Unconditional or debt-marked tests that call `t.Skip*`. |
 | [`test-quality.sleep-in-test`](#test-qualitysleep-in-test) | test-quality | advisory | parser | - | `time.Sleep` calls in tests. |
 | [`test-quality.static-analysis-redundant-test`](#test-qualitystatic-analysis-redundant-test) | test-quality | advisory | parser | - | Opt-in candidate for test assertions that restate parser-visible code-shape facts. |
 | [`test-quality.tempdir-misuse`](#test-qualitytempdir-misuse) | test-quality | advisory | parser | - | `os.MkdirTemp("", …)` and `ioutil.TempDir("", …)` in tests where `t.TempDir()` is available. |
 
 Default size thresholds are production-oriented and stay unchanged for `_test.go` files. Warning-severity size findings in `_test.go` files still emit with the same threshold, message, and fingerprint identity, but are reported as `advisory` severity / `medium` confidence so table-driven and integration-test bulk does not carry the same score and exit-code weight as production code. Advisory defaults such as `size.file-length` are already softened, and non-warning severity overrides in config apply to test files too.
+
+**Two bands for size and complexity.** Every `size.*` and `complexity.*` finding reports in one of two bands (FAMILY-CONTRACT.md section 12, "Size and complexity findings in two bands"). Under one and a half times its limit, the finding is an advisory notice whatever the configured severity, carries `limitBand: lower` in its metadata, and asks you not to add to the unit. At one and a half times the limit or more it keeps its severity, including the `_test.go` softening above, carries `limitBand: upper`, and asks you to split the unit or simplify its execution path. The comparison does not round: a function of 119 code lines against the 80-line limit is in the lower band, and one of 120 is in the upper. The message and fingerprint are the same in both bands, so a baseline entry keeps matching when a unit crosses the boundary. A `--fail-on warning` or `--fail-on error` gate no longer fails on a lower-band notice; the default `analyse` gate, `advisory`, still does.
+
+**Function literals assigned to package-level vars.** `size.function-length`, `size.parameter-count`, `complexity.cognitive`, `complexity.cyclomatic` and `complexity.nesting-depth` also measure a function literal assigned to a package-level `var`, such as `var Mix = func(seed int) int { ... }`, and name it after the var. The documentation rules do not see it (FAMILY-CONTRACT.md section 12, "function literal assigned to a package-level").
 
 ## Severity tiers
 
@@ -116,7 +116,7 @@ Every rule has a default severity; configs can override per rule. ADR-009 collap
 | `warning` | 8 | amber | Worth fixing in the next clean-up pass. |
 | `advisory` | 1 | muted | Informational; trend over time. |
 
-The `--min-severity` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse` and `summary`, `none` for `report` and `dashboard`; see [`configuration.md`](configuration.md#minimumseverity). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
+The `--fail-on` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse`, `none` for `summary`, `report` and `dashboard`; see [`configuration.md`](configuration.md#failon). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
 
 ## Per-rule reference
 
@@ -130,26 +130,28 @@ The `--min-severity` flag sets the threshold at which findings flip the exit cod
 - **Capability:** parser
 - **Tags:** `metric`
 
-Flags Go functions whose parser-only cognitive complexity exceeds the configured threshold. The metric adds one point for each `if`, loop, `switch`, type switch, and `select`, adds the current nesting level for nested control flow, and adds one point for each `&&` / `||` operator inside conditions. Function literals reset the count.
+Flags Go functions whose parser-only cognitive complexity exceeds the configured threshold. The metric adds one point for each `if`, loop, `switch`, type switch, and `select`, adds the current nesting level for nested control flow, and adds one point for each `&&` / `||` operator inside conditions. Function literals reset the count. Two shapes are softened because they were the commonest findings not worth acting on: the cases of a `switch`, type switch or `select` stay at the statement's own nesting level, and an early-exit guard (an `if` with no `else` whose body is one `return`, `continue`, `break` or `panic`) adds one point with no nesting penalty. `_test.go` files are not measured.
 
 This is intentionally separate from `complexity.cyclomatic`: cyclomatic counts independent branch paths, while cognitive complexity emphasizes nesting and review difficulty.
 
-**Remediation.** Flatten nested branches, return early on guard conditions, or extract cohesive helper functions.
+**Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
 
 ### `complexity.cyclomatic`
 
 - **Pillar:** complexity
 - **Default severity:** warning
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Threshold:** `maxComplexity` (default `20`)
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions whose branch count exceeds the configured cyclomatic complexity threshold. The metric counts `if`, `for`, `range`, `case` (when the case has labels), `select` cases, and `&&` / `||` short-circuit operators.
+Opt-in since precision-floor M14: measured on the 0.6.0 corpus after its repair, its findings at one and a half times the limit were worth acting on 23 times in 40, under the 0.60 floor, so it is off by default rather than deleted. `complexity.cognitive` stays on and covers the same functions. Enable it with `rules.complexity.cyclomatic.enabled: true`.
+
+Flags Go functions whose branch count exceeds the configured cyclomatic complexity threshold. The metric counts `if`, `for`, `range`, each `switch`, type switch and `select` once however many cases it has, and `&&` / `||` short-circuit operators. A flat dispatch over many cases is one decision, as gruff-rs counts one per `match`. `_test.go` files are not measured.
 
 Each finding's metadata carries the measured `complexity` and the active `threshold`. The score object's `complexityDistribution` is finding-only: it bins over-threshold `complexity.cyclomatic` findings, not every parsed function. All-zero bins mean no over-threshold complexity findings were reported.
 
-**Remediation.** Split independent decisions, move branches into named helpers, or return early on guard conditions.
+**Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
 
 ### `complexity.nesting-depth`
 
@@ -162,7 +164,7 @@ Each finding's metadata carries the measured `complexity` and the active `thresh
 
 Flags functions whose maximum control-flow nesting depth exceeds the threshold. Function literals reset the depth counter so callbacks aren't double-counted as part of their enclosing function.
 
-**Remediation.** Extract nested branches into named helpers or return early on guard conditions.
+**Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
 
 ### `dead-code.empty-block`
 
@@ -175,6 +177,8 @@ Flags functions whose maximum control-flow nesting depth exceeds the threshold. 
 Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usually indicate unfinished or accidentally orphaned code.
 
 **Remediation.** Remove the empty block or add the intended implementation.
+
+**Known precision limit.** A control-flow block used only for header work, or an intentionally empty select or comment-only body, can look unfinished to the syntax-only check. Move the work into the body, add an executable statement, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `dead-code.unreachable-code`
 
@@ -200,7 +204,11 @@ Flags statements that follow `return`, `panic`, `break`, `continue`, or `goto` i
 
 Opt-in candidate for package-private top-level constants whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, iota groups, and multi-name const specs are excluded to keep parser-only evidence precision-first.
 
-**Remediation.** Delete the constant if it is abandoned, or leave the candidate disabled where grouped constants or build tags make parser-only certainty too weak.
+**Remediation.** Delete the constant if nothing uses it. If it is used from a file behind a build tag, or kept on purpose as part of a constant group, keep it and accept this finding in the baseline.
+
+**When to keep it off.** The rule is opt-in because grouped constants and build tags make parser-only certainty too weak; leave it off for a package where they decide whether a constant is used.
+
+**Known precision limit.** A package-private constant referenced through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the declaration, or leave this opt-in rule disabled for that package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `dead-code.unused-private-function`
 
@@ -215,6 +223,8 @@ Flags package-private top-level functions whose names are not referenced anywher
 
 **Remediation.** Remove the unused helper, make the missing call explicit, or rename/export it only when another package is expected to call it.
 
+**Known precision limit.** A package-private function reached through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the function, or disable the rule for the reviewed package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `dead-code.unused-private-type`
 
 - **Pillar:** dead-code
@@ -226,7 +236,11 @@ Flags package-private top-level functions whose names are not referenced anywher
 
 Opt-in candidate for package-private top-level types whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, and reflection-heavy packages are excluded, and name collisions elsewhere in the package suppress the finding because the rule does not resolve bindings.
 
-**Remediation.** Delete the type if it is abandoned, or keep the rule opt-in until reflective and build-tagged references are ruled out for the package.
+**Remediation.** Delete the type if nothing uses it. If it is referenced only from generated code, through reflection, or from a file behind a build tag, keep it and accept this finding in the baseline.
+
+**When to keep it off.** The rule is opt-in because parser-only evidence cannot see generated, reflective or build-tagged references; enable it for a package only once those are not part of its contract.
+
+**Known precision limit.** A package-private type referenced through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the type, or leave this opt-in rule disabled for that package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `dead-code.unused-private-var`
 
@@ -239,13 +253,17 @@ Opt-in candidate for package-private top-level types whose names are not referen
 
 Opt-in candidate for package-private top-level variables whose names are not referenced anywhere else in the same parsed package. Test files, generated files, vendor paths, reflection-heavy packages, blank identifiers, and common registration tables are excluded to avoid noisy parser-only false positives.
 
-**Remediation.** Delete the variable if it is abandoned, or keep the rule opt-in where indirect registration or build-tagged references are part of the package contract.
+**Remediation.** Delete the variable if nothing reads it. If it is used only through indirect registration, reflection, or a file behind a build tag, keep it and accept this finding in the baseline.
+
+**When to keep it off.** The rule is opt-in because parser-only evidence cannot prove a variable is not used through indirect registration or a build-tagged file; leave it off for a package where either is part of the contract.
+
+**Known precision limit.** A package-private variable referenced through reflection, build-tagged files, or indirect registration can appear unreferenced to the parser-only package index. Keep a parser-visible reference, remove the variable, or leave this opt-in rule disabled for that package. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `dependency.go-mod-local-replace`
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `dependency`, `security`, `supply-chain`
@@ -284,6 +302,8 @@ Each finding's metadata carries the replacement target.
 Emits score-neutral composite triage for files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules: design-pillar findings (including hotspot-file's own output) are excluded from the evidence the rule counts. Treat this as a grouping hint over the underlying findings, not a separate fix target.
 
 **Remediation.** Triage the file as a cluster, then fix the underlying findings. Once the underlying findings are handled, the composite disappears; there is no separate hotspot-only edit to make.
+
+**Known precision limit.** Several valid findings can be intentionally clustered in one file even though their composite hotspot is not a separate defect. Triage the underlying findings; do not make a separate code edit solely to clear the score-neutral composite. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `docs.comment-rubric`
 
@@ -324,6 +344,8 @@ rules:
 
 **Remediation.** Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When `minWordsBeyondSymbol` is set, replace name-restatement summaries with substantive context.
 
+**Known precision limit.** A concise but substantive comment can miss the configured line or token threshold. Tune minLines or minTokens for the selected paths, or remove the path from this rule's scope. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `docs.config-field-comment`
 
 - **Pillar:** documentation
@@ -350,6 +372,8 @@ rules:
 
 **Remediation.** Add a doc comment to every exported field of structs declared in the configured `includePaths`.
 
+**Known precision limit.** An obvious configuration field, or one documented by its containing schema, can lack a field-local comment in an included path. Add a field comment, narrow includePaths to the schema that requires them, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `docs.exported-symbol-comment`
 
 - **Pillar:** documentation
@@ -360,9 +384,45 @@ rules:
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
 
+For a function or method, the message also lists what the new comment should cover, built from the signature: each parameter by name, skipping blank and unnamed parameters and context, HTTP request and response, and testing handles; the returned value or values, only when a non-error result exists; and when an error is returned, only when a result has the type `error`. A function or method with none of these keeps the bare message.
+
 Set `ignoreInternalPackages: false` when internal package exports should follow the same documentation bar as public API packages.
 
 **Remediation.** Add a Go-style doc comment that begins with the symbol name.
+
+**Known precision limit.** A generated or externally constrained exported declaration outside the built-in generated, internal, and test exclusions can lack a local doc comment. Add the Go doc comment, mark generated source canonically, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
+### `docs.missing-param-doc`
+
+- **Pillar:** documentation
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+
+Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not name each parameter; context, HTTP request and response, and testing handles are skipped.
+
+The rule reads the doc comment as plain prose: a parameter counts as named when its name appears in the comment as a word, in any letter case, and no tag format is required. Only callables whose doc comment passes the `docs.comment-rubric` usefulness test are inspected; undocumented callables are left to `docs.exported-symbol-comment` and `docs.comment-rubric`. A package-level var holding a function literal is read through the var's own doc comment, and closures inside function bodies are out of scope. Blank and unnamed parameters are skipped, and so are parameters whose type expression is `context.Context`, `*http.Request`, `http.ResponseWriter`, or a `testing` handle (`*testing.T`, `*testing.B`, `*testing.F`, `*testing.M`, `testing.TB`, `*testing.PB`). One finding per callable names every missing parameter.
+
+**Remediation.** Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required.
+
+**Known precision limit.** A doc comment can describe a parameter by its role instead of its name, or leave a self-explanatory parameter unmentioned, so the parameter name never appears as a word. Name the parameter in the doc comment, rename it to the word the prose already uses, or keep this opt-in rule disabled for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
+### `docs.missing-return-doc`
+
+- **Pillar:** documentation
+- **Default severity:** advisory
+- **Default-enabled:** no
+- **Confidence:** medium
+- **Capability:** parser
+
+Flags documented functions, methods, and package-level vars holding a function literal whose doc comment does not explain the returned values or, when an error is returned, when that happens; callables that return nothing are skipped.
+
+The rule reads the doc comment as plain prose and requires no tag format. A non-error result counts as described when a sentence uses a return word (`return`, `returns`, `returned`, `returning`, `result`, `results`, `reports`, `yields`, `gives`) whose object is not an error, or when the comment names a named result. An `error` result counts as explained when the comment uses a failure word (`error`, `errors`, `err`, `fail`, `fails`, `failed`, `failing`, `failure`, `failures`) or names the named error result, so "returns an error when the file is missing" explains the error case but does not describe a returned value. The message asks for the returned value only when a non-error result exists and for the error case only when a result has the type `error`. It inspects the same documented functions, methods, and package-level function-literal vars as `docs.missing-param-doc`, and one finding per callable asks for what is missing.
+
+**Remediation.** Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required.
+
+**Known precision limit.** A doc comment can explain the result without a return word, such as a constructor summary or an interface-implementation note, so the prose is not recognised as describing it. Say what the callable returns in plain words, or keep this opt-in rule disabled for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `docs.package-comment`
 
@@ -388,6 +448,8 @@ Flags Go packages that have no package-level comment in any file. Package commen
 Flags `//nolint` and `#nosec` suppression comments that contain only the directive, rule list, or punctuation. Suppressions with explicit rationale markers such as `-- reason`, `// reason`, or a nearby `reason:` comment pass. Go files are inspected through parsed comment groups so raw string fixtures and prose that merely mention suppression syntax are ignored; text/config files are scanned only when the line itself starts with a suppression directive.
 
 **Remediation.** Add a short reason that explains why the suppression is intentional, or remove the suppression if it is no longer needed.
+
+**Known precision limit.** A suppression with its explanation in a non-adjacent comment, or without a reason:, rationale:, or because: prefix, is not recognised as justified. Put an adjacent comment with one recognised rationale prefix immediately before the suppression. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `maintainability.context-todo-production`
 
@@ -430,6 +492,8 @@ Each finding's metadata carries the ignored expression and the parser-only evide
 
 **Remediation.** Handle the error, return it to the caller, or document why ignoring it is safe.
 
+**Known precision limit.** A deliberately discarded value whose name or constructor marks it as an error is indistinguishable from an accidental discard. Handle or log the error, or disable the rule at the reviewed scope when discarding it is intentional. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `maintainability.log-fatal-library`
 
 - **Pillar:** maintainability
@@ -460,6 +524,8 @@ Taking an indexed element address such as `&slice[i]` remains accepted, as does 
 
 **Remediation.** Prefer declaration-form iteration variables in Go 1.22+ modules, take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
 
+**Known precision limit.** The nearest go.mod syntax version can differ from the effective build semantics selected by an external toolchain override. Index the collection or copy the loop value explicitly, or review the finding against the effective Go version. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `maintainability.production-panic`
 
 - **Pillar:** maintainability
@@ -472,6 +538,8 @@ Taking an indexed element address such as `&slice[i]` remains accepted, as does 
 Flags direct `panic` calls with literal message evidence in reusable production code. Test files, `package main`, `cmd/` paths, `init`, `main`, `Defaults`, and `Must*` functions are exempt. `panic(err)` is not reported because this parser-only rule cannot distinguish impossible invariant failures from ordinary error flow.
 
 **Remediation.** Return an error or fail during command/bootstrap setup instead of panicking from reusable production code.
+
+**Known precision limit.** A documented panic paired with recovery at a wider boundary can look like an unhandled production panic. Return an error where practical, or disable the rule only after reviewing the matching recovery boundary. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `modernisation.ioutil-deprecated`
 
@@ -514,7 +582,7 @@ rules:
       allow: ["ThirdPartyHttpName"]
 ```
 
-**Known precision limit.** A hand-written binding, framework hook, or external API may require non-Go initialism casing. Add the exact declaration to `rules.naming.acronym-case.options.allow`, or keep generated bindings marked as generated code. The same guidance is available from `list-rules --format json`.
+**Known precision limit.** A hand-written binding, framework hook, or external API may require a declaration whose name uses non-Go initialism casing. Add the exact required identifier to rules.naming.acronym-case.options.allow, or keep generated bindings marked as generated code. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 **Remediation.** Use Go's canonical all-caps initialism spelling within identifiers, such as `userID` and `parseURL`.
 
@@ -532,9 +600,9 @@ rules:
   - `accumulatorNames []string` - accumulator names to check. Default: `[out, result]`
   - `requireMultiple bool` - require at least two matching accumulator declarations in a long function before flagging. Default: `true`
 
-Flags generic range value names only when the loop body exceeds `minBodyLines`. Short loops such as `for _, item := range items { ... }` pass because the range expression provides enough context; longer loops ask for a more specific role name. Test files and generated files are skipped.
+Flags generic range value names only when the loop body has more than `minBodyLines` code lines. Blank lines and comment-only lines inside the body do not count, and the finding's `bodyLines` metadata reports the code-line count. Short loops such as `for _, item := range items { ... }` pass because the range expression provides enough context; longer loops ask for a more specific role name. Test files and generated files are skipped.
 
-The optional accumulator branch flags `:=` declarations of names such as `out` or `result` only in functions longer than `minFunctionLines`. By default, the function also needs multiple matching accumulator declarations so ordinary small builders do not produce noise.
+The optional accumulator branch flags `:=` declarations of names such as `out` or `result` only in functions with more than `minFunctionLines` code lines, again leaving out blank lines and comment-only lines; the finding's `functionLines` metadata reports that count. By default, the function also needs multiple matching accumulator declarations so ordinary small builders do not produce noise.
 
 ```yaml
 rules:
@@ -550,6 +618,8 @@ rules:
 ```
 
 **Remediation.** Rename long-loop values and long-function accumulators to describe the data role they carry, such as `finding`, `skippedPath`, `scoreRow`, or `rendered`.
+
+**Known precision limit.** A domain-meaningful name such as item or result can match the generic-name heuristic in a long function. Add the project term to genericNames, adjust minFunctionLines, or rename the identifier with its domain role. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.get-prefix`
 
@@ -573,6 +643,8 @@ rules:
 
 **Remediation.** Rename accessor-style methods from `GetThing` to `Thing` unless parameters make the lookup action explicit.
 
+**Known precision limit.** A zero-argument receiver method named Get... can be required by a protocol, framework, or compatibility API. Add the exact method name to allowNames, rename it when compatible, or keep this opt-in rule disabled. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `naming.identifier-quality`
 
 - **Pillar:** naming
@@ -594,6 +666,8 @@ rules:
 ```
 
 **Remediation.** Rename the identifier to something that names its role, or remove it if it is no longer needed. Override the option list when your project has additional placeholder terms to enforce or legitimate uses for one of the built-in placeholders.
+
+**Known precision limit.** A project-specific term can match a configured placeholder name even when it carries clear domain meaning. Remove that term from placeholderNames or rename the identifier to make its role explicit. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.misspelling`
 
@@ -624,37 +698,7 @@ rules:
 
 **Remediation.** Replace the misspelled token with the suggested correction the finding includes. Add legitimate proper nouns or vendor-specific terms to the `ignore` option.
 
-### `naming.negated-boolean`
-
-- **Pillar:** naming
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `go-style`, `naming`
-- **Options:**
-  - `prefixes []string` - default `[No, Not, Disable, Disallow, Without, Suppress]`
-  - `allowList []string` - default `[NoOp, Notify, Notice, Now, NoCopy, Notation, Notebook, NoConfig, NoBaseline, NoInteraction]` (English words and CLI/config flag vocabulary that begin with a prefix but are not negations)
-  - `scope string` - default `"exported"`; alternatives `"all"` and `"locals"`
-
-Flags boolean identifiers (struct fields, function parameters, function results, `var`/`const` declarations) whose names begin with a negation prefix followed by an uppercase letter. Negated names force double-negation at call sites (`if !state.NoCache`) and obscure the actual intent. Public CLI/config vocabulary that mirrors flags such as `--no-config`, `--no-baseline`, and `--no-interaction` is accepted by default.
-
-Type-aware: only flags identifiers whose syntactic type is `bool`, so `NoOp func()` and `Notify chan struct{}` are correctly ignored. The default `scope: exported` checks struct fields and exported declarations; switch to `"locals"` to additionally flag local `var` declarations inside function bodies, or `"all"` for both.
-
-```yaml
-rules:
-  naming.negated-boolean:
-    enabled: true
-    options:
-      # Extend the prefix list.
-      prefixes: ["No", "Not", "Disable", "Without", "Skip"]
-      # Whitelist a project-specific identifier that collides with a prefix.
-      allowList: ["NoOp", "Notify", "NoticeBoard"]
-      # Also check locals.
-      scope: "locals"
-```
-
-**Remediation.** Rename to the positive form: `NoCache` → `SkipCache` if the boolean still means "skip", or `EnableCache` with inverted truth values if you want callers to read positive logic. CLI/config flag names like `--no-config` can stay as the public surface.
+**Known precision limit.** A proper noun, vendor term, or domain word can collide with a built-in misspelling entry. Add the exact token to ignore or extra, or correct the identifier when the match is a typo. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.package-stutter`
 
@@ -681,6 +725,8 @@ rules:
 ```
 
 **Remediation.** Rename so call sites read without repetition: `rule.RuleRegistry` → `rule.Registry`, `config.ConfigOptions` → `config.Options`. Add genuine single-noun stutters that the community accepts to `allowStutter`.
+
+**Known precision limit.** An exported compatibility name or accepted domain noun can intentionally repeat its package name. Add the exact symbol to allowStutter, rename it when compatible, or keep this opt-in rule disabled. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.package-underscore`
 
@@ -717,6 +763,8 @@ rules:
 
 **Remediation.** Use one receiver name and one receiver pointer/value form per type, or explicitly allow a deliberate mixed form.
 
+**Known precision limit.** A type can deliberately mix pointer and value receivers for method-set or API design, and equally common names can be ambiguous. Add the type to allowMixed, inspect the reported group, or keep this opt-in rule disabled. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `security.archive-path-traversal`
 
 - **Pillar:** security
@@ -731,6 +779,8 @@ Flags Go files that import `archive/zip` or `archive/tar` and join an archive en
 Each finding's metadata carries the archive entry expression and the missing check kind.
 
 **Remediation.** Clean the joined path and verify it remains inside the extraction root before creating files.
+
+**Known precision limit.** A containment check implemented in a helper outside the extraction function is not visible to the bounded same-function proof. Keep the destination containment check visible beside extraction, or review and disable the rule for the vetted helper. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.github-actions-broad-permissions`
 
@@ -758,6 +808,8 @@ Flags workflows triggered by `pull_request_target` that also check out or run co
 
 **Remediation.** Use `pull_request` for untrusted contributions, or keep `pull_request_target` jobs free of fork-controlled checkout and execution.
 
+**Known precision limit.** The text scanner can see checkout or command execution but cannot prove that a condition selects only a trusted ref or event path. Use a safer trigger, isolate trusted work in another job, or disable the rule only after reviewing every privileged path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `security.github-actions-remote-shell`
 
 - **Pillar:** security
@@ -780,9 +832,13 @@ Flags workflow run steps that download a remote script with `curl`/`wget`/`Invok
 - **Capability:** parser
 - **Tags:** `ci`, `github-actions`, `security`
 
-Flags workflows triggered by `pull_request` or `pull_request_target` that reference a named secret other than the auto-provided `GITHUB_TOKEN`, exposing it to fork-controlled runs. Candidate wording. Each finding's metadata carries the referenced secret name.
+Flags workflows triggered by `pull_request_target` that reference a named secret other than the auto-provided `GITHUB_TOKEN`, exposing it to fork-controlled runs. A plain `pull_request` run from a fork receives no secrets, so it is not reported. Each finding's metadata carries the referenced secret name.
 
-**Remediation.** Keep named secrets out of pull-request-triggered workflows; gate secret-using jobs on a trusted event such as push or `workflow_run`.
+An own job or step `if:` guard can silence a secret reference when exact `github.event_name` comparisons prove that scope unreachable for the detected PR event. Comparisons ignore case and support a whole expression wrapper, parentheses, negation, AND and OR. Unknown, malformed or unsupported guards and ambiguous YAML ownership retain warnings; a step guard cannot cover job/workflow env or siblings.
+
+**Remediation.** Keep named secrets out of pull-request-triggered workflows. Run secret-using jobs only on trusted events such as `push`, and when a `workflow_run` job follows a pull-request workflow, check the triggering repository and branch before it uses secrets.
+
+**Known precision limit.** A secret reference in a pull-request workflow can sit behind a trusted-actor condition the text scanner does not evaluate. Gate the secret-bearing job explicitly or move it to a separate trusted workflow. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.github-actions-unpinned-action`
 
@@ -827,7 +883,7 @@ Flags production `http.Server` composite literals that omit all explicit timeout
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `random`, `security`
@@ -838,20 +894,28 @@ Each finding's metadata carries the random API and context word.
 
 **Remediation.** Use `crypto/rand` for security-sensitive random values and keep `math/rand` for sampling, tests, and simulations.
 
+**Known precision limit.** A math/rand call in sampling or simulation code can inherit a token-, key-, or nonce-like surrounding name. Use crypto/rand for security values, or rename and review non-security sampling code before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `security.open-redirect-candidate`
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `http`, `redirect`, `security`
 
+Opt-in since precision-floor M02: it reported four findings on the 0.6.0 precision corpus before its repair, too few to show it is right often enough to report by default, so it is off rather than deleted. Enable it with `rules.security.open-redirect-candidate.enabled: true`.
+
 Flags request-derived values passed to `http.Redirect` or a `Location` response header without an affirmative allowlist, validator, or relative-path check (possible open redirect). Uses bounded same-function evidence: the request value can be inline (`r.FormValue`, `r.URL.Query().Get`) or a local tainted from one. Safe evidence is a literal committed path segment such as `"/account/" + value`, an exiting `HasPrefix(value, "/account/")` guard, a loop that strips every leading protocol-relative `//`, an exact validator/allowlist/local/relative identifier token, or an explicit parsed HTTP scheme-and-host allowlist. A bare `HasPrefix(value, "/")`, `url.Parse`, or a helper whose name merely contains `parse`, `prefix`, `allow`, or `trusted` is not destination validation. Candidate wording.
+
+An HTTPS upgrade is not reported: a redirect to `"https://" + r.Host + r.URL.RequestURI()` on the handler's own request, or with the host passed through a port helper whose whole body is `net.SplitHostPort`, a return of the original host on error, and `net.JoinHostPort(host, "443")`. A helper's name alone is not enough. A write to the request earlier in the handler keeps the finding; a write made inside a closure, a called function or through another name for the request is not seen.
 
 Each finding's metadata carries the redirect sink and request source label, never a raw value.
 
 **Remediation.** Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations.
+
+**Known precision limit.** A redirect validation helper outside the current function, or with an unrecognised name, is not visible to the local proof. Keep the allowlist or validation check visible beside the redirect sink, or review the helper before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.path-traversal-file-access`
 
@@ -867,6 +931,8 @@ Flags request-derived values passed to filesystem sinks (`os.Open`, `os.ReadFile
 Each finding's metadata carries the filesystem sink and request source label.
 
 **Remediation.** Constrain request-derived paths with `filepath.Clean` plus a containment check (`filepath.Rel`/`IsLocal`) or reduce them to a basename before opening files.
+
+**Known precision limit.** A filesystem containment helper outside the current function, or with an unrecognised name, is not visible to the local proof. Keep the clean-and-containment check visible beside the filesystem sink, or review the helper before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.permissive-file-mode`
 
@@ -885,16 +951,20 @@ Flags literal file and directory modes in `os.OpenFile`, `os.Chmod`, `os.Mkdir`,
 
 - **Pillar:** security
 - **Default severity:** advisory
-- **Default-enabled:** yes
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `http`, `security`
 
-Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Request.Body` directly in production files without local evidence of `http.MaxBytesReader` or `io.LimitReader`. Reads of unrelated `io.Reader` values, test files, and already-limited wrapper expressions are ignored.
+Opt-in since precision-floor M02: it reported seven findings on the 0.6.0 precision corpus before its repair, too few to show it is right often enough to report by default, so it is off rather than deleted. Enable it with `rules.security.request-body-without-limit.enabled: true`.
+
+Flags `io.ReadAll` or `ioutil.ReadAll` calls that read a handler's `*http.Request.Body` directly in production files without local evidence of `http.MaxBytesReader` or `io.LimitReader`. Reads of unrelated `io.Reader` values, test files, and already-limited wrapper expressions are ignored. A function that reads a request this program built is not reported either: an `http.RoundTripper` method with the exact `RoundTrip(*http.Request) (*http.Response, error)` signature, which receives the client's own outgoing request, and a helper taking a `testing.TB` or `*testing.T`, `*testing.B` or `*testing.F` parameter, which only runs under `go test`.
 
 Each finding's metadata carries the request parameter name and read call.
 
 **Remediation.** Wrap request bodies with `http.MaxBytesReader` or `io.LimitReader` before reading them fully.
+
+**Known precision limit.** A request-body limit applied by a wrapper or helper outside the current function is not visible to the same-function check. Keep http.MaxBytesReader or io.LimitReader visible before the full read, or review the wrapper before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.request-controlled-url`
 
@@ -913,21 +983,7 @@ Each finding's metadata carries the HTTP sink and request source label.
 
 **Remediation.** Validate request-derived URLs against an allowlist of trusted hosts, or build the request URL from a fixed base before fetching.
 
-### `security.sensitive-data-logging`
-
-- **Pillar:** security
-- **Secondary pillar:** sensitive-data
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `logging`, `security`, `sensitive-data`
-
-Flags logging and print calls (`log.*`, `fmt.Print*`/`Fprint*`, `log/slog`, and methods on a logger-named receiver) whose arguments carry credentials: identifiers whose name contains `password`/`secret`/`credential`/`bearer`/`passphrase`, secret-named `os.Getenv`/`os.LookupEnv` reads, or request `Authorization`/`Cookie` reads. Static text-only messages, non-secret values, plain form values, and values wrapped in a redaction/hash helper are ignored. Candidate wording, bounded same-function evidence.
-
-Each finding's metadata carries only the logging sink and a classification reason; the raw value is never included.
-
-**Remediation.** Remove the secret from the log call or log a redacted/masked placeholder instead of the raw credential.
+**Known precision limit.** A request-derived URL validated by a helper outside the analyzed function can still appear unconstrained. Keep the trusted-host or fixed-base check visible in the same function so the bounded detector can see it. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.shell-command`
 
@@ -940,24 +996,9 @@ Each finding's metadata carries only the logging sink and a classification reaso
 
 Flags `exec.Command` and `exec.CommandContext` calls that invoke a shell interpreter (`sh`, `bash`, `zsh`, `cmd.exe`, `powershell.exe`, etc.) with a command string argument. The matcher recognises aliased `os/exec` imports and path-qualified shell binaries such as `/bin/sh` or `C:\Windows\System32\cmd.exe`. Direct execution stays quiet whether an argument varies (`exec.Command("gofmt", "-l", dir)`) or the executable name varies (`exec.Command(userInput)`); explicit shell execution such as `exec.Command("sh", "-c", command)` remains a warning because shell interpretation is present.
 
-**Known precision limit.** Intentional shell orchestration with a fixed, reviewed command still reports because parser-only evidence cannot prove runtime input safety. Call the target executable directly where possible, or disable the rule for the reviewed path when shell syntax is required. The same guidance is available from `list-rules --format json`.
+**Known precision limit.** Intentional shell orchestration whose interpreter and command text are fixed and reviewed can still look like injection-prone execution. Call the target executable directly where possible, or disable the rule for the reviewed path when shell syntax is required. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 **Remediation.** Call the target executable directly and pass arguments without shell interpretation.
-
-### `security.sql-string-query`
-
-- **Pillar:** security
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `security`, `sql`
-
-Flags SQL execution calls (`Query`, `QueryRow`, `Exec` and `*Context` forms) whose query argument is built with `fmt.Sprintf`, string concatenation, or a same-function variable initialized from those forms. The constructed expression must contain SQL statement keyword evidence, so non-SQL `Exec` calls and literal parameterized queries are ignored. The rule handles both standard `database/sql` argument positions and pgx-style calls where a context value appears before the query. `_test.go` files and `testutil` helpers may build `CREATE SCHEMA ` statements from fixed `test_*_%d` names using `time.Now().UnixNano()` without firing; arbitrary schema variables still fire.
-
-Each finding's metadata carries the call name and construction kind.
-
-**Remediation.** Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text.
 
 ### `security.template-injection-xss`
 
@@ -973,6 +1014,8 @@ Flags request-derived values reaching an HTML response without escaping: `text/t
 Each finding's metadata carries the reason (`text-template-response`, `raw-html-conversion`, or `unescaped-response-write`).
 
 **Remediation.** Render HTML with `html/template` so output is auto-escaped, or escape request-derived values with `html.EscapeString` before writing them to the response.
+
+**Known precision limit.** A custom sanitizer or safe rendering abstraction outside the current function is not visible to the local taint proof. Use html/template or html.EscapeString visibly before the response sink, or review the abstraction before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.tls-insecure-config`
 
@@ -1004,6 +1047,8 @@ Each finding's metadata carries the decoded format and request source label.
 
 **Remediation.** Decode untrusted input into a concrete typed struct with a vetted format (such as `encoding/json` with a size limit) rather than gob or unrestricted YAML.
 
+**Known precision limit.** Request-derived bytes authenticated or validated outside the current function can still look untrusted at a gob or YAML decoder. Use a typed vetted format or keep the trust-boundary validation visible beside decoding. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `security.weak-crypto`
 
 - **Pillar:** security
@@ -1013,11 +1058,19 @@ Each finding's metadata carries the decoded format and request source label.
 - **Capability:** parser
 - **Tags:** `crypto`, `security`
 
-Flags weak cryptographic primitives when the parser-only evidence is concrete: `crypto/md5` or `crypto/sha1` calls in password, token, signature, key, session, CSRF, or other security-looking contexts; direct DES, 3DES, or RC4 cipher construction; and `rsa.GenerateKey(..., bits)` with a literal key size below 2048. Plain checksum-style MD5/SHA1 use is ignored unless the surrounding function, target, comment, or call argument carries a security context word.
+Flags weak cryptographic primitives when parser-only evidence is concrete: `crypto/md5` or `crypto/sha1` in security contexts;
+direct DES, 3DES, or RC4 construction; and `rsa.GenerateKey(..., bits)` with a literal key size below 2048.
+
+Plain checksum-style MD5/SHA1 use is ignored unless the function, target, comment, or call argument carries a security context word.
+A local bucket key that hashes a nonsecret input and uses only the first digest byte as a decimal storage suffix is also ignored.
+Full digest keys and secret inputs still report.
 
 Each finding's metadata carries the primitive and reason.
 
-**Remediation.** Use modern primitives such as SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption, and RSA keys of at least 2048 bits.
+**Remediation.** Use SHA-256 or HMAC-SHA-256 for security hashes, AES-GCM or ChaCha20-Poly1305 for encryption,
+and RSA keys of at least 2048 bits.
+
+**Known precision limit.** MD5 or SHA-1 used only for a non-security checksum can appear security-sensitive when nearby names imply credentials or integrity. Use a modern digest for security work, or make the non-security checksum context explicit before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `security.xxe-candidate`
 
@@ -1034,20 +1087,28 @@ Each finding's metadata records the `entity-map` evidence.
 
 **Remediation.** Leave `xml.Decoder.Entity` unset so `encoding/xml`'s safe default applies, or validate and constrain any custom entity map fed from untrusted input.
 
-**Sensitive-data preview policy.** Every `sensitive-data.*` detector uses one
-deny-by-default policy. Empty and nonmatching `allowlists.secretPreviews` emit
-only `[redacted]`; matching paths may emit fixed markers such as
-`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:jwt]`,
-`[redacted:email]`, or `[redacted:ssn]`. Connection findings may additionally
-name only the matched scheme (`[redacted:connection-string:postgres]`). Generic
-assignment and entropy findings stay `[redacted]` even when allowlisted. The
-allowlist never suppresses a finding and never authorizes credential or
+**Known precision limit.** A custom XML entity map containing only fixed local entities still matches the decoder configuration heuristic. Leave Decoder.Entity unset where possible, or validate the fixed map before disabling the rule. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
+**Sensitive-data marker policy.** Every `sensitive-data.*` detector emits one
+zero-payload marker, unconditionally. A detector that classified its match emits
+a fixed marker such as `[redacted:aws-access-key]`, `[redacted:private-key]`,
+`[redacted:jwt]`, `[redacted:email]`, or `[redacted:ssn]`; a connection finding
+may additionally name only the matched scheme
+(`[redacted:connection-string:postgres]`). Generic assignment and entropy
+findings stay `[redacted]`, because they classify nothing. Nothing configures a
+marker, and no marker exposes credential or
 identifier payload bytes.
+
+**Sensitive-data suppression.** A `sensitive-data.*` finding is suppressed only
+by a hand-written `sensitiveExclusions` entry naming one rule, one
+project-relative path, and a reason - see
+[Configuration](configuration.md#sensitiveexclusions). Every entry is counted in
+the report's `suppressions` array, so an accepted suppression stays reviewable.
 
 ### `sensitive-data.anthropic-api-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1060,8 +1121,8 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 ### `sensitive-data.aws-access-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
-- **Default-enabled:** yes
+- **Default severity:** warning
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1073,8 +1134,8 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 ### `sensitive-data.connection-string`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
-- **Default-enabled:** yes
+- **Default severity:** warning
+- **Default-enabled:** no
 - **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1085,11 +1146,13 @@ Obvious dev/test placeholders are skipped only when both halves match: the bare 
 
 **Remediation.** Pull the password from environment-specific runtime configuration; keep only the scheme and host in source-controlled strings.
 
+**Known precision limit.** A non-secret fixture password embedded in a connection URL for a non-local host is indistinguishable from a credential. Use runtime substitution or a local placeholder connection string instead of an embedded password. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `sensitive-data.gcp-service-account`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
-- **Default-enabled:** yes
+- **Default severity:** warning
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1098,15 +1161,15 @@ Flags files containing both a `"type": "service_account"` field and a PEM privat
 
 The finding is located at the line of the `"type"` marker. Empty/nonmatching paths fully mask both preview fields. Matching paths emit only `[redacted:gcp-service-account]` and `[redacted:private-key]`; the type literal, key header/body, and reusable fragments never reach any output format.
 
-**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `error` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
+**Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `warning` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
 
 **Remediation.** Rotate the service-account key, delete the JSON file from source-control history, and re-issue credentials through a secret manager or Workload Identity.
 
 ### `sensitive-data.github-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
-- **Default-enabled:** yes
+- **Default severity:** warning
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1118,7 +1181,7 @@ Flags GitHub personal-access (`ghp_`), OAuth (`gho_`), user-to-server (`ghu_`), 
 ### `sensitive-data.gitlab-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1131,8 +1194,8 @@ Flags GitLab personal, trigger, runner, and application token literals with prov
 ### `sensitive-data.google-api-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
-- **Default-enabled:** yes
+- **Default severity:** warning
+- **Default-enabled:** no
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
@@ -1141,24 +1204,10 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 
 **Remediation.** Delete or restrict the key in the Google Cloud console, then load credentials from a secret manager.
 
-### `sensitive-data.high-entropy-string`
-
-- **Pillar:** sensitive-data
-- **Default severity:** warning
-- **Default-enabled:** no (opt-in)
-- **Threshold:** `minLength` (default `20`), `entropy` (default `4.5` bits/char)
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `secrets`
-
-Flags long, high-entropy string tokens that resemble secrets but match no provider-specific pattern - the catch-all for rotated, custom, or vendor-less credentials the exact-prefix rules miss. A token is scored by Shannon entropy (bits per character); the `4.5` default sits above random hex (max `4.0`) and ordinary prose (~1-3) while still catching random base64 secrets (~5-6). To bound false positives the rule skips all-hex ids, UUIDs, SRI/digest prefixes, and path/URL fragments, and defers to the provider-specific rules so one embedded AWS key or JWT is reported once by its precise rule, not twice. Ships opt-in because entropy is a heuristic that cannot prove a token is live; enable it where leaked-credential coverage matters more than occasional review of a legitimate constant.
-
-**Remediation.** Confirm whether the value is a secret; if so move it to a secret manager and rotate it. If it is a legitimate constant, raise the `entropy`/`minLength` thresholds or add an inline `#nosec` / `//nolint:gosec` suppression.
-
 ### `sensitive-data.jwt-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
@@ -1166,12 +1215,14 @@ Flags long, high-entropy string tokens that resemble secrets but match no provid
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, use an inline suppression, path ignore, or rule selection when the finding is intentionally out of scope. `allowlists.secretPreviews` only authorizes the marker `[redacted:jwt]`; it exposes no JWT segment bytes and does not suppress findings.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, add a `sensitiveExclusions` entry naming the rule, the file, and why - see [Configuration](configuration.md#sensitiveexclusions). The marker `[redacted:jwt]` is emitted unconditionally: it exposes no JWT segment bytes, and no configuration suppresses a sensitive-data finding.
+
+**Known precision limit.** A syntactically valid sample, expired, or test JWT is indistinguishable from a live token literal. Use a non-token placeholder or load the fixture from an approved secure test source. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `sensitive-data.npm-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1196,6 +1247,8 @@ Flags protected health information identifiers embedded in source or text: US So
 
 **Remediation.** Remove the identifier from source; use synthetic fixture data and store real PHI only in HIPAA-compliant systems. Mask or tokenise PHI before it reaches logs or reports.
 
+**Known precision limit.** A structurally valid synthetic SSN, Medicare MBI, or labelled MRN outside the placeholder set can look like real health data. Use a recognised placeholder or keep this opt-in rule disabled for the reviewed fixture path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `sensitive-data.pii-pattern`
 
 - **Pillar:** sensitive-data
@@ -1211,16 +1264,22 @@ Flags personally identifiable information embedded in source or text: email addr
 
 **Remediation.** Remove the identifier from source; use synthetic fixture data or load real values from runtime configuration. Mask or tokenise PII before it reaches logs or reports.
 
+**Known precision limit.** A realistic synthetic email, phone number, or Luhn-valid payment-card fixture can look like real personal data. Use a reserved email domain, an invalid test number, or keep this opt-in rule disabled for the reviewed fixture path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+
 ### `sensitive-data.private-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files. Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", and Go code that only strips or re-wraps PEM header delimiters are skipped; a raw PEM block still fires. The most severe of the sensitive-data rules - a leaked private key is almost always a real incident.
+Flags PEM-encoded private-key headers (`-----BEGIN ... PRIVATE KEY-----`) embedded in source or text files.
+Plain prose that only describes the prefix, such as "begins with `-----BEGIN PRIVATE KEY-----`", is skipped.
+In parsed Go files, an isolated marker in an imported `regexp.Compile` or `regexp.MustCompile` call, a supported `strings` delimiter
+call, or a caller-payload PEM re-wrap is also skipped. The exemption belongs to that exact literal and requires no authored key body.
+A second unproven header, an unresolved or shadowed call, a full or truncated key, and a Go file without parsed syntax still warn.
 
 Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized path. Neither state includes key type, header, or body bytes.
 
@@ -1229,23 +1288,25 @@ Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized
 ### `sensitive-data.secret-pattern`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 
 Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, `bearer = "…"`, and `authorization = "Bearer …"`.
 
-All `sensitive-data.*` rules skip Go lines that are entirely comments and honor same-line suppression annotations already common in Go tooling: `#nosec`, `//nolint:gosec`, and `//nolint:all`. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
+All `sensitive-data.*` rules skip Go lines that are entirely comments and honour another tool's suppression comment through the inline filter: a bare `#nosec`, `//nolint`, `//nolint:all` or `//nolint:gosec` on the reported line, or alone on the line above it, suppresses the finding and is counted as an `inline` row in `suppressions` (FAMILY-CONTRACT.md section 13c). `#nosec G101`, gosec's hard-coded-credentials check, also covers every sensitive-data rule; a `#nosec` naming only other checks, such as `#nosec G304`, suppresses nothing. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
 
-Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret previews remain `[redacted]` for every path; `allowlists.secretPreviews` never suppresses findings.
+Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret markers remain `[redacted]` for every path, and no configuration suppresses a sensitive-data finding except a reviewed `sensitiveExclusions` entry.
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
+
+**Known precision limit.** A raw-string fixture or configuration example with a secret-shaped assignment can look like a committed credential. Use a recognised placeholder prefix or move the value to runtime configuration; do not suppress by matching secret text. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `sensitive-data.slack-token`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1258,7 +1319,7 @@ Flags Slack bot (`xoxb-`), user (`xoxp-`), app (`xoxa-`), and refresh (`xoxr-`) 
 ### `sensitive-data.stripe-key`
 
 - **Pillar:** sensitive-data
-- **Default severity:** error
+- **Default severity:** warning
 - **Default-enabled:** yes
 - **Confidence:** high
 - **Capability:** parser
@@ -1277,9 +1338,9 @@ Flags Stripe secret (`sk_live_`), publishable (`pk_live_`), and restricted (`rk_
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go files whose substantive line count exceeds the configured threshold. Blank lines and comment-only lines are free (family ratification, 2026-08-05), so required documentation can never push a file over the size bar; strings containing comment markers still count because comment spans come from the parsed AST. Long files frequently mix unrelated responsibilities. In `_test.go` files the default severity is calibrated down to advisory, matching the existing size-rule test calibration; an explicitly configured severity is applied as configured.
+Flags Go files whose substantive line count exceeds the configured threshold. Blank lines and comment-only lines are free (family ratification, 2026-08-05), so required documentation can never push a file over the size bar; strings containing comment markers still count because comment spans come from the parsed AST. Long files frequently mix unrelated responsibilities. In `_test.go` files the default severity is calibrated down to advisory, matching the existing size-rule test calibration; an explicitly configured severity is applied as configured. Only Go source files are measured; JSON, YAML and other data files never are.
 
-**Remediation.** Split the file by responsibility or move focused behaviour into a smaller sibling file.
+**Remediation.** In the upper band: split this file by responsibility, one responsibility per file. In the lower band: do not add to this file; put new code in a new file.
 
 ### `size.function-length`
 
@@ -1290,11 +1351,11 @@ Flags Go files whose substantive line count exceeds the configured threshold. Bl
 - **Confidence:** high
 - **Capability:** parser
 
-Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. A directly attached `//nolint:funlen` or `//nolint:all` doc comment suppresses one function.
+Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. In every file, a struct or map literal written with keys and passed straight to a call counts as one line, so a run of calls that each pass an options literal does not read as a long function; the metadata's `literalArgumentLines` records that discount, and a literal inside a discounted test table is not discounted twice. A `//nolint:funlen`, `//nolint:all` or bare `//nolint` comment on the `func` line, or alone on the line above it, suppresses that function's finding, counted as an `inline` row in `suppressions`.
 
 `_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
 
-**Remediation.** Extract cohesive helper functions or split independent branches.
+**Remediation.** In the upper band: split this function at its steps, one step per function. In the lower band: do not add to this function; put new code in a new function.
 
 ### `size.parameter-count`
 
@@ -1307,9 +1368,9 @@ Flags Go functions that exceed the configured code-line threshold. Blank lines, 
 
 Flags functions and methods whose parameter list exceeds the threshold (the method receiver is excluded from the count). The rule reads Go AST parameter fields, so generic functions, nested function types, and grouped names such as `y, z string` are counted without text-signature truncation.
 
-**Known precision limit.** A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature that cannot be reshaped. Keep the required signature, then raise `maxParameters` or disable the rule in project configuration after review. The same guidance is available from `list-rules --format json`.
+**Known precision limit.** A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature the user cannot reshape. Keep the required signature, then raise maxParameters or disable size.parameter-count in project configuration after review. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
-**Remediation.** Group related parameters into a struct, accept an options type, or split the function.
+**Remediation.** In the upper band: group the parameters that travel together into one object, or split the function by caller. In the lower band: do not add another parameter to this function.
 
 ### `test-quality.empty-test`
 
@@ -1320,7 +1381,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 - **Capability:** parser
 - **Tags:** `tests`
 
-Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions whose body contains no executable statements. An empty test is either an unfinished scaffold left behind by IDE generators or a stub waiting for content - both should be removed or filled in before the build is considered green.
+Flags top-level `Test…` / `Benchmark…` / `Fuzz…` functions with no statements. It also reports a test whose sole statement calls `Parallel()` on its declared `testing.T` handle: scheduling the test supplies no verification. Additional work, other receivers and nested callbacks stay outside that scheduling-only shape.
 
 **Remediation.** Add an assertion that exercises the behaviour the test name claims, or remove the empty test entirely.
 
@@ -1348,24 +1409,11 @@ Flags `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines in `_test.g
 
 Flags non-runnable test helper functions that accept `testing.TB`, `*testing.T`, or `*testing.B`, can fail the test through a testing failure call, and never call `Helper`. Runnable `Test…`, `Benchmark…`, and `Fuzz…` entrypoints are out of scope.
 
+A whole benchmark or parameterized test body is not a helper, because `Helper` would only move each failure off the line that failed: a function that runs the benchmark loop or timer (`b.N`, `b.Loop`, `ResetTimer`, `StartTimer`, `StopTimer`, `ReportAllocs`, `ReportMetric` or `RunParallel`), and a function named `testXxx` that returns nothing and spans 30 lines or more. A `Helper` call reached through a type assertion, such as `if h, ok := ti.(tHelper); ok { h.Helper() }`, counts as calling `Helper`. A failure inside a closure that declares its own testing handle, such as `t.Run`'s `func(t *testing.T)`, belongs to the subtest, so it does not make the outer function a failing helper.
+
 **Remediation.** Call `t.Helper()` at the start of the helper so failures report the caller's line.
 
-### `test-quality.no-failure-path`
-
-- **Pillar:** test-quality
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `tests`
-
-Flags `Test…` / `Fuzz…` functions that contain executable statements but never reach a failure call - `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`. Benchmarks are excluded because many legitimate benchmarks measure setup or throughput without assertions. A test that cannot fail is asserting nothing and provides false confidence.
-
-When a runnable test or fuzz target's body consists solely of a direct call to `Skip`, `Skipf`, or `SkipNow` on its entrypoint testing receiver, `test-quality.skipped-test` owns that exact signal and this rule does not emit a duplicate. Comments do not add a statement; conditionals, nested callbacks, explicit empty statements, setup, and any other second statement remain outside this exception.
-
-The rule walks the function body looking for those methods on the test function's `*testing.T` or `*testing.F` parameter. It also accepts assertion helpers whose function name starts with `Assert`, `Require`, `Expect`, `Must`, or `Check` when a testing receiver is passed as one of the call arguments, such as `testutil.AssertStatus(t, got)`, and same-file helpers that accept the active testing receiver and contain a parser-visible failure path. Captured helper objects are recognised only when they were initialized with the active testing receiver before the assertion call and the called method has an assertion-like name. Locally allocated `*testing.T/B/F` values used to self-test assertion helpers are recognised too. A `MustX()` call that does not receive a testing receiver is still treated as a non-assertion helper.
-
-**Remediation.** Add an assertion, or document why the test cannot fail (e.g. it only exercises compilation).
+**Known precision limit.** A failing helper can intentionally report its own location, or use a custom testing wrapper the syntax check does not recognise. Call Helper on the testing object, or review and disable the rule for the intentional reporting helper. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `test-quality.parallel-range-capture`
 
@@ -1384,22 +1432,7 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 
 **Remediation.** Create an explicit shadow copy such as `tc := tc` before starting the parallel subtest, or update the module to Go 1.22+ loop-variable semantics.
 
-### `test-quality.skipped-test`
-
-- **Pillar:** test-quality
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** medium
-- **Capability:** parser
-- **Tags:** `tests`
-
-Flags Go tests that call `t.Skip`, `t.Skipf`, or `t.SkipNow` unconditionally. Conditional skips inside `if`, `for`, `switch`, `range`, or `select` bodies are treated as legitimate environment guards unless a physical line of a string-literal message is introduced by a debt marker (`TODO`, `FIXME`, `XXX`, `HACK`, or `WIP`, case-insensitive). The marker may follow an optional list bullet and must be bare or followed by `:`, `(`, whitespace, or a delimiter hyphen. Conventional forms such as `TODO(username): restore coverage` remain findings; quoted, backticked, mid-sentence, plural (`TODOs`), and hyphenated-name (`todo-without-tracking`) mentions stay quiet. Ordinary Go comments are not scanned by this rule. Skipped tests are easy to forget and often hide real regressions.
-
-Receiver-aware skip detection retains its broader ownership in helpers, benchmarks, wrong-signature test-like functions, nested callbacks, and fuzz targets. Only the duplicate `no-failure-path` finding is removed for a runnable Test/Fuzz entrypoint whose entire body is the direct skip call.
-
-**Known precision limit.** A legitimate conditional skip reason whose first physical line must begin with TODO/FIXME-style product terminology is indistinguishable from debt. Put explanatory words before the quoted token, or disable the rule for that path when the external wording must remain first. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
-**Remediation.** Remove the skip or document and track the skip condition outside the test body (issue link, build-tag rationale, environment requirement).
+**Known precision limit.** The nearest go.mod syntax version can differ from the effective build semantics selected by an external toolchain override. Update the go directive or copy the range value before t.Parallel, then review against the effective Go version. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `test-quality.sleep-in-test`
 
@@ -1410,7 +1443,9 @@ Receiver-aware skip detection retains its broader ownership in helpers, benchmar
 - **Capability:** parser
 - **Tags:** `flake`, `tests`
 
-Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load. The rule accepts bounded polling loops when the parser can see all three safety signals: a finite deadline or explicit attempt counter, an observable state-based exit condition, and a failure path after the loop. Blind sleeps, state-comparison loops without a real bound, and polling that never fails still emit findings.
+Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and usually encode timing assumptions that become flaky under CI load. The rule accepts bounded polling loops when the parser can see all three safety signals: a finite deadline, elapsed-time check, explicit attempt counter or `for range N` count; an observable state-based exit condition, in the `if` condition or its init statement; and a failure path after the loop, or a polling helper's `return false` or non-nil error that hands the timeout to its caller. Blind sleeps, state-comparison loops without a real bound, and polling that never fails still emit findings.
+
+Deliberate sleeps are not reported either: a sleep inside a function passed to `synctest.Test` or `synctest.Run`, where time is a fake clock; a test double method sleeping for its own receiver's field, such as `time.Sleep(m.delay)` (a suite's `Test` method stays reported); and a sleep between `start := time.Now()` and a later `time.Since(start)` in the same block, which the test times. A sleep whose effect the test observes some other way, such as two log timestamps or an expiry, is still reported, because the parser cannot tell it from a wait standing in for synchronisation. Random jitter is still reported too, because a randomly timed test is worth making deterministic.
 
 **Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
 

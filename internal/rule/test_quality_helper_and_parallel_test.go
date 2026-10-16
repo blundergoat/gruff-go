@@ -169,3 +169,99 @@ func unitRoot(t *testing.T, unit parser.Unit) string {
 	}
 	return filepath.Clean(root)
 }
+
+// TestHelperMissingTHelperRuleSkipsTestBodies covers the shapes M02 measured as
+// not worth a t.Helper call: benchmark and long parameterized test bodies, a
+// Helper reached through an interface assertion, and failures that belong to a
+// subtest's own handle.
+func TestHelperMissingTHelperRuleSkipsTestBodies(t *testing.T) {
+	longBody := strings.Repeat("\t_ = mode\n", 30)
+	cases := map[string]string{
+		"benchmark body with b.N loop": `func doBenchmark(b *testing.B, n int) {
+	if n < 0 {
+		b.Fatal("bad")
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+	}
+}`,
+		"benchmark body with b.Loop": `func benchStress(b *testing.B) {
+	for b.Loop() {
+		b.Fatal("stop")
+	}
+}`,
+		"long parameterized test body": "func testScenario(t *testing.T, mode bool) {\n" + longBody + "\tt.Fatal(\"failed\")\n}",
+		"helper reached through an interface assertion": `type tHelper interface{ Helper() }
+
+func callOrderAssert(t *testing.T, want string) {
+	var ti interface{} = t
+	if h, ok := ti.(tHelper); ok {
+		h.Helper()
+	}
+	if want == "" {
+		t.Fatal("empty")
+	}
+}`,
+		"helper called on an asserted value": `func markHelper(t testing.TB) {
+	t.(interface{ Helper() }).Helper()
+	t.Fatal("failed")
+}`,
+		"failures only through the subtest's own handle": `func checkRelations(t *testing.T, names []string) {
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			if name == "" {
+				t.Errorf("empty")
+			}
+		})
+	}
+}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			unit := parseOne(t, "bodies_test.go", "package sample\n\nimport \"testing\"\n\n"+body+"\n")
+			if got := (HelperMissingTHelperRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
+				t.Fatalf("findings = %#v, want none", got)
+			}
+		})
+	}
+}
+
+// TestHelperMissingTHelperRuleKeepsHelpers keeps each skipped shape's near miss reported.
+func TestHelperMissingTHelperRuleKeepsHelpers(t *testing.T) {
+	longBody := strings.Repeat("\t_ = mode\n", 30)
+	cases := map[string]string{
+		"short helper named like a test":    "func testRouteNotOK(method string, t *testing.T) {\n\tif method == \"\" {\n\t\tt.Fatal(\"empty\")\n\t}\n}",
+		"long helper not named like a test": "func checkHeaders(t *testing.T, mode bool) {\n" + longBody + "\tt.Fatal(\"failed\")\n}",
+		"long test-named helper that returns a value": "func testServer(t *testing.T, mode bool) int {\n" + longBody +
+			"\tt.Fatal(\"failed\")\n\treturn 0\n}",
+		"benchmark helper without a timing loop": `func mustOpen(b *testing.B, path string) {
+	if path == "" {
+		b.Fatal("empty")
+	}
+}`,
+		"closure failing through the helper's handle": `func check(t *testing.T) {
+	defer func() { t.Fatal("failed") }()
+}`,
+		"subtest closure failing through the outer handle": `func checkOuter(t *testing.T) {
+	t.Run("x", func(st *testing.T) {
+		t.Fatal("outer")
+	})
+}`,
+		"Helper on a value that was not asserted": `type marker struct{}
+
+func (marker) Helper() {}
+
+func checkMarked(t *testing.T, m marker) {
+	m.Helper()
+	t.Fatal("failed")
+}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			unit := parseOne(t, "helpers_test.go", "package sample\n\nimport \"testing\"\n\n"+body+"\n")
+			if got := (HelperMissingTHelperRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+				t.Fatalf("findings = %#v, want one", got)
+			}
+		})
+	}
+}

@@ -4,6 +4,7 @@ package rule
 
 import (
 	"go/ast"
+	"path"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -130,14 +131,29 @@ func (ProductionPanicRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for panic calls with literal messages in reusable production code.
-func (ProductionPanicRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || unit.AST.Name.Name == "main" {
-		return nil
+// AnalyzeProject emits findings for panic calls with literal messages in reusable production
+// code, except in a package that converts its own panics back into errors.
+//
+// This is a project rule so the recovery boundary can be seen at all. A package that panics
+// deliberately puts the matching `defer func() { if r := recover(); r != nil { *err = ... } }()`
+// in whichever file owns the entry point, which is rarely the file that panics: promql panics
+// deep in evaluation and recovers at the top of the query. Judged one file at a time, every one
+// of those panics looks unhandled.
+func (ProductionPanicRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+	findings := []finding.Finding{}
+	for _, group := range groupProductionUnitsByPackage(units) {
+		if group.declaresRecoveryBoundary() {
+			continue
+		}
+		for _, unit := range group.units {
+			findings = append(findings, productionPanicFindingsForUnit(unit)...)
+		}
 	}
-	if isBootstrapPath(unit.File.Path) {
-		return nil
-	}
+	return findings
+}
+
+// productionPanicFindingsForUnit reports one file's literal panics.
+func productionPanicFindingsForUnit(unit parser.Unit) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -154,7 +170,10 @@ func (ProductionPanicRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 			}
 			position := unit.FileSet.Position(call.Pos())
 			findings = append(findings, finding.Finding{
-				Message:  "production code calls panic with a literal message",
+				// panicHasLiteralEvidence accepts a bare string literal and also a Sprintf, Errorf
+				// or New call, so claiming a literal message was wrong for three of the four shapes
+				// it matches. The message now says only what the rule established.
+				Message:  panicFindingMessage(call),
 				File:     unit.File.Path,
 				Location: &finding.Location{Line: position.Line, Column: position.Column},
 				Symbol:   functionName(fn),
@@ -163,6 +182,101 @@ func (ProductionPanicRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		})
 	}
 	return findings
+}
+
+// productionPackageGroup is the production files of one Go package, which is the scope a
+// recovery boundary is declared in.
+type productionPackageGroup struct {
+	units []parser.Unit
+}
+
+// groupProductionUnitsByPackage buckets production files by the package they compile into,
+// skipping the paths this rule never reports on so a bootstrap file cannot lend its recovery
+// boundary to a package the rule does judge.
+func groupProductionUnitsByPackage(units []parser.Unit) []productionPackageGroup {
+	order := []string{}
+	byKey := map[string][]parser.Unit{}
+	for _, unit := range units {
+		if unit.AST == nil || unit.FileSet == nil || unit.AST.Name == nil {
+			continue
+		}
+		if !isProductionCodePath(unit.File.Path) || unit.AST.Name.Name == "main" || isBootstrapPath(unit.File.Path) {
+			continue
+		}
+		key := path.Dir(unit.File.Path) + "\x00" + unit.AST.Name.Name
+		if _, seen := byKey[key]; !seen {
+			order = append(order, key)
+		}
+		byKey[key] = append(byKey[key], unit)
+	}
+	groups := make([]productionPackageGroup, 0, len(order))
+	for _, key := range order {
+		groups = append(groups, productionPackageGroup{units: byKey[key]})
+	}
+	return groups
+}
+
+// declaresRecoveryBoundary reports whether the package declares a handler that calls recover()
+// and publishes the recovered value through a pointer, which is how Go turns a panic back into
+// a returned error.
+//
+// This is the minimum viable form the task specifies: presence anywhere in the package, not
+// reachability from the panic site. Proving reachability needs a call graph this parser-only
+// analyser does not build, and presence is already a strong signal, because a package writes
+// that handler for exactly one reason.
+//
+// Both spellings are read. The handler may be an inline `defer func(){ ... }()`, or a named
+// function deferred by reference: prometheus/promql writes `defer ev.recover(expr, &ws, &err)`
+// and declares the handler elsewhere in the same package. Reading only the inline form saw
+// neither the handler nor the twenty-nine panics it governs.
+func (g productionPackageGroup) declaresRecoveryBoundary() bool {
+	for _, unit := range g.units {
+		found := false
+		ast.Inspect(unit.AST, func(node ast.Node) bool {
+			if found {
+				return false
+			}
+			switch current := node.(type) {
+			case *ast.FuncDecl:
+				found = bodyRecoversIntoPointer(current.Body)
+			case *ast.FuncLit:
+				found = bodyRecoversIntoPointer(current.Body)
+			}
+			return !found
+		})
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
+// bodyRecoversIntoPointer reports whether one function body both calls recover() and assigns
+// through a pointer dereference, the shape `*errp = ...` that hands the failure to the caller.
+//
+// Requiring both keeps a handler that merely logs and swallows the panic from exempting the
+// package: that code hides the failure rather than returning it, which is what this rule is for.
+func bodyRecoversIntoPointer(body *ast.BlockStmt) bool {
+	if body == nil {
+		return false
+	}
+	recovers, assignsThroughPointer := false, false
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch current := node.(type) {
+		case *ast.CallExpr:
+			if ident, ok := current.Fun.(*ast.Ident); ok && ident.Name == "recover" {
+				recovers = true
+			}
+		case *ast.AssignStmt:
+			for _, target := range current.Lhs {
+				if _, ok := target.(*ast.StarExpr); ok {
+					assignsThroughPointer = true
+				}
+			}
+		}
+		return !(recovers && assignsThroughPointer)
+	})
+	return recovers && assignsThroughPointer
 }
 
 // ignoredErrorEvidence classifies the small set of expression shapes where an
@@ -241,6 +355,19 @@ func productionPanicFunctionExempt(name string) bool {
 func isDirectPanicCall(call *ast.CallExpr) bool {
 	ident, ok := call.Fun.(*ast.Ident)
 	return ok && ident.Name == "panic"
+}
+
+// panicFindingMessage describes what the rule actually saw at the panic site.
+//
+// A bare string literal is a literal message. A Sprintf, Errorf or New argument is a constructed
+// one, and calling that a literal misdescribes the code the reader is about to open.
+func panicFindingMessage(call *ast.CallExpr) string {
+	if len(call.Args) > 0 {
+		if _, isLiteral := stringLiteral(call.Args[0]); isLiteral {
+			return "production code calls panic with a literal message"
+		}
+	}
+	return "production code calls panic with a constructed message"
 }
 
 // panicHasLiteralEvidence limits the rule to panics that clearly embed a

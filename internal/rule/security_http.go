@@ -66,7 +66,7 @@ func (RequestBodyWithoutLimitRule) Definition() Definition {
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"http", "security"},
 		Remediation:    "Wrap request bodies with http.MaxBytesReader or io.LimitReader before reading them fully.",
 	}
@@ -78,9 +78,10 @@ func (RequestBodyWithoutLimitRule) AnalyzeUnit(unit parser.Unit, _ Context) []fi
 		return nil
 	}
 	packages := httpBodyPackages{
-		http:   packageImportNames(unit.AST, "net/http", "http"),
-		io:     packageImportNames(unit.AST, "io", "io"),
-		ioutil: packageImportNames(unit.AST, "io/ioutil", "ioutil"),
+		http:    packageImportNames(unit.AST, "net/http", "http"),
+		io:      packageImportNames(unit.AST, "io", "io"),
+		ioutil:  packageImportNames(unit.AST, "io/ioutil", "ioutil"),
+		testing: packageImportNames(unit.AST, "testing", "testing"),
 	}
 	if len(packages.http) == 0 || len(packages.io) == 0 && len(packages.ioutil) == 0 {
 		return nil
@@ -92,7 +93,8 @@ func (RequestBodyWithoutLimitRule) AnalyzeUnit(unit parser.Unit, _ Context) []fi
 			continue
 		}
 		requests := httpRequestParamNames(fn, packages.http)
-		if len(requests) == 0 {
+		// A test helper or a RoundTrip method reads a request this program built, not one a client sent.
+		if len(requests) == 0 || readsOwnRequest(fn, packages) {
 			continue
 		}
 		bounded := collectBoundedRequestBodies(fn.Body, requests, packages)
@@ -130,9 +132,31 @@ func (RequestBodyWithoutLimitRule) AnalyzeUnit(unit parser.Unit, _ Context) []fi
 
 // httpBodyPackages groups import aliases used by request-body checks.
 type httpBodyPackages struct {
-	http   map[string]bool
-	io     map[string]bool
-	ioutil map[string]bool
+	http    map[string]bool
+	io      map[string]bool
+	ioutil  map[string]bool
+	testing map[string]bool
+}
+
+// readsOwnRequest reports a function whose request comes from this program:
+// a helper taking a testing handle runs only under go test, and RoundTrip
+// receives the client's own outgoing request.
+func readsOwnRequest(fn *ast.FuncDecl, packages httpBodyPackages) bool {
+	return len(testingHelperReceiverNames(fn, packages.testing)) > 0 || isRoundTripperMethod(fn, packages.http)
+}
+
+// isRoundTripperMethod matches http.RoundTripper's RoundTrip signature exactly,
+// so a handler that only shares the name keeps its findings.
+func isRoundTripperMethod(fn *ast.FuncDecl, httpPackages map[string]bool) bool {
+	if fn.Recv == nil || fn.Name.Name != "RoundTrip" || fn.Type.Params == nil || fn.Type.Results == nil {
+		return false
+	}
+	params, results := fn.Type.Params.List, fn.Type.Results.List
+	if len(params) != 1 || len(params[0].Names) > 1 || len(results) != 2 || len(results[0].Names) > 1 || len(results[1].Names) > 1 {
+		return false
+	}
+	return isHTTPRequestPointer(params[0].Type, httpPackages) && isHTTPTypePointer(results[0].Type, httpPackages, "Response") &&
+		isErrorType(results[1].Type)
 }
 
 // isHTTPClientLiteral reports whether literal has type net/http.Client.
@@ -181,12 +205,17 @@ func httpRequestParamNames(fn *ast.FuncDecl, httpPackages map[string]bool) map[s
 
 // isHTTPRequestPointer reports whether expr is *http.Request through an imported net/http name.
 func isHTTPRequestPointer(expr ast.Expr, httpPackages map[string]bool) bool {
+	return isHTTPTypePointer(expr, httpPackages, "Request")
+}
+
+// isHTTPTypePointer reports whether expr is a pointer to the named net/http type through an imported name.
+func isHTTPTypePointer(expr ast.Expr, httpPackages map[string]bool, typeName string) bool {
 	pointer, ok := expr.(*ast.StarExpr)
 	if !ok {
 		return false
 	}
 	selector, ok := pointer.X.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "Request" {
+	if !ok || selector.Sel.Name != typeName {
 		return false
 	}
 	receiver, ok := selector.X.(*ast.Ident)

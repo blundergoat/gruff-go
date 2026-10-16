@@ -4,6 +4,8 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -51,6 +53,17 @@ func validateAbbreviations(values []string) error {
 		if strings.TrimSpace(abbreviation) == "" {
 			return fmt.Errorf("acceptedAbbreviations[%d] must not be blank", index)
 		}
+	}
+	return nil
+}
+
+// validateDeepScanBudget rejects limits that cannot represent an exact positive file bound.
+func validateDeepScanBudget(budget DeepScanBudgetConfig) error {
+	if budget.MaxLines != nil && *budget.MaxLines <= 0 {
+		return fmt.Errorf("deepScanBudget.maxLines must be a positive integer")
+	}
+	if budget.MaxBytes != nil && *budget.MaxBytes <= 0 {
+		return fmt.Errorf("deepScanBudget.maxBytes must be a positive integer")
 	}
 	return nil
 }
@@ -140,10 +153,10 @@ var minimumSeverityCommands = map[string]struct{}{
 	"dashboard": {},
 }
 
-// validateMinimumSeverity rejects unknown command keys and unknown FailThreshold
+// validateCommandThresholds rejects unknown command keys and unknown FailThreshold
 // values. Deterministic iteration: map keys are sorted before reporting so the
 // first-error returned by runChecks is stable across runs.
-func validateMinimumSeverity(entries map[string]string) error {
+func validateCommandThresholds(label string, entries CommandThresholds) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -155,11 +168,11 @@ func validateMinimumSeverity(entries map[string]string) error {
 	sortStringSlice(sortedKeys)
 	for _, cmd := range sortedKeys {
 		if _, ok := minimumSeverityCommands[cmd]; !ok {
-			return fmt.Errorf("minimumSeverity has unknown command %q", cmd)
+			return fmt.Errorf("%s has unknown command %q", label, cmd)
 		}
 		value := entries[cmd]
 		if _, err := finding.ParseFailThreshold(value); err != nil {
-			return fmt.Errorf("minimumSeverity.%s: %s", cmd, err.Error())
+			return fmt.Errorf("%s.%s: %s", label, cmd, err.Error())
 		}
 	}
 	return nil
@@ -184,6 +197,96 @@ func validateSelection(selection SelectionConfig) error {
 	}
 	if len(selection.Tiers) > 0 {
 		return fmt.Errorf("selection.tiers is not supported by gruff-go")
+	}
+	return nil
+}
+
+// sensitiveExclusionRulePatterns are the glob, selector, and regular-expression
+// metacharacters a sensitiveExclusions rule ID may never contain. The dot is
+// absent on purpose: every rule ID carries one.
+const sensitiveExclusionRulePatterns = "*?[]{}()|^$+\\"
+
+// sensitiveExclusionPathPatterns are the glob metacharacters a
+// sensitiveExclusions path may never contain. A path names one file, so a
+// pattern would suppress findings across files nobody enumerated.
+const sensitiveExclusionPathPatterns = "*?[]{}"
+
+// validateSensitiveExclusions enforces the ratified section 13a entry contract.
+// Each failure is fatal and names both the entry index and the offending key, so
+// a reviewer can find the entry without counting list items.
+func validateSensitiveExclusions(entries []SensitiveExclusion, definitions map[string]rule.Definition) error {
+	scopes := map[string]int{}
+	for index, entry := range entries {
+		if err := validateOneSensitiveExclusion(index, entry, definitions); err != nil {
+			return err
+		}
+		// Two entries claiming one scope would split the audit count arbitrarily.
+		scope := strings.Join([]string{entry.Rule, entry.Path, entry.Symbol}, "\x00")
+		if first, duplicated := scopes[scope]; duplicated {
+			return fmt.Errorf("sensitiveExclusions[%d] is a duplicate scope of sensitiveExclusions[%d]; rule, path and symbol must name one entry", index, first)
+		}
+		scopes[scope] = index
+	}
+	return nil
+}
+
+// validateOneSensitiveExclusion checks the closed key set, the rule, the path,
+// and the rationale of a single entry, in that order.
+func validateOneSensitiveExclusion(index int, entry SensitiveExclusion, definitions map[string]rule.Definition) error {
+	if len(entry.UnsupportedKeys) > 0 {
+		return fmt.Errorf("sensitiveExclusions[%d] has unsupported key %q; only rule, path, symbol and reason are allowed", index, entry.UnsupportedKeys[0])
+	}
+	if err := validateSensitiveExclusionRule(index, entry.Rule, definitions); err != nil {
+		return err
+	}
+	if err := validateSensitiveExclusionPath(index, entry.Path); err != nil {
+		return err
+	}
+	if strings.TrimSpace(entry.Reason) == "" {
+		return fmt.Errorf("sensitiveExclusions[%d].reason must be a non-empty rationale", index)
+	}
+	return nil
+}
+
+// validateSensitiveExclusionRule rejects anything that is not one exact
+// sensitive-data rule ID: a blank, a pattern, a pillar selector, an unknown ID,
+// or a known ID from another pillar.
+func validateSensitiveExclusionRule(index int, id string, definitions map[string]rule.Definition) error {
+	label := fmt.Sprintf("sensitiveExclusions[%d].rule", index)
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("%s must name exactly one rule ID", label)
+	}
+	if strings.ContainsAny(id, sensitiveExclusionRulePatterns) {
+		return fmt.Errorf("%s must name exactly one rule ID, not the pattern %q", label, id)
+	}
+	if finding.Pillar(id).Valid() {
+		return fmt.Errorf("%s must name exactly one rule ID, not the pillar %q", label, id)
+	}
+	definition, known := definitions[id]
+	if !known {
+		return fmt.Errorf("%s names unknown rule %q", label, id)
+	}
+	if definition.Pillar != finding.PillarSensitiveData {
+		return fmt.Errorf("%s names %q, which is outside the sensitive-data pillar", label, id)
+	}
+	return nil
+}
+
+// validateSensitiveExclusionPath rejects anything that is not one project-relative
+// file: a blank, an absolute path, a parent traversal, or a glob.
+func validateSensitiveExclusionPath(index int, path string) error {
+	label := fmt.Sprintf("sensitiveExclusions[%d].path", index)
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("%s must name exactly one project-relative file", label)
+	}
+	if strings.HasPrefix(path, "/") || filepath.IsAbs(path) {
+		return fmt.Errorf("%s must be project-relative, not the absolute path %q", label, path)
+	}
+	if slices.Contains(strings.Split(path, "/"), "..") {
+		return fmt.Errorf("%s must stay inside the project; %q escapes it", label, path)
+	}
+	if strings.ContainsAny(path, sensitiveExclusionPathPatterns) {
+		return fmt.Errorf("%s must name exactly one file, not the pattern %q", label, path)
 	}
 	return nil
 }

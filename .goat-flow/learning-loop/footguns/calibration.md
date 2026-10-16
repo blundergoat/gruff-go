@@ -1,6 +1,6 @@
 ---
 category: calibration
-last_reviewed: 2026-08-08
+last_reviewed: 2026-10-03
 ---
 
 # Calibration Footguns
@@ -13,6 +13,7 @@ The project invariant is that `go run ./cmd/gruff-go analyse .` returns grade A 
 
 Evidence:
 - `complexity.npath` shipped with registry default `1024` and, in the **same commit** (`29efb39`, search `.gruff-go.yaml`: `complexity.npath`), got a per-repo `threshold: 9000` override to clear gruff's own three flat-but-wide functions (`internal/diff/diff.go` `Parse`, `internal/config/config.go` `Config.RuleOptions`, `internal/rule/comment_rubric.go` `aggregatedPackageSummaryFindings`) and keep the scan green.
+- `.goat-flow/learning-loop/decisions/ADR-014-remove-npath-complexity-rule.md` (search: `The rule needed an 8.8x per-repo`) records the measured scores behind that override and the decision to remove the rule.
 - The rule was muted on its own repo on day one and never fired here, while the FP-prone `1024` default shipped to adopters. The override hid the problem instead of fixing it. Full analysis: [ADR-011](../decisions/ADR-011-mission-ai-generated-code-verifiability.md) and [ADR-014](../decisions/ADR-014-remove-npath-complexity-rule.md), which records the removal itself.
 
 The three correct responses (never the override):
