@@ -2,6 +2,15 @@
 
 ## v0.6.0 - Unreleased
 
+- **Built with Go 1.26.10** - The module toolchain moves from Go 1.26.9 to 1.26.10, which fixes GO-2026-6809
+  (`crypto/x509` distrusting compromised intermediate certificates), reachable through the dashboard's HTTP server.
+- **A newly warning method no longer inherits a same-named method's baseline review** - The baseline ordinal now
+  counts every parsed function a finding's symbol names, not only the ones with a finding. This matters where a rule
+  reports a bare method name, such as the opt-in `naming.get-prefix` on `A.GetValue` and `B.GetValue`: before, when
+  the first method started warning it took the reviewed second method's review and was hidden. Default rules report
+  receiver-qualified method names, so among them only a file with several `func init()` was affected, since those are
+  all reported as plain `init`. A baseline written by an earlier 0.6.0 prerelease for such a file, or with such a
+  rule enabled, can name the wrong function: regenerate it with `gruff-go baseline --out` and review the result.
 - **`security.github-actions-secrets-in-pr` advice names the workflow_run check** - The remediation now says to run
   secret-using jobs only on trusted events such as push, and, when a `workflow_run` job follows a pull-request
   workflow, to check the triggering repository and branch before it uses secrets. Gating on `workflow_run` alone

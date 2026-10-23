@@ -135,7 +135,7 @@ func Analyze(opts Options) (Report, error) {
 	}
 	// The baseline identity separates same-named declarations by ordinal, which
 	// only the parsed units can rank; assigning here reaches analyse and hook alike.
-	findings = finding.AssignSymbolOrdinals(findings, declarationPositionFor(units))
+	findings = finding.AssignSymbolOrdinalsFromInventory(findings, declarationPositionFor(units), sameNamedDeclarationLinesFor(units))
 	// Excluded before baseline and diff so a suppressed finding is absent from
 	// scoring, exit codes, and baseline classification alike.
 	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
@@ -406,6 +406,25 @@ func declarationPositionFor(units []parser.Unit) func(finding.Finding) int {
 			return function.Line
 		}
 		return line
+	}
+}
+
+// sameNamedDeclarationLinesFor lists, for a finding, the start line of every parsed function in its file that its
+// symbol names, so a clean same-named method still takes its ordinal slot. A bare method name such as Process names
+// A.Process and B.Process alike, which is exactly the case two same-named declarations share one symbol.
+func sameNamedDeclarationLinesFor(units []parser.Unit) func(finding.Finding) []int {
+	functionsByFile := map[string][]parser.Function{}
+	for _, unit := range units {
+		functionsByFile[unit.File.Path] = unit.Functions
+	}
+	return func(item finding.Finding) []int {
+		lines := []int{}
+		for _, function := range functionsByFile[item.File] {
+			if symbolNamesFunction(item.Symbol, function.Name) {
+				lines = append(lines, function.Line)
+			}
+		}
+		return lines
 	}
 }
 

@@ -97,25 +97,42 @@ func (f Finding) ComputeBaselineIdentityFor(toolLanguage string) (string, error)
 // Two findings on one declaration share a position and therefore an ordinal, while a second declaration of the same name takes the next.
 // Ordinals count declarations rather than lines, so inserting code above a function moves its line and not its ordinal.
 func AssignSymbolOrdinals(findings []Finding, declarationPosition func(Finding) int) []Finding {
+	return AssignSymbolOrdinalsFromInventory(findings, declarationPosition, nil)
+}
+
+// AssignSymbolOrdinalsFromInventory ranks like AssignSymbolOrdinals, and also gives a slot to every same-named
+// declaration sameNamedPositions lists, whether or not it has a finding this run.
+//
+// Without the inventory a clean earlier declaration takes no slot, so the day it first warns it takes the later
+// declaration's ordinal and its stored review. A nil sameNamedPositions ranks findings alone.
+func AssignSymbolOrdinalsFromInventory(findings []Finding, declarationPosition func(Finding) int, sameNamedPositions func(Finding) []int) []Finding {
 	type symbolKey struct {
 		file   string
 		symbol string
 	}
 	positionsByKey := map[symbolKey][]int{}
 	positions := make([]int, len(findings))
-	for index, item := range findings {
-		if item.Symbol == "" {
+	for index, symbolFinding := range findings {
+		if symbolFinding.Symbol == "" {
 			continue
 		}
-		position := declarationPosition(item)
+		position := declarationPosition(symbolFinding)
 		// An unknown position still needs a deterministic rank; the first line keeps every such finding on one declaration.
 		if position < 1 {
 			position = 1
 		}
 		positions[index] = position
-		key := symbolKey{file: item.File, symbol: item.Symbol}
+		key := symbolKey{file: symbolFinding.File, symbol: symbolFinding.Symbol}
 		if !slices.Contains(positionsByKey[key], position) {
 			positionsByKey[key] = append(positionsByKey[key], position)
+		}
+		if sameNamedPositions == nil {
+			continue
+		}
+		for _, declared := range sameNamedPositions(symbolFinding) {
+			if declared >= 1 && !slices.Contains(positionsByKey[key], declared) {
+				positionsByKey[key] = append(positionsByKey[key], declared)
+			}
 		}
 	}
 	for key := range positionsByKey {

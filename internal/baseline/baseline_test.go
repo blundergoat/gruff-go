@@ -179,6 +179,22 @@ func TestSameNamedDeclarationsStayApart(t *testing.T) {
 	expectCounts(t, result, counts{1, 1, 0, 0, 0})
 }
 
+// TestAnEarlierCleanDeclarationKeepsItsOrdinalSlot reviews only the second of
+// two same-named methods, then lets the first start warning. Ranking findings
+// alone handed the first one ordinal 1 and the stored review; counting every
+// same-named declaration keeps the review on the second.
+func TestAnEarlierCleanDeclarationKeepsItsOrdinalSlot(t *testing.T) {
+	byLine := func(item finding.Finding) int { return item.Location.Line }
+	bothDeclarations := func(finding.Finding) []int { return []int{10, 20} }
+	reviewed := finding.AssignSymbolOrdinalsFromInventory([]finding.Finding{ordinary("Process", 20)}, byLine, bothDeclarations)
+	run := finding.AssignSymbolOrdinalsFromInventory([]finding.Finding{ordinary("Process", 10), ordinary("Process", 20)}, byLine, bothDeclarations)
+	result := classify(t, reviewed, run)
+	expectCounts(t, result, counts{1, 1, 0, 0, 0})
+	if len(result.Findings) != 1 || result.Findings[0].Location.Line != 10 {
+		t.Fatalf("visible findings = %#v, want only the newly warning declaration on line 10", result.Findings)
+	}
+}
+
 // TestCollisionSuppressesNothingAndIsNamed forces the defect the ordinal
 // prevents, by handing two declarations the same ordinal, and expects both
 // findings reported with a diagnostic naming the subject.
