@@ -16,24 +16,20 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestSensitiveRedactionPolicyAcrossRealArtifacts exercises empty,
-// nonmatching, and matching allowlists from raw source through every renderer.
+// TestSensitiveRedactionPolicyAcrossRealArtifacts carries the one unconditional marker policy from raw source
+// through every renderer, checking that no artifact leaks a reusable fragment of the matched value.
 func TestSensitiveRedactionPolicyAcrossRealArtifacts(t *testing.T) {
 	states := []struct {
-		name      string
-		allowlist []string
-		allowed   bool
+		name string
 	}{
-		{name: "empty"},
-		{name: "nonmatching", allowlist: []string{"other/**"}},
-		{name: "matching", allowlist: []string{"secrets/**"}, allowed: true},
+		{name: "unconditional"},
 	}
 
 	for _, state := range states {
 		t.Run(state.name, func(t *testing.T) {
 			fixture := sensitiveArtifactFixtureData()
-			reportData := analyzeSensitiveArtifactFixture(t, fixture.source, state.allowlist)
-			assertSensitiveArtifactMarkers(t, reportData.Findings, state.allowed)
+			reportData := analyzeSensitiveArtifactFixture(t, fixture.source)
+			assertSensitiveArtifactMarkers(t, reportData.Findings)
 			artifacts := renderSensitiveArtifacts(t, reportData)
 			for name, artifact := range artifacts {
 				t.Run(name, func(t *testing.T) {
@@ -71,7 +67,6 @@ func sensitiveArtifactFixtureData() sensitiveArtifactFixture {
 	anthropic := "sk-ant-" + strings.Repeat("V4", 10)
 	npm := "npm_" + strings.Repeat("N3", 10)
 	gitlab := "glpat-" + strings.Repeat("L2", 10)
-	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	phone := "+1 (415) 867-9026"
 	card := "4000 0000 0000 0002"
@@ -88,7 +83,7 @@ func sensitiveArtifactFixtureData() sensitiveArtifactFixture {
 		"google = \"" + google + "\"", "anthropic = \"" + anthropic + "\"",
 		"npm = \"" + npm + "\"", "gitlab = \"" + gitlab + "\"",
 		"\"type\": \"service_account\"", "\"private_key\": \"" + privateKey + "\"",
-		"entropy = \"" + entropy + "\"", "email = \"" + email + "\"",
+		"email = \"" + email + "\"",
 		"phone = \"" + phone + "\"", "card = \"" + card + "\"",
 		"ssn = \"" + ssn + "\"", "mbi = \"" + medicare + "\"",
 		"record = \"MRN: " + mrn + "\"",
@@ -98,7 +93,7 @@ func sensitiveArtifactFixtureData() sensitiveArtifactFixture {
 		{generic, generic}, {aws, aws[4:]}, {jwt, jwt}, {password, password},
 		{github, github[4:]}, {slack, slack[5:]}, {stripe, stripe[8:]},
 		{google, google[4:]}, {anthropic, anthropic[7:]}, {npm, npm[4:]},
-		{gitlab, gitlab[6:]}, {entropy, entropy}, {email, email}, {phone, phone},
+		{gitlab, gitlab[6:]}, {email, email}, {phone, phone},
 		{card, card}, {ssn, ssn}, {medicare, medicare}, {mrn, mrn}, {keyBody, keyBody},
 	}
 	for _, secret := range secrets {
@@ -114,7 +109,7 @@ func sensitiveArtifactFragments(raw, payload string) []string {
 
 // analyzeSensitiveArtifactFixture scans the runtime fixture with all three
 // opt-in sensitive detectors enabled.
-func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string, allowlist []string) analysis.Report {
+func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string) analysis.Report {
 	t.Helper()
 	root := t.TempDir()
 	path := filepath.Join(root, "secrets", "all.env")
@@ -126,11 +121,14 @@ func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string, allowlist 
 	}
 	registry, err := rule.DefaultsConfigured(rule.Config{
 		Enabled: map[string]bool{
-			"sensitive-data.high-entropy-string": true,
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
 			"sensitive-data.pii-pattern":         true,
 			"sensitive-data.phi-pattern":         true,
 		},
-		SensitiveDataPreviewAllowlist: allowlist,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +144,7 @@ func analyzeSensitiveArtifactFixture(t *testing.T, sourceBody string, allowlist 
 }
 
 // assertSensitiveArtifactMarkers checks route coverage and exact marker values.
-func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding, allowed bool) {
+func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding) {
 	t.Helper()
 	wantRules := map[string]bool{
 		"sensitive-data.secret-pattern": false, "sensitive-data.private-key": false,
@@ -155,27 +153,20 @@ func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding, al
 		"sensitive-data.slack-token": false, "sensitive-data.stripe-key": false,
 		"sensitive-data.google-api-key": false, "sensitive-data.anthropic-api-key": false,
 		"sensitive-data.npm-token": false, "sensitive-data.gitlab-token": false,
-		"sensitive-data.gcp-service-account": false, "sensitive-data.high-entropy-string": false,
-		"sensitive-data.pii-pattern": false, "sensitive-data.phi-pattern": false,
+		"sensitive-data.gcp-service-account": false,
+		"sensitive-data.pii-pattern":         false, "sensitive-data.phi-pattern": false,
 	}
 	for _, item := range findings {
 		if _, tracked := wantRules[item.RuleID]; !tracked {
 			continue
 		}
 		wantRules[item.RuleID] = true
-		want := "[redacted]"
-		if allowed {
-			want = sensitiveArtifactAllowedMarker(item)
-		}
-		if got, _ := item.Metadata["preview"].(string); got != want {
+		if got, _ := item.Metadata["preview"].(string); got != sensitiveArtifactApprovedMarker(item) {
 			t.Fatalf("%s preview does not match approved marker", item.RuleID)
 		}
+		// A GCP service account carries a second secret field, and section 5 marks it independently.
 		if item.RuleID == "sensitive-data.gcp-service-account" {
-			secondaryWant := "[redacted]"
-			if allowed {
-				secondaryWant = "[redacted:private-key]"
-			}
-			if got, _ := item.Metadata["secondaryPreview"].(string); got != secondaryWant {
+			if got, _ := item.Metadata["secondaryPreview"].(string); got != "[redacted:private-key]" {
 				t.Fatal("GCP secondary preview does not match approved marker")
 			}
 		}
@@ -187,9 +178,8 @@ func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding, al
 	}
 }
 
-// sensitiveArtifactAllowedMarker maps rule/category metadata to the approved
-// matching-path marker vocabulary.
-func sensitiveArtifactAllowedMarker(item finding.Finding) string {
+// sensitiveArtifactApprovedMarker maps rule/category metadata to the closed marker vocabulary section 5 ratifies.
+func sensitiveArtifactApprovedMarker(item finding.Finding) string {
 	markers := map[string]string{
 		"sensitive-data.secret-pattern": "[redacted]", "sensitive-data.private-key": "[redacted:private-key]",
 		"sensitive-data.aws-access-key": "[redacted:aws-access-key]", "sensitive-data.jwt-token": "[redacted:jwt]",
@@ -197,7 +187,7 @@ func sensitiveArtifactAllowedMarker(item finding.Finding) string {
 		"sensitive-data.slack-token": "[redacted:slack-token]", "sensitive-data.stripe-key": "[redacted:stripe-live-key]",
 		"sensitive-data.google-api-key": "[redacted:google-api-key]", "sensitive-data.anthropic-api-key": "[redacted:anthropic-api-key]",
 		"sensitive-data.npm-token": "[redacted:npm-token]", "sensitive-data.gitlab-token": "[redacted:gitlab-token]",
-		"sensitive-data.gcp-service-account": "[redacted:gcp-service-account]", "sensitive-data.high-entropy-string": "[redacted]",
+		"sensitive-data.gcp-service-account": "[redacted:gcp-service-account]",
 	}
 	if marker, ok := markers[item.RuleID]; ok {
 		return marker
@@ -217,7 +207,11 @@ func renderSensitiveArtifacts(t *testing.T, reportData analysis.Report) map[stri
 		t.Fatal(err)
 	}
 	artifacts["analysis-findings"] = string(findingJSON)
-	baselineJSON, err := baseline.Marshal(baseline.FromFindings(reportData.Findings))
+	baselineFile, err := baseline.FromFindings(reportData.Findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineJSON, err := baseline.Marshal(baselineFile)
 	if err != nil {
 		t.Fatal(err)
 	}

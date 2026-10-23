@@ -24,7 +24,7 @@ func (UnusedPrivateTypeRule) Definition() Definition {
 		Capability:     CapabilityParser,
 		DefaultEnabled: false,
 		Tags:           []string{"candidate", "cross-file", "dead-code"},
-		Remediation:    "Delete the type if it is abandoned, or enable the rule only after confirming generated, reflective, and build-tagged references are not part of the package contract.",
+		Remediation:    "Delete the type if nothing uses it. If it is referenced only from generated code, through reflection, or from a file behind a build tag, keep it and accept this finding in the baseline.",
 	}
 }
 
@@ -48,7 +48,7 @@ func (UnusedPrivateVarRule) Definition() Definition {
 		Capability:     CapabilityParser,
 		DefaultEnabled: false,
 		Tags:           []string{"candidate", "cross-file", "dead-code"},
-		Remediation:    "Delete the variable if it is abandoned, or keep the rule opt-in until parser-only evidence can prove indirect registration use is not involved.",
+		Remediation:    "Delete the variable if nothing reads it. If it is used only through indirect registration, reflection, or a file behind a build tag, keep it and accept this finding in the baseline.",
 	}
 }
 
@@ -72,7 +72,7 @@ func (UnusedPrivateConstRule) Definition() Definition {
 		Capability:     CapabilityParser,
 		DefaultEnabled: false,
 		Tags:           []string{"candidate", "cross-file", "dead-code"},
-		Remediation:    "Delete the constant if it is abandoned, or leave the candidate rule opt-in where grouped constants or build tags make parser-only certainty too weak.",
+		Remediation:    "Delete the constant if nothing uses it. If it is used from a file behind a build tag, or kept on purpose as part of a constant group, keep it and accept this finding in the baseline.",
 	}
 }
 

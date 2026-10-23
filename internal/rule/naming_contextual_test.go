@@ -108,6 +108,89 @@ func Single(users []string) []string {
 	}
 }
 
+// TestContextualGenericCountsCodeLinesInLoopBody checks the loop-body gate counts code lines only (FAMILY-CONTRACT
+// section 12, search `Code lines in every line count`): comments and blank lines in the body are free, and a body one
+// code line over the gate still reports.
+func TestContextualGenericCountsCodeLinesInLoopBody(t *testing.T) {
+	padded := parseOne(t, "pkg/file.go", `package pkg
+
+func Render(users []string) {
+	for _, item := range users {
+		// Each user prints on its own line.
+		println(item)
+
+		println(item)
+		// The second pass repeats the first.
+		println(item)
+
+		println(item)
+		/* The last call closes the group. */
+		println(item)
+	}
+}
+`)
+	if got := (ContextualGenericRule{MinBodyLines: 5}).AnalyzeUnit(padded, Context{}); len(got) != 0 {
+		t.Fatalf("five code lines with padding stay at the gate, got %#v", got)
+	}
+
+	over := parseOne(t, "pkg/file.go", `package pkg
+
+func Render(users []string) {
+	for _, item := range users {
+		// Each user prints on its own line.
+		println(item)
+
+		println(item)
+		println(item)
+		println(item)
+		println(item)
+		println(item)
+	}
+}
+`)
+	findings := (ContextualGenericRule{MinBodyLines: 5}).AnalyzeUnit(over, Context{})
+	if len(findings) != 1 || findings[0].Metadata["bodyLines"] != 6 {
+		t.Fatalf("findings = %#v, want one finding on a six-code-line body", findings)
+	}
+}
+
+// TestContextualGenericCountsCodeLinesInFunction checks the function gate counts code lines only: the doc comment,
+// body comments and blank lines are free, and a function one code line over the gate still reports.
+func TestContextualGenericCountsCodeLinesInFunction(t *testing.T) {
+	padded := parseOne(t, "pkg/file.go", `package pkg
+
+// Build returns every user twice, once per list.
+func Build(users []string) []string {
+	// The first list keeps the input order.
+	out := []string{}
+
+	// The second list repeats it.
+	result := []string{}
+	return append(out, result...)
+}
+`)
+	if got := (ContextualGenericRule{MinFunctionLines: 5}).AnalyzeUnit(padded, Context{}); len(got) != 0 {
+		t.Fatalf("five code lines with padding stay at the gate, got %#v", got)
+	}
+
+	over := parseOne(t, "pkg/file.go", `package pkg
+
+// Build returns every user twice, once per list.
+func Build(users []string) []string {
+	// The first list keeps the input order.
+	out := []string{}
+	result := []string{}
+	result = append(result, users...)
+	return append(out, result...)
+}
+`)
+	findings := (ContextualGenericRule{MinFunctionLines: 5}).AnalyzeUnit(over, Context{})
+	got := findingSymbols(findings)
+	if len(got) != 2 || !got["out"] || !got["result"] || findings[0].Metadata["functionLines"] != 6 {
+		t.Fatalf("findings = %#v, want out and result on a six-code-line function", findings)
+	}
+}
+
 // TestContextualGenericSkipsTestAndGeneratedFiles ensures the rule ignores test and machine-generated files.
 func TestContextualGenericSkipsTestAndGeneratedFiles(t *testing.T) {
 	testUnit := parseOne(t, "pkg/file_test.go", `package pkg

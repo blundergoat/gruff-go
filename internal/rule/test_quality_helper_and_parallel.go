@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -47,10 +48,10 @@ func (HelperMissingTHelperRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			continue
 		}
 		receivers := testingHelperReceiverNames(fn, testingPackages)
-		if len(receivers) == 0 || helperCallPresent(fn.Body, receivers) {
+		if len(receivers) == 0 || helperCallPresent(fn.Body, receivers) || isWholeTestBody(unit, fn, receivers) {
 			continue
 		}
-		if !blockHasFailureCall(fn.Body, testingPackages, assertionPackages, receivers) {
+		if !failsThroughOwnHandle(fn.Body, testingPackages, assertionPackages, receivers) {
 			continue
 		}
 		position := unit.FileSet.Position(fn.Name.NamePos)
@@ -62,6 +63,102 @@ func (HelperMissingTHelperRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 		})
 	}
 	return findings
+}
+
+// wholeTestBodyMinLines is the span from which a test-named function with no
+// results reads as a whole parameterized test body rather than a helper.
+const wholeTestBodyMinLines = 30
+
+// isWholeTestBody reports a benchmark or parameterized test body, where the
+// operator ruled (2026-10-04) that t.Helper only moves a failure off the line
+// that failed: a function driving the benchmark timer or loop, or one named
+// testXxx that returns nothing and spans wholeTestBodyMinLines or more.
+func isWholeTestBody(unit parser.Unit, fn *ast.FuncDecl, receivers map[string]bool) bool {
+	if drivesBenchmark(fn.Body, receivers) {
+		return true
+	}
+	name := fn.Name.Name
+	if len(name) <= len("test") || !strings.HasPrefix(name, "test") || !unicode.IsUpper(rune(name[len("test")])) {
+		return false
+	}
+	if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
+		return false
+	}
+	start, end := unit.FileSet.Position(fn.Pos()).Line, unit.FileSet.Position(fn.End()).Line
+	return end-start+1 >= wholeTestBodyMinLines
+}
+
+// drivesBenchmark reports whether a testing handle runs the benchmark loop or timer.
+func drivesBenchmark(body *ast.BlockStmt, receivers map[string]bool) bool {
+	found := false
+	ast.Inspect(body, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok || found {
+			return !found
+		}
+		if root, isIdent := selector.X.(*ast.Ident); isIdent && receivers[root.Name] {
+			switch selector.Sel.Name {
+			case "N", "Loop", "ResetTimer", "StartTimer", "StopTimer", "ReportAllocs", "ReportMetric", "RunParallel":
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// failsThroughOwnHandle reports whether the helper can fail through its own
+// testing handle. A closure parameter that redeclares the handle's name, such as
+// t.Run's func(t *testing.T), is the subtest's handle, so failures there, and
+// the delegation to the subtest, do not need this helper to call Helper.
+func failsThroughOwnHandle(body *ast.BlockStmt, testingPackages, assertionPackages, receivers map[string]bool) bool {
+	local := copyReceiverNames(receivers)
+	collectTestingReceiverVariables(body, testingPackages, local)
+	helperObjects := capturedAssertionHelperObjects(body, local)
+	found := false
+	ast.Inspect(body, func(node ast.Node) bool {
+		if found {
+			return false
+		}
+		if closure, ok := node.(*ast.FuncLit); ok {
+			inherited := copyReceiverNames(local)
+			for _, field := range closure.Type.Params.List {
+				removeFieldNames(field, inherited)
+			}
+			found = len(inherited) > 0 && failsThroughOwnHandle(closure.Body, testingPackages, assertionPackages, inherited)
+			return false
+		}
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		found = isReceiverFailureCall(call, local) || isAssertionHelperCall(call, local, assertionPackages) ||
+			isCapturedAssertionHelperCall(call, helperObjects) || isInPackageAssertionCall(call, local, assertionPackages)
+		return !found
+	})
+	return found
+}
+
+// typeAssertedNames returns names assigned from a type assertion, such as h in
+// `h, ok := ti.(tHelper)`, whose Helper call marks the function as a helper.
+func typeAssertedNames(body *ast.BlockStmt) map[string]bool {
+	names := map[string]bool{}
+	ast.Inspect(body, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		assign, ok := node.(*ast.AssignStmt)
+		if !ok || len(assign.Rhs) != 1 || len(assign.Lhs) == 0 {
+			return true
+		}
+		if _, asserted := assign.Rhs[0].(*ast.TypeAssertExpr); asserted {
+			if name, isIdent := assign.Lhs[0].(*ast.Ident); isIdent {
+				names[name.Name] = true
+			}
+		}
+		return true
+	})
+	return names
 }
 
 // ParallelRangeCaptureRule flags parallel subtests that close over range variables.
@@ -139,6 +236,7 @@ func isTestingHelperReceiverType(expr ast.Expr, testingPackages map[string]bool)
 
 // helperCallPresent reports whether a known testing receiver invokes Helper in the helper's own body.
 func helperCallPresent(body *ast.BlockStmt, receivers map[string]bool) bool {
+	asserted := typeAssertedNames(body)
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if found {
@@ -155,8 +253,13 @@ func helperCallPresent(body *ast.BlockStmt, receivers map[string]bool) bool {
 		if !ok || selector.Sel.Name != "Helper" {
 			return true
 		}
-		receiver, ok := selector.X.(*ast.Ident)
-		found = ok && receivers[receiver.Name]
+		switch receiver := selector.X.(type) {
+		case *ast.Ident:
+			found = receivers[receiver.Name] || asserted[receiver.Name]
+		case *ast.TypeAssertExpr:
+			// t.(interface{ Helper() }).Helper() reaches Helper through an assertion.
+			found = true
+		}
 		return !found
 	})
 	return found

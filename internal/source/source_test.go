@@ -27,9 +27,16 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	}
 
 	gotFiles := paths(result.Files)
-	// .github is metadata except for the workflows subtree, which is analysable so
-	// the CI/workflow security rules can inspect GitHub Actions YAML.
-	wantFiles := []string{".github/workflows/ci.yml", "config.yaml", "main.go"}
+	wantFiles := []string{
+		".agents/skills/tool/config.yaml",
+		".claude/settings.json",
+		".codex/config.toml",
+		".github/ISSUE_TEMPLATE/bug.yml",
+		".github/workflows/ci.yml",
+		".goat-flow/config.yaml",
+		"config.yaml",
+		"main.go",
+	}
 	if !equal(gotFiles, wantFiles) {
 		t.Fatalf("files = %#v, want %#v", gotFiles, wantFiles)
 	}
@@ -38,11 +45,6 @@ func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	for _, want := range []string{
 		"generated/generated.go:generated",
 		"vendor:dependency",
-		".agents:non-application-metadata",
-		".claude:non-application-metadata",
-		".codex:non-application-metadata",
-		".github/ISSUE_TEMPLATE:non-application-metadata",
-		".goat-flow:non-application-metadata",
 	} {
 		if !contains(gotSkipped, want) {
 			t.Fatalf("skipped reasons %#v missing %q", gotSkipped, want)
@@ -165,12 +167,13 @@ func TestDiscoverIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 }
 
-// TestDiscoverRootGitignoreOwnsFallbackDirectories verifies projects own vendor when .gitignore exists.
+// TestDiscoverRootGitignoreOwnsFallbackDirectories verifies projects own node_modules when .gitignore exists; vendor and
+// dist no longer defer (FAMILY-CONTRACT.md section 7, precision-floor M04).
 func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".gitignore", "# project owns vendor\n")
+	writeFile(t, root, ".gitignore", "# project owns node_modules\n")
 	writeFile(t, root, "main.go", "package main\n")
-	writeFile(t, root, "vendor/pkg/vendor.go", "package pkg\n")
+	writeFile(t, root, "node_modules/pkg/index.go", "package pkg\n")
 
 	result, err := Discover(Options{Root: root, Paths: []string{"."}})
 	if err != nil {
@@ -178,12 +181,12 @@ func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
 	}
 
 	got := paths(result.Files)
-	want := []string{"main.go", "vendor/pkg/vendor.go"}
+	want := []string{"main.go", "node_modules/pkg/index.go"}
 	if !equal(got, want) {
 		t.Fatalf("files = %#v, want %#v", got, want)
 	}
-	if contains(skippedReasons(result.Skipped), "vendor:dependency") {
-		t.Fatalf("vendor should not be hardcoded-skipped when root .gitignore exists: %#v", result.Skipped)
+	if contains(skippedReasons(result.Skipped), "node_modules:dependency") {
+		t.Fatalf("node_modules should not be hardcoded-skipped when root .gitignore exists: %#v", result.Skipped)
 	}
 }
 
@@ -209,28 +212,53 @@ func TestDiscoverExplicitIgnoredInputDirectoryPrunes(t *testing.T) {
 	}
 }
 
-// TestDiscoverExplicitNonApplicationMetadataFileSkipped verifies metadata files are skipped explicitly.
-func TestDiscoverExplicitNonApplicationMetadataFileSkipped(t *testing.T) {
+// TestDiscoverExplicitDefaultIgnoredFileIsScanned verifies explicit files bypass fallback defaults.
+func TestDiscoverExplicitDefaultIgnoredFileIsScanned(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".codex/config.toml", "model = \"codex\"\n")
+	writeFile(t, root, "dist/config.json", "{}\n")
 
-	result, err := Discover(Options{Root: root, Paths: []string{".codex/config.toml"}})
+	result, err := Discover(Options{Root: root, Paths: []string{"dist/config.json"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Files) != 0 {
-		t.Fatalf("files = %#v, want no files from non-application metadata", result.Files)
+	if !equal(paths(result.Files), []string{"dist/config.json"}) {
+		t.Fatalf("explicit fallback file should be scanned; files=%#v skipped=%#v", result.Files, result.Skipped)
 	}
-	gotSkipped := skippedReasons(result.Skipped)
-	if !contains(gotSkipped, ".codex/config.toml:non-application-metadata") {
-		t.Fatalf("explicit metadata file should be skipped; got %#v", gotSkipped)
+}
+
+// TestDiscoverExplicitGitignoredFileIsScanned verifies explicit files bypass repository ignores.
+func TestDiscoverExplicitGitignoredFileIsScanned(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "secret.go\n")
+	writeFile(t, root, "secret.go", "package secret\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"secret.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equal(paths(result.Files), []string{"secret.go"}) {
+		t.Fatalf("explicit gitignored file should be scanned; files=%#v skipped=%#v", result.Files, result.Skipped)
+	}
+}
+
+// TestDiscoverExplicitVCSFileRemainsBlocked verifies VCS internals override explicit files and include-ignored.
+func TestDiscoverExplicitVCSFileRemainsBlocked(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".git/config.json", "{}\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{".git/config.json"}, IncludeIgnored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 0 || !contains(skippedReasons(result.Skipped), ".git/config.json:vcs") {
+		t.Fatalf("explicit VCS file must remain blocked; files=%#v skipped=%#v", result.Files, result.Skipped)
 	}
 }
 
 // TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree confirms that a
 // subtree-only .gitignore takes ownership of its own subtree: the hardcoded
-// fallback no longer prunes vendor/node_modules under that subtree, while a
+// fallback no longer prunes node_modules under that subtree, while a
 // sibling subtree without its own .gitignore still gets the fallback. This
 // matches the monorepo case where each service manages its own ignore policy.
 func TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree(t *testing.T) {
@@ -238,10 +266,10 @@ func TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree(t *testing.T) {
 	// No root .gitignore.
 	writeFile(t, root, "services/api/.gitignore", "# api owns its filtering\n")
 	writeFile(t, root, "services/api/main.go", "package main\n")
-	writeFile(t, root, "services/api/vendor/lib/x.go", "package lib\n")
+	writeFile(t, root, "services/api/node_modules/lib/x.go", "package lib\n")
 	writeFile(t, root, "services/web/main.go", "package main\n")
-	writeFile(t, root, "services/web/vendor/lib/x.go", "package lib\n")
-	writeFile(t, root, "vendor/lib/x.go", "package lib\n")
+	writeFile(t, root, "services/web/node_modules/lib/x.go", "package lib\n")
+	writeFile(t, root, "node_modules/lib/x.go", "package lib\n")
 
 	result, err := Discover(Options{Root: root, Paths: []string{"."}})
 	if err != nil {
@@ -249,14 +277,14 @@ func TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree(t *testing.T) {
 	}
 
 	got := paths(result.Files)
-	if !contains(got, "services/api/vendor/lib/x.go") {
-		t.Fatalf("services/api/vendor should be scanned because services/api owns a .gitignore; got %#v", got)
+	if !contains(got, "services/api/node_modules/lib/x.go") {
+		t.Fatalf("services/api/node_modules should be scanned because services/api owns a .gitignore; got %#v", got)
 	}
-	if contains(got, "services/web/vendor/lib/x.go") {
-		t.Fatalf("services/web/vendor should be pruned by fallback (no subtree .gitignore); got %#v", got)
+	if contains(got, "services/web/node_modules/lib/x.go") {
+		t.Fatalf("services/web/node_modules should be pruned by fallback (no subtree .gitignore); got %#v", got)
 	}
-	if contains(got, "vendor/lib/x.go") {
-		t.Fatalf("root-level vendor should be pruned by fallback (no root .gitignore); got %#v", got)
+	if contains(got, "node_modules/lib/x.go") {
+		t.Fatalf("root-level node_modules should be pruned by fallback (no root .gitignore); got %#v", got)
 	}
 }
 
@@ -266,6 +294,7 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	writeFile(t, root, "main.go", "package main\n")
 	writeFile(t, root, "vendor/pkg/vendor.go", "package pkg\n")
 	writeFile(t, root, "node_modules/lib/index.js", "x")
+	writeFile(t, root, ".fleet/config.json", "{}\n")
 
 	result, err := Discover(Options{Root: root, Paths: []string{"."}})
 	if err != nil {
@@ -277,7 +306,7 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 		t.Fatalf("files = %#v, want [main.go]", got)
 	}
 	gotSkipped := skippedReasons(result.Skipped)
-	for _, want := range []string{"vendor:dependency", "node_modules:dependency"} {
+	for _, want := range []string{"vendor:dependency", "node_modules:dependency", ".fleet:local-tooling"} {
 		if !contains(gotSkipped, want) {
 			t.Fatalf("hardcoded fallback skip missing %q in %#v", want, gotSkipped)
 		}
@@ -436,23 +465,94 @@ func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
 
 // TestCheckIgnoreReportsGitignoreAndDefaultSources confirms the non-config
 // sources surface their classification without a pattern (pattern is config-only).
-// The default case uses an always-ignored metadata directory (.codex) rather
-// than a fallback dependency dir, because the presence of a .gitignore here would
-// (by design) hand the tree to the project and disable the vendor/node_modules
-// fallback - .codex is unconditionally ignored regardless. (.github is no longer a
-// blanket default ignore because its workflows subtree is now analysable.)
+// The default case uses VCS internals because an unrelated .gitignore disables
+// non-VCS fallbacks while VCS paths remain blocked.
 func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, ".gitignore", "secret.go\n")
-	writeFile(t, root, "secret.go", "package s\n")
+	writeFile(t, root, ".gitignore", "ignored/\n")
+	writeFile(t, root, "ignored/secret.go", "package s\n")
 
 	options := Options{Root: root}
-	git := CheckIgnore(root, "secret.go", false, options)
+	git := CheckIgnore(root, "ignored", true, options)
 	if !git.Ignored || git.Source != OriginGitignore || git.Pattern != "" {
 		t.Fatalf("gitignore decision = %#v, want ignored source=gitignore no pattern", git)
 	}
-	dir := CheckIgnore(root, ".codex", true, options)
+	dir := CheckIgnore(root, ".git", true, options)
 	if !dir.Ignored || dir.Source != OriginDefault {
 		t.Fatalf("default dir decision = %#v, want ignored source=default", dir)
+	}
+}
+
+// TestDiscoverThirdPartyClassesIgnoreGitignore verifies section 7's third-party, build-output and minified classes skip
+// at any depth and in any ASCII case even under a governing .gitignore, and are listed with their reasons.
+func TestDiscoverThirdPartyClassesIgnoreGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "*.log\n")
+	writeFile(t, root, "main.go", "package main\n")
+	for _, dir := range []string{"vendor", "Vendors", "pkg/THIRD_PARTY", "pkg/third-party", "web/bower_components", "app/Dist"} {
+		writeFile(t, root, dir+"/copied.go", "package copied\n")
+	}
+	writeFile(t, root, "config/settings.min.json", "{}\n")
+	writeFile(t, root, "static/jquery.min.js", "var a=1;\n")
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := paths(result.Files); !equal(got, []string{"main.go"}) {
+		t.Fatalf("files = %#v, want only main.go", got)
+	}
+	want := []string{"Vendors:dependency", "app/Dist:build-output", "config/settings.min.json:generated", "pkg/THIRD_PARTY:dependency",
+		"pkg/third-party:dependency", "vendor:dependency", "web/bower_components:dependency"}
+	// gruff-go never scans .js, so the minified script is unsupported rather than listed as ignored.
+	if got := skippedReasons(result.Skipped); !equal(got, want) {
+		t.Fatalf("skipped = %#v, want %#v", got, want)
+	}
+}
+
+// TestDiscoverThirdPartyClassesComeBackOnRequest verifies --include-ignored and explicit files bring the classes back.
+func TestDiscoverThirdPartyClassesComeBackOnRequest(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "vendor/copied.go", "package copied\n")
+	writeFile(t, root, "dist/built.go", "package built\n")
+	writeFile(t, root, "config/settings.min.json", "{}\n")
+
+	included, err := Discover(Options{Root: root, Paths: []string{"."}, IncludeIgnored: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit, err := Discover(Options{Root: root, Paths: []string{"vendor/copied.go", "config/settings.min.json"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := paths(included.Files), []string{"config/settings.min.json", "dist/built.go", "vendor/copied.go"}; !equal(got, want) {
+		t.Fatalf("included = %#v, want %#v", got, want)
+	}
+	if got, want := paths(explicit.Files), []string{"config/settings.min.json", "vendor/copied.go"}; !equal(got, want) {
+		t.Fatalf("explicit = %#v, want %#v", got, want)
+	}
+}
+
+// TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope verifies the control: names that only resemble the
+// classes, and the build, external and lib directories, are still scanned. The root .gitignore turns off the
+// no-gitignore fallback, which would otherwise prune build/.
+func TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "*.log\n")
+	want := []string{"build/scripts/release.go", "config/admin.mini.json", "distro/x.go", "external/typings.go", "internal/dist.go",
+		"internal/vendor.go", "lib/helpers.go", "vendoring/x.go"}
+	for _, file := range want {
+		writeFile(t, root, file, "package x\n")
+	}
+
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := paths(result.Files); !equal(got, want) {
+		t.Fatalf("files = %#v, want %#v", got, want)
 	}
 }

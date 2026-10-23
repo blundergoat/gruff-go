@@ -174,6 +174,90 @@ func handle(w http.ResponseWriter, r *http.Request) {
 `,
 			want: 0,
 		},
+		{
+			name: "round tripper reads its own outgoing request",
+			file: "client.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+)
+
+type recorder struct{ body []byte }
+
+func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	body, err := io.ReadAll(req.Body)
+	r.body = body
+	return nil, err
+}
+`,
+			want: 0,
+		},
+		{
+			name: "helper taking a testing handle reads the request it sends",
+			file: "testhelpers/request.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+	"testing"
+)
+
+func executeRequest(t *testing.T, req *http.Request) []byte {
+	t.Helper()
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+`,
+			want: 0,
+		},
+		{
+			name: "handler method named RoundTrip still reports",
+			file: "handler.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+)
+
+type server struct{}
+
+func (server) RoundTrip(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.ReadAll(r.Body)
+	_ = w
+}
+`,
+			want: 1,
+		},
+		{
+			name: "parameter named t without a testing type still reports",
+			file: "handler.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+)
+
+type T struct{}
+
+func handle(t *T, r *http.Request) {
+	_, _ = io.ReadAll(r.Body)
+	_ = t
+}
+`,
+			want: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

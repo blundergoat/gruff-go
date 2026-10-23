@@ -56,7 +56,6 @@ func defaultMaintainabilityUnitRules() []UnitRule {
 	return []UnitRule{
 		IgnoredErrorRule{},
 		ContextTODOProductionRule{},
-		ProductionPanicRule{},
 		DeferInLoopRule{},
 		LogFatalLibraryRule{},
 		LoopVariableAddressRule{},
@@ -73,14 +72,12 @@ func defaultSecurityUnitRules() []UnitRule {
 		HTTPServerNoTimeoutRule{},
 		PermissiveFileModeRule{},
 		RequestBodyWithoutLimitRule{},
-		SQLStringQueryRule{},
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
 		WeakCryptoRule{},
 		RequestControlledURLRule{},
 		PathTraversalFileAccessRule{},
 		OpenRedirectRule{},
-		SensitiveDataLoggingRule{},
 		UnsafeDeserializationRule{},
 		XXECandidateRule{},
 		TemplateInjectionXSSRule{},
@@ -107,6 +104,8 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		SuppressionWithoutRationaleRule{},
 		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
+		MissingParamDocRule{},
+		MissingReturnDocRule{},
 		ConfigFieldCommentRule{
 			IncludePaths: stringSliceOption(config, "docs.config-field-comment", "includePaths"),
 			ExcludePaths: stringSliceOption(config, "docs.config-field-comment", "excludePaths"),
@@ -115,12 +114,12 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 }
 
 // defaultSensitiveDataUnitRules returns vendor and generic sensitive-data checks.
-// The entropy, PII, and PHI detectors ship opt-in (DefaultEnabled:false on their
-// own definitions): they are heuristic and noisier than the exact-prefix vendor
+// The PII and PHI detectors ship opt-in (DefaultEnabled:false on their own
+// definitions): they are heuristic and noisier than the exact-prefix vendor
 // rules, so per ADR-007/ADR-009 they stay out of default scans until a project
 // enables them, rather than riding at an inflated severity to dodge the gate.
 func defaultSensitiveDataUnitRules(config Config) []UnitRule {
-	previews := newSensitivePreviewPolicy(config.SensitiveDataPreviewAllowlist)
+	previews := newSensitivePreviewPolicy()
 	return []UnitRule{
 		SensitiveDataRule{previews: previews},
 		PrivateKeyRule{previews: previews},
@@ -135,11 +134,6 @@ func defaultSensitiveDataUnitRules(config Config) []UnitRule {
 		GCPServiceAccountRule{previews: previews},
 		NPMTokenRule{previews: previews},
 		GitLabTokenRule{previews: previews},
-		HighEntropyStringRule{
-			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
-			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
-			previews:  previews,
-		},
 		PIIPatternRule{previews: previews},
 		PHIPatternRule{previews: previews},
 	}
@@ -158,11 +152,6 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 			ExcludeNames: stringSliceOption(config, "naming.get-prefix", "excludeNames"),
 		},
 		IdentifierQualityRule{PlaceholderNames: stringSliceOption(config, "naming.identifier-quality", "placeholderNames")},
-		NegatedBooleanRule{
-			Prefixes:  stringSliceOption(config, "naming.negated-boolean", "prefixes"),
-			AllowList: stringSliceOption(config, "naming.negated-boolean", "allowList"),
-			Scope:     stringOption(config, "naming.negated-boolean", "scope", "exported"),
-		},
 		MisspellingRule{
 			Extra:  stringMapOption(config, "naming.misspelling", "extra"),
 			Ignore: stringSliceOption(config, "naming.misspelling", "ignore"),
@@ -180,10 +169,8 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 // defaultTestQualityUnitRules returns unit-level test-quality checks.
 func defaultTestQualityUnitRules() []UnitRule {
 	return []UnitRule{
-		SkippedTestRule{},
 		EmptyTestRule{},
 		HelperMissingTHelperRule{},
-		NoFailurePathTestRule{},
 		ParallelRangeCaptureRule{},
 		FatalInGoroutineRule{},
 		TempDirMisuseRule{},
@@ -194,6 +181,9 @@ func defaultTestQualityUnitRules() []UnitRule {
 // defaultProjectRules builds the project-level rule slice from strict config.
 func defaultProjectRules(config Config) []ProjectRule {
 	return []ProjectRule{
+		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
+		// that boundary in whichever file owns the entry point, not the one that panics.
+		ProductionPanicRule{},
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
 		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},
@@ -331,22 +321,6 @@ func intThreshold(config Config, ruleID string, name string, fallback int) int {
 		return fallback
 	}
 	return int(value)
-}
-
-// floatThreshold reads a named positive floating-point threshold from strict
-// config, falling back when absent or non-positive. It mirrors intThreshold for
-// rules whose knob is fractional - e.g. the entropy rule's bits-per-character
-// cutoff, where rounding to an int would collapse the meaningful 4.0-6.0 range.
-func floatThreshold(config Config, ruleID string, name string, fallback float64) float64 {
-	values, ok := config.Thresholds[ruleID]
-	if !ok {
-		return fallback
-	}
-	value, ok := values[name]
-	if !ok || value <= 0 {
-		return fallback
-	}
-	return value
 }
 
 // intOption reads an integer rule option from strict config, accepting numeric forms (int, int64, float64).

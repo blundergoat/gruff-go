@@ -26,22 +26,20 @@ type sensitivePreviewFixture struct {
 	secondary       string
 }
 
-// TestSensitivePreviewPolicyMatrix pins empty, nonmatching, and matching path
-// policy for every sensitive-data rule plus every PII/PHI category.
+// TestSensitivePreviewPolicyMatrix pins the one marker every sensitive-data rule and every PII/PHI category emits.
+//
+// Section 5 made markers unconditional: each one names a class the detector already decided and carries none of the
+// matched value, so there is no configuration that could make one safer or less safe.
 func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	states := []struct {
-		name      string
-		allowlist []string
-		allowed   bool
+		name string
 	}{
-		{name: "empty"},
-		{name: "nonmatching", allowlist: []string{"other/**"}},
-		{name: "matching", allowlist: []string{"secrets/**"}, allowed: true},
+		{name: "unconditional"},
 	}
 
 	for _, state := range states {
 		t.Run(state.name, func(t *testing.T) {
-			registry := sensitivePreviewRegistry(t, state.allowlist)
+			registry := sensitivePreviewRegistry(t)
 			for _, fixture := range sensitivePreviewFixtures() {
 				t.Run(fixture.name, func(t *testing.T) {
 					findings := registry.Analyze([]parser.Unit{sensitivePreviewUnit(fixture)}, Context{})
@@ -49,20 +47,13 @@ func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 					if !ok {
 						t.Fatalf("missing %s finding for category %q", fixture.ruleID, fixture.category)
 					}
-					want := "[redacted]"
-					if state.allowed {
-						want = fixture.allowedPreview
+					if got, _ := item.Metadata["preview"].(string); got != fixture.allowedPreview {
+						t.Fatalf("preview %q is not the approved marker %q", got, fixture.allowedPreview)
 					}
-					if got, _ := item.Metadata["preview"].(string); got != want {
-						t.Fatalf("preview does not match the approved marker for %s policy", state.name)
-					}
+					// A rule with a second field, such as a GCP service account, marks it independently.
 					if fixture.secondary != "" {
-						secondaryWant := "[redacted]"
-						if state.allowed {
-							secondaryWant = fixture.secondary
-						}
-						if got, _ := item.Metadata["secondaryPreview"].(string); got != secondaryWant {
-							t.Fatalf("secondary preview does not match the approved marker for %s policy", state.name)
+						if got, _ := item.Metadata["secondaryPreview"].(string); got != fixture.secondary {
+							t.Fatalf("secondary preview %q is not the approved marker %q", got, fixture.secondary)
 						}
 					}
 					assertSensitivePreviewHasNoReusableBytes(t, item, fixture.secret, fixture.secondarySecret)
@@ -72,17 +63,19 @@ func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	}
 }
 
-// sensitivePreviewRegistry enables the three opt-in sensitive detectors while
-// applying one project preview allowlist to the complete default rule family.
-func sensitivePreviewRegistry(t *testing.T, allowlist []string) Registry {
+// sensitivePreviewRegistry enables the opt-in sensitive detectors across the complete default rule family.
+func sensitivePreviewRegistry(t *testing.T) Registry {
 	t.Helper()
 	registry, err := DefaultsConfigured(Config{
 		Enabled: map[string]bool{
-			"sensitive-data.high-entropy-string": true,
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
 			"sensitive-data.pii-pattern":         true,
 			"sensitive-data.phi-pattern":         true,
 		},
-		SensitiveDataPreviewAllowlist: allowlist,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -162,10 +155,9 @@ func sensitivePreviewFixtures() []sensitivePreviewFixture {
 	anthropic := "sk-ant-" + strings.Repeat("V", 20)
 	npm := "npm_" + strings.Repeat("N", 20)
 	gitlab := "glpat-" + strings.Repeat("L", 20)
-	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	phone := "+1 (415) 867-5309"
-	card := "4242 4242 " + "4242 4242"
+	card := "4539 5787 " + "6362 1486"
 	ssn := "536-90-4399"
 	medicare := "1EG4TE5MK73"
 	mrn := "4827193"
@@ -184,7 +176,6 @@ func sensitivePreviewFixtures() []sensitivePreviewFixture {
 		{name: "npm", ruleID: "sensitive-data.npm-token", path: "secrets/npm.env", source: "value = \"" + npm + "\"\n", secret: npm, allowedPreview: "[redacted:npm-token]"},
 		{name: "gitlab", ruleID: "sensitive-data.gitlab-token", path: "secrets/gitlab.env", source: "value = \"" + gitlab + "\"\n", secret: gitlab, allowedPreview: "[redacted:gitlab-token]"},
 		{name: "gcp", ruleID: "sensitive-data.gcp-service-account", path: "secrets/gcp.json", source: "{\n  \"type\": \"service_account\",\n  \"private_key\": \"" + privateKey + "\"\n}\n", secret: "\"type\": \"service_account\"", allowedPreview: "[redacted:gcp-service-account]", secondarySecret: privateKey, secondary: "[redacted:private-key]"},
-		{name: "entropy", ruleID: "sensitive-data.high-entropy-string", path: "secrets/entropy.env", source: "value = \"" + entropy + "\"\n", secret: entropy, allowedPreview: "[redacted]"},
 		{name: "email", ruleID: "sensitive-data.pii-pattern", category: "email", path: "secrets/pii-email.env", source: "value = \"" + email + "\"\n", secret: email, allowedPreview: "[redacted:email]"},
 		{name: "phone", ruleID: "sensitive-data.pii-pattern", category: "phone", path: "secrets/pii-phone.env", source: "value = \"" + phone + "\"\n", secret: phone, allowedPreview: "[redacted:phone]"},
 		{name: "payment-card", ruleID: "sensitive-data.pii-pattern", category: "payment-card", path: "secrets/pii-card.env", source: "value = \"" + card + "\"\n", secret: card, allowedPreview: "[redacted:payment-card]"},

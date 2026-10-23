@@ -5,7 +5,8 @@
 //
 // When RenderOptions.Existing is set, Render layers the project-specific values
 // from the previously-loaded config onto the new template: `paths.ignore`,
-// `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, and any
+// `allowlists.acceptedAbbreviations`,
+// `sensitiveExclusions`, and any
 // per-rule `enabled`/`severity`/`threshold`/`thresholds`/`options` overrides
 // for rules that are still in the registry. Rules that no longer exist are
 // dropped; rules that are new since the previous config land at registry
@@ -43,39 +44,77 @@ func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 
 	var buf bytes.Buffer
 	writeRenderHeader(&buf)
+	writeRenderDeepScanBudget(&buf, opts)
 	writeRenderMinimumSeverity(&buf, opts)
 	writeRenderScaffolds(&buf, opts)
 	writeRenderRules(&buf, sorted, opts)
 	return buf.Bytes()
 }
 
-// writeRenderMinimumSeverity emits the per-command exit-code threshold block
-// (ADR-010). Values come from finding.DefaultFailThresholdFor unless the
-// existing config already tuned a key, in which case the user's value is
-// preserved verbatim - regenerate-with-merge, never a destructive clobber.
+// writeRenderDeepScanBudget publishes the paired degradation bounds and preserves prior tuning.
+func writeRenderDeepScanBudget(buf *bytes.Buffer, opts RenderOptions) {
+	enabled := true
+	maxLines := DefaultDeepScanMaxLines
+	maxBytes := DefaultDeepScanMaxBytes
+	if opts.Existing != nil {
+		if opts.Existing.DeepScanBudget.Enabled != nil {
+			enabled = *opts.Existing.DeepScanBudget.Enabled
+		}
+		if opts.Existing.DeepScanBudget.MaxLines != nil {
+			maxLines = *opts.Existing.DeepScanBudget.MaxLines
+		}
+		if opts.Existing.DeepScanBudget.MaxBytes != nil {
+			maxBytes = *opts.Existing.DeepScanBudget.MaxBytes
+		}
+	}
+	fmt.Fprintln(buf, "# Above either bound, retain text-level rules and omit AST-backed deep analysis.")
+	fmt.Fprintln(buf, "deepScanBudget:")
+	fmt.Fprintf(buf, "  enabled: %t\n", enabled)
+	fmt.Fprintf(buf, "  maxLines: %d\n", maxLines)
+	fmt.Fprintf(buf, "  maxBytes: %d\n\n", maxBytes)
+}
+
+// writeRenderMinimumSeverity emits the two severity keys the family contract separates: the exit gate under failOn
+// and the display floor under minimumSeverity. Gate values come from finding.DefaultFailThresholdFor unless the
+// existing config already tuned a key, in which case the user's value is preserved verbatim - regenerate-with-merge,
+// never a destructive clobber.
 func writeRenderMinimumSeverity(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "# Per-command exit-code thresholds (ADR-010). Each key overrides the binary")
 	fmt.Fprintln(buf, "# default for the matching gruff-go subcommand. Values: advisory | warning |")
 	fmt.Fprintln(buf, "# error | none (where 'none' disables the gate, exit 0 regardless of findings).")
-	fmt.Fprintln(buf, "# Precedence: CLI flag > minimumSeverity.<cmd> > binary default.")
-	fmt.Fprintln(buf, "minimumSeverity:")
+	fmt.Fprintln(buf, "# Precedence: CLI flag > failOn.<cmd> > binary default.")
+	fmt.Fprintln(buf, "failOn:")
 	for _, cmd := range []string{"analyse", "summary", "report", "dashboard"} {
-		fmt.Fprintf(buf, "  %s: %s\n", cmd, preservedMinimumSeverityFor(opts, cmd))
+		fmt.Fprintf(buf, "  %s: %s\n", cmd, preservedFailOnFor(opts, cmd))
 	}
 	fmt.Fprintln(buf)
+
+	fmt.Fprintln(buf, "# The display floor: the lowest severity a report shows. It never changes an")
+	fmt.Fprintln(buf, "# exit code, a score, or a baseline; failOn above is what gates a build.")
+	fmt.Fprintf(buf, "minimumSeverity: %s\n\n", preservedMinimumSeverity(opts))
 }
 
-// preservedMinimumSeverityFor returns the existing config's minimumSeverity
-// entry for cmd when it carries one, otherwise the binary default. The empty
-// string case (entry present but blank) also falls back to the default since
-// a blank value would fail ParseFailThreshold at load time.
-func preservedMinimumSeverityFor(opts RenderOptions, cmd string) string {
+// preservedFailOnFor returns the existing config's failOn entry for cmd when it
+// carries one, otherwise the binary default. The empty string case (entry
+// present but blank) also falls back to the default since a blank value would
+// fail ParseFailThreshold at load time.
+func preservedFailOnFor(opts RenderOptions, cmd string) string {
 	if opts.Existing != nil {
-		if value, ok := opts.Existing.MinimumSeverity[cmd]; ok && value != "" {
+		if value, ok := opts.Existing.FailOn[cmd]; ok && value != "" {
 			return value
 		}
 	}
 	return string(finding.DefaultFailThresholdFor(cmd))
+}
+
+// preservedMinimumSeverity returns the existing display floor, defaulting to the
+// lowest severity so a regenerated configuration hides nothing the user had not
+// already asked to hide.
+func preservedMinimumSeverity(opts RenderOptions) string {
+	if opts.Existing != nil && opts.Existing.MinimumSeverity.Value != "" {
+		return opts.Existing.MinimumSeverity.Value
+	}
+	return string(finding.SeverityAdvisory)
 }
 
 // writeRenderHeader writes the file-level banner and schemaVersion pin.
@@ -90,9 +129,9 @@ func writeRenderHeader(buf *bytes.Buffer) {
 }
 
 // writeRenderScaffolds writes the paths/allowlists/selection sections. When
-// opts.Existing supplies values for paths.ignore, acceptedAbbreviations, or
-// secretPreviews, those lists are emitted in place of the empty defaults so
-// regenerate-with-merge preserves project-wide allowlists.
+// opts.Existing supplies values for paths.ignore or acceptedAbbreviations, those
+// lists are emitted in place of the empty defaults so regenerate-with-merge
+// preserves project-wide allowlists.
 func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "# Discovery reads .gitignore first. paths.ignore is only for committed")
 	fmt.Fprintln(buf, "# metadata, fixtures, or generated artifacts that should stay out of scans")
@@ -101,14 +140,14 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	writeRenderStringList(buf, "  ignore", preservedIgnorePaths(opts))
 	fmt.Fprintln(buf)
 
-	fmt.Fprintln(buf, "# Project-wide allowlists and preview controls.")
-	fmt.Fprintln(buf, "# acceptedAbbreviations relax naming.acronym-case; secretPreviews authorizes")
-	fmt.Fprintln(buf, "# fixed category/scheme markers only. Empty/nonmatching paths stay [redacted].")
-	fmt.Fprintln(buf, "# This preview control never suppresses sensitive-data findings.")
+	fmt.Fprintln(buf, "# Project-wide allowlists.")
+	fmt.Fprintln(buf, "# acceptedAbbreviations relax naming.acronym-case. Sensitive-data markers are")
+	fmt.Fprintln(buf, "# unconditional and carry no payload, so nothing configures them.")
 	fmt.Fprintln(buf, "allowlists:")
 	writeRenderStringList(buf, "  acceptedAbbreviations", preservedAcceptedAbbreviations(opts))
-	writeRenderStringList(buf, "  secretPreviews", preservedSecretPreviews(opts))
 	fmt.Fprintln(buf)
+
+	writeRenderSensitiveExclusionsSection(buf, opts)
 
 	fmt.Fprintln(buf, "# Selection narrows the active rule set. Empty lists keep the default")
 	fmt.Fprintln(buf, "# selection (every rule below whose `enabled` is true).")
@@ -118,6 +157,54 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "  pillars: []")
 	fmt.Fprintln(buf, "  excludePillars: []")
 	fmt.Fprintln(buf)
+}
+
+// writeRenderSensitiveExclusionsSection emits the sensitiveExclusions block with
+// the commented worked example a user needs to discover the section. Entries are
+// authored by hand on purpose: no reported marker, preview, or matched value is
+// ever converted into one (FAMILY-CONTRACT.md section 13a).
+func writeRenderSensitiveExclusionsSection(buf *bytes.Buffer, opts RenderOptions) {
+	fmt.Fprintln(buf, "# Sensitive-data exclusions. Each entry suppresses one sensitive-data rule in")
+	fmt.Fprintln(buf, "# one project-relative file and requires a written reason. A symbol narrows the")
+	fmt.Fprintln(buf, "# scope further. Message- and value-matching keys are rejected, and entries are")
+	fmt.Fprintln(buf, "# written by hand: no reported marker or preview is ever turned into one for you.")
+	fmt.Fprintln(buf, "# Every entry is counted in the report's suppressions array, zero matches included.")
+	fmt.Fprintln(buf, "#")
+	fmt.Fprintln(buf, "# sensitiveExclusions:")
+	fmt.Fprintln(buf, "#   - rule: sensitive-data.aws-access-key")
+	fmt.Fprintln(buf, "#     path: internal/rule/testdata/aws_sample.env")
+	fmt.Fprintln(buf, "#     symbol: Fixtures.AWSSample")
+	fmt.Fprintln(buf, "#     reason: Synthetic key used by the loader fixture; not a live credential.")
+	writeRenderSensitiveExclusions(buf, preservedSensitiveExclusions(opts))
+	fmt.Fprintln(buf)
+}
+
+// writeRenderSensitiveExclusions emits the section body: the inline empty list
+// for a project with no exclusions, otherwise one mapping item per preserved
+// entry in the order the user wrote them.
+func writeRenderSensitiveExclusions(buf *bytes.Buffer, entries []SensitiveExclusion) {
+	if len(entries) == 0 {
+		fmt.Fprintln(buf, "sensitiveExclusions: []")
+		return
+	}
+	fmt.Fprintln(buf, "sensitiveExclusions:")
+	for _, entry := range entries {
+		fmt.Fprintf(buf, "  - rule: %s\n", yamlQuoteIfNeeded(entry.Rule))
+		fmt.Fprintf(buf, "    path: %s\n", yamlQuoteIfNeeded(entry.Path))
+		if entry.Symbol != "" {
+			fmt.Fprintf(buf, "    symbol: %s\n", yamlQuoteIfNeeded(entry.Symbol))
+		}
+		fmt.Fprintf(buf, "    reason: %s\n", yamlQuoteIfNeeded(entry.Reason))
+	}
+}
+
+// preservedSensitiveExclusions returns the existing config's sensitiveExclusions
+// so `gruff-go init --force` regenerates without dropping accepted suppressions.
+func preservedSensitiveExclusions(opts RenderOptions) []SensitiveExclusion {
+	if opts.Existing == nil {
+		return nil
+	}
+	return opts.Existing.SensitiveExclusions
 }
 
 // preservedIgnorePaths returns the existing config's paths.ignore (canonically
@@ -148,16 +235,6 @@ func preservedAcceptedAbbreviations(opts RenderOptions) []string {
 		return defaultAcceptedAbbreviations
 	}
 	return opts.Existing.AcceptedAbbreviations
-}
-
-// preservedSecretPreviews returns the existing config's
-// allowlists.secretPreviews (canonically folded into
-// SensitiveData.PreviewAllowlist by Normalized) or nil.
-func preservedSecretPreviews(opts RenderOptions) []string {
-	if opts.Existing == nil {
-		return nil
-	}
-	return opts.Existing.SensitiveData.PreviewAllowlist
 }
 
 // writeRenderStringList emits a YAML list under indent+name. Empty or nil lists

@@ -1,3 +1,6 @@
+// Package rule tests how credential detectors turn source text into redacted findings for a developer's scan.
+// This file covers private keys, provider tokens, connection strings and their sample or placeholder controls.
+// The private-key cases exercise both text files and Go syntax so parser definitions do not hide embedded key material.
 package rule
 
 import (
@@ -13,7 +16,7 @@ import (
 // Zero-value rules use the deny-by-default full mask; the focused M11 policy
 // matrix separately covers authorized category markers.
 const (
-	rawAWSKey            = "AKIAIOSFODNN7EXAMPLE"
+	rawAWSKey            = "AKIA" + "Q7R2M8N4P6T9V1X3"
 	rawJWT               = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 	rawPrivateKey        = "-----BEGIN RSA PRIVATE KEY-----"
 	rawConnectionURL     = "postgres://app:supersecretpassword@db.internal:5432/orders"
@@ -34,6 +37,7 @@ const (
 }`
 )
 
+// TestPrivateKeyRuleDetectsPEMHeader keeps a text-file key header visible without exposing its bytes in a finding.
 func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -69,9 +73,7 @@ func TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks(t *testing.T) {
 // TestPrivateKeyRuleSkipsGoDelimiterManipulation avoids flagging code that
 // strips or re-wraps caller-provided PEM data without embedding key material.
 func TestPrivateKeyRuleSkipsGoDelimiterManipulation(t *testing.T) {
-	unit := parser.Unit{
-		File: source.File{Path: "pem.go", Type: source.FileTypeGo},
-		Source: `package pem
+	unit := parseOne(t, "pem.go", `package pem
 
 import "strings"
 
@@ -79,8 +81,7 @@ func clean(privateKeyPEM string) []byte {
 	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "-----BEGIN PRIVATE KEY-----", "")
 	return []byte("-----BEGIN PRIVATE KEY-----\n" + privateKeyPEM + "\n-----END PRIVATE KEY-----")
 }
-`,
-	}
+`)
 	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
 		t.Fatalf("PEM delimiter manipulation should not flag, got %#v", got)
 	}
@@ -127,6 +128,40 @@ func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
 	assertNoRawSecret(t, findings[0], rawAWSKey)
+}
+
+// TestAWSAccessKeyRuleDetectsASessionToken pins the ASIA half of the shape. AWS issues temporary session
+// credentials under that prefix over the same fixed body, so a rule that named only AKIA left a live
+// credential unreported. gruff-php and gruff-py already named both.
+func TestAWSAccessKeyRuleDetectsASessionToken(t *testing.T) {
+	sessionToken := "ASIA" + "IOSFODNN7" + "EXAMPLE"
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + sessionToken + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings for a session token, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], sessionToken)
+}
+
+// TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked pins FAMILY-CONTRACT.md section 5: a key whose body is a run of X
+// where the sixteen characters should be names no credential, while a real key that merely contains a run of X
+// still reports, because a rule that hid it would hide a live credential.
+func TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked(t *testing.T) {
+	masked := strings.Repeat("X", 16)
+	partlyMasked := "IOSFODNN" + strings.Repeat("X", 8)
+	unit := parser.Unit{
+		File: source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + "AKIA" + masked + "\n" +
+			"aws_session_key_id = " + "ASIA" + masked + "\n" +
+			"aws_partly_masked_id = " + "AKIA" + partlyMasked + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 || findings[0].Location == nil || findings[0].Location.Line != 3 {
+		t.Fatalf("got %d findings, want exactly the partly masked key on line 3: %+v", len(findings), findings)
+	}
 }
 
 func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
@@ -358,20 +393,21 @@ func TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleHonorsNoSecAnnotation asserts a #nosec annotation
-// on the type marker line silences the finding, mirroring the suppression
-// contract of the other sensitive-data.* rules.
-func TestGCPServiceAccountRuleHonorsNoSecAnnotation(t *testing.T) {
+// TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter asserts the rule still
+// reports a key whose marker line carries `#nosec`, so the inline filter can
+// suppress and count it (FAMILY-CONTRACT.md section 13c) instead of the rule
+// dropping it silently.
+func TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter(t *testing.T) {
 	src := `{
-  "type": "service_account", // #nosec G101 -- fixture
+  "type": "service_account", // #nosec -- fixture
   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
 }`
 	unit := parser.Unit{
 		File:   source.File{Path: "fixture.json", Type: source.FileTypeText},
 		Source: src,
 	}
-	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("expected #nosec to suppress finding, got %#v", got)
+	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("expected one finding for the inline filter to judge, got %#v", got)
 	}
 }
 
@@ -390,8 +426,16 @@ func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 		GitLabTokenRule{}.Definition(),
 		GCPServiceAccountRule{}.Definition(),
 	} {
-		if !definition.DefaultEnabled {
-			t.Errorf("rule %q must be default-enabled", definition.ID)
+		// Five provider rules are off by default since precision-floor M19 (ADR-021); the rest stay on.
+		wantEnabled := !map[string]bool{
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
+		}[definition.ID]
+		if definition.DefaultEnabled != wantEnabled {
+			t.Errorf("rule %q defaultEnabled = %v, want %v", definition.ID, definition.DefaultEnabled, wantEnabled)
 		}
 	}
 }
@@ -446,9 +490,10 @@ func TestScanLinesForSecretSkipsComments(t *testing.T) {
 	}
 }
 
-// TestScanLinesForSecretHonoursSuppressions asserts inline annotations silence findings.
-// gosec's `#nosec` and golangci-lint's `//nolint:gosec` / `//nolint:all` are both honored.
-func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
+// TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter asserts a line carrying `#nosec` or `//nolint` still
+// reports at rule level: analysis.ApplyInlineSuppressions decides which comments suppress it and counts each one
+// (FAMILY-CONTRACT.md section 13c) rather than the rule dropping them uncounted.
+func TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter(t *testing.T) {
 	cases := []string{
 		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders // #nosec G101 -- fixture",
 		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders //nolint:gosec",
@@ -461,8 +506,8 @@ func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
 				File:   source.File{Path: "main.go", Type: source.FileTypeGo},
 				Source: line + "\n",
 			}
-			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-				t.Fatalf("expected suppressed line to produce no findings, got %#v", got)
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+				t.Fatalf("expected one finding for the inline filter to judge, got %#v", got)
 			}
 		})
 	}
