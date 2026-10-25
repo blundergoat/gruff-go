@@ -28,7 +28,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
-| Rule catalogue | 80 rules across 11 pillars; 55 enabled by default |
+| Rule catalogue | 79 rules across 11 pillars; 55 enabled by default |
 | Primary config | `.gruff-go.yaml` |
 | Analysis schema | `gruff.analysis.v3` |
 | Baseline schema | `gruff.baseline.v3` |
@@ -187,7 +187,7 @@ See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/
 
 ## Rules And Pillars
 
-The current checkout contains 80 rules across 11 pillars. 55 rules are enabled by default; the 25 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, the static-analysis-redundant test candidate, the `test-quality.duplicate-test-body` consolidation candidate, the `docs.missing-param-doc` parameter-prose and `docs.missing-return-doc` return-prose checks, seven rules turned off in 0.6.0 because they were right less than half the time on fewer than ten findings, `complexity.cyclomatic`, turned off in 0.6.0 because its findings at one and a half times its limit or more measured below the accuracy floor, and `security.open-redirect-candidate` and `security.request-body-without-limit`, each turned off in 0.6.0 because fewer than ten of its findings remain after its repair, too few to measure.
+The current checkout contains 79 rules across 11 pillars. 55 rules are enabled by default; the 24 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, the static-analysis-redundant test candidate, the `docs.missing-param-doc` parameter-prose and `docs.missing-return-doc` return-prose checks, seven rules turned off in 0.6.0 because they were right less than half the time on fewer than ten findings, `complexity.cyclomatic`, turned off in 0.6.0 because its findings at one and a half times its limit or more measured below the accuracy floor, and `security.open-redirect-candidate` and `security.request-body-without-limit`, each turned off in 0.6.0 because fewer than ten of its findings remain after its repair, too few to measure.
 
 | Pillar | Rules |
 | --- | ---: |
@@ -201,7 +201,7 @@ The current checkout contains 80 rules across 11 pillars. 55 rules are enabled b
 | `security` | 22 |
 | `sensitive-data` | 15 |
 | `size` | 3 |
-| `test-quality` | 8 |
+| `test-quality` | 7 |
 
 See [`docs/rules.md`](https://github.com/blundergoat/gruff-go/blob/main/docs/rules.md) for rule IDs, severities, thresholds, and remediation guidance.
 

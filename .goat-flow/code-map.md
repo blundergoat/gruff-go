@@ -8,7 +8,7 @@
 - `SECURITY.md` = Vulnerability reporting channel, supported versions, in-scope/out-of-scope items.
 - `LICENSE` = MIT license text.
 - `go.mod` = Go module identity for `github.com/blundergoat/gruff-go`; declares `go 1.25.0` and prefers toolchain `go1.25.13`.
-- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 80-rule registry.
+- `.gruff-go.yaml` = Dogfood scanner config layering project-preferred thresholds and severities on top of the 79-rule registry.
 - `Makefile` = Go-oriented local targets; `check` runs format, vet, and test targets over `go list ./...` packages.
 - `bin/` = Local build output directory (typically holds `gruff-go` after `go build -o bin/gruff-go ./cmd/gruff-go` for perf scripts), plus one tracked file: `bin/gruff-go.sh`, the committed family launcher mirroring the sibling ports' `bin/gruff-<lang>` entrypoints, which rebuilds and execs the gitignored `bin/gruff-go` binary.
 - `scripts/preflight-checks.sh` = Primary completion gate across metadata, dependency and vulnerability audits, shell checks, Go formatting/vet/tests, and dogfood; defaults to the `go.mod` toolchain unless `GOTOOLCHAIN` is explicit.
@@ -91,7 +91,7 @@
 - `internal/source/` = Source discovery, text/config classification, generated-file detection, default ignored-path handling, gitignore-respecting filter (ADR-004/ADR-005), and configured ignore patterns.
 - `internal/parser/` = Parser-only unit construction using the standard library Go parser plus parse diagnostics.
 - `internal/config/` = Strict `.gruff-go.yaml` discovery/parsing, including rule selection, thresholds, severities, path ignores, accepted abbreviations, and `sensitiveExclusions`; it refuses the pre-0.6.0 `allowlists.secretPreviews` and per-command `minimumSeverity` keys that `migrate-config` rewrites.
-- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 80-rule catalogue (55 default-enabled, 25 opt-in).
+- `internal/rule/` = Rule metadata validation, deterministic registry, configured thresholds/enablement, per-unit dispatch, project-level dispatch, composite-finding dispatch, finding ordering, and the 79-rule catalogue (55 default-enabled, 24 opt-in).
 - `internal/finding/` = Severity, confidence, pillar, location, finding payload, and stable fingerprint logic.
 - `internal/baseline/` = JSON baseline serialization plus shared one-to-one classification: exact rule/file/fingerprint pairs first, then remaining contract-stable identities, with legacy exact-only fallback and resolved-entry reporting for analyse and hook consumers.
 - `internal/diff/` = Git diff changed-line parsing and finding filtering.

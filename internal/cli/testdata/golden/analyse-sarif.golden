@@ -2030,32 +2030,6 @@
               }
             },
             {
-              "id": "test-quality.duplicate-test-body",
-              "name": "Duplicate test body",
-              "shortDescription": {
-                "text": "Duplicate test body"
-              },
-              "fullDescription": {
-                "text": "Groups three or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values."
-              },
-              "help": {
-                "text": "Go table-driven case loop: put the varying inputs and expected values in a case table, then run the shared assertions for each named case with t.Run."
-              },
-              "properties": {
-                "pillar": "test-quality",
-                "defaultSeverity": "advisory",
-                "confidence": "low",
-                "capability": "parser",
-                "defaultEnabled": false,
-                "tags": [
-                  "tests"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "test-quality.empty-test",
               "name": "Empty test",
               "shortDescription": {

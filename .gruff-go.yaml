@@ -429,11 +429,6 @@ rules:
     severity: warning
     threshold: 5
 
-  # Groups three or more tests whose multi-statement bodies differ only in eligible literals.
-  test-quality.duplicate-test-body:
-    enabled: false
-    severity: advisory
-
   # Flags Go test functions whose body contains no executable statements.
   test-quality.empty-test:
     enabled: true

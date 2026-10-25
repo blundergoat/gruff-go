@@ -1172,20 +1172,6 @@
             "remediation": "Group the parameters that travel together into one object, or split the function by caller."
           },
           {
-            "id": "test-quality.duplicate-test-body",
-            "title": "Duplicate test body",
-            "description": "Groups three or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values.",
-            "pillar": "test-quality",
-            "severity": "advisory",
-            "confidence": "low",
-            "capability": "parser",
-            "defaultEnabled": false,
-            "tags": [
-              "tests"
-            ],
-            "remediation": "Go table-driven case loop: put the varying inputs and expected values in a case table, then run the shared assertions for each named case with t.Run."
-          },
-          {
             "id": "test-quality.empty-test",
             "title": "Empty test",
             "description": "Flags Go test functions with no statements or only a testing.T.Parallel() call.",

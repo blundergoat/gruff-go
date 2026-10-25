@@ -169,7 +169,6 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 // defaultTestQualityUnitRules returns unit-level test-quality checks.
 func defaultTestQualityUnitRules() []UnitRule {
 	return []UnitRule{
-		DuplicateTestBodyRule{},
 		EmptyTestRule{},
 		HelperMissingTHelperRule{},
 		ParallelRangeCaptureRule{},

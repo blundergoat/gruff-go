@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **80 rules** across **11 pillars**. **55 rules are enabled by default** and 25 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **79 rules** across **11 pillars**. **55 rules are enabled by default** and 24 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.duplicate-test-body`, `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
@@ -92,7 +92,6 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.duplicate-test-body`](#test-qualityduplicate-test-body) | test-quality | advisory | parser | - | Opt-in groups of three or more tests with matching bodies after literal normalization. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | Empty runnable tests, including a sole `testing.T.Parallel()` call. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
@@ -1372,27 +1371,6 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 **Known precision limit.** A framework callback, interface implementation, exported ABI, or compatibility surface may require a wide signature the user cannot reshape. Keep the required signature, then raise maxParameters or disable size.parameter-count in project configuration after review. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 **Remediation.** In the upper band: group the parameters that travel together into one object, or split the function by caller. In the lower band: do not add another parameter to this function.
-
-### `test-quality.duplicate-test-body`
-
-- **Pillar:** test-quality
-- **Default severity:** advisory
-- **Default-enabled:** no
-- **Confidence:** low
-- **Capability:** parser
-- **Tags:** `tests`
-
-Groups three or more runnable top-level `Test` functions in the same `_test.go` file when their bodies contain at least two statements and match after literal normalization. Each complete group emits one finding at its first member, with every member's name, line and column in the message and metadata. Pairs, benchmarks, fuzz targets, methods and non-runnable helpers are excluded.
-
-Names, calls, operators and statement order remain significant. Literal kinds remain distinct. Strings containing ASCII whitespace retain their decoded values, as do literals anywhere inside a map or struct key, index or slice bound. Other literal values normalize by kind. Comments and formatting do not affect grouping.
-
-The rule skips loops over literal array, slice and map tables, including straight-line local bindings and package-level declarations. It also recognizes ascending indexed loops and integer ranges over a table's length when the loop uses that index to read the table, and loops calling `Run` on the test's `testing.T` parameter. Parentheses do not hide a table. Shadowed variables, a shadowed `len` function and unused closures do not establish a table loop. Table values returned by helpers need a visible subtest loop to establish this exclusion.
-
-**Known false-positive shape.** Separate tests can describe distinct behaviours even when their bodies have the same structure.
-
-**Mitigation.** Keep separate tests when a shared case loop would obscure their intent; review every listed member before consolidating. Enable the rule with `rules.test-quality.duplicate-test-body.enabled: true`.
-
-**Remediation.** Go table-driven case loop: put the varying inputs and expected values in a case table, then run the shared assertions for each named case with `t.Run`.
 
 ### `test-quality.empty-test`
 
