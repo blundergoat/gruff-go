@@ -70,6 +70,7 @@ sensitive-data.stripe-key	sensitive-data	warning	parser	Stripe live key literal
 size.file-length	size	error	parser	File length
 size.function-length	size	warning	parser	Function length
 size.parameter-count	size	advisory	parser	Parameter count
+test-quality.duplicate-test-body	test-quality	advisory	parser	Duplicate test body
 test-quality.empty-test	test-quality	advisory	parser	Empty test
 test-quality.fatal-in-goroutine	test-quality	advisory	parser	Fatal call in goroutine
 test-quality.helper-missing-t-helper	test-quality	advisory	parser	Test helper missing t.Helper
