@@ -2,7 +2,7 @@
 
 ## v0.6.0 - Unreleased
 
-- **Opt-in duplicate test groups** - `test-quality.duplicate-test-body` reports one finding per group of three or more runnable tests in the same file whose bodies of at least four statements differ only in eligible literal values. It preserves keys, indices, whitespace strings and types declared in the test body, skips visible table-driven tests, and lists every group member for review. Enable it with `rules.test-quality.duplicate-test-body.enabled: true`.
+- **Opt-in duplicate test groups** - `test-quality.duplicate-test-body` reports one finding per group of four or more runnable tests in the same file whose bodies of at least four statements differ only in eligible literal values. It preserves keys, indices, whitespace strings and types declared in the test body, skips visible table-driven tests, and lists every group member for review. Enable it with `rules.test-quality.duplicate-test-body.enabled: true`.
 
 - **Built with Go 1.26.10** - The module toolchain moves from Go 1.26.9 to 1.26.10, which fixes GO-2026-6809
   (`crypto/x509` distrusting compromised intermediate certificates), reachable through the dashboard's HTTP server.

@@ -21,10 +21,12 @@ func TestOtherB(t *testing.T) { setup(t); warm(t); got := build("b"); check(got,
 func TestMiddle(t *testing.T) { setup(t); warm(t); got := parse("c"); check(got, 3) }
 func TestOtherC(t *testing.T) { setup(t); warm(t); got := build("c"); check(got, 3) }
 func TestLast(t *testing.T) { setup(t); warm(t); got := parse("d"); check(got, 4) }
+func TestOtherD(t *testing.T) { setup(t); warm(t); got := build("d"); check(got, 4) }
+func TestTail(t *testing.T) { setup(t); warm(t); got := parse("e"); check(got, 5) }
 `)
 	got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{})
-	wantNames := [][]string{{"TestZulu", "TestAlpha", "TestMiddle", "TestLast"}, {"TestOtherA", "TestOtherB", "TestOtherC"}}
-	wantLines := [][]int{{3, 5, 7, 9}, {4, 6, 8}}
+	wantNames := [][]string{{"TestZulu", "TestAlpha", "TestMiddle", "TestLast", "TestTail"}, {"TestOtherA", "TestOtherB", "TestOtherC", "TestOtherD"}}
+	wantLines := [][]int{{3, 5, 7, 9, 11}, {4, 6, 8, 10}}
 	if len(got) != len(wantNames) {
 		t.Fatalf("groups = %#v, want two complete groups", got)
 	}
@@ -91,7 +93,7 @@ func TestDuplicateTestBodyNormalization(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			source := duplicateTestSource("testing", "Test", "*testing.T", []string{tc.first, tc.first, tc.third})
+			source := duplicateTestSource("testing", "Test", "*testing.T", []string{tc.first, tc.first, tc.first, tc.third})
 			unit := parseOne(t, "sample_test.go", source)
 			got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{})
 			if len(got) != tc.groups {
@@ -107,17 +109,19 @@ func TestDuplicateTestBodyDiscovery(t *testing.T) {
 		name, path, imported, prefix, param string
 		count, groups                       int
 	}{
-		{"tests", "sample_test.go", "testing", "Test", "*testing.T", 3, 1},
-		{"aliased import", "sample_test.go", `testlib "testing"`, "Test", "*testlib.T", 3, 1},
-		{"dot import", "sample_test.go", `. "testing"`, "Test", "*T", 3, 1},
+		{"tests", "sample_test.go", "testing", "Test", "*testing.T", 4, 1},
+		{"aliased import", "sample_test.go", `testlib "testing"`, "Test", "*testlib.T", 4, 1},
+		{"dot import", "sample_test.go", `. "testing"`, "Test", "*T", 4, 1},
 		{"pair", "sample_test.go", "testing", "Test", "*testing.T", 2, 0},
-		{"production file", "sample.go", "testing", "Test", "*testing.T", 3, 0},
-		{"benchmarks", "sample_test.go", "testing", "Benchmark", "*testing.B", 3, 0},
-		{"fuzz targets", "sample_test.go", "testing", "Fuzz", "*testing.F", 3, 0},
-		{"main signature", "sample_test.go", "testing", "TestMain", "*testing.M", 3, 0},
-		{"lowercase suffix", "sample_test.go", "testing", "Testhelper", "*testing.T", 3, 0},
-		{"wrong package", "sample_test.go", "other", "Test", "*other.T", 3, 0},
-		{"methods", "sample_test.go", "testing", "(s *suite) Test", "*testing.T", 3, 0},
+		{"triple", "sample_test.go", "testing", "Test", "*testing.T", 3, 0},
+		{"five tests", "sample_test.go", "testing", "Test", "*testing.T", 5, 1},
+		{"production file", "sample.go", "testing", "Test", "*testing.T", 4, 0},
+		{"benchmarks", "sample_test.go", "testing", "Benchmark", "*testing.B", 4, 0},
+		{"fuzz targets", "sample_test.go", "testing", "Fuzz", "*testing.F", 4, 0},
+		{"main signature", "sample_test.go", "testing", "TestMain", "*testing.M", 4, 0},
+		{"lowercase suffix", "sample_test.go", "testing", "Testhelper", "*testing.T", 4, 0},
+		{"wrong package", "sample_test.go", "other", "Test", "*other.T", 4, 0},
+		{"methods", "sample_test.go", "testing", "(s *suite) Test", "*testing.T", 4, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -160,7 +164,7 @@ func TestDuplicateTestBodyCaseLoops(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			unit := parseOne(t, "loops_test.go", duplicateTestSource("testing", "Test", "*testing.T", []string{tc.body, tc.body, tc.body}))
+			unit := parseOne(t, "loops_test.go", duplicateTestSource("testing", "Test", "*testing.T", []string{tc.body, tc.body, tc.body, tc.body}))
 			if got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{}); len(got) != tc.groups {
 				t.Fatalf("groups = %#v, want %d", got, tc.groups)
 			}
@@ -191,7 +195,7 @@ func TestDuplicateTestBodyTableBindings(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			source := duplicateTestSource("testing", "Test", "*testing.T", []string{tc.body, tc.body, tc.body})
+			source := duplicateTestSource("testing", "Test", "*testing.T", []string{tc.body, tc.body, tc.body, tc.body})
 			source += tc.declarations + "\n"
 			unit := parseOne(t, "tables_test.go", source)
 			if got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{}); len(got) != tc.groups {
@@ -205,6 +209,7 @@ func TestDuplicateTestBodyTableBindings(t *testing.T) {
 func TestDuplicateTestBodyOptIn(t *testing.T) {
 	unit := parseOne(t, "opt_in_test.go", duplicateTestSource("testing", "Test", "*testing.T", []string{
 		"got := parse(1); check(got)", "got := parse(2); check(got)", "got := parse(3); check(got)",
+		"got := parse(4); check(got)",
 	}))
 	const id = "test-quality.duplicate-test-body"
 	for _, enabled := range []bool{false, true} {

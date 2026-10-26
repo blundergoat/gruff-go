@@ -1164,7 +1164,7 @@
           {
             "id": "test-quality.duplicate-test-body",
             "title": "Duplicate test body",
-            "description": "Groups three or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values.",
+            "description": "Groups four or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values.",
             "pillar": "test-quality",
             "severity": "advisory",
             "confidence": "low",

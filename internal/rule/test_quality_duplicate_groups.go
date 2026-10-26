@@ -21,7 +21,7 @@ func (DuplicateTestBodyRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.duplicate-test-body",
 		Title:          "Duplicate test body",
-		Description:    "Groups three or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values.",
+		Description:    "Groups four or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values.",
 		Pillar:         finding.PillarTestQuality,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceLow,
@@ -57,12 +57,15 @@ func (DuplicateTestBodyRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 	}
 	var findings []finding.Finding
 	for _, key := range order {
-		if len(groups[key]) >= 3 {
+		if len(groups[key]) >= duplicateTestMinimumGroupSize {
 			findings = append(findings, duplicateTestGroupFinding(unit, groups[key]))
 		}
 	}
 	return findings
 }
+
+// duplicateTestMinimumGroupSize applies section 16's Go floor before suggesting a shared case loop.
+const duplicateTestMinimumGroupSize = 4
 
 // duplicateTestMinimumStatements is section 16's Go member minimum: a Go check is a two-statement
 // call-and-compare, so a one- to three-statement test is one named case whose table form reads no better.

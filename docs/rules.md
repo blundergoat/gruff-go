@@ -92,7 +92,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`size.file-length`](#sizefile-length) | size | error | parser | `maxLines: 1000` | Files exceeding the substantive line-count threshold. |
 | [`size.function-length`](#sizefunction-length) | size | warning | parser | `maxLines: 80` | Functions exceeding the code-line threshold. |
 | [`size.parameter-count`](#sizeparameter-count) | size | advisory | parser | `maxParameters: 8` | Functions whose parameter list exceeds the threshold. |
-| [`test-quality.duplicate-test-body`](#test-qualityduplicate-test-body) | test-quality | advisory | parser | - | Opt-in groups of three or more tests with matching bodies after literal normalization. |
+| [`test-quality.duplicate-test-body`](#test-qualityduplicate-test-body) | test-quality | advisory | parser | - | Opt-in groups of four or more tests with matching bodies after literal normalization. |
 | [`test-quality.empty-test`](#test-qualityempty-test) | test-quality | advisory | parser | - | Empty runnable tests, including a sole `testing.T.Parallel()` call. |
 | [`test-quality.fatal-in-goroutine`](#test-qualityfatal-in-goroutine) | test-quality | advisory | parser | - | `t.Fatal`, `t.Fatalf`, and `t.FailNow` calls inside goroutines. |
 | [`test-quality.helper-missing-t-helper`](#test-qualityhelper-missing-t-helper) | test-quality | advisory | parser | - | Failing test helpers that never call `t.Helper()`. |
@@ -1382,7 +1382,7 @@ Flags functions and methods whose parameter list exceeds the threshold (the meth
 - **Capability:** parser
 - **Tags:** `tests`
 
-Groups three or more runnable top-level `Test` functions in the same `_test.go` file when their bodies contain at least four statements, the contracted Go minimum, and match after literal normalization. Each complete group emits one finding at its first member, with every member's name, line and column in the message and metadata. Pairs, benchmarks, fuzz targets, methods and non-runnable helpers are excluded.
+Groups four or more runnable top-level `Test` functions in the same `_test.go` file when their bodies contain at least four statements, the contracted Go minimum, and match after literal normalization. Each complete group emits one finding at its first member, with every member's name, line and column in the message and metadata. Pairs, triples, benchmarks, fuzz targets, methods and non-runnable helpers are excluded.
 
 Names, calls, operators and statement order remain significant. Literal kinds remain distinct. Strings containing ASCII whitespace retain their decoded values, as do literals anywhere inside a map or struct key, index or slice bound, or a type declared in the test body, such as a struct tag or array length. Other literal values, including those of local constants and variables, normalize by kind. Comments and formatting do not affect grouping.
 

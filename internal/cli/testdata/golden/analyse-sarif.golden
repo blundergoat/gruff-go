@@ -2036,7 +2036,7 @@
                 "text": "Duplicate test body"
               },
               "fullDescription": {
-                "text": "Groups three or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values."
+                "text": "Groups four or more runnable tests in one file whose multi-statement bodies differ only in eligible literal values."
               },
               "help": {
                 "text": "Go table-driven case loop: put the varying inputs and expected values in a case table, then run the shared assertions for each named case with t.Run."
