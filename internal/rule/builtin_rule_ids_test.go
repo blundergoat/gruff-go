@@ -125,6 +125,7 @@ func defaultRuleIDsSecurityOnward() []string {
 		"size.file-length",
 		"size.function-length",
 		"size.parameter-count",
+		"test-quality.duplicate-test-body",
 		"test-quality.empty-test",
 		"test-quality.fatal-in-goroutine",
 		"test-quality.helper-missing-t-helper",
@@ -168,6 +169,7 @@ func defaultDisabledRuleIDs() map[string]bool {
 		"naming.receiver-consistency":                 true,
 		"sensitive-data.phi-pattern":                  true,
 		"sensitive-data.pii-pattern":                  true,
+		"test-quality.duplicate-test-body":            true,
 		"test-quality.static-analysis-redundant-test": true,
 	}
 }
