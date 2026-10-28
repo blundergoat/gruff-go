@@ -232,13 +232,13 @@ rules:
 // ADR-010's preservation contract: a project that has tuned minimumSeverity
 // (e.g. set `analyse: error` for stricter CI gating) must keep that block
 // across `init --force`. The check passes only if Render's
-// preservedMinimumSeverityFor consulted opts.Existing.MinimumSeverity instead
-// of always emitting DefaultFailThresholdFor.
-func TestInitForcePreservesMinimumSeverityBlock(t *testing.T) {
+// preservedFailOnFor consulted opts.Existing.FailOn instead of always emitting
+// DefaultFailThresholdFor.
+func TestInitForcePreservesFailOnBlock(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	tuned := `schemaVersion: "gruff-go.config.v0.1"
-minimumSeverity:
+failOn:
   analyse: error
   summary: error
   report: warning
@@ -264,18 +264,18 @@ minimumSeverity:
 		"dashboard: advisory",
 	} {
 		if !strings.Contains(rendered, want) {
-			t.Fatalf("init --force lost preserved minimumSeverity entry %q\nrendered:\n%s", want, rendered)
+			t.Fatalf("init --force lost preserved failOn entry %q\nrendered:\n%s", want, rendered)
 		}
 	}
-	if !strings.Contains(stderr.String(), "minimumSeverity entries") {
-		t.Fatalf("stderr should mention preserved minimumSeverity count: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "failOn entries") {
+		t.Fatalf("stderr should mention preserved failOn count: %s", stderr.String())
 	}
 	cfg, err := cfgpkg.Parse(body, ruleDefinitionsForTest())
 	if err != nil {
 		t.Fatalf("merged config did not parse back: %v\nbody:\n%s", err, body)
 	}
-	if cfg.MinimumSeverity["analyse"] != "error" || cfg.MinimumSeverity["dashboard"] != "advisory" {
-		t.Fatalf("round-trip lost MinimumSeverity entries: %#v", cfg.MinimumSeverity)
+	if cfg.FailOn["analyse"] != "error" || cfg.FailOn["dashboard"] != "advisory" {
+		t.Fatalf("round-trip lost FailOn entries: %#v", cfg.FailOn)
 	}
 }
 

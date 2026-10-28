@@ -117,7 +117,7 @@ func (OpenRedirectRule) Definition() Definition {
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"http", "redirect", "security"},
 		Remediation:    "Validate redirect targets against an allowlist or require a relative path before redirecting request-derived destinations.",
 	}
@@ -157,6 +157,10 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			requestSource, isRequestControlled := requestScope.exprHasRequest(redirectTarget, candidateCall.Pos())
 			// Fixed destinations do not create an open-redirect warning for the user.
 			if !isRequestControlled {
+				return true
+			}
+			// An HTTPS upgrade of this request's host does not accept a new destination.
+			if redirectIsHTTPSUpgrade(unit.AST, requestScope, redirectTarget, candidateCall.Pos()) {
 				return true
 			}
 			fixedPrefix, hasFixedPrefix := leftmostStringLiteral(redirectTarget)
@@ -270,6 +274,134 @@ func leftmostStringLiteral(targetExpression ast.Expr) (string, bool) {
 		return stringLiteral(targetSyntax)
 	}
 	return "", false
+}
+
+// redirectIsHTTPSUpgrade accepts only a fixed HTTPS scheme, the current request's
+// host, and its escaped request URI. Submitted host or path values stay candidates.
+// A write to the request before the sink keeps the finding; writes made inside a
+// closure, a called function or through another name for the request are not seen.
+func redirectIsHTTPSUpgrade(file *ast.File, scope *requestTaintScope, target ast.Expr, sinkPosition token.Pos) bool {
+	target = redirectAssignedTarget(scope.body, target, sinkPosition)
+	host, uri := redirectHTTPSParts(target)
+	uriCall, ok := uri.(*ast.CallExpr)
+	if !ok || len(uriCall.Args) != 0 {
+		return false
+	}
+	request, members := flattenChain(uriCall.Fun)
+	if !scope.isRequestIdentifier(request) || strings.Join(members, ".") != "URL.RequestURI" {
+		return false
+	}
+	if helper, ok := host.(*ast.CallExpr); ok {
+		if len(helper.Args) != 1 || !redirectHelperPreservesHost(file, helper) {
+			return false
+		}
+		host = helper.Args[0]
+	}
+	hostRequest, hostMembers := flattenChain(host)
+	return identifiersShareBinding(request, hostRequest) && strings.Join(hostMembers, ".") == "Host" &&
+		!anyNameAssignedBetween(scope.body, map[string]bool{request.Name: true}, scope.body.Pos(), sinkPosition)
+}
+
+// redirectAssignedTarget follows one unchanged local assignment. Reassignment
+// keeps the finding because the original destination no longer proves the sink.
+func redirectAssignedTarget(body *ast.BlockStmt, target ast.Expr, sinkPosition token.Pos) ast.Expr {
+	target = unwrapRequestExprParens(target)
+	if identifier, ok := target.(*ast.Ident); ok && identifier.Obj != nil {
+		assignment, ok := identifier.Obj.Decl.(*ast.AssignStmt)
+		if !ok || assignment.End() >= sinkPosition ||
+			anyNameAssignedBetween(body, map[string]bool{identifier.Name: true}, assignment.End(), sinkPosition) {
+			return nil
+		}
+		var assigned bool
+		target, assigned = replacementValueFor(assignment, identifier.Obj)
+		if !assigned {
+			return nil
+		}
+	}
+	return target
+}
+
+// redirectHTTPSParts separates an exact three-part HTTPS target; extra inputs
+// could change the destination and are deliberately left unrecognised.
+func redirectHTTPSParts(target ast.Expr) (ast.Expr, ast.Expr) {
+	outer, ok := unwrapRequestExprParens(target).(*ast.BinaryExpr)
+	if !ok || outer.Op != token.ADD {
+		return nil, nil
+	}
+	prefix, ok := unwrapRequestExprParens(outer.X).(*ast.BinaryExpr)
+	if !ok || prefix.Op != token.ADD {
+		return nil, nil
+	}
+	scheme, literal := stringLiteral(prefix.X)
+	if !literal || scheme != "https://" {
+		return nil, nil
+	}
+	return unwrapRequestExprParens(prefix.Y), unwrapRequestExprParens(outer.Y)
+}
+
+// redirectHelperPreservesHost recognises the observed SplitHostPort/JoinHostPort
+// helper by its complete body, rather than trusting a helper's name.
+func redirectHelperPreservesHost(file *ast.File, call *ast.CallExpr) bool {
+	name, ok := call.Fun.(*ast.Ident)
+	if !ok || name.Obj == nil {
+		return false
+	}
+	function, ok := name.Obj.Decl.(*ast.FuncDecl)
+	if !ok || function.Recv != nil || function.Body == nil || len(function.Body.List) != 3 ||
+		function.Type.Params == nil || len(function.Type.Params.List) != 1 || len(function.Type.Params.List[0].Names) != 1 {
+		return false
+	}
+	netPackages := packageImportNames(file, "net", "net")
+	parameter, host, errName, ok := redirectSplitHostPort(function, netPackages)
+	return ok && redirectPortFallback(function.Body.List[1], parameter, errName) &&
+		redirectJoinedHost(function.Body.List[2], host, netPackages)
+}
+
+// redirectSplitHostPort links the helper's request host to net.SplitHostPort's
+// host and error results, so a different input cannot inherit this exemption.
+func redirectSplitHostPort(function *ast.FuncDecl, netPackages map[string]bool) (*ast.Ident, *ast.Ident, *ast.Ident, bool) {
+	parameter := function.Type.Params.List[0].Names[0]
+	split, ok := function.Body.List[0].(*ast.AssignStmt)
+	if !ok || split.Tok != token.DEFINE || len(split.Lhs) != 3 || len(split.Rhs) != 1 {
+		return nil, nil, nil, false
+	}
+	splitCall, ok := split.Rhs[0].(*ast.CallExpr)
+	if !ok || !selectorCallMatches(splitCall, netPackages, "SplitHostPort") || len(splitCall.Args) != 1 ||
+		!identifierBinds(splitCall.Args[0], parameter.Obj) {
+		return nil, nil, nil, false
+	}
+	host, hostOK := split.Lhs[0].(*ast.Ident)
+	errName, errOK := split.Lhs[2].(*ast.Ident)
+	return parameter, host, errName, hostOK && errOK
+}
+
+// redirectPortFallback requires the split error to return the original host.
+func redirectPortFallback(statement ast.Stmt, parameter, errName *ast.Ident) bool {
+	guard, ok := statement.(*ast.IfStmt)
+	if !ok || guard.Init != nil || guard.Else != nil || len(guard.Body.List) != 1 {
+		return false
+	}
+	condition, ok := guard.Cond.(*ast.BinaryExpr)
+	if !ok || condition.Op != token.NEQ || !identifierBinds(condition.X, errName.Obj) || !isNilIdentifier(condition.Y) {
+		return false
+	}
+	fallback, ok := guard.Body.List[0].(*ast.ReturnStmt)
+	return ok && len(fallback.Results) == 1 && identifierBinds(fallback.Results[0], parameter.Obj)
+}
+
+// redirectJoinedHost accepts only the split host with the fixed HTTPS port.
+func redirectJoinedHost(statement ast.Stmt, host *ast.Ident, netPackages map[string]bool) bool {
+	returned, ok := statement.(*ast.ReturnStmt)
+	if !ok || len(returned.Results) != 1 {
+		return false
+	}
+	joined, ok := returned.Results[0].(*ast.CallExpr)
+	if !ok || !selectorCallMatches(joined, netPackages, "JoinHostPort") || len(joined.Args) != 2 ||
+		!identifierBinds(joined.Args[0], host.Obj) {
+		return false
+	}
+	port, literal := stringLiteral(joined.Args[1])
+	return literal && port == "443"
 }
 
 // isSafeRelativePrefix requires a literal path segment before submitted text.

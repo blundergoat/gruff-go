@@ -222,6 +222,61 @@ func ExportedTestHelper() {}
 	}
 }
 
+// TestGenericMethodsCarryTheirBaseTypeSymbol pins the generic-receiver correction that rides the 0.6.0 identity break:
+// an exported generic type's undocumented methods are reported, an unexported generic type's are not, and a finding
+// inside a generic method names it `Stack.Deep`, the same symbol a plain receiver's method has always carried.
+func TestGenericMethodsCarryTheirBaseTypeSymbol(t *testing.T) {
+	unit := parseOne(t, "stack.go", `package sample
+
+// Stack is a generic stack.
+type Stack[T any] struct{ items []T }
+
+// Pair is a generic pair.
+type Pair[K comparable, V any] struct{ key K }
+
+type stack[T any] struct{}
+
+func (s *Stack[T]) Push(item T) {}
+
+func (p Pair[K, V]) Key() K { return p.key }
+
+func (s *stack[T]) Hidden() {}
+
+func (s *Stack[T]) Deep(a, b, c bool) {
+	if a {
+		if b {
+			if c {
+				for i := 0; i < 10; i++ {
+					if i > 0 {
+						if i < 5 {
+							_ = i
+						}
+					}
+				}
+			}
+		}
+	}
+}
+`)
+	got := map[string]bool{}
+	for _, f := range (ExportedSymbolCommentRule{}).AnalyzeUnit(unit, Context{}) {
+		got[f.Symbol] = true
+	}
+	for _, name := range []string{"Stack.Push", "Pair.Key", "Stack.Deep"} {
+		if !got[name] {
+			t.Fatalf("exported-symbol findings = %v, missing %s", got, name)
+		}
+	}
+	if got["stack.Hidden"] || got["Hidden"] || got["Push"] {
+		t.Fatalf("exported-symbol findings = %v, want no unexported or bare generic symbol", got)
+	}
+
+	nesting := NestingDepthRule{}.AnalyzeUnit(unit, Context{})
+	if len(nesting) != 1 || nesting[0].Symbol != "Stack.Deep" {
+		t.Fatalf("nesting findings = %#v, want one finding on Stack.Deep", nesting)
+	}
+}
+
 // TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages=true option, asserting an internal/service export is silenced while a public pkg/api export still surfaces.
 func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
@@ -275,6 +330,57 @@ func VisibleInsideModule() {}
 	}
 }
 
+// TestExportedSymbolCommentRuleInternalPackagesCoverGenericCallables confirms that
+// ignoreInternalPackages=false reports undocumented exported generic functions and
+// methods on generic receivers under internal/, and that the default still skips them.
+func TestExportedSymbolCommentRuleInternalPackagesCoverGenericCallables(t *testing.T) {
+	unit := parseOne(t, "internal/service/service.go", `package service
+
+// Box holds one value of any type.
+type Box[T any] struct{ value T }
+
+func (b *Box[T]) Get() T { return b.value }
+
+// Pair groups a key type with a value type.
+type Pair[K comparable, V any] struct{}
+
+func (Pair[K, V]) Len() int { return 0 }
+
+func Map[T any](items []T) []T { return items }
+`)
+	for _, tc := range []struct {
+		ignoreInternal bool
+		want           []string
+	}{
+		{ignoreInternal: true, want: nil},
+		{ignoreInternal: false, want: []string{"Box.Get", "Pair.Len", "Map"}},
+	} {
+		registry, err := DefaultsConfigured(Config{
+			Enabled: map[string]bool{"docs.exported-symbol-comment": true, "docs.package-comment": false},
+			Options: map[string]map[string]any{
+				"docs.exported-symbol-comment": {"ignoreInternalPackages": tc.ignoreInternal},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, f := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+			if f.RuleID == "docs.exported-symbol-comment" {
+				got[f.Symbol] = true
+			}
+		}
+		if len(got) != len(tc.want) {
+			t.Fatalf("ignoreInternalPackages=%v: symbols = %v, want %v", tc.ignoreInternal, got, tc.want)
+		}
+		for _, symbol := range tc.want {
+			if !got[symbol] {
+				t.Fatalf("ignoreInternalPackages=%v: symbols = %v, missing %s", tc.ignoreInternal, got, symbol)
+			}
+		}
+	}
+}
+
 // containsRuleID reports whether any finding in the slice has the given rule ID.
 func containsRuleID(findings []finding.Finding, id string) bool {
 	for _, f := range findings {
@@ -283,4 +389,93 @@ func containsRuleID(findings []finding.Finding, id string) bool {
 		}
 	}
 	return false
+}
+
+// exportedFuncMessages runs docs.exported-symbol-comment over src and maps each finding's symbol to its message.
+func exportedFuncMessages(t *testing.T, src string) map[string]string {
+	t.Helper()
+	messages := map[string]string{}
+	for _, f := range (ExportedSymbolCommentRule{}).AnalyzeUnit(parseOne(t, "sample.go", src), Context{}) {
+		messages[f.Symbol] = f.Message
+	}
+	return messages
+}
+
+// assertExportedFuncMessages fails the test when the findings differ from want, symbol by symbol.
+func assertExportedFuncMessages(t *testing.T, got map[string]string, want map[string]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Errorf("messages = %#v, want %d symbols", got, len(want))
+	}
+	for symbol, message := range want {
+		if got[symbol] != message {
+			t.Errorf("message for %s = %q, want %q", symbol, got[symbol], message)
+		}
+	}
+}
+
+// TestExportedFuncMessageNamesEachParameter pins that the default-on message names every parameter of an
+// undocumented callable, skipping blank parameters and context, HTTP and testing handles.
+func TestExportedFuncMessageNamesEachParameter(t *testing.T) {
+	got := exportedFuncMessages(t, `package sample
+
+import (
+	"context"
+	"net/http"
+	"testing"
+)
+
+func Bare() {}
+
+func One(name string) {}
+
+func Handler(ctx context.Context, w http.ResponseWriter, r *http.Request, _ int, user, role string) {}
+
+func Check(t *testing.T) {}
+`)
+	assertExportedFuncMessages(t, got, map[string]string{
+		"Bare":    `exported function "Bare" has no doc comment`,
+		"One":     `exported function "One" has no doc comment; describe parameter "name"`,
+		"Handler": `exported function "Handler" has no doc comment; describe parameters "user", "role"`,
+		"Check":   `exported function "Check" has no doc comment`,
+	})
+}
+
+// TestExportedFuncMessageAsksForReturnValueOnlyWhenOneExists pins that the message asks for the returned
+// value(s) only when the signature has a non-error result.
+func TestExportedFuncMessageAsksForReturnValueOnlyWhenOneExists(t *testing.T) {
+	got := exportedFuncMessages(t, `package sample
+
+// Store holds items.
+type Store struct{}
+
+func (Store) Size() int { return 0 }
+
+func Pair() (int, int) { return 0, 0 }
+
+func Reset() {}
+`)
+	assertExportedFuncMessages(t, got, map[string]string{
+		"Store.Size": `exported method "Size" has no doc comment; describe the returned value`,
+		"Pair":       `exported function "Pair" has no doc comment; describe the returned values`,
+		"Reset":      `exported function "Reset" has no doc comment`,
+	})
+}
+
+// TestExportedFuncMessageAsksForErrorsOnlyWhenCallableCanFail pins that the message asks when an error is
+// returned only when a result has the type error.
+func TestExportedFuncMessageAsksForErrorsOnlyWhenCallableCanFail(t *testing.T) {
+	got := exportedFuncMessages(t, `package sample
+
+func Close() error { return nil }
+
+func Load(path string) (string, error) { return "", nil }
+
+func Count(items []string) int { return len(items) }
+`)
+	assertExportedFuncMessages(t, got, map[string]string{
+		"Close": `exported function "Close" has no doc comment; say when an error is returned`,
+		"Load":  `exported function "Load" has no doc comment; describe parameter "path"; describe the returned value; say when an error is returned`,
+		"Count": `exported function "Count" has no doc comment; describe parameter "items"; describe the returned value`,
+	})
 }

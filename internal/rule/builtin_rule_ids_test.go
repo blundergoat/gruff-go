@@ -2,6 +2,39 @@
 // Keeping the long sorted lists here keeps builtin_test.go within the size budget.
 package rule
 
+import (
+	"testing"
+
+	"github.com/blundergoat/gruff-go/internal/parser"
+)
+
+// TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch covers both catalogue
+// membership and runtime execution on code each retired detector reported.
+func TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch(t *testing.T) {
+	retired := map[string]bool{
+		"naming.negated-boolean":       true,
+		"test-quality.no-failure-path": true,
+		"test-quality.skipped-test":    true,
+	}
+	registry := Defaults()
+	for _, definition := range registry.Definitions() {
+		if retired[definition.ID] {
+			t.Errorf("retired rule %s remains in the catalogue", definition.ID)
+		}
+	}
+	unit := parseOne(t, "pkg/retirement_test.go", `package sample
+import "testing"
+type Settings struct { DisableCache bool }
+func TestSkipped(t *testing.T) { t.Skip("later") }
+func TestLogging(t *testing.T) { t.Log("running") }
+`)
+	for _, item := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+		if retired[item.RuleID] {
+			t.Errorf("retired rule %s still emits a finding", item.RuleID)
+		}
+	}
+}
+
 // defaultRuleIDs returns the sorted built-in rule IDs expected from Defaults.
 // The catalogue is split into two halves at the security pillar boundary so each
 // helper stays within the function-length threshold.
@@ -28,6 +61,8 @@ func defaultRuleIDsThroughNaming() []string {
 		"docs.comment-rubric",
 		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
+		"docs.missing-param-doc",
+		"docs.missing-return-doc",
 		"docs.package-comment",
 		"docs.suppression-without-rationale",
 		"maintainability.context-todo-production",
@@ -42,7 +77,6 @@ func defaultRuleIDsThroughNaming() []string {
 		"naming.get-prefix",
 		"naming.identifier-quality",
 		"naming.misspelling",
-		"naming.negated-boolean",
 		"naming.package-stutter",
 		"naming.package-underscore",
 		"naming.receiver-consistency",
@@ -67,9 +101,7 @@ func defaultRuleIDsSecurityOnward() []string {
 		"security.permissive-file-mode",
 		"security.request-body-without-limit",
 		"security.request-controlled-url",
-		"security.sensitive-data-logging",
 		"security.shell-command",
-		"security.sql-string-query",
 		"security.template-injection-xss",
 		"security.tls-insecure-config",
 		"security.unsafe-deserialization",
@@ -82,7 +114,6 @@ func defaultRuleIDsSecurityOnward() []string {
 		"sensitive-data.github-token",
 		"sensitive-data.gitlab-token",
 		"sensitive-data.google-api-key",
-		"sensitive-data.high-entropy-string",
 		"sensitive-data.jwt-token",
 		"sensitive-data.npm-token",
 		"sensitive-data.phi-pattern",
@@ -94,12 +125,11 @@ func defaultRuleIDsSecurityOnward() []string {
 		"size.file-length",
 		"size.function-length",
 		"size.parameter-count",
+		"test-quality.duplicate-test-body",
 		"test-quality.empty-test",
 		"test-quality.fatal-in-goroutine",
 		"test-quality.helper-missing-t-helper",
-		"test-quality.no-failure-path",
 		"test-quality.parallel-range-capture",
-		"test-quality.skipped-test",
 		"test-quality.sleep-in-test",
 		"test-quality.static-analysis-redundant-test",
 		"test-quality.tempdir-misuse",
@@ -109,7 +139,25 @@ func defaultRuleIDsSecurityOnward() []string {
 // defaultDisabledRuleIDs returns rules that ship opt-in because they enforce
 // house-style conventions or candidate checks that still need calibration.
 func defaultDisabledRuleIDs() map[string]bool {
+	// Precision-floor M19 added seven rules on 2026-10-04: each was right less than half the time
+	// on fewer than ten findings, so it is off by default rather than deleted (ADR-021).
 	return map[string]bool{
+		// Precision-floor M14 turned it off on 2026-10-09: after its repair its upper band was right on 23 of 40.
+		"complexity.cyclomatic":           true,
+		"dependency.go-mod-local-replace": true,
+		// Precision-floor M13 builds the parameter- and return-prose rules off by default until their own measurement passes.
+		"docs.missing-param-doc":          true,
+		"docs.missing-return-doc":         true,
+		"security.insecure-random-secret": true,
+		// Precision-floor M02 turned it off on 2026-10-14: fewer than ten findings remain after its repair.
+		"security.open-redirect-candidate": true,
+		// Precision-floor M02 turned it off on 2026-10-14: fewer than ten findings remain after its repair.
+		"security.request-body-without-limit":         true,
+		"sensitive-data.aws-access-key":               true,
+		"sensitive-data.connection-string":            true,
+		"sensitive-data.gcp-service-account":          true,
+		"sensitive-data.github-token":                 true,
+		"sensitive-data.google-api-key":               true,
 		"dead-code.unused-private-const":              true,
 		"dead-code.unused-private-type":               true,
 		"dead-code.unused-private-var":                true,
@@ -119,7 +167,6 @@ func defaultDisabledRuleIDs() map[string]bool {
 		"naming.package-stutter":                      true,
 		"naming.package-underscore":                   true,
 		"naming.receiver-consistency":                 true,
-		"sensitive-data.high-entropy-string":          true,
 		"sensitive-data.phi-pattern":                  true,
 		"sensitive-data.pii-pattern":                  true,
 		"test-quality.static-analysis-redundant-test": true,

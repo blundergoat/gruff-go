@@ -260,6 +260,77 @@ func Missing() {}
 	}
 }
 
+// TestCommentRubricRuleRequireFunctionCommentsCoversEveryDeclaration confirms that
+// requireFunctionComments, with no includePaths configured, reports every undocumented
+// top-level function and method declaration: unexported names, methods on unexported
+// types, generic receivers and generic functions, under internal/ and public paths alike.
+func TestCommentRubricRuleRequireFunctionCommentsCoversEveryDeclaration(t *testing.T) {
+	source := `package helper
+
+func Exported() {}
+
+func unexported() {}
+
+type Service struct{}
+
+func (Service) Value() {}
+
+func (s *Service) pointer() {}
+
+type hidden struct{}
+
+func (hidden) Exported() {}
+
+func (*hidden) unexported() {}
+
+type Box[T any] struct{ value T }
+
+func (b *Box[T]) Get() T { return b.value }
+
+func (b Box[T]) peek() T { return b.value }
+
+type Pair[K comparable, V any] struct{}
+
+func (Pair[K, V]) Len() int { return 0 }
+
+func Map[T any](items []T) []T { return items }
+
+type Stack[T any] struct{}
+
+// Push adds an item to the top of the stack.
+func (s *Stack[T]) Push(item T) {}
+`
+	registry, err := DefaultsConfigured(Config{
+		Options: map[string]map[string]any{
+			"docs.comment-rubric": {"requireFunctionComments": true},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"Exported", "unexported", "Service.Value", "Service.pointer", "hidden.Exported",
+		"hidden.unexported", "Box.Get", "Box.peek", "Pair.Len", "Map",
+	}
+	for _, path := range []string{"internal/helper/helper.go", "pkg/helper/helper.go"} {
+		unit := parseOne(t, path, source)
+		got := map[string]bool{}
+		for _, item := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+			if item.RuleID == "docs.comment-rubric" {
+				got[item.Symbol] = true
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s: comment-rubric symbols = %v, want %v", path, got, want)
+		}
+		for _, symbol := range want {
+			if !got[symbol] {
+				t.Fatalf("%s: comment-rubric symbols = %v, missing %s", path, got, symbol)
+			}
+		}
+	}
+}
+
 // findingSymbols collects finding symbols into a set keyed by symbol name.
 func findingSymbols(findings []finding.Finding) map[string]bool {
 	out := map[string]bool{}

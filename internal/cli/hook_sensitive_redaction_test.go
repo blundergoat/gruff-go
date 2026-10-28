@@ -7,24 +7,22 @@ import (
 	"testing"
 )
 
-// TestHookSensitivePreviewPolicy covers all six preview-construction routes at
-// empty, nonmatching, and matching authorization states.
+// TestHookSensitivePreviewPolicy covers all six preview-construction routes under the one unconditional policy.
+//
+// The three authorization states this used to sweep no longer exist: section 5 removed the key that varied them, so
+// what remains to prove is that each route emits its approved marker and no route leaks a reusable fragment.
 func TestHookSensitivePreviewPolicy(t *testing.T) {
 	states := []struct {
-		name      string
-		allowlist []string
-		allowed   bool
+		name string
 	}{
-		{name: "empty"},
-		{name: "nonmatching", allowlist: []string{"other/**"}},
-		{name: "matching", allowlist: []string{"secrets/**"}, allowed: true},
+		{name: "unconditional"},
 	}
 
 	for _, state := range states {
 		t.Run(state.name, func(t *testing.T) {
 			root := t.TempDir()
 			sourceBody, forbidden := hookSensitiveFixture()
-			writeFile(t, root, ".gruff-go.yaml", hookSensitiveConfig(state.allowlist))
+			writeFile(t, root, ".gruff-go.yaml", hookSensitiveConfig())
 			writeFile(t, root, "secrets/all.env", sourceBody)
 			t.Chdir(root)
 
@@ -32,7 +30,7 @@ func TestHookSensitivePreviewPolicy(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("hook exit = %d, want advisory exit 0", code)
 			}
-			assertHookSensitiveMarkers(t, payload.Findings, state.allowed)
+			assertHookSensitiveMarkers(t, payload.Findings)
 			encoded, err := json.Marshal(payload)
 			if err != nil {
 				t.Fatal(err)
@@ -46,18 +44,14 @@ func TestHookSensitivePreviewPolicy(t *testing.T) {
 	}
 }
 
-// hookSensitiveConfig enables the opt-in routes and renders one preview list.
-func hookSensitiveConfig(allowlist []string) string {
-	preview := "  secretPreviews: []\n"
-	if len(allowlist) > 0 {
-		preview = "  secretPreviews:\n"
-		for _, pattern := range allowlist {
-			preview += "    - \"" + pattern + "\"\n"
-		}
-	}
-	return "schemaVersion: gruff-go.config.v0.1\nallowlists:\n" + preview +
-		"rules:\n" +
-		"  sensitive-data.high-entropy-string:\n    enabled: true\n" +
+// hookSensitiveConfig enables the opt-in routes the fixture needs.
+func hookSensitiveConfig() string {
+	return "schemaVersion: gruff-go.config.v0.1\nrules:\n" +
+		"  sensitive-data.aws-access-key:\n    enabled: true\n" +
+		"  sensitive-data.connection-string:\n    enabled: true\n" +
+		"  sensitive-data.gcp-service-account:\n    enabled: true\n" +
+		"  sensitive-data.github-token:\n    enabled: true\n" +
+		"  sensitive-data.google-api-key:\n    enabled: true\n" +
 		"  sensitive-data.pii-pattern:\n    enabled: true\n" +
 		"  sensitive-data.phi-pattern:\n    enabled: true\n"
 }
@@ -70,7 +64,6 @@ func hookSensitiveFixture() (string, []string) {
 	password := "db-pass-" + strings.Repeat("R8", 8)
 	connection := "postgres" + "://app:" + password + "@db.internal:5432/orders"
 	privateKey := "-----BEGIN " + "RSA PRIVATE KEY-----"
-	entropy := "Zx9KqW2mB7vN4pL8dT3r" + "YcF1gHjS0aQwE4tU7iO5n"
 	email := "audit.person" + "@" + "realcorp.co"
 	ssn := "536-90-4399"
 	lines := []string{
@@ -79,19 +72,18 @@ func hookSensitiveFixture() (string, []string) {
 		"database = \"" + connection + "\"",
 		"\"type\": \"service_account\"",
 		"\"private_key\": \"" + privateKey + "\"",
-		"entropy = \"" + entropy + "\"",
 		"email = \"" + email + "\"",
 		"ssn = \"" + ssn + "\"",
 	}
 	forbidden := []string{privateKey, privateKey[:6]}
-	for _, secret := range []string{generic, aws, password, entropy, email, ssn} {
+	for _, secret := range []string{generic, aws, password, email, ssn} {
 		forbidden = append(forbidden, secret, secret[:6], secret[len(secret)-4:])
 	}
 	return strings.Join(lines, "\n") + "\n", forbidden
 }
 
 // assertHookSensitiveMarkers checks route coverage and exact hook metadata.
-func assertHookSensitiveMarkers(t *testing.T, findings []hookFinding, allowed bool) {
+func assertHookSensitiveMarkers(t *testing.T, findings []hookFinding) {
 	t.Helper()
 	wantRules := map[string]bool{
 		"sensitive-data.secret-pattern":      false,
@@ -99,7 +91,6 @@ func assertHookSensitiveMarkers(t *testing.T, findings []hookFinding, allowed bo
 		"sensitive-data.aws-access-key":      false,
 		"sensitive-data.connection-string":   false,
 		"sensitive-data.gcp-service-account": false,
-		"sensitive-data.high-entropy-string": false,
 		"sensitive-data.pii-pattern":         false,
 		"sensitive-data.phi-pattern":         false,
 	}
@@ -108,19 +99,12 @@ func assertHookSensitiveMarkers(t *testing.T, findings []hookFinding, allowed bo
 			continue
 		}
 		wantRules[item.RuleID] = true
-		want := "[redacted]"
-		if allowed {
-			want = hookSensitiveAllowedMarker(item)
-		}
-		if got, _ := item.Metadata["preview"].(string); got != want {
+		if got, _ := item.Metadata["preview"].(string); got != hookSensitiveApprovedMarker(item) {
 			t.Fatalf("%s hook preview does not match approved marker", item.RuleID)
 		}
+		// A GCP service account carries a second secret field, and section 5 marks it independently.
 		if item.RuleID == "sensitive-data.gcp-service-account" {
-			secondaryWant := "[redacted]"
-			if allowed {
-				secondaryWant = "[redacted:private-key]"
-			}
-			if got, _ := item.Metadata["secondaryPreview"].(string); got != secondaryWant {
+			if got, _ := item.Metadata["secondaryPreview"].(string); got != "[redacted:private-key]" {
 				t.Fatal("GCP hook secondary preview does not match approved marker")
 			}
 		}
@@ -132,8 +116,8 @@ func assertHookSensitiveMarkers(t *testing.T, findings []hookFinding, allowed bo
 	}
 }
 
-// hookSensitiveAllowedMarker returns the approved marker for matching paths.
-func hookSensitiveAllowedMarker(item hookFinding) string {
+// hookSensitiveApprovedMarker returns the closed-vocabulary marker section 5 ratifies for each route.
+func hookSensitiveApprovedMarker(item hookFinding) string {
 	switch item.RuleID {
 	case "sensitive-data.private-key":
 		return "[redacted:private-key]"

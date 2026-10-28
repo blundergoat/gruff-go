@@ -35,7 +35,7 @@ func (GoModLocalReplaceRule) Definition() Definition {
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"dependency", "security", "supply-chain"},
 		Remediation:    "Remove the local replace before shipping and depend on a published module version, or vendor the dependency explicitly.",
 	}

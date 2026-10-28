@@ -8,19 +8,12 @@ import (
 	"strings"
 )
 
-// funcDeclsBySymbol indexes top-level function declarations using the same
-// symbol spelling as parser.Function and funcDeclSymbol.
+// funcDeclsBySymbol indexes top-level function declarations, and function literals assigned to package-level vars,
+// using the same symbol spelling as parser.Function and funcDeclSymbol.
 func funcDeclsBySymbol(file *ast.File) map[string]*ast.FuncDecl {
 	out := map[string]*ast.FuncDecl{}
-	if file == nil {
-		return out
-	}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok {
-			continue
-		}
-		out[funcDeclSymbol(fn)] = fn
+	for _, fn := range measuredFuncDecls(file) {
+		out[functionName(fn)] = fn
 	}
 	return out
 }
@@ -125,6 +118,78 @@ func compositeLiteralLineRange(fset *token.FileSet, lit *ast.CompositeLit) lineR
 	return lineRange{start: start, end: end}
 }
 
+// keyedLiteralArgumentLineRanges returns, for every multi-line composite literal
+// written with keys and passed straight to a call, the lines after its opening
+// brace, so the literal counts as one line of function length. Twelve calls that
+// each pass a keyed request struct are data, not logic, and must not read as a
+// long function (finding GO-09 of the 2026-10-04 blundergoat-platform field report).
+func keyedLiteralArgumentLineRanges(fset *token.FileSet, fn *ast.FuncDecl) []lineRange {
+	if fset == nil || fn == nil || fn.Body == nil {
+		return nil
+	}
+	ranges := []lineRange{}
+	ast.Inspect(fn.Body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		for _, arg := range call.Args {
+			lit := keyedCompositeLiteral(arg)
+			if lit == nil {
+				continue
+			}
+			literal := compositeLiteralLineRange(fset, lit)
+			if literal.end > literal.start {
+				ranges = append(ranges, lineRange{start: literal.start + 1, end: literal.end})
+			}
+		}
+		return true
+	})
+	return ranges
+}
+
+// keyedCompositeLiteral returns an argument's composite literal, or the literal
+// whose address it takes, when every element is written as key: value.
+func keyedCompositeLiteral(arg ast.Expr) *ast.CompositeLit {
+	if unary, ok := arg.(*ast.UnaryExpr); ok && unary.Op == token.AND {
+		arg = unary.X
+	}
+	lit, ok := arg.(*ast.CompositeLit)
+	if !ok || len(lit.Elts) == 0 {
+		return nil
+	}
+	for _, element := range lit.Elts {
+		if _, keyed := element.(*ast.KeyValueExpr); !keyed {
+			return nil
+		}
+	}
+	return lit
+}
+
+// countLinesInLineRangesExcept counts unique code-bearing lines inside ranges
+// that no excluded range covers, so a literal inside a discounted test table is
+// not subtracted twice.
+func countLinesInLineRangesExcept(codeLines map[int]bool, ranges, excluded []lineRange) int {
+	if len(codeLines) == 0 || len(ranges) == 0 {
+		return 0
+	}
+	skip := map[int]bool{}
+	for _, r := range excluded {
+		for line := r.start; line <= r.end; line++ {
+			skip[line] = true
+		}
+	}
+	lines := map[int]bool{}
+	for _, r := range ranges {
+		for line := r.start; line <= r.end; line++ {
+			if codeLines[line] && !skip[line] {
+				lines[line] = true
+			}
+		}
+	}
+	return len(lines)
+}
+
 // countLinesInLineRanges counts unique code-bearing lines inside the supplied
 // ranges so nested literals cannot subtract the same fixture row twice.
 func countLinesInLineRanges(codeLines map[int]bool, ranges []lineRange) int {
@@ -187,76 +252,4 @@ func countLinesInRange(codeLines map[int]bool, start, end int) int {
 		}
 	}
 	return count
-}
-
-// funlenNolintNames returns the symbols whose own doc comment carries
-// `//nolint:funlen` or `//nolint:all`. Only the function's *doc* comment is
-// consulted - directives floating inside the body or at file scope are
-// ignored - so a misplaced or copy-pasted nolint can't accidentally suppress
-// length findings on the wrong function. Symbol keys are produced via
-// funcDeclSymbol so they line up with parser.Function entries when callers
-// look up suppressions.
-func funlenNolintNames(file *ast.File) map[string]bool {
-	out := map[string]bool{}
-	if file == nil {
-		return out
-	}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Doc == nil {
-			continue
-		}
-		if !docMentionsFunlenNolint(fn.Doc) {
-			continue
-		}
-		out[funcDeclSymbol(fn)] = true
-	}
-	return out
-}
-
-// docMentionsFunlenNolint reports whether a comment group contains a
-// function-length suppression entry such as `//nolint:funlen`.
-func docMentionsFunlenNolint(doc *ast.CommentGroup) bool {
-	for _, c := range doc.List {
-		text := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
-		if !strings.HasPrefix(text, "nolint") {
-			continue
-		}
-		rest := strings.TrimPrefix(text, "nolint")
-		if rest == "" {
-			return true
-		}
-		if rest[0] != ':' {
-			continue
-		}
-		rest = rest[1:]
-		if i := strings.IndexAny(rest, " \t/"); i >= 0 {
-			rest = rest[:i]
-		}
-		for _, name := range strings.Split(rest, ",") {
-			name = strings.TrimSpace(name)
-			if name == "funlen" || name == "all" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// funcDeclSymbol mirrors parser.functions' Name construction so nolint
-// lookups align with the symbols attached to parser.Function entries.
-func funcDeclSymbol(fn *ast.FuncDecl) string {
-	name := fn.Name.Name
-	if fn.Recv == nil || len(fn.Recv.List) == 0 {
-		return name
-	}
-	switch expr := fn.Recv.List[0].Type.(type) {
-	case *ast.Ident:
-		return expr.Name + "." + name
-	case *ast.StarExpr:
-		if ident, ok := expr.X.(*ast.Ident); ok {
-			return ident.Name + "." + name
-		}
-	}
-	return "receiver." + name
 }

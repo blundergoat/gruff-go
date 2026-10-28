@@ -7,6 +7,7 @@ package rule
 import (
 	"go/ast"
 	"go/token"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -48,8 +49,12 @@ func (SleepInTestRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Find
 	if len(timePackages) == 0 {
 		return nil
 	}
-	testingPackages := testingPackageNames(unit.AST)
-	assertionPackages := assertionPackageNames(unit.AST)
+	packages := sleepPackages{
+		time:      timePackages,
+		testing:   testingPackageNames(unit.AST),
+		assertion: assertionPackageNames(unit.AST),
+		synctest:  packageImportNames(unit.AST, "testing/synctest", "synctest"),
+	}
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -57,13 +62,13 @@ func (SleepInTestRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Find
 			continue
 		}
 		symbol := functionName(fn)
-		acceptedPollingSleeps := acceptedPollingSleepPositions(fn, timePackages, testingPackages, assertionPackages)
+		skipped := skippedSleepPositions(fn, packages)
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
 			if !ok || !selectorCallMatches(call, timePackages, "Sleep") {
 				return true
 			}
-			if acceptedPollingSleeps[call.Pos()] {
+			if skipped[call.Pos()] {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -80,18 +85,164 @@ func (SleepInTestRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Find
 	return findings
 }
 
+// sleepPackages holds the import aliases the sleep checks resolve calls through.
+type sleepPackages struct {
+	time      map[string]bool
+	testing   map[string]bool
+	assertion map[string]bool
+	synctest  map[string]bool
+}
+
+// skippedSleepPositions returns the sleeps in fn this rule does not report: a
+// bounded poll's backoff, a sleep inside a synctest bubble, a sleep the test
+// times itself, and a test double's configured delay. Precision-floor M02
+// measured each as a deliberate sleep rather than a wait standing in for
+// synchronisation.
+func skippedSleepPositions(fn *ast.FuncDecl, packages sleepPackages) map[token.Pos]bool {
+	skipped := acceptedPollingSleepPositions(fn, packages)
+	recordBubbleSleeps(fn.Body, packages, skipped)
+	recordTimedSleeps(fn.Body, packages.time, skipped)
+	receiver := receiverIdentName(fn)
+	ast.Inspect(fn.Body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if ok && selectorCallMatches(call, packages.time, "Sleep") && isTestDoubleDelay(call, receiver) {
+			skipped[call.Pos()] = true
+		}
+		return true
+	})
+	return skipped
+}
+
+// recordBubbleSleeps marks every sleep inside a function passed to synctest.Test
+// or synctest.Run, where time.Sleep advances the bubble's fake clock.
+func recordBubbleSleeps(body *ast.BlockStmt, packages sleepPackages, skipped map[token.Pos]bool) {
+	ast.Inspect(body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || !selectorCallMatches(call, packages.synctest, "Test") && !selectorCallMatches(call, packages.synctest, "Run") {
+			return true
+		}
+		for _, argument := range call.Args {
+			if bubble, isFunc := argument.(*ast.FuncLit); isFunc {
+				markSleeps(bubble.Body, packages.time, skipped)
+			}
+		}
+		return true
+	})
+}
+
+// markSleeps marks every time.Sleep call under node, nested closures included.
+func markSleeps(node ast.Node, timePackages map[string]bool, skipped map[token.Pos]bool) {
+	ast.Inspect(node, func(child ast.Node) bool {
+		if call, ok := child.(*ast.CallExpr); ok && selectorCallMatches(call, timePackages, "Sleep") {
+			skipped[call.Pos()] = true
+		}
+		return true
+	})
+}
+
+// recordTimedSleeps marks a sleep statement that sits between `start :=
+// time.Now()` and a later time.Since(start) in the same block, because the
+// elapsed time around the sleep is what the test measures.
+func recordTimedSleeps(body *ast.BlockStmt, timePackages map[string]bool, skipped map[token.Pos]bool) {
+	ast.Inspect(body, func(node ast.Node) bool {
+		block, ok := node.(*ast.BlockStmt)
+		if !ok {
+			return true
+		}
+		started := map[string]bool{}
+		for index, stmt := range block.List {
+			if name, isStart := timeNowAssignment(stmt, timePackages); isStart {
+				started[name] = true
+				continue
+			}
+			call, isSleep := sleepStatementCall(stmt, timePackages)
+			if isSleep && laterStatementsReadElapsed(block.List[index+1:], started, timePackages) {
+				skipped[call.Pos()] = true
+			}
+		}
+		return true
+	})
+}
+
+// timeNowAssignment returns the name a `name := time.Now()` statement assigns.
+func timeNowAssignment(stmt ast.Stmt, timePackages map[string]bool) (string, bool) {
+	assign, ok := stmt.(*ast.AssignStmt)
+	if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+		return "", false
+	}
+	name, isIdent := assign.Lhs[0].(*ast.Ident)
+	call, isCall := assign.Rhs[0].(*ast.CallExpr)
+	if !isIdent || !isCall || !selectorCallMatches(call, timePackages, "Now") {
+		return "", false
+	}
+	return name.Name, true
+}
+
+// sleepStatementCall returns the time.Sleep call a statement makes on its own.
+func sleepStatementCall(stmt ast.Stmt, timePackages map[string]bool) (*ast.CallExpr, bool) {
+	expression, ok := stmt.(*ast.ExprStmt)
+	if !ok {
+		return nil, false
+	}
+	call, isCall := expression.X.(*ast.CallExpr)
+	return call, isCall && selectorCallMatches(call, timePackages, "Sleep")
+}
+
+// laterStatementsReadElapsed reports whether a statement calls time.Since with
+// one of the recorded start times.
+func laterStatementsReadElapsed(statements []ast.Stmt, started map[string]bool, timePackages map[string]bool) bool {
+	found := false
+	for _, stmt := range statements {
+		ast.Inspect(stmt, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if ok && selectorCallMatches(call, timePackages, "Since") && len(call.Args) == 1 {
+				if start, isIdent := call.Args[0].(*ast.Ident); isIdent && started[start.Name] {
+					found = true
+				}
+			}
+			return !found
+		})
+	}
+	return found
+}
+
+// isTestDoubleDelay recognises a sleep whose duration is the test double's own
+// configured delay field, such as time.Sleep(m.delay). Random jitter stays
+// reported: M02's labels count a randomly timed test as worth making deterministic.
+func isTestDoubleDelay(call *ast.CallExpr, receiver string) bool {
+	if len(call.Args) != 1 || receiver == "" {
+		return false
+	}
+	selector, ok := call.Args[0].(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	root, isIdent := selector.X.(*ast.Ident)
+	return isIdent && root.Name == receiver
+}
+
+// receiverIdentName returns a test double method's named receiver, or "" for a
+// function or a suite's Test method, whose sleeps are the test waiting.
+func receiverIdentName(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 || len(fn.Recv.List[0].Names) != 1 || strings.HasPrefix(fn.Name.Name, "Test") {
+		return ""
+	}
+	return fn.Recv.List[0].Names[0].Name
+}
+
 // acceptedPollingSleepPositions returns time.Sleep call positions that sit
 // inside a bounded polling loop with observable work and a failure after timeout.
-func acceptedPollingSleepPositions(fn *ast.FuncDecl, timePackages, testingPackages, assertionPackages map[string]bool) map[token.Pos]bool {
+func acceptedPollingSleepPositions(fn *ast.FuncDecl, packages sleepPackages) map[token.Pos]bool {
 	accepted := map[token.Pos]bool{}
 	if fn == nil || fn.Body == nil {
 		return accepted
 	}
 	ctx := pollingLoopContext{
-		timePackages:      timePackages,
-		testingPackages:   testingPackages,
-		assertionPackages: assertionPackages,
-		receivers:         testingHandlesForFunc(fn, testingPackages),
+		timePackages:      packages.time,
+		testingPackages:   packages.testing,
+		assertionPackages: packages.assertion,
+		receivers:         testingHandlesForFunc(fn, packages.testing),
+		results:           fn.Type.Results,
 		accepted:          accepted,
 	}
 	collectAcceptedPollingSleeps(fn.Body, ctx)
@@ -105,6 +256,7 @@ type pollingLoopContext struct {
 	testingPackages   map[string]bool
 	assertionPackages map[string]bool
 	receivers         map[string]bool
+	results           *ast.FieldList
 	accepted          map[token.Pos]bool
 }
 
@@ -115,6 +267,10 @@ func collectAcceptedPollingSleeps(block *ast.BlockStmt, ctx pollingLoopContext) 
 		return
 	}
 	for index, stmt := range block.List {
+		// A label such as `Loop:` wraps the loop the polling checks read.
+		if labeled, ok := stmt.(*ast.LabeledStmt); ok {
+			stmt = labeled.Stmt
+		}
 		switch current := stmt.(type) {
 		case *ast.ForStmt:
 			if isAcceptedPollingLoop(current, block.List[index+1:], ctx) {
@@ -123,6 +279,10 @@ func collectAcceptedPollingSleeps(block *ast.BlockStmt, ctx pollingLoopContext) 
 			}
 			collectAcceptedPollingSleeps(current.Body, ctx)
 		case *ast.RangeStmt:
+			if isAcceptedPollingRange(current, block.List[index+1:], ctx) {
+				recordSleepCalls(current.Body, ctx.timePackages, ctx.accepted)
+				continue
+			}
 			collectAcceptedPollingSleeps(current.Body, ctx)
 		case *ast.IfStmt:
 			collectAcceptedPollingSleeps(current.Body, ctx)
@@ -142,8 +302,47 @@ func collectAcceptedPollingSleeps(block *ast.BlockStmt, ctx pollingLoopContext) 
 // isAcceptedPollingLoop applies the bounded-polling contract to one for loop.
 func isAcceptedPollingLoop(loop *ast.ForStmt, following []ast.Stmt, ctx pollingLoopContext) bool {
 	return loopHasFiniteBound(loop, ctx.timePackages) &&
-		loopHasObservableExitCondition(loop) &&
-		statementsHaveFailureCall(following, ctx.testingPackages, ctx.assertionPackages, ctx.receivers)
+		loopHasObservableExitCondition(loop.Body) &&
+		timeoutIsReported(following, ctx)
+}
+
+// isAcceptedPollingRange applies the same contract to `for range N` over an
+// integer literal, whose literal count is the finite bound.
+func isAcceptedPollingRange(loop *ast.RangeStmt, following []ast.Stmt, ctx pollingLoopContext) bool {
+	count, ok := loop.X.(*ast.BasicLit)
+	return ok && count.Kind == token.INT && loopHasObservableExitCondition(loop.Body) && timeoutIsReported(following, ctx)
+}
+
+// timeoutIsReported requires the code after the loop to fail the test, or to
+// hand the timeout back to the caller of a polling helper.
+func timeoutIsReported(following []ast.Stmt, ctx pollingLoopContext) bool {
+	return statementsHaveFailureCall(following, ctx.testingPackages, ctx.assertionPackages, ctx.receivers) ||
+		returnsTimeoutToCaller(following, ctx.results)
+}
+
+// returnsTimeoutToCaller accepts a helper whose statement after the loop returns
+// false from a bool helper, or a non-nil final error, so the caller sees the timeout.
+func returnsTimeoutToCaller(following []ast.Stmt, results *ast.FieldList) bool {
+	if len(following) == 0 || results == nil {
+		return false
+	}
+	ret, ok := following[0].(*ast.ReturnStmt)
+	types := []ast.Expr{}
+	for _, field := range results.List {
+		for range max(len(field.Names), 1) {
+			types = append(types, field.Type)
+		}
+	}
+	if !ok || len(types) == 0 || len(ret.Results) != len(types) {
+		return false
+	}
+	last := len(types) - 1
+	if isErrorType(types[last]) {
+		return !isNilIdentifier(ret.Results[last])
+	}
+	resultType, isIdent := types[0].(*ast.Ident)
+	value, isValue := ret.Results[0].(*ast.Ident)
+	return len(types) == 1 && isIdent && resultType.Name == "bool" && isValue && value.Name == "false"
 }
 
 // loopHasFiniteBound recognises deadline and explicit attempt-count loop conditions.
@@ -169,7 +368,12 @@ func containsTimeDeadlineCheck(expr ast.Expr, timePackages map[string]bool) bool
 		if !ok {
 			return true
 		}
-		if selector.Sel.Name != "Before" && selector.Sel.Name != "After" {
+		// An elapsed-time bound such as time.Since(start) < timeout is a deadline too.
+		if selectorCallMatches(call, timePackages, "Since") || selectorCallMatches(call, timePackages, "Until") {
+			found = true
+			return false
+		}
+		if selector.Sel.Name != "Before" && selector.Sel.Name != "After" && selector.Sel.Name != "Sub" {
 			return true
 		}
 		if nested, ok := selector.X.(*ast.CallExpr); ok && selectorCallMatches(nested, timePackages, "Now") {
@@ -282,14 +486,15 @@ func exprIsIdent(expr ast.Expr, name string) bool {
 	return ok && ident.Name == name
 }
 
-// loopHasObservableExitCondition requires an if condition inside the loop that
-// checks state and exits the polling loop on success.
-func loopHasObservableExitCondition(loop *ast.ForStmt) bool {
-	if loop == nil || loop.Body == nil {
+// loopHasObservableExitCondition requires an if condition inside the loop body
+// that checks state, in its condition or its init statement, and exits the
+// polling loop on success.
+func loopHasObservableExitCondition(body *ast.BlockStmt) bool {
+	if body == nil {
 		return false
 	}
 	found := false
-	ast.Inspect(loop.Body, func(node ast.Node) bool {
+	ast.Inspect(body, func(node ast.Node) bool {
 		if found {
 			return false
 		}
@@ -297,13 +502,28 @@ func loopHasObservableExitCondition(loop *ast.ForStmt) bool {
 		if !ok {
 			return true
 		}
-		if conditionObservesState(stmt.Cond) && blockExitsPolling(stmt.Body) {
+		if (conditionObservesState(stmt.Cond) || initObservesState(stmt.Init)) && blockExitsPolling(stmt.Body) {
 			found = true
 			return false
 		}
 		return true
 	})
 	return found
+}
+
+// initObservesState reports whether an if statement's init, such as
+// `_, err := http.Get(url)`, calls or reads the system under test.
+func initObservesState(init ast.Stmt) bool {
+	assign, ok := init.(*ast.AssignStmt)
+	if !ok {
+		return false
+	}
+	for _, value := range assign.Rhs {
+		if conditionObservesState(value) {
+			return true
+		}
+	}
+	return false
 }
 
 // conditionObservesState rejects pure time checks and accepts parser-visible

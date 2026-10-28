@@ -54,7 +54,7 @@ func (r FileLengthRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
-		Remediation:    "Split the file by responsibility or move focused behavior into smaller files.",
+		Remediation:    "Split this file by responsibility, one responsibility per file.",
 	}
 }
 
@@ -77,7 +77,7 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	if isGoTestFile(unit.File.Path) {
 		metadata["testFile"] = true
 	}
-	return []finding.Finding{{
+	return []finding.Finding{withLimitBand(finding.Finding{
 		Message: fmt.Sprintf("file has %d substantive lines, above threshold %d", substantiveLines, maxLines),
 		File:    unit.File.Path,
 		Location: &finding.Location{
@@ -87,7 +87,7 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			Line: codeLines[maxLines],
 		},
 		Metadata: metadata,
-	}}
+	}, substantiveLines, maxLines, lowerBandFileAdvice, r.Definition().Remediation)}
 }
 
 // substantiveLineNumbers returns the 1-based physical line number of every line
@@ -197,13 +197,14 @@ func (r FunctionLengthRule) Definition() Definition {
 		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Thresholds:     map[string]float64{"maxLines": float64(maxLines)},
-		Remediation:    "Extract cohesive helper functions or split independent branches.",
+		Remediation:    "Split this function at its steps, one step per function.",
 	}
 }
 
 // AnalyzeUnit emits findings for functions longer than the threshold, measured
-// in code-bearing lines. Direct `//nolint:funlen` or `//nolint:all` doc comments
-// suppress the rule for one function without global configuration.
+// in code-bearing lines. A `//nolint:funlen`, `//nolint:all` or bare `//nolint` on
+// the func line, or alone on the line above, is honoured and counted after the rules run
+// (analysis.ApplyInlineSuppressions).
 func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.File.Type != source.FileTypeGo {
 		return nil
@@ -220,15 +221,11 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		return nil
 	}
 	codeLines := codeBearingLines(unit.Source)
-	nolintNames := funlenNolintNames(unit.AST)
 	funcDecls := funcDeclsBySymbol(unit.AST)
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {
 		rawLength := fn.EndLine - fn.Line + 1
 		if rawLength <= maxLines {
-			continue
-		}
-		if nolintNames[fn.Name] {
 			continue
 		}
 		length := countLinesInRange(codeLines, fn.Line, fn.EndLine)
@@ -238,28 +235,33 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		if length <= maxLines {
 			continue
 		}
-		metadata := map[string]any{"lines": length, "threshold": maxLines, "rawLines": rawLength}
+		metadata := map[string]any{"threshold": maxLines, "rawLines": rawLength}
+		decl := funcDecls[fn.Name]
+		var tableRanges []lineRange
 		if isGoTestFile(unit.File.Path) {
 			metadata["testFile"] = true
-			if decl := funcDecls[fn.Name]; decl != nil {
-				tableLines := countLinesInLineRanges(codeLines, tableFixtureLineRanges(unit.FileSet, decl))
-				if tableLines > 0 {
-					length -= tableLines
-					metadata["tableFixtureLines"] = tableLines
-					metadata["lines"] = length
-				}
+			tableRanges = tableFixtureLineRanges(unit.FileSet, decl)
+			if tableLines := countLinesInLineRanges(codeLines, tableRanges); tableLines > 0 {
+				length -= tableLines
+				metadata["tableFixtureLines"] = tableLines
 			}
 		}
+		// A keyed literal passed straight to a call is data, so it counts as one line in every file.
+		if literalLines := countLinesInLineRangesExcept(codeLines, keyedLiteralArgumentLineRanges(unit.FileSet, decl), tableRanges); literalLines > 0 {
+			length -= literalLines
+			metadata["literalArgumentLines"] = literalLines
+		}
+		metadata["lines"] = length
 		if length <= maxLines {
 			continue
 		}
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function has %d code lines, above threshold %d", length, maxLines),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: fn.Line, EndLine: fn.EndLine},
 			Symbol:   fn.Name,
 			Metadata: metadata,
-		})
+		}, length, maxLines, lowerBandFunctionAdvice, r.Definition().Remediation))
 	}
 	return findings
 }
@@ -284,26 +286,45 @@ func (r CyclomaticComplexityRule) Definition() Definition {
 	return Definition{
 		ID:             "complexity.cyclomatic",
 		Title:          "Cyclomatic complexity",
-		Description:    "Flags Go functions whose branch count exceeds the default cyclomatic threshold.",
+		Description:    "Flags Go functions outside test files whose branch count exceeds the default cyclomatic threshold; a switch, type switch or select counts once.",
 		Pillar:         finding.PillarComplexity,
 		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Thresholds:     map[string]float64{"maxComplexity": float64(maxComplexity)},
-		Remediation:    "Split independent decisions or move branches into named helpers.",
+		Remediation:    simplifyExecutionPathAdvice,
 	}
+}
+
+// measuredFuncDecls returns the file's function and method declarations, then each function literal assigned to a
+// package-level var as a declaration named after the var. Only the size and complexity rules read it, so the
+// documentation rules never see a literal (FAMILY-CONTRACT.md section 12, search `function literal assigned to a package-level`).
+func measuredFuncDecls(file *ast.File) []*ast.FuncDecl {
+	out := []*ast.FuncDecl{}
+	if file == nil {
+		return out
+	}
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok {
+			out = append(out, fn)
+		}
+	}
+	for _, varFunc := range parser.PackageVarFuncs(file) {
+		out = append(out, &ast.FuncDecl{Doc: varFunc.Doc, Name: varFunc.Name, Type: varFunc.Lit.Type, Body: varFunc.Lit.Body})
+	}
+	return out
 }
 
 // AnalyzeUnit emits findings for every function whose cyclomatic complexity exceeds the threshold.
 func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil {
+	// A test's branches are its assertion sequence, which M14's measurement found not worth splitting.
+	if unit.AST == nil || unit.FileSet == nil || isGoTestFile(unit.File.Path) {
 		return nil
 	}
 	maxComplexity := r.maxComplexity()
 	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
+	for _, fn := range measuredFuncDecls(unit.AST) {
+		if fn.Body == nil {
 			continue
 		}
 		complexity := cyclomaticComplexity(fn)
@@ -312,13 +333,13 @@ func (r CyclomaticComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []fin
 		}
 		start := unit.FileSet.Position(fn.Pos())
 		end := unit.FileSet.Position(fn.End())
-		findings = append(findings, finding.Finding{
+		findings = append(findings, withLimitBand(finding.Finding{
 			Message:  fmt.Sprintf("function cyclomatic complexity is %d, above threshold %d", complexity, maxComplexity),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: start.Line, EndLine: end.Line},
 			Symbol:   functionName(fn),
 			Metadata: map[string]any{"complexity": complexity, "threshold": maxComplexity},
-		})
+		}, complexity, maxComplexity, lowerBandFunctionAdvice, simplifyExecutionPathAdvice))
 	}
 	return findings
 }
@@ -403,6 +424,35 @@ type SensitiveDataRule struct {
 	previews sensitivePreviewPolicy
 }
 
+// goRawStringLines reports every 1-based line that lies inside a Go raw-string literal.
+//
+// The opening and closing lines are included: a backtick that opens a multi-line literal is
+// followed on the same line by literal text, and the same holds for the closing line. A
+// single-line raw string is one line and is excluded too, which is correct — its contents are
+// still literal text rather than an assignment the program executes.
+//
+// A file that did not parse yields no exclusions, so the rule falls back to its line scan and
+// keeps reporting rather than going quiet on unparseable source.
+func goRawStringLines(unit parser.Unit) map[int]bool {
+	lines := map[int]bool{}
+	if unit.AST == nil || unit.FileSet == nil {
+		return lines
+	}
+	ast.Inspect(unit.AST, func(node ast.Node) bool {
+		literal, ok := node.(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING || !strings.HasPrefix(literal.Value, "`") {
+			return true
+		}
+		start := unit.FileSet.Position(literal.Pos()).Line
+		end := unit.FileSet.Position(literal.End()).Line
+		for line := start; line <= end; line++ {
+			lines[line] = true
+		}
+		return true
+	})
+	return lines
+}
+
 // Definition declares the sensitive-data.secret-pattern rule that flags secret-like key/value assignments with high severity.
 func (SensitiveDataRule) Definition() Definition {
 	return Definition{
@@ -410,7 +460,7 @@ func (SensitiveDataRule) Definition() Definition {
 		Title:          "Secret-like literal",
 		Description:    "Flags high-risk secret-like key/value assignments in Go and text/config files.",
 		Pillar:         finding.PillarSensitiveData,
-		Severity:       finding.SeverityError,
+		Severity:       finding.SeverityWarning,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
 		Remediation:    "Move secrets to a secret manager or environment-specific runtime configuration.",
@@ -418,10 +468,23 @@ func (SensitiveDataRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for every code-bearing line that matches the secret-assignment pattern.
+//
+// Lines inside a Go raw-string literal are skipped. A backtick string holds documentation,
+// templates and sample payloads, and a secret-shaped line in one is an example rather than a
+// credential: gosec's own `g101_samples` fixture is a raw string full of them.
+//
+// The exclusion is computed from the parsed syntax tree and applied here rather than in
+// `lineIsCodeBearing`, because that guard is reached by sixteen rules, twice the eight this
+// milestone's plan recorded. Teaching it about string literals would change all sixteen and
+// require a fixture pair for each; reading `*ast.BasicLit` changes this rule alone.
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
 	inBlockComment := false
+	rawStringLines := goRawStringLines(unit)
 	for lineNumber, line := range strings.Split(unit.Source, "\n") {
+		if unit.File.Type == source.FileTypeGo && rawStringLines[lineNumber+1] {
+			continue
+		}
 		if unit.File.Type == source.FileTypeGo && !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
@@ -436,7 +499,8 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		if unit.File.Type == source.FileTypeGo && !goSecretAssignmentLooksLiteral(match) {
 			continue
 		}
-		if isPlaceholderSecretAssignment(match) {
+		// A placeholder, or a vendor-documented sample such as AWS's example key pasted from its docs, is not a credential.
+		if isPlaceholderSecretAssignment(match) || isDocumentedSample(match) {
 			continue
 		}
 		metadata := map[string]any{
@@ -527,20 +591,16 @@ func secretAssignmentValue(match string) string {
 	return ""
 }
 
-// cyclomaticComplexity counts the cyclomatic complexity of a function body.
+// cyclomaticComplexity counts the cyclomatic complexity of a function body. A switch, type switch or
+// select is one dispatch decision however many cases it has, as gruff-rs counts one per match: a flat
+// dispatch over many cases was the commonest finding not worth acting on when M14 measured the rule.
 func cyclomaticComplexity(fn *ast.FuncDecl) int {
 	complexity := 1
 	ast.Inspect(fn.Body, func(node ast.Node) bool {
 		switch current := node.(type) {
 		case *ast.FuncLit:
 			return false
-		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
-			complexity++
-		case *ast.CaseClause:
-			if len(current.List) > 0 {
-				complexity++
-			}
-		case *ast.CommClause:
+		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
 			complexity++
 		case *ast.BinaryExpr:
 			if current.Op.String() == "&&" || current.Op.String() == "||" {
@@ -552,20 +612,10 @@ func cyclomaticComplexity(fn *ast.FuncDecl) int {
 	return complexity
 }
 
-// functionName returns the rendered function or method name (Receiver.Name when applicable).
+// functionName returns the rendered function or method name (BaseType.Name for a method, generic or not) from the
+// parser's one canonical renderer, so a finding's symbol matches the function metadata it is positioned against.
 func functionName(fn *ast.FuncDecl) string {
-	name := fn.Name.Name
-	if fn.Recv != nil && len(fn.Recv.List) > 0 {
-		switch expr := fn.Recv.List[0].Type.(type) {
-		case *ast.Ident:
-			return expr.Name + "." + name
-		case *ast.StarExpr:
-			if ident, ok := expr.X.(*ast.Ident); ok {
-				return ident.Name + "." + name
-			}
-		}
-	}
-	return name
+	return parser.FuncDeclSymbol(fn)
 }
 
 // isGoTestFile reports whether the file path is a Go test file (_test.go suffix).

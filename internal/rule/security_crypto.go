@@ -81,7 +81,7 @@ func (InsecureRandomSecretRule) Definition() Definition {
 		Pillar:         finding.PillarSecurity,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
+		DefaultEnabled: false,
 		Tags:           []string{"random", "security"},
 		Remediation:    "Use crypto/rand for security-sensitive random values and keep math/rand for sampling, tests, and simulations.",
 	}

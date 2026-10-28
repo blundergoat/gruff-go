@@ -12,15 +12,15 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// EmptyTestRule flags Go test functions whose body contains no executable statements.
+// EmptyTestRule flags Go tests with no work beyond scheduling themselves in parallel.
 type EmptyTestRule struct{}
 
-// Definition declares the test-quality.empty-test rule that fires on Test/Benchmark/Fuzz functions whose body holds zero statements.
+// Definition describes empty runnable tests, including a sole testing.T.Parallel call.
 func (EmptyTestRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.empty-test",
 		Title:          "Empty test",
-		Description:    "Flags Go test functions whose body contains no executable statements.",
+		Description:    "Flags Go test functions with no statements or only a testing.T.Parallel() call.",
 		Pillar:         finding.PillarTestQuality,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceHigh,
@@ -30,7 +30,7 @@ func (EmptyTestRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit reports each Test/Benchmark/Fuzz function in the unit that has an empty body.
+// AnalyzeUnit reports empty runnable tests and tests whose only action schedules parallel execution.
 func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -42,7 +42,7 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 		if !ok || !isRunnableTestFunction(fn, testingPackages) {
 			continue
 		}
-		if fn.Body == nil || len(fn.Body.List) == 0 {
+		if fn.Body == nil || len(fn.Body.List) == 0 || isParallelOnlyTest(fn, testingPackages) {
 			position := unit.FileSet.Position(fn.Name.NamePos)
 			findings = append(findings, finding.Finding{
 				Message:  fmt.Sprintf("test %s has an empty body", fn.Name.Name),
@@ -55,81 +55,26 @@ func (EmptyTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding 
 	return findings
 }
 
-// NoFailurePathTestRule flags Go test functions whose bodies cannot reach a failure call.
-type NoFailurePathTestRule struct{}
-
-// Definition declares the test-quality.no-failure-path rule that fires when a Go test body never reaches t.Error/Errorf/Fatal/Fatalf/Fail/FailNow.
-func (NoFailurePathTestRule) Definition() Definition {
-	return Definition{
-		ID:             "test-quality.no-failure-path",
-		Title:          "Test cannot fail",
-		Description:    "Flags Go test functions that contain executable statements but never reach a failure call (t.Error, t.Fatal, t.Fail, etc.).",
-		Pillar:         finding.PillarTestQuality,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
-		Tags:           []string{"tests"},
-		Remediation:    "Add an assertion or document why the test cannot fail.",
-	}
-}
-
-// AnalyzeUnit reports each test function whose body never reaches a testing failure method.
-func (NoFailurePathTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
-		return nil
-	}
-	findings := []finding.Finding{}
-	testingPackages := testingPackageNames(unit.AST)
-	assertionPackages := assertionPackageNames(unit.AST)
-	failureHelpers := localFailureHelperNames(unit.AST, testingPackages, assertionPackages)
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || !isRunnableFailurePathTestFunction(fn, testingPackages) {
-			continue
-		}
-		if fn.Body == nil || len(fn.Body.List) == 0 {
-			continue
-		}
-		if isExactSkipOnlyFailurePathTest(fn, testingPackages) {
-			continue
-		}
-		if hasFailureCallWithHelpers(fn, testingPackages, assertionPackages, failureHelpers) {
-			continue
-		}
-		position := unit.FileSet.Position(fn.Name.NamePos)
-		findings = append(findings, finding.Finding{
-			Message:  fmt.Sprintf("test %s has no path that calls a testing failure method", fn.Name.Name),
-			File:     unit.File.Path,
-			Location: &finding.Location{Line: position.Line, Column: position.Column},
-			Symbol:   fn.Name.Name,
-		})
-	}
-	return findings
-}
-
-// hasFailureCall reports whether fn invokes either:
-//   - a known testing failure helper on a *testing.T/B/F receiver, or
-//   - an assertion helper (Assert*/Require*/Expect*/Must*/Check*) that
-//     receives the testing receiver as one of its arguments.
-//
-// The helper-call heuristic was added because most Go test suites factor
-// assertions into helpers (`testutil.AssertStatus(t, ...)`); without it the
-// rule produced a wave of false positives on otherwise well-asserted tests.
-// Requiring the helper to take the receiver as an argument keeps unrelated
-// `MustX` calls (e.g. `json.MustDecode`) from being mistaken for assertions.
-//
-// Receivers are collected from the outer FuncDecl AND from any nested function
-// literal - fuzz tests put their assertions inside `f.Fuzz(func(t *testing.T,
-// ...){ t.Fatal(...) })`, where the inner `t` is the only handle that calls
-// failure methods.
-// hasFailureCallWithHelpers reports whether fn directly fails through a
-// testing receiver or delegates to a proven same-file failure helper.
-func hasFailureCallWithHelpers(fn *ast.FuncDecl, testingPackages, assertionPackages, failureHelpers map[string]bool) bool {
-	receivers := testingReceiverNames(fn, testingPackages)
-	if len(receivers) == 0 {
+// isParallelOnlyTest binds the sole call to the test's declared testing.T handle.
+// A one-statement body cannot rebind or shadow that handle before the call.
+func isParallelOnlyTest(fn *ast.FuncDecl, testingPackages map[string]bool) bool {
+	if !strings.HasPrefix(fn.Name.Name, "Test") || fn.Body == nil || len(fn.Body.List) != 1 {
 		return false
 	}
-	return blockHasFailureCallWithHelpers(fn.Body, testingPackages, assertionPackages, receivers, failureHelpers)
+	statement, ok := fn.Body.List[0].(*ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := statement.X.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Parallel" {
+		return false
+	}
+	receiver, ok := selector.X.(*ast.Ident)
+	return ok && testingReceiverNames(fn, testingPackages)[receiver.Name]
 }
 
 // isReceiverFailureCall reports whether the call is `<t>.<failing-method>(...)`
@@ -199,48 +144,32 @@ func capturedHelperObjectAvailableBefore(positions []token.Pos, before token.Pos
 	return false
 }
 
-// localFailureHelperNames summarises same-file helpers that accept a testing
-// receiver and can fail the test. This suppresses no-failure-path false
-// positives on tests that delegate all assertions to non-Assert-prefixed local
-// helpers such as runMigrationCompatibilityTest(t, ...).
-func localFailureHelperNames(file *ast.File, testingPackages, assertionPackages map[string]bool) map[string]bool {
-	candidates := map[string]*ast.FuncDecl{}
-	if file == nil {
-		return map[string]bool{}
-	}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name == nil || fn.Body == nil || fn.Recv != nil || isRunnableTestFunction(fn, testingPackages) {
-			continue
-		}
-		if receivers := testingReceiverNames(fn, testingPackages); len(receivers) > 0 {
-			candidates[fn.Name.Name] = fn
-		}
-	}
-	resolved := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for name, fn := range candidates {
-			if resolved[name] {
-				continue
-			}
-			if hasFailureCallWithHelpers(fn, testingPackages, assertionPackages, resolved) {
-				resolved[name] = true
-				changed = true
-			}
-		}
-	}
-	return resolved
-}
+// methodHelperKey prefixes a method helper's name, keeping it in its own namespace so a
+// method is never matched by a bare call and a package-qualified call is never matched by a
+// method. One map carries both kinds without widening every signature that passes it.
+const methodHelperKey = "\x00method:"
 
-// isLocalFailureHelperCall reports whether call invokes a same-file helper that
-// was proven to fail through a testing receiver.
+// isLocalFailureHelperCall reports whether call invokes a helper from this package
+// that was proven to fail through a testing receiver.
+//
+// Both spellings count. `checkBuild(t, ...)` is the free function; `h.verify(t, ...)`
+// is the same helper declared as a method on a harness type, which fails the test in
+// exactly the same way. Passing the testing receiver stays required for both, and a
+// method is matched only against methods, so `helpers.checkBuild(t, ...)` through an
+// imported package stays reported: that is a different function wearing the same name.
 func isLocalFailureHelperCall(call *ast.CallExpr, receivers map[string]bool, failureHelpers map[string]bool) bool {
 	if len(failureHelpers) == 0 || !callPassesTestingReceiver(call, receivers) {
 		return false
 	}
-	fn, ok := call.Fun.(*ast.Ident)
-	return ok && failureHelpers[fn.Name]
+	switch fn := call.Fun.(type) {
+	case *ast.Ident:
+		return failureHelpers[fn.Name]
+	case *ast.SelectorExpr:
+		// Only a method declared in this package counts. A selector whose qualifier is an
+		// imported package names a different function that happens to share a helper's name.
+		return failureHelpers[methodHelperKey+fn.Sel.Name]
+	}
+	return false
 }
 
 // collectTestingReceiverVariables records local variables initialised as
@@ -413,23 +342,6 @@ func testingReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map
 	}
 	collectTestingFieldNames(fn.Type.Params.List, testingPackages, receivers)
 	return receivers
-}
-
-// collectNestedTestingReceivers walks body looking for function literals (such
-// as the fuzz callback in f.Fuzz(func(t *testing.T, ...){...})) and records
-// every *testing.T/B/F parameter name into receivers.
-func collectNestedTestingReceivers(body *ast.BlockStmt, testingPackages map[string]bool, receivers map[string]bool) {
-	if body == nil {
-		return
-	}
-	ast.Inspect(body, func(node ast.Node) bool {
-		funcLit, ok := node.(*ast.FuncLit)
-		if !ok || funcLit.Type == nil || funcLit.Type.Params == nil {
-			return true
-		}
-		collectTestingFieldNames(funcLit.Type.Params.List, testingPackages, receivers)
-		return true
-	})
 }
 
 // collectTestingFieldNames adds every non-blank field name whose declared type

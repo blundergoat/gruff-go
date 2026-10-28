@@ -9,22 +9,17 @@ import (
 	"strings"
 )
 
-// completionCommands lists the top-level subcommand names emitted into the
-// generated shell completion scripts. Keep this in sync with the dispatch
-// switch in cli.go so completion never advertises an unknown command.
-var completionCommands = []string{
-	"analyse",
-	"analyze",
-	"baseline",
-	"completion",
-	"dashboard",
-	"help",
-	"hook",
-	"init",
-	"list",
-	"list-rules",
-	"report",
-	"summary",
+// completionCommands lists the top-level subcommand names emitted into the generated shell completion scripts,
+// derived from the one catalogue in help.go so completion can never advertise fewer commands than the port ships.
+var completionCommands = buildCompletionCommands()
+
+// buildCompletionCommands reads every catalogue name, aliases included, since a user may type either spelling.
+func buildCompletionCommands() []string {
+	names := make([]string, 0, len(commandCatalogue))
+	for _, entry := range commandCatalogue {
+		names = append(names, entry.name)
+	}
+	return names
 }
 
 // runCompletion prints a shell completion script for the requested shell.

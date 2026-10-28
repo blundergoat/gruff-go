@@ -1,7 +1,8 @@
 # ADR-010: Per-Command minimumSeverity Config Dimension
 
-**Status:** Accepted
+**Status:** Superseded by the family CLI contract decision `config-exit-gate-key` (`gruff-spec/contracts/core/cli.v1.json`) on 2026-09-19: `failOn` carries the per-command exit gate, and `minimumSeverity` is the display floor.
 **Date:** 2026-05-26
+**Updated:** 2026-09-19
 **Author(s):** Claude, human direction
 **Ticket/Context:** PR #3 left three CLI consumers (`summary`, `report`, and `runner.go`'s programmatic fallback) defaulting to `SeverityWarning` while `analyse` had been intentionally lowered to `SeverityAdvisory` in ADR-009. The same repo produced different exit codes from different commands without telling the user. The dashboard hard-coded an unparseable `"medium"` default. Sibling ports (gruff-rs / gruff-ts / gruff-py / gruff-php) already model "never fail" as a `None` value on their `FailThreshold` enum; gruff-go had no equivalent.
 

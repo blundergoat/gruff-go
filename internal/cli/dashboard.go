@@ -31,6 +31,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 	noBaseline := flags.Bool("no-baseline", false, "skip applying any baseline")
 	diff := flags.Bool("diff", false, "start dashboard in diff-only scan mode")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
+	deepScanBudget := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	// Display default tracks the binary default so --help reads truthfully,
 	// but precedence detection (below) uses flags.Visit to decide whether to
 	// propagate the parsed value or leave opts.FailOn empty so defaultState
@@ -101,6 +102,7 @@ func runDashboard(args []string, stdout, stderr io.Writer, interactive bool) int
 		BaselinePath:      *baselinePath,
 		SkipBaseline:      *noBaseline,
 		IncludeIgnored:    *includeIgnored,
+		DeepScanBudget:    *deepScanBudget,
 		DiffMode:          *diff,
 		FailOn:            optsFailOnFromCLI(failOnExplicit, parsedFailOn),
 		ReportInteractive: *reportInteractive,

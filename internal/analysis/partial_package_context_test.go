@@ -1,3 +1,6 @@
+// Package analysis tests what users see when they select one Go file for scanning.
+// Sibling package files may explain a selected file without adding their findings.
+// These tests keep both the extra context and the selected-file boundary visible.
 package analysis
 
 import (

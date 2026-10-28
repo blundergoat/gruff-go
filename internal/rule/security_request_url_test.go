@@ -3,6 +3,48 @@ package rule
 
 import "testing"
 
+// TestOpenRedirectHTTPSUpgrade keeps the observed autocert upgrade quiet while
+// retaining submitted destinations and helpers whose bodies change the host.
+func TestOpenRedirectHTTPSUpgrade(t *testing.T) {
+	helper := `func stripPort(hostport string) string {
+ host, _, err := net.SplitHostPort(hostport)
+ if err != nil { return hostport }
+ return net.JoinHostPort(host, "443")
+}`
+	cases := []struct {
+		name   string
+		target string
+		helper string
+		before string
+		want   int
+	}{
+		{"observed autocert upgrade", `"https://" + stripPort(r.Host) + r.URL.RequestURI()`, helper, "", 0},
+		{"direct same host", `"https://" + r.Host + r.URL.RequestURI()`, "", "", 0},
+		{"submitted host", `"https://" + r.FormValue("host") + r.URL.RequestURI()`, "", "", 1},
+		{"request host overwritten before the upgrade", `"https://" + r.Host + r.URL.RequestURI()`, "", `r.Host = r.FormValue("host")`, 1},
+		{"submitted destination", `r.FormValue("next")`, "", "", 1},
+		{"helper returns another host", `"https://" + stripPort(r.Host) + r.URL.RequestURI()`, `func stripPort(string) string { return "another.example" }`, "", 1},
+		{"port helper has an extra destination input", `"https://" + stripPort(r.Host, r.FormValue("next")) + r.URL.RequestURI()`, `func stripPort(host, next string) string { return next }`, "", 1},
+		{"query is not an escaped request URI", `"https://" + r.Host + r.FormValue("path")`, "", "", 1},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			unit := parseOne(t, "handler.go", `package handler
+import ("net/http"; "net")
+`+test.helper+`
+func upgrade(w http.ResponseWriter, r *http.Request) {
+ `+test.before+`
+ target := `+test.target+`
+ http.Redirect(w, r, target, http.StatusFound)
+}`)
+			findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+			if len(findings) != test.want {
+				t.Fatalf("findings = %#v, want %d", findings, test.want)
+			}
+		})
+	}
+}
+
 // TestRequestControlledURLRule covers SSRF sinks and validated/safe non-findings.
 func TestRequestControlledURLRule(t *testing.T) {
 	tests := []struct {

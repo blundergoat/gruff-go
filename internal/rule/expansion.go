@@ -1,25 +1,18 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements package-name, dead-code, security, and test rules.
+// This file implements package-name, dead-code, and security rules.
 // Its findings explain code changes users can make before the next scan.
 package rule
 
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
-
-// skipDebtMarkers introduce work that should not stay hidden behind a test guard.
-// Matching is case-insensitive and anchored by skipMessageLineIntroducesDebt.
-var skipDebtMarkers = []string{"todo", "fixme", "xxx", "hack", "wip"}
 
 // PackageNameUnderscoreRule flags Go package names that contain underscores.
 type PackageNameUnderscoreRule struct{}
@@ -101,7 +94,11 @@ func (EmptyBlockRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Remediation:    "Remove the empty block or add the intended implementation.",
+		// "Remove the empty block" was dropped: the rule sees an empty body, not whether the
+		// surrounding branch is still needed, and deleting a branch on that advice can change
+		// behaviour. Since the narrowing of 2026-09-07 every reported block is a conditional
+		// arm, so the useful advice is to fill it in or say why it is empty.
+		Remediation: "Add the intended implementation, or leave a comment saying why the branch is deliberately empty.",
 	}
 }
 
@@ -114,6 +111,10 @@ func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
 		block, ok := node.(*ast.BlockStmt)
 		if !ok || len(block.List) != 0 || !isControlFlowBlock(unit.AST, block) {
+			return true
+		}
+		// A comment in the braces is the author documenting the emptiness.
+		if blockSpanHasComment(unit.AST, block) {
 			return true
 		}
 		position := unit.FileSet.Position(block.Lbrace)
@@ -177,224 +178,20 @@ func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
-// SkippedTestRule finds test skips that can hide unfinished coverage.
-// Conditional environment guards stay quiet unless their message introduces debt.
-// Users can remove the skip or track the condition outside the test body.
-type SkippedTestRule struct{}
-
-// Definition declares the test-quality.skipped-test rule that fires when t.Skip, t.Skipf, or t.SkipNow appears in any _test.go file.
-func (SkippedTestRule) Definition() Definition {
-	return Definition{
-		ID:             "test-quality.skipped-test",
-		Title:          "Skipped test",
-		Description:    "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.",
-		Pillar:         finding.PillarTestQuality,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
-		Tags:           []string{"tests"},
-		Remediation:    "Remove the skip or document and track the condition outside the test body.",
-		FalsePositiveShapes: []FalsePositiveShape{{
-			Shape:      "A legitimate conditional skip reason whose first physical line begins with TODO/FIXME-style product terminology.",
-			Mitigation: "Put explanatory words before the quoted marker, or disable the rule for that path when the external wording must stay first.",
-		}},
-	}
-}
-
-// AnalyzeUnit emits findings for skip-call sites inside Go test files.
+// isControlFlowBlock reports whether an empty block is an unfinished body rather than a
+// construct whose emptiness is the point.
 //
-// A skip is considered legitimate (and therefore not flagged) when it is reachable
-// only through a conditional control-flow construct (if/for/switch/range/select),
-// since that pattern is the standard way to guard integration tests on missing
-// infrastructure. Skips inside a conditional are still flagged when their message
-// includes a TODO/FIXME-style marker so debt is not hidden behind a runtime check.
+// Three constructs were removed from this predicate on 2026-09-07, each because its empty
+// form is a deliberate Go idiom rather than missing code:
 //
-// Skip calls are only counted when invoked on a name that this file declared as
-// a *testing.T/B/F parameter. Third-party APIs that happen to expose a method
-// named Skip/Skipf/SkipNow (queue clients, table iterators, fuzzers from other
-// libraries) live in test files too, and matching purely on the selector name
-// produces systematic false positives there.
-func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
-		return nil
-	}
-	testingPackages := testingPackageNames(unit.AST)
-	conditionalRegions := conditionalBodyRanges(unit.AST)
-	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
-		}
-		receivers := testingReceiverNames(fn, testingPackages)
-		findings = append(findings, skippedTestFindingsInBlock(unit, fn.Body, testingPackages, receivers, conditionalRegions)...)
-	}
-	return findings
-}
-
-// collectFileTestingReceivers gathers every parameter name across the file's
-// function declarations and nested function literals whose declared type is
-// *testing.T/B/F. The skipped-test rule only treats Skip/Skipf/SkipNow calls
-// on these names as testing skips.
-func collectFileTestingReceivers(file *ast.File, testingPackages map[string]bool) map[string]bool {
-	receivers := map[string]bool{}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Type == nil || fn.Type.Params == nil {
-			continue
-		}
-		collectTestingFieldNames(fn.Type.Params.List, testingPackages, receivers)
-		if fn.Body != nil {
-			collectNestedTestingReceivers(fn.Body, testingPackages, receivers)
-		}
-	}
-	return receivers
-}
-
-// posRange is a half-open byte/position interval [start, end] inclusive on both
-// ends because ast.Node.End() points at one past the last character but token.Pos
-// comparison still works.
-type posRange struct {
-	start token.Pos
-	end   token.Pos
-}
-
-// conditionalBodyRanges collects the positional extents of every
-// control-flow body in the file. A `t.Skip(...)` whose call site falls inside
-// one of these ranges is reachable only when the condition holds, so we treat
-// it as a deliberate environment guard rather than test debt.
-func conditionalBodyRanges(file *ast.File) []posRange {
-	out := []posRange{}
-	ast.Inspect(file, func(node ast.Node) bool {
-		switch stmt := node.(type) {
-		case *ast.IfStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-			if stmt.Else != nil {
-				out = append(out, posRange{stmt.Else.Pos(), stmt.Else.End()})
-			}
-		case *ast.ForStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.RangeStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.SwitchStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.TypeSwitchStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.SelectStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		}
-		return true
-	})
-	return out
-}
-
-// isPosInsideAny reports whether the supplied [start, end] range is fully
-// contained in any of the candidate ranges.
-func isPosInsideAny(start, end token.Pos, ranges []posRange) bool {
-	for _, r := range ranges {
-		if r.start <= start && end <= r.end {
-			return true
-		}
-	}
-	return false
-}
-
-// skipMessageMentionsDebt reports whether a literal skip message introduces debt.
-// Prose mentions stay quiet; a marker may introduce any physical message line.
-func skipMessageMentionsDebt(call *ast.CallExpr) bool {
-	// Only literal text can provide reliable marker evidence to the user.
-	for _, argument := range call.Args {
-		messageText, isLiteral := stringLiteral(argument)
-		// A dynamic message cannot prove that the checked-in test carries marker debt.
-		if !isLiteral {
-			continue
-		}
-		// Multiline reasons may introduce the actionable marker after explanatory text.
-		for _, messageLine := range strings.Split(messageText, "\n") {
-			// An introduced marker keeps the conditional skip visible in the report.
-			if skipMessageLineIntroducesDebt(messageLine) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// skipMessageLineIntroducesDebt matches a leading marker after optional space or a list bullet.
-// Delimiters distinguish real debt from prose names such as TODOs or todo-without-tracking.
-func skipMessageLineIntroducesDebt(messageLine string) bool {
-	messageBody := trimOptionalSkipMessageBullet(strings.TrimSpace(messageLine))
-	lowerMessageBody := strings.ToLower(messageBody)
-	// Check the shared vocabulary without treating a mid-sentence word as an introduced marker.
-	for _, debtMarker := range skipDebtMarkers {
-		markerSuffix, startsWithMarker := strings.CutPrefix(lowerMessageBody, debtMarker)
-		// A different leading word means this marker is only prose, if it appears at all.
-		if !startsWithMarker {
-			continue
-		}
-		return hasSkipDebtMarkerDelimiter(markerSuffix)
-	}
-	return false
-}
-
-// trimOptionalSkipMessageBullet removes a conventional bullet before a marker.
-// A hyphenated word without following space remains ordinary message text.
-func trimOptionalSkipMessageBullet(messageBody string) string {
-	// Empty and one-character messages cannot contain a bullet plus a marker.
-	if len(messageBody) < 2 {
-		return messageBody
-	}
-	// Only common list bullets opt into the marker position that follows.
-	if !strings.ContainsRune("-*+", rune(messageBody[0])) {
-		return messageBody
-	}
-	textAfterBullet := messageBody[1:]
-	firstRune, _ := utf8.DecodeRuneInString(textAfterBullet)
-	// `-TODO` is not a list item, so the leading hyphen remains meaningful text.
-	if !unicode.IsSpace(firstRune) {
-		return messageBody
-	}
-	return strings.TrimSpace(textAfterBullet)
-}
-
-// hasSkipDebtMarkerDelimiter accepts punctuation used by real leading markers.
-// A hyphen counts only at the end or before space, keeping hyphenated names quiet.
-func hasSkipDebtMarkerDelimiter(markerSuffix string) bool {
-	// A bare marker is enough to tell the user the guarded test is deferred work.
-	if markerSuffix == "" {
-		return true
-	}
-	delimiter, delimiterWidth := utf8.DecodeRuneInString(markerSuffix)
-	// Owners, labels, and space-continuation messages are conventional marker forms.
-	if delimiter == ':' || delimiter == '(' || unicode.IsSpace(delimiter) {
-		return true
-	}
-	// Other continuations, such as the `s` in TODOs, are ordinary words.
-	if delimiter != '-' {
-		return false
-	}
-	textAfterHyphen := markerSuffix[delimiterWidth:]
-	// A terminal hyphen is an explicit marker delimiter rather than a word continuation.
-	if textAfterHyphen == "" {
-		return true
-	}
-	nextRune, _ := utf8.DecodeRuneInString(textAfterHyphen)
-	return unicode.IsSpace(nextRune)
-}
-
-// isControlFlowBlock reports whether the block is the body of an if/for/switch/select construct.
+//   - A `for` with a header does its work in that header. `for i := 0; advance(i); i++ {}`
+//     iterates deliberately with nothing in the body, so only a bare `for {}` still counts.
+//   - `for range ch {}` drains a channel, and `for range ticker.C {}` waits on one. The
+//     emptiness is the behaviour.
+//   - `select {}` blocks the goroutine forever, which is how a program parks its main.
+//
+// `if`, `switch` and type-switch bodies stay: an empty one of those is a branch that was
+// written and never filled in, which is what this rule exists to find.
 func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -405,19 +202,32 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 		case *ast.IfStmt:
 			found = current.Body == block
 		case *ast.ForStmt:
-			found = current.Body == block
-		case *ast.RangeStmt:
-			found = current.Body == block
+			// A header carries the loop's work; only a bare infinite loop has an empty body
+			// with nothing else to it.
+			found = current.Body == block && current.Init == nil && current.Cond == nil && current.Post == nil
 		case *ast.SwitchStmt:
 			found = current.Body == block
 		case *ast.TypeSwitchStmt:
-			found = current.Body == block
-		case *ast.SelectStmt:
 			found = current.Body == block
 		}
 		return !found
 	})
 	return found
+}
+
+// blockSpanHasComment reports whether any comment sits between the block's braces.
+//
+// A block written as `if err != nil { // handled upstream }` is documented, not unfinished:
+// the author said why it is empty. The Go parser already retains comments
+// (`internal/parser/parser.go`, search: `stdparser.ParseComments`), so this needs no parser
+// change and no second pass over the source.
+func blockSpanHasComment(file *ast.File, block *ast.BlockStmt) bool {
+	for _, group := range file.Comments {
+		if group.Pos() > block.Lbrace && group.End() < block.Rbrace {
+			return true
+		}
+	}
+	return false
 }
 
 // execCommandShellArgOffset reports whether call invokes os/exec Command or
@@ -504,27 +314,6 @@ func packageImportNames(file *ast.File, importPath string, defaultName string) m
 		}
 	}
 	return names
-}
-
-// isTestingSkipCall reports whether the call is a Skip variant invoked on a
-// known testing receiver name. The receiver set is built from the enclosing
-// file's *testing.T/B/F parameter names; selectors on other receivers do not
-// count, so a third-party API's `.Skip()` method is not misreported.
-func isTestingSkipCall(call *ast.CallExpr, testingReceivers map[string]bool) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	switch selector.Sel.Name {
-	case "Skip", "Skipf", "SkipNow":
-	default:
-		return false
-	}
-	ident, ok := selector.X.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	return testingReceivers[ident.Name]
 }
 
 // stringLiteral returns the unquoted contents of a basic string literal.
