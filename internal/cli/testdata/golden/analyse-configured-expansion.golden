@@ -1169,7 +1169,7 @@
             "severity": "advisory",
             "confidence": "low",
             "capability": "parser",
-            "defaultEnabled": false,
+            "defaultEnabled": true,
             "tags": [
               "tests"
             ],

@@ -169,7 +169,6 @@ func defaultDisabledRuleIDs() map[string]bool {
 		"naming.receiver-consistency":                 true,
 		"sensitive-data.phi-pattern":                  true,
 		"sensitive-data.pii-pattern":                  true,
-		"test-quality.duplicate-test-body":            true,
 		"test-quality.static-analysis-redundant-test": true,
 	}
 }

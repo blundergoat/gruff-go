@@ -205,15 +205,21 @@ func TestDuplicateTestBodyTableBindings(t *testing.T) {
 	}
 }
 
-// TestDuplicateTestBodyOptIn verifies configured dispatch and native finding metadata.
+// TestDuplicateTestBodyOptIn verifies default dispatch, opt-out and native finding metadata.
 func TestDuplicateTestBodyOptIn(t *testing.T) {
 	unit := parseOne(t, "opt_in_test.go", duplicateTestSource("testing", "Test", "*testing.T", []string{
 		"got := parse(1); check(got)", "got := parse(2); check(got)", "got := parse(3); check(got)",
 		"got := parse(4); check(got)",
 	}))
 	const id = "test-quality.duplicate-test-body"
-	for _, enabled := range []bool{false, true} {
-		registry, err := DefaultsConfigured(Config{Enabled: map[string]bool{id: enabled}})
+	for _, entry := range []struct {
+		enabled map[string]bool
+		want    bool
+	}{
+		{nil, true}, {map[string]bool{id: false}, false}, {map[string]bool{id: true}, true},
+	} {
+		enabled := entry.want
+		registry, err := DefaultsConfigured(Config{Enabled: entry.enabled})
 		if err != nil {
 			t.Fatal(err)
 		}

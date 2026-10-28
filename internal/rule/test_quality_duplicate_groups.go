@@ -16,7 +16,7 @@ import (
 // DuplicateTestBodyRule finds same-file test groups that could share a case loop.
 type DuplicateTestBodyRule struct{}
 
-// Definition keeps the candidate rule opt-in until its precision is measured.
+// Definition enables calibrated duplicate groups unless a project opts out.
 func (DuplicateTestBodyRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.duplicate-test-body",
@@ -26,7 +26,7 @@ func (DuplicateTestBodyRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceLow,
 		Capability:     CapabilityParser,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Tags:           []string{"tests"},
 		Remediation:    "Go table-driven case loop: put the varying inputs and expected values in a case table, then run the shared assertions for each named case with t.Run.",
 		FalsePositiveShapes: []FalsePositiveShape{{
