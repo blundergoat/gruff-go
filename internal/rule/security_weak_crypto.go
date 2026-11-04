@@ -14,6 +14,9 @@ import (
 )
 
 // weakDigestContextWords names security contexts where MD5/SHA1 should not be used.
+//
+// A match in the function name, its doc comment, the enclosing assignment or a call argument makes an MD5 or SHA-1 call reportable.
+// In a bucket-key function's name or doc, key alone is allowed, while any other word here ends the storage-bucket exception.
 var weakDigestContextWords = []string{
 	"auth",
 	"credential",
@@ -49,10 +52,11 @@ type weakCryptoCallContext struct {
 // WeakCryptoRule warns developers about weak primitives with concrete local evidence.
 //
 // Use it during a Go scan to find security-shaped digests, obsolete ciphers and undersized RSA keys.
-// Proven storage-only digest flows stay quiet while key material remains reportable.
+// Proven storage-only digest flows stay quiet; any other MD5 or SHA-1 call still needs a security word nearby to be reported.
 type WeakCryptoRule struct{}
 
 // Definition declares the security.weak-crypto rule for weak primitive usage.
+// It returns fixed rule metadata, advisory severity and medium confidence, enabled by default with no thresholds.
 func (WeakCryptoRule) Definition() Definition {
 	return Definition{
 		ID:             "security.weak-crypto",
@@ -68,7 +72,10 @@ func (WeakCryptoRule) Definition() Definition {
 }
 
 // AnalyzeUnit returns the weak-crypto warnings for this scanned Go file.
+//
 // Missing syntax or positions returns nil; an empty result means no supported call needs a warning.
+// The unit is the scanned Go file; a unit importing none of crypto/md5, crypto/sha1, crypto/des, crypto/rc4 or crypto/rsa also returns nil.
+// Only calls written directly in a func or method body are checked; calls inside function literals or package-level initializers are not.
 func (WeakCryptoRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	// Without parsed syntax or source positions, this rule has no call it can locate in the developer's report.
 	if unit.AST == nil || unit.FileSet == nil {
@@ -139,16 +146,23 @@ type weakCryptoPackages struct {
 	strconv map[string]bool
 }
 
-// any reports whether at least one weak-crypto package was imported.
+// any reports whether a weak-crypto package has a usable selector import name; blank and dot imports and strconv alone do not count.
+// A false result makes AnalyzeUnit return nil for the file before any call is inspected.
 func (packages weakCryptoPackages) any() bool {
 	return len(packages.md5) > 0 || len(packages.sha1) > 0 || len(packages.des) > 0 || len(packages.rc4) > 0 || len(packages.rsa) > 0
 }
 
 // weakCryptoCall classifies a weak-crypto call when the parser-only evidence is strong enough.
+//
+// The call sits in function, parents maps each body node to its enclosing node, and packages holds the file's crypto and strconv import names.
+//
+// It returns the primitive and reason with true for DES, 3DES, RC4, an undersized RSA key size, or MD5/SHA-1 in a security context.
+// RSA sizes are literal text read by strconv.Atoi, so octal 03000 reads as 3000, and hex or computed sizes are missed.
+// An MD5/SHA-1 call that passes digestChoosesStorageBucket or lacks a security context, or any other call, gives an empty context and false.
 func weakCryptoCall(call *ast.CallExpr, function *ast.FuncDecl, parents map[ast.Node]ast.Node, packages weakCryptoPackages) (weakCryptoCallContext, bool) {
 	// An imported MD5 call needs local purpose evidence before it becomes a security warning.
 	if primitive, ok := weakDigestCall(call, packages.md5, "md5"); ok {
-		// A storage bucket keyed by one digest byte is a location choice, so the user should not see a weak-key warning.
+		// A New call whose one digest byte provably picks a numbered bucket in a bucket-key function stays quiet; a Sum call never qualifies.
 		if digestChoosesStorageBucket(call, function, parents, packages.strconv) {
 			return weakCryptoCallContext{}, false
 		}
@@ -160,7 +174,7 @@ func weakCryptoCall(call *ast.CallExpr, function *ast.FuncDecl, parents map[ast.
 	}
 	// An imported SHA-1 call follows the same contextual warning policy.
 	if primitive, ok := weakDigestCall(call, packages.sha1, "sha1"); ok {
-		// The same numbered-bucket proof applies to SHA-1; a full digest or a secret input still reports.
+		// The same numbered-bucket proof applies to SHA-1; a full digest or a secret input fails it and falls through to the context check.
 		if digestChoosesStorageBucket(call, function, parents, packages.strconv) {
 			return weakCryptoCallContext{}, false
 		}
@@ -182,7 +196,7 @@ func weakCryptoCall(call *ast.CallExpr, function *ast.FuncDecl, parents map[ast.
 	if selectorCallMatches(call, packages.rc4, "NewCipher") {
 		return weakCryptoCallContext{primitive: "RC4", reason: "obsolete-stream-cipher"}, true
 	}
-	// A literal RSA size below 2048 bits gives the developer a specific key-size warning.
+	// An RSA size that strconv.Atoi reads below 2048 gives a warning whose reason names the size, such as key-size-1024.
 	if bits, ok := rsaGenerateKeyBits(call, packages.rsa); ok && bits < 2048 {
 		return weakCryptoCallContext{primitive: "RSA", reason: "key-size-" + strconv.Itoa(bits)}, true
 	}
@@ -190,14 +204,17 @@ func weakCryptoCall(call *ast.CallExpr, function *ast.FuncDecl, parents map[ast.
 }
 
 // digestChoosesStorageBucket accepts a local MD5/SHA-1 constructor only when its sole digest use selects a decimal bucket number.
-// A developer still sees a warning when the function hashes a secret, returns key material, or lacks the complete bucket flow.
+//
+// digestCall is the digest call in function, parents maps each body node to its enclosing node, and strconvPackages holds strconv import names.
+// It reports true only when that whole local flow is proven, and weakCryptoCall then stays quiet about the call.
+// A false result leaves the digest eligible, and weakCryptoCall warns only when weakDigestSecurityContext also finds a security word.
 func digestChoosesStorageBucket(
 	digestCall *ast.CallExpr,
 	function *ast.FuncDecl,
 	parents map[ast.Node]ast.Node,
 	strconvPackages map[string]bool,
 ) bool {
-	// The method and documented return must describe a storage location before value-flow proof can quiet the warning.
+	// The function name and string result declaration must describe a bucket key before the local flow can suppress the warning.
 	if !digestHasStorageBucketPurpose(digestCall, function) {
 		return false
 	}
@@ -220,17 +237,20 @@ func digestChoosesStorageBucket(
 	return bucketIndex != nil && returnsDecimalBucket(function, bucketIndex, strconvPackages)
 }
 
-// digestHasStorageBucketPurpose checks that a developer-facing name, description and string result describe a numbered storage location.
-// Any authentication or secret word preserves the security warning.
+// digestHasStorageBucketPurpose checks that a function's name and string result describe a storage-bucket key; a doc comment is optional.
+//
+// digestCall must be a no-argument New call, and the name of function must contain bucket and key but no other security word.
+// function also needs one result declaration typed string, which may name several results, such as (left, right string).
+// It reports true when all of that holds and any doc comment names no security word besides key; otherwise false stops the proof.
 func digestHasStorageBucketPurpose(digestCall *ast.CallExpr, function *ast.FuncDecl) bool {
 	selector, selectorOK := digestCall.Fun.(*ast.SelectorExpr)
 	nameContext, hasNameContext := weakDigestContextWord(function.Name.Name)
 	_, hasBucketName := firstContextWord(function.Name.Name, []string{"bucket"})
-	// A bucket-shaped name cannot excuse a password or authentication function.
+	// Only a no-argument New call in a function whose name holds bucket and key can start the storage proof.
 	if !selectorOK || selector.Sel.Name != "New" || len(digestCall.Args) != 0 || !hasBucketName || !hasNameContext || nameContext != "key" {
 		return false
 	}
-	// A security word anywhere in the function name keeps an authentication or token use visible.
+	// Any other security word in the name, such as token or session, ends the proof.
 	if hasNonKeyDigestContext(function.Name.Name) {
 		return false
 	}
@@ -251,7 +271,10 @@ func digestHasStorageBucketPurpose(digestCall *ast.CallExpr, function *ast.FuncD
 }
 
 // bucketDigestIndex proves that one local hasher reads nonsecret input and exposes only one byte as a named bucket index.
-// Copying the hasher or using its full digest keeps the warning visible to the developer.
+//
+// Copying the hasher or using its full digest fails the proof, leaving the digest to the security-context check.
+// The body is the function body, hasher the variable holding the New result, and parents maps each body node to its enclosing node.
+// It returns the bucket index object holding the first byte of Sum(nil), or nil unless hasher's only uses are one nonsecret Write and that Sum.
 func bucketDigestIndex(body *ast.BlockStmt, hasher *ast.Ident, parents map[ast.Node]ast.Node) *ast.Object {
 	var bucketIndex *ast.Object
 	writes, sums := 0, 0
@@ -277,12 +300,12 @@ func bucketDigestIndex(body *ast.BlockStmt, hasher *ast.Ident, parents map[ast.N
 		switch method.Sel.Name {
 		case "Write":
 			writes++
-			// A secret-bearing input makes even a one-byte digest a security-relevant use.
+			// Write takes one byte slice; any other argument shape cannot be traced to its input, so the proof fails.
 			if len(methodCall.Args) != 1 {
 				safe = false
 				return false
 			}
-			// Unknown or secret-bearing input preserves the warning even when only one digest byte is returned.
+			// Unknown or secret-bearing input fails the proof even when only one digest byte is used.
 			if !bucketInputHasNonsecretOrigin(body, methodCall.Args[0], 0) {
 				safe = false
 				return false
@@ -301,6 +324,7 @@ func bucketDigestIndex(body *ast.BlockStmt, hasher *ast.Ident, parents map[ast.N
 				safe = false
 				return false
 			}
+		// Any other method, such as Reset, means the hasher does more than pick a bucket, so the proof fails.
 		default:
 			safe = false
 			return false
@@ -315,7 +339,10 @@ func bucketDigestIndex(body *ast.BlockStmt, hasher *ast.Ident, parents map[ast.N
 }
 
 // bucketInputHasNonsecretOrigin follows single-use local aliases to a neutral parameter or literal.
-// Rebinding, borrowing, unknown transformations and security-named origins keep the digest warning.
+//
+// Rebinding, borrowing, unknown transformations and security-named origins fail the proof, leaving the digest to the security-context check.
+// The body is searched for alias definitions, input is the expression written to the hasher, and depth counts steps followed, capped at 8.
+// It reports true for a string literal or a once-used parameter or alias, through parentheses and byte-slice conversions, and false otherwise.
 func bucketInputHasNonsecretOrigin(body *ast.BlockStmt, input ast.Expr, depth int) bool {
 	// Security-shaped input or an alias chain beyond the bounded proof keeps the digest reportable.
 	if _, securityInput := exprTextContext(input, weakDigestContextWord); securityInput || depth > 8 {
@@ -341,6 +368,9 @@ func bucketInputHasNonsecretOrigin(body *ast.BlockStmt, input ast.Expr, depth in
 }
 
 // bucketInputNameHasNonsecretOrigin rejects locals with extra uses that could modify or escape their bytes.
+//
+// The name is the identifier read from body, and depth counts steps followed; unshadowed built-in len(name) calls are not counted as uses.
+// It reports true for a parameter used once, or a := local used once whose value itself has a nonsecret origin, and false otherwise.
 func bucketInputNameHasNonsecretOrigin(body *ast.BlockStmt, name *ast.Ident, depth int) bool {
 	// An unresolved name cannot establish where the bytes came from, so the bucket exception stays unavailable.
 	if name.Obj == nil {
@@ -375,6 +405,7 @@ func bucketInputNameHasNonsecretOrigin(body *ast.BlockStmt, name *ast.Ident, dep
 }
 
 // hasNonKeyDigestContext keeps explicit security descriptions from being hidden by a storage-bucket name.
+// It reports true when description holds any security context word other than key, such as password, token or secret, and false otherwise.
 func hasNonKeyDigestContext(description string) bool {
 	// Check the supported security words before treating this description as storage-only.
 	for _, word := range weakDigestContextWords {
@@ -382,7 +413,7 @@ func hasNonKeyDigestContext(description string) bool {
 		if word == "key" {
 			continue
 		}
-		// Any remaining security word keeps the developer's digest warning visible.
+		// Any other security word, such as token, ends the storage-bucket proof.
 		if _, present := firstContextWord(description, []string{word}); present {
 			return true
 		}
@@ -391,18 +422,23 @@ func hasNonKeyDigestContext(description string) bool {
 }
 
 // isNilIdentifier accepts Sum(nil), which reads the digest without appending it to another value.
+// It reports true only when expression is the predeclared nil identifier, and false for any other expression or a local named nil.
 func isNilIdentifier(expression ast.Expr) bool {
 	name, ok := expression.(*ast.Ident)
 	return ok && name.Name == "nil" && name.Obj == nil
 }
 
 // isZeroIndex accepts only the first digest byte, the bounded value used for a numbered storage bucket.
+// It reports true only when expression is the integer literal 0, and false for any other expression, including 0x0 or a named constant.
 func isZeroIndex(expression ast.Expr) bool {
 	literal, ok := expression.(*ast.BasicLit)
 	return ok && literal.Kind == token.INT && literal.Value == "0"
 }
 
-// assignedBucketIndex returns the local index receiving one digest byte; other destinations keep the weak-crypto warning.
+// assignedBucketIndex returns the local index variable receiving one digest byte; any other destination fails the storage-bucket proof.
+//
+// The digestByte is the first-byte index of a Sum call, followed upward through parents past parentheses and built-in int or uint8 conversions.
+// Anything else, including a plain assignment or a variable whose name lacks the word index, gives nil.
 func assignedBucketIndex(digestByte *ast.IndexExpr, parents map[ast.Node]ast.Node) *ast.Object {
 	// Follow enclosing syntax until the digest byte reaches a named index or the proof runs out.
 	for parent := parents[digestByte]; parent != nil; parent = parents[parent] {
@@ -426,7 +462,7 @@ func assignedBucketIndex(digestByte *ast.IndexExpr, parents map[ast.Node]ast.Nod
 			return nil
 		}
 		name, named := assignment.Lhs[0].(*ast.Ident)
-		// The variable's index role must be visible in source, beyond the function's Key suffix.
+		// A destination the parser cannot resolve cannot be followed to the returned bucket key.
 		if !named || name.Obj == nil {
 			return nil
 		}
@@ -440,6 +476,9 @@ func assignedBucketIndex(digestByte *ast.IndexExpr, parents map[ast.Node]ast.Nod
 }
 
 // returnsDecimalBucket proves the first digest byte becomes a decimal suffix on a nonsecurity storage prefix.
+//
+// The bucketIndex object must appear only in its definition and one use in function, and strconvPackages names the strconv imports for Itoa.
+// It reports true when a top-level return in function is a non-security prefix plus strconv.Itoa of bucketIndex, and false otherwise.
 func returnsDecimalBucket(function *ast.FuncDecl, bucketIndex *ast.Object, strconvPackages map[string]bool) bool {
 	uses := 0
 	ast.Inspect(function.Body, func(node ast.Node) bool {
@@ -490,6 +529,7 @@ func returnsDecimalBucket(function *ast.FuncDecl, bucketIndex *ast.Object, strco
 }
 
 // isBucketIndexArgument accepts an index byte directly or through Go's int conversion for strconv.Itoa.
+// It reports true when argument is the bucketIndex variable or an int conversion of it, nested to any depth, and false otherwise.
 func isBucketIndexArgument(argument ast.Expr, bucketIndex *ast.Object) bool {
 	name, isName := argument.(*ast.Ident)
 	// A different integer could make a decoy bucket return hide another digest use.
@@ -506,6 +546,9 @@ func isBucketIndexArgument(argument ast.Expr, bucketIndex *ast.Object) bool {
 }
 
 // weakDigestCall reports MD5/SHA1 New or Sum calls through imported package names.
+//
+// When call is New or Sum on an import name in packages, it returns primitive, a dot and the selector, such as md5.New, with true.
+// Any other call gives an empty string and false.
 func weakDigestCall(call *ast.CallExpr, packages map[string]bool, primitive string) (string, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	// A call outside the supported MD5/SHA-1 APIs contributes no contextual digest warning.
@@ -521,6 +564,9 @@ func weakDigestCall(call *ast.CallExpr, packages map[string]bool, primitive stri
 }
 
 // weakDigestSecurityContext finds the security context for MD5/SHA1 findings.
+//
+// It checks the name of function, then its doc comment, then the assignment around call found through parents, and last the arguments of call.
+// It returns the first security word found with true, or false when none of those places holds one.
 func weakDigestSecurityContext(call *ast.CallExpr, function *ast.FuncDecl, parents map[ast.Node]ast.Node) (string, bool) {
 	// A security word in the function name explains the digest warning to the developer.
 	if word, ok := weakDigestContextWord(function.Name.Name); ok {
@@ -541,6 +587,7 @@ func weakDigestSecurityContext(call *ast.CallExpr, function *ast.FuncDecl, paren
 }
 
 // selectorCallMatches reports whether call invokes selectorName on one of packages.
+// A false result means another selector or receiver; the receiver is matched by spelling, so a local shadowing an import name still matches.
 func selectorCallMatches(call *ast.CallExpr, packages map[string]bool, selectorName string) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	// Only the expected selector call can establish the primitive named in this warning.
@@ -552,6 +599,10 @@ func selectorCallMatches(call *ast.CallExpr, packages map[string]bool, selectorN
 }
 
 // rsaGenerateKeyBits returns a literal RSA key size when call is rsa.GenerateKey.
+//
+// The rsaPackages set holds the file's crypto/rsa import names; a computed size, or any other call, gives 0 and false.
+// Literal text is read with strconv.Atoi, so 0x400, 1_024 or 1024.0 also gives 0 and false and that small key goes unreported.
+// A leading-zero octal such as 03000, really 1536, gives 3000 and true, so that small key is missed too.
 func rsaGenerateKeyBits(call *ast.CallExpr, rsaPackages map[string]bool) (int, bool) {
 	// An unsupported call or missing size argument cannot establish an RSA key-size warning.
 	if !selectorCallMatches(call, rsaPackages, "GenerateKey") || len(call.Args) < 2 {
@@ -571,6 +622,7 @@ func rsaGenerateKeyBits(call *ast.CallExpr, rsaPackages map[string]bool) (int, b
 }
 
 // weakDigestContextWord classifies password, token, signature, and similar digest contexts.
+// It returns the security word that firstContextWord matches in text with true, or false when text holds none of weakDigestContextWords.
 func weakDigestContextWord(text string) (string, bool) {
 	return firstContextWord(text, weakDigestContextWords)
 }

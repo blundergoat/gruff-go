@@ -1,6 +1,7 @@
-// Package cli tests baseline behavior at the command-line gate users run.
-// It pins unchanged, mixed, severity-floor, and changed-region journeys so
-// one-to-one matching cannot silently alter established exit semantics.
+// Package cli tests baseline behavior at the command-line gate users run in CI.
+//
+// It pins the unchanged, mixed, severity-floor and changed-region journeys of analyse with --baseline.
+// A failure means one-to-one baseline matching changed the exit code or the baseline counts a user's CI sees.
 package cli
 
 import (
@@ -23,7 +24,7 @@ func TestAnalyseBaselineUnchangedOnlyExitsZero(t *testing.T) {
 	if exitCode != 0 || len(report.Findings) != 0 {
 		t.Fatalf("exit = %d, findings = %#v; want exit 0 and none", exitCode, report.Findings)
 	}
-	// The UI should report the reviewed finding as exactly one unchanged item.
+	// The baseline block should count the reviewed finding as exactly one unchanged item.
 	if report.Baseline.NewFindings != 0 || report.Baseline.UnchangedFindings != 1 || report.Baseline.ResolvedFindings != 0 {
 		t.Fatalf("baseline counts = %#v, want 0/1/0", report.Baseline)
 	}
@@ -76,6 +77,7 @@ func TestAnalyseDiffAndBaselineSuppressShiftedFinding(t *testing.T) {
 	writeFile(t, projectRoot, "complex.go", complexFixture())
 	t.Chdir(projectRoot)
 	generateUserBaseline(t, "baseline.json", "complex.go")
+	// A blank line and a comment inserted under the package clause move the reviewed finding without changing its code.
 	shiftedSource := strings.Replace(complexFixture(), "package sample\n", "package sample\n\n// A user added context before the existing function.\n", 1)
 	writeFile(t, projectRoot, "complex.go", shiftedSource)
 
@@ -90,8 +92,10 @@ func TestAnalyseDiffAndBaselineSuppressShiftedFinding(t *testing.T) {
 	}
 }
 
-// generateUserBaseline runs the same baseline command documented for users.
-// Empty paths are not used here because each journey names its reviewed file.
+// generateUserBaseline runs the same baseline command documented for users, with --no-config, before each gate journey.
+//
+// It writes baselinePath from a scan of sourcePaths; sourcePaths is never empty here because each journey names its reviewed file.
+// It fails the test on a non-zero baseline exit.
 func generateUserBaseline(t *testing.T, baselinePath string, sourcePaths ...string) {
 	t.Helper()
 	commandArguments := []string{"baseline", "--no-config", "--out", baselinePath}
@@ -103,8 +107,11 @@ func generateUserBaseline(t *testing.T, baselinePath string, sourcePaths ...stri
 	}
 }
 
-// runBaselineGateAnalyse executes analyse and decodes its JSON even when a
-// user-facing finding correctly produces exit 1.
+// runBaselineGateAnalyse runs analyse and decodes its JSON report even when a finding correctly makes the run exit 1.
+//
+// commandArguments is the full argument list passed to Main; callers start it with the analyse subcommand.
+// It returns the decoded report with the raw exit code, which is left unchecked so callers can assert 0 or 1 themselves.
+// It fails the test when standard output does not decode as report JSON.
 func runBaselineGateAnalyse(t *testing.T, commandArguments ...string) (machineAnalysisReport, int) {
 	t.Helper()
 	var standardOutput, standardError bytes.Buffer

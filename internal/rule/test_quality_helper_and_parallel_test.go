@@ -1,4 +1,7 @@
-// Package rule tests additional parser-only test-quality rules.
+// Package rule tests the parser-only test-quality rules for test helpers and parallel table subtests.
+//
+// Helper fixtures check when a failing helper must call t.Helper, and parallel fixtures capture a range variable inside t.Parallel subtests.
+// The range-capture rule reads the nearest go.mod: it fires only for modules older than Go 1.22 and stays silent without one.
 package rule
 
 import (
@@ -11,6 +14,7 @@ import (
 )
 
 // TestHelperMissingTHelperRule covers helpers that fail tests without t.Helper.
+// A helper that already calls t.Helper and a Test function that fails directly stay silent, so only requireNoError is reported.
 func TestHelperMissingTHelperRule(t *testing.T) {
 	unit := parseOne(t, "helpers_test.go", `package sample
 
@@ -40,6 +44,7 @@ func TestReal(t *testing.T) {
 }
 
 // TestParallelRangeCaptureRule covers unsafe table-test captures and explicit shadow copies.
+// Both fixtures sit in a Go 1.21 module, so the captured tc yields one finding and the tc := tc copy yields none.
 func TestParallelRangeCaptureRule(t *testing.T) {
 	captured := parseOne(t, "parallel_test.go", `package sample
 
@@ -87,8 +92,8 @@ func TestTable(t *testing.T) {
 	}
 }
 
-// TestParallelRangeCaptureRuleRequiresLegacyGoVersion verifies Go 1.22+
-// modules use per-iteration range variables and are therefore out of scope.
+// TestParallelRangeCaptureRuleRequiresLegacyGoVersion verifies Go 1.22+ modules use per-iteration range variables and are therefore out of scope.
+// Without a go.mod the rule stays silent, while a go.mod with no go directive counts as Go 1.16 and still reports the capture.
 func TestParallelRangeCaptureRuleRequiresLegacyGoVersion(t *testing.T) {
 	unit := parseOne(t, "parallel_test.go", parallelRangeCaptureFixture())
 	root := writeGoModForUnit(t, unit, ".", "module sample\n\ngo 1.25.0\n")
@@ -109,6 +114,7 @@ func TestParallelRangeCaptureRuleRequiresLegacyGoVersion(t *testing.T) {
 }
 
 // TestParallelRangeCaptureRuleUsesNearestGoMod ensures nested modules use their own directive.
+// The root go.mod says Go 1.25 but legacy/go.mod says Go 1.21, so the fixture under legacy/pkg still yields one finding.
 func TestParallelRangeCaptureRuleUsesNearestGoMod(t *testing.T) {
 	unit := parseOne(t, "legacy/pkg/parallel_test.go", parallelRangeCaptureFixture())
 	root := unitRoot(t, unit)
@@ -141,6 +147,8 @@ func TestTable(t *testing.T) {
 }
 
 // writeGoModForUnit writes go.mod relative to the parsed unit's temp root and returns that root.
+// unit supplies the root through unitRoot, relDir is a slash-separated directory relative to that root, and contents is the go.mod text.
+// The test fails when the root cannot be derived or go.mod cannot be written.
 func writeGoModForUnit(t *testing.T, unit parser.Unit, relDir string, contents string) string {
 	t.Helper()
 	root := unitRoot(t, unit)
@@ -149,6 +157,8 @@ func writeGoModForUnit(t *testing.T, unit parser.Unit, relDir string, contents s
 }
 
 // writeGoMod writes one module file for version-sensitive rule tests.
+// path is the module file to write, with any missing parent directories created first, and contents replaces whatever the file held.
+// The test fails through t.Fatal when the directories or the file cannot be written.
 func writeGoMod(t *testing.T, path string, contents string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -160,6 +170,8 @@ func writeGoMod(t *testing.T, path string, contents string) {
 }
 
 // unitRoot reconstructs parseOne's temp root from a unit's absolute and relative paths.
+// It returns the cleaned directory left after trimming unit.File.Path from the end of unit.File.AbsPath.
+// The test fails when that trim changes nothing, such as when AbsPath does not end with the relative path.
 func unitRoot(t *testing.T, unit parser.Unit) string {
 	t.Helper()
 	rel := filepath.FromSlash(unit.File.Path)
@@ -170,10 +182,10 @@ func unitRoot(t *testing.T, unit parser.Unit) string {
 	return filepath.Clean(root)
 }
 
-// TestHelperMissingTHelperRuleSkipsTestBodies covers the shapes M02 measured as
-// not worth a t.Helper call: benchmark and long parameterized test bodies, a
-// Helper reached through an interface assertion, and failures that belong to a
-// subtest's own handle.
+// TestHelperMissingTHelperRuleSkipsTestBodies pins the shapes the helper rule leaves alone; every fixture must yield no finding.
+//
+// Benchmark bodies with a b.N or b.Loop timing loop and long parameterized bodies named like a test are skipped.
+// So are a Helper call reached through an interface assertion and failures raised only through a subtest's own handle.
 func TestHelperMissingTHelperRuleSkipsTestBodies(t *testing.T) {
 	longBody := strings.Repeat("\t_ = mode\n", 30)
 	cases := map[string]string{
@@ -227,6 +239,7 @@ func callOrderAssert(t *testing.T, want string) {
 }
 
 // TestHelperMissingTHelperRuleKeepsHelpers keeps each skipped shape's near miss reported.
+// Every case must yield one finding, so a silent case means a skip in TestHelperMissingTHelperRuleSkipsTestBodies has grown too wide.
 func TestHelperMissingTHelperRuleKeepsHelpers(t *testing.T) {
 	longBody := strings.Repeat("\t_ = mode\n", 30)
 	cases := map[string]string{

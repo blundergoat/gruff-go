@@ -1,4 +1,10 @@
 // Package cli tests pin the shared command and hook exit-code contract.
+//
+// A scan exits 0 when no finding reaches the --fail-on threshold and 1 when one does.
+// It exits 2 at any threshold on a run-invalidating diagnostic, such as a parse failure, and on an invalid --fail-on value or config.
+//
+// The hook command exits 0 for ignored or skipped paths and 2 when analysis fails.
+// A failure here means a CI gate or agent hook would see a different exit code for the same run.
 package cli
 
 import (
@@ -8,8 +14,10 @@ import (
 	"testing"
 )
 
-// TestDiagnosticExitContractAcrossStagesCommandsAndThresholds exercises every
-// supported diagnostic stage/command pairing at all four finding thresholds.
+// TestDiagnosticExitContractAcrossStagesCommandsAndThresholds runs analyse, summary and report at all four --fail-on thresholds.
+//
+// Every supported diagnostic stage and command pairing must exit 2 at every threshold, and the clean file must always exit 0.
+// The finding fixture exits 1 only at advisory and the warning fixture at advisory or warning.
 func TestDiagnosticExitContractAcrossStagesCommandsAndThresholds(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "clean/clean.go", "// Package clean is a clean fixture.\npackage clean\n")
@@ -41,6 +49,7 @@ func TestDiagnosticExitContractAcrossStagesCommandsAndThresholds(t *testing.T) {
 		{stage: "all-skipped", path: "generated.go", commands: []string{"analyse"}},
 	}
 
+	// A run-invalidating diagnostic exits 2 even under --fail-on none, so a broken run never reads as a pass in CI.
 	for _, row := range diagnosticRows {
 		for _, command := range row.commands {
 			for _, threshold := range thresholds {
@@ -61,6 +70,7 @@ func TestDiagnosticExitContractAcrossStagesCommandsAndThresholds(t *testing.T) {
 		}
 	}
 
+	// A fixture exits 1 only when its most severe finding is at or above the --fail-on threshold; none never gates.
 	findingExits := map[string]int{"none": 0, "advisory": 1, "warning": 0, "error": 0}
 	for _, command := range commands {
 		for _, threshold := range thresholds {
@@ -80,8 +90,8 @@ func TestDiagnosticExitContractAcrossStagesCommandsAndThresholds(t *testing.T) {
 	}
 }
 
-// TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput pins exit 2 before
-// analysis for malformed flags and invalid configuration on every scan command.
+// TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput pins exit 2 before analysis for an invalid --fail-on value or config file.
+// It covers analyse, summary and report; bad-config.yaml declares the unsupported schemaVersion gruff-go.config.v9.
 func TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "clean.go", "// Package clean is a clean fixture.\npackage clean\n")
@@ -99,8 +109,10 @@ func TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput(t *testing.T) {
 	}
 }
 
-// TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures proves hook
-// ignored/skipped paths remain exit 0 while real analysis failures remain exit 2.
+// TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures proves gruff-go hook exits 0 for ignored and skipped paths.
+//
+// A path matched by paths.ignore, or a generated file skipped by default, must still be listed in the report's ignored paths.
+// A real parse failure must exit 2 with the config schema reported valid, so the 2 comes from analysis, not configuration.
 func TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - \"ignored/**\"\n")
@@ -126,14 +138,16 @@ func TestHookDiagnosticExitContractSeparatesAdvisorySkipsFromFailures(t *testing
 }
 
 // diagnosticCommandArgs builds a scan command with flags before its path.
+// command names the scan subcommand, threshold is the --fail-on value, extra holds further flags, and path is the scan target.
+// It returns command, --no-config, --format json and --fail-on threshold, followed by extra and then path, so the slice is never empty.
 func diagnosticCommandArgs(command, threshold, path string, extra ...string) []string {
 	args := []string{command, "--no-config", "--format", "json", "--fail-on", threshold}
 	args = append(args, extra...)
 	return append(args, path)
 }
 
-// assertDiagnosticCommandExit runs one literal table row and reports both
-// output streams if its numeric exit changes.
+// assertDiagnosticCommandExit runs one literal table row through Main and prints both output streams when its exit code is not want.
+// args is the argument list passed to Main and want is the required exit code; any other code fails the test via t.Fatalf.
 func assertDiagnosticCommandExit(t *testing.T, args []string, want int) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -142,7 +156,8 @@ func assertDiagnosticCommandExit(t *testing.T, args []string, want int) {
 	}
 }
 
-// hookReportContainsIgnoredPath reports whether the hook payload carries path.
+// hookReportContainsIgnoredPath reports whether the hook report payload lists path among its ignored paths.
+// It returns false when no ignored entry matches path exactly, which is also the result for an empty list.
 func hookReportContainsIgnoredPath(payload hookReport, path string) bool {
 	return slices.ContainsFunc(payload.Ignored.Paths, func(item hookIgnoredPath) bool {
 		return item.Path == path

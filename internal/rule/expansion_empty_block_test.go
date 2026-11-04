@@ -7,7 +7,10 @@ package rule
 
 import "testing"
 
-// emptyBlockSymbols reports the line numbers dead-code.empty-block flags in one file.
+// emptyBlockLines reports the line numbers dead-code.empty-block flags in one file.
+//
+// The source text is parsed as pkg/sample.go for EmptyBlockRule with an empty Context; source that fails to parse stops the test.
+// The slice holds one line number per finding in the order the rule emits them, and is empty but non-nil when no block is flagged.
 func emptyBlockLines(t *testing.T, source string) []int {
 	t.Helper()
 	unit := parseOne(t, "pkg/sample.go", source)
@@ -19,6 +22,9 @@ func emptyBlockLines(t *testing.T, source string) []int {
 }
 
 // requireEmptyBlockCount fails unless the rule reported exactly n blocks.
+//
+// The source text is a whole Go file checked through emptyBlockLines, so source that fails to parse stops the test before any count is compared.
+// On a count mismatch the test stops via t.Fatalf, listing the reported lines.
 func requireEmptyBlockCount(t *testing.T, source string, n int) {
 	t.Helper()
 	if got := emptyBlockLines(t, source); len(got) != n {
@@ -27,6 +33,7 @@ func requireEmptyBlockCount(t *testing.T, source string, n int) {
 }
 
 // A loop whose header does the work is deliberate, and its body is empty on purpose.
+// A failure means a for loop that works in its condition or post statement is flagged as an empty block.
 func TestEmptyBlockIgnoresLoopsThatWorkInTheirHeader(t *testing.T) {
 	requireEmptyBlockCount(t, `package pkg
 
@@ -40,6 +47,7 @@ func headerWork() {
 }
 
 // Draining or waiting on a channel is what an empty range body is for.
+// A failure means ranging over a channel with an empty body is flagged as an empty block.
 func TestEmptyBlockIgnoresRangeDrain(t *testing.T) {
 	requireEmptyBlockCount(t, `package pkg
 
@@ -51,6 +59,7 @@ func drain(ch chan int) {
 }
 
 // `select {}` parks the goroutine forever; it is a blocking statement, not a gap.
+// A failure means an empty select, written to block forever, is flagged as an empty block.
 func TestEmptyBlockIgnoresBlockingSelect(t *testing.T) {
 	requireEmptyBlockCount(t, `package pkg
 
@@ -61,6 +70,7 @@ func park() {
 }
 
 // A comment between the braces is the author saying why the block is empty.
+// A failure means an empty block that explains itself in a comment is still flagged.
 func TestEmptyBlockIgnoresACommentedBody(t *testing.T) {
 	requireEmptyBlockCount(t, `package pkg
 
@@ -72,8 +82,10 @@ func documented(err error) {
 `, 0)
 }
 
-// The controls. A bare infinite loop and an unfinished branch are still reported, and the
-// conditional case is the confirmed true positive the precision corpus pins for this rule.
+// The controls: an empty if body, a bare infinite loop and an empty switch are each still reported.
+//
+// The empty if is the confirmed true positive the precision corpus pins for this rule.
+// A failure means the rule was narrowed far enough to miss unfinished branches.
 func TestEmptyBlockStillReportsUnfinishedBranches(t *testing.T) {
 	requireEmptyBlockCount(t, `package pkg
 

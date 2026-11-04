@@ -1,8 +1,9 @@
 package rule
 
-// reviewedFalsePositiveShapes records the precision boundary sealed during the
-// family rule review. Detector definitions keep owning behavior and policy;
-// this catalogue layer adds only user-facing recognition and mitigation text.
+// reviewedFalsePositiveShapes supplies catalogue guidance for recognising and handling possible false positives, keyed by rule ID.
+//
+// Detector definitions keep owning behavior and policy; this catalogue layer adds only user-facing recognition and mitigation text.
+// Each Shape describes code a rule can flag without a real defect, and each Mitigation gives the user a practical next step.
 var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	"dead-code.empty-block": {
 		Shape: "A control-flow block used only for header work, or an intentionally empty select or comment-only body, " +
@@ -173,8 +174,8 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	},
 }
 
-// withReviewedFalsePositiveShapes enriches the canonical catalogue without
-// overriding guidance already owned by an individual rule definition.
+// withReviewedFalsePositiveShapes enriches the canonical catalogue without overriding guidance already owned by an individual rule definition.
+// It returns definition unchanged unless FalsePositiveShapes is empty and its ID has a reviewed shape, which becomes the sole entry.
 func withReviewedFalsePositiveShapes(definition Definition) Definition {
 	if len(definition.FalsePositiveShapes) > 0 {
 		return definition

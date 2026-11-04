@@ -1,6 +1,7 @@
 // Package rule classifies net/http calls that can send a user-controlled URL.
-// It gives the URL rule stable sink labels for terminal, JSON, and dashboard
-// findings without changing how destination safety itself is decided.
+//
+// It gives the URL rule stable sink labels for terminal, JSON, and dashboard findings.
+// It does not change how destination safety itself is decided.
 package rule
 
 import (
@@ -23,8 +24,12 @@ type httpClientBindings struct {
 	typedClientBindings map[*ast.Object]bool
 }
 
-// httpClientURLArg reports the URL argument index and a sink label for net/http
-// client calls, including package helpers and known http.Client values.
+// httpClientURLArg reports the URL argument index and a sink label for net/http client calls.
+//
+// It covers package helpers such as http.Get and http.NewRequest, and the Get, Head, Post and PostForm methods of known http.Client values.
+// candidateCall is the call to classify, httpPackageAliases names the net/http imports, and clientBindings resolves client receivers.
+//
+// It returns the URL index, sink label and true for a recognised call, or zero, an empty label and false for any other call.
 func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases map[string]bool, clientBindings httpClientBindings) (int, string, bool) {
 	methodSelector, isSelector := candidateCall.Fun.(*ast.SelectorExpr)
 	// A plain function call is not one of the net/http sinks shown to users.
@@ -32,7 +37,7 @@ func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases map[string
 		return 0, "", false
 	}
 	packageIdentifier, hasPackageIdentifier := methodSelector.X.(*ast.Ident)
-	// Package helpers expose their URL at a stable position in the UI metadata.
+	// Package helpers such as http.Get take their URL at a fixed argument position, and the sink label keeps the user's import alias.
 	if hasPackageIdentifier && isImportedPackageIdentifier(packageIdentifier, httpPackageAliases) {
 		switch methodSelector.Sel.Name {
 		case "Get", "Head", "Post", "PostForm":
@@ -55,7 +60,10 @@ func httpClientURLArg(candidateCall *ast.CallExpr, httpPackageAliases map[string
 }
 
 // isHTTPClientReceiver recognises a collected http.Client or DefaultClient.
-// Use it so method-based fetches appear beside package-helper findings in the UI.
+//
+// It lets client.Get, Head, Post and PostForm calls produce the same URL findings as the package helpers.
+// receiverExpression is the method receiver; an identifier is checked in clientBindings at requestCall.
+// It returns true for an identifier that can hold a client there or for DefaultClient on a package in httpPackageAliases, and false otherwise.
 func isHTTPClientReceiver(receiverExpression ast.Expr, httpPackageAliases map[string]bool, clientBindings httpClientBindings, requestCall *ast.CallExpr) bool {
 	switch receiverValue := receiverExpression.(type) {
 	case *ast.Ident:
@@ -67,22 +75,23 @@ func isHTTPClientReceiver(receiverExpression ast.Expr, httpPackageAliases map[st
 	return false
 }
 
-// canHoldHTTPClientAt reports whether a lexical receiver can hold a net/http
-// client when the request executes. A later write clears a client candidate only
-// when every path from that candidate to the request must execute the write.
+// canHoldHTTPClientAt reports whether a lexical receiver can hold a net/http client when the request executes.
+//
+// A later non-client write clears a candidate by syntax checks on source order and enclosing branches, not a full runtime path analysis.
+// receiver is the method receiver identifier and requestCall the request; a nil or unresolved receiver or a nil requestCall gives false.
+// False means the call is not classified as an http.Client request.
 func (clientBindings httpClientBindings) canHoldHTTPClientAt(receiver *ast.Ident, requestCall *ast.CallExpr) bool {
 	// An unresolved receiver cannot be tied to a declaration without guessing by name.
 	if receiver == nil || receiver.Obj == nil || requestCall == nil {
 		return false
 	}
 	bindingChanges := clientBindings.changesByBinding[receiver.Obj]
-	// Any reachable client-producing change can classify the request unless a
-	// later non-client write necessarily replaces it first.
+	// Any reachable client-producing change can classify the request unless a later non-client write passes the replacement checks first.
 	for changeIndex, bindingChange := range bindingChanges {
 		if !bindingChange.holdsHTTPClient || bindingChange.changeSite.Pos() >= requestCall.Pos() {
 			continue
 		}
-		// Mutually exclusive branches cannot carry this value to the request.
+		// If the control-path check treats the change and the request as exclusive, that change cannot make this call produce a URL finding.
 		if !nodesCanShareControlPath(clientBindings.functionBody, bindingChange.changeSite, requestCall) {
 			continue
 		}
@@ -93,11 +102,13 @@ func (clientBindings httpClientBindings) canHoldHTTPClientAt(receiver *ast.Ident
 	return false
 }
 
-// hasDominatingNonClientWrite reports whether a later assignment replaces one
-// client candidate on every path that can reach the request.
+// hasDominatingNonClientWrite reports whether one later non-client write replaces the client candidate before the request, by syntax checks alone.
+//
+// laterWrites follow the candidate written at clientValueWrite; only non-client writes positioned before requestCall can count.
+// False keeps the client classification, including when separate if and else writes together replace the candidate.
 func (clientBindings httpClientBindings) hasDominatingNonClientWrite(laterWrites []httpClientBindingChange, clientValueWrite ast.Node, requestCall *ast.CallExpr) bool {
 	for _, laterWrite := range laterWrites {
-		// Writes after the request cannot alter the receiver used by this call.
+		// A write after the request in the source is ignored, even when a loop runs it before a later pass of the same call.
 		if laterWrite.changeSite.Pos() >= requestCall.Pos() {
 			continue
 		}
@@ -105,7 +116,7 @@ func (clientBindings httpClientBindings) hasDominatingNonClientWrite(laterWrites
 		if laterWrite.holdsHTTPClient {
 			continue
 		}
-		// An exclusive branch cannot replace the candidate on the same execution.
+		// A write treated as exclusive from the client assignment or the request cannot prevent a URL finding based on that candidate.
 		if !nodesCanShareControlPath(clientBindings.functionBody, clientValueWrite, laterWrite.changeSite) ||
 			!nodesCanShareControlPath(clientBindings.functionBody, laterWrite.changeSite, requestCall) {
 			continue
@@ -119,8 +130,10 @@ func (clientBindings httpClientBindings) hasDominatingNonClientWrite(laterWrites
 	return false
 }
 
-// recordBindingChange adds one declaration or assignment to the receiver's
-// timeline. Blank and unresolved names cannot affect a later classified call.
+// recordBindingChange adds one declaration or assignment to the receiver's timeline.
+//
+// Blank and unresolved names, and a nil changeSite, are skipped because they cannot affect a later classified call.
+// identifier names the receiver, changeSite is the node that binds it, and holdsHTTPClient says whether the bound value holds a client.
 func (clientBindings *httpClientBindings) recordBindingChange(identifier *ast.Ident, changeSite ast.Node, holdsHTTPClient bool) {
 	// Only a resolved local lets the scanner distinguish shadows with the same name.
 	if identifier == nil || identifier.Name == "_" || identifier.Obj == nil || changeSite == nil {
@@ -132,9 +145,11 @@ func (clientBindings *httpClientBindings) recordBindingChange(identifier *ast.Id
 	})
 }
 
-// recordClientType remembers a declaration whose static type is http.Client or
-// *http.Client. Later factory assignments still hold that type even when their
-// expression shape does not reveal it to this parser-only scan.
+// recordClientType remembers a declaration whose static type is http.Client or *http.Client.
+//
+// Later factory assignments still hold that type even when their expression shape does not reveal it to this parser-only scan.
+// identifier is the declared name, clientType its declared type, and httpPackageAliases names the net/http imports.
+// It returns true once identifier is marked client-typed, and false for a nil or unresolved identifier or a non-client type.
 func (clientBindings *httpClientBindings) recordClientType(identifier *ast.Ident, clientType ast.Expr, httpPackageAliases map[string]bool) bool {
 	// Only exact net/http types with resolved bindings can constrain later writes.
 	if identifier == nil || identifier.Obj == nil || !isHTTPClientParameterType(clientType, httpPackageAliases) {
@@ -144,9 +159,10 @@ func (clientBindings *httpClientBindings) recordClientType(identifier *ast.Ident
 	return true
 }
 
-// recordInferredClientType preserves the concrete type introduced by := or an
-// untyped var initializer. A pre-existing name in a mixed short declaration is
-// only assigned, so its earlier interface type must remain dynamic.
+// recordInferredClientType preserves the concrete type introduced by := or an untyped var initializer.
+//
+// A pre-existing name in a mixed short declaration is only assigned, so its earlier interface type must remain dynamic.
+// identifier becomes client-typed only when declarationSite declared it and assignedValue is a client expression per httpPackageAliases.
 func (clientBindings *httpClientBindings) recordInferredClientType(identifier *ast.Ident, declarationSite ast.Node, assignedValue ast.Expr, httpPackageAliases map[string]bool) {
 	// Only a new resolved declaration with recognizable client syntax infers this type.
 	if identifier == nil || identifier.Obj == nil || identifier.Obj.Decl != declarationSite ||
@@ -156,11 +172,16 @@ func (clientBindings *httpClientBindings) recordInferredClientType(identifier *a
 	clientBindings.typedClientBindings[identifier.Obj] = true
 }
 
-// assignmentHoldsHTTPClient classifies a value written to one receiver. A
-// recognizable literal or DefaultClient works for inferred/interface locals;
-// statically typed client bindings also retain their type across factory calls.
+// assignmentHoldsHTTPClient classifies a value written to one receiver.
+//
+// A recognizable client literal or DefaultClient is enough for inferred and interface-typed locals.
+// Statically typed client bindings also keep their client type across factory calls.
+//
+// identifier is the receiver written, assignedValue its value, hasAssignedValue whether one exists, and httpPackageAliases the net/http names.
+// It returns false when hasAssignedValue is false or assignedValue is the bare identifier nil, and true for a client expression.
+// Any other value yields true only when identifier is resolved and recorded as client-typed.
 func (clientBindings httpClientBindings) assignmentHoldsHTTPClient(identifier *ast.Ident, assignedValue ast.Expr, hasAssignedValue bool, httpPackageAliases map[string]bool) bool {
-	// No right-hand value means this declaration left a pointer at nil.
+	// An absent initializer is handled by the declaration scan, which distinguishes usable value clients from nil pointers.
 	if !hasAssignedValue {
 		return false
 	}
@@ -174,8 +195,13 @@ func (clientBindings httpClientBindings) assignmentHoldsHTTPClient(identifier *a
 	return identifier != nil && identifier.Obj != nil && clientBindings.typedClientBindings[identifier.Obj]
 }
 
-// collectHTTPClientBindings records parameter and local client state for one
-// handler. The URL scan consults the timeline at each method-based request.
+// collectHTTPClientBindings records parameter and local client state for one handler.
+//
+// The URL scan consults this timeline at each method-based request such as client.Get.
+// functionType, when non-nil, supplies the parameters; functionBody supplies AssignStmt and ValueSpec nodes outside nested function literals.
+// httpPackageAliases names the net/http imports used to recognise client types and values.
+//
+// It returns the bindings with a timeline entry for each resolved non-blank name those nodes bind; range clause variables get none.
 func collectHTTPClientBindings(functionType *ast.FuncType, functionBody *ast.BlockStmt, httpPackageAliases map[string]bool) httpClientBindings {
 	clientBindings := httpClientBindings{
 		functionBody:        functionBody,
@@ -193,13 +219,13 @@ func collectHTTPClientBindings(functionType *ast.FuncType, functionBody *ast.Blo
 		}
 	}
 	ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
-		// A nested callback gets its own scan context and client-variable list.
+		// Nested callbacks get a separate scan only when they declare their own request parameter; captured request state is not inherited.
 		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 			return false
 		}
 		switch statement := syntaxNode.(type) {
 		case *ast.AssignStmt:
-			// Each assignment replaces the receiver state visible to later requests.
+			// Each assignment adds a possible state; an optional non-client assignment can leave an earlier client eligible at a later request.
 			for valueIndex, leftHandValue := range statement.Lhs {
 				clientName, isIdentifier := leftHandValue.(*ast.Ident)
 				// Non-identifiers cannot name the method receiver used by this rule.
@@ -242,7 +268,9 @@ func collectHTTPClientBindings(functionType *ast.FuncType, functionBody *ast.Blo
 }
 
 // isHTTPClientParameterType recognises injected http.Client values and pointers.
+//
 // A pointer parameter may be non-nil even though an uninitialized local is not.
+// It returns true when parameterType, stripped of parentheses and one pointer, is Client on a package in httpPackageAliases, else false.
 func isHTTPClientParameterType(parameterType ast.Expr, httpPackageAliases map[string]bool) bool {
 	parameterType = unwrapRequestExprParens(parameterType)
 	// Dependency injection commonly passes a pointer to a shared configured client.
@@ -252,9 +280,10 @@ func isHTTPClientParameterType(parameterType ast.Expr, httpPackageAliases map[st
 	return isHTTPClientValueType(parameterType, httpPackageAliases)
 }
 
-// isHTTPClientValueType recognises the usable zero-value `http.Client` type.
-// An uninitialized *http.Client remains nil and cannot send a request, so it is
-// intentionally not classified without a concrete initializer.
+// isHTTPClientValueType recognises the usable zero-value http.Client type.
+//
+// An uninitialized *http.Client remains nil and cannot send a request, so it is intentionally not classified without a concrete initializer.
+// It returns true only when clientType is a Client selector on a package in httpPackageAliases, and false for pointers and any other type.
 func isHTTPClientValueType(clientType ast.Expr, httpPackageAliases map[string]bool) bool {
 	selector, ok := clientType.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Client" {
@@ -265,7 +294,10 @@ func isHTTPClientValueType(clientType ast.Expr, httpPackageAliases map[string]bo
 }
 
 // isHTTPClientExpr recognises an http.Client construction or reference.
+//
 // Use it while collecting client variables that can create a URL finding.
+// clientExpression is the value to classify and httpPackageAliases names the net/http imports.
+// It returns true for a client composite literal, the address of a recognised value, or DefaultClient on such a package, and false otherwise.
 func isHTTPClientExpr(clientExpression ast.Expr, httpPackageAliases map[string]bool) bool {
 	switch clientValue := clientExpression.(type) {
 	case *ast.UnaryExpr:

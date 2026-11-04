@@ -1,6 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file exercises analyse, rule-catalogue, and diagnostic responses.
-// The tests protect what terminal users and JSON consumers receive.
+//
+// This file exercises analyse, baseline, report, rule-catalogue and diagnostic responses through Main with the arguments a user would type.
+// The tests protect what terminal users and JSON consumers receive, so a failure means an exit code, flag or report field they rely on changed.
 package cli
 
 import (
@@ -18,8 +19,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
 
-// machineAnalysisReport mirrors the v3 JSON surface tests consume. The runtime
-// analysis.Report remains the richer internal model and is not a wire decoder.
+// machineAnalysisReport mirrors the v3 JSON report surface these tests decode from analyse --format json.
+//
+// The runtime analysis.Report remains the richer internal model and is not a wire decoder.
+// SuppressedFindings is a pointer so a test can tell an absent or null summary.suppressedFindings from a zero count.
 type machineAnalysisReport struct {
 	SchemaVersion string `json:"schemaVersion"`
 	Summary       struct {
@@ -66,7 +69,8 @@ type machineAnalysisReport struct {
 	} `json:"extensions"`
 }
 
-// TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output.
+// TestAnalyseTextAndJSON checks that text and JSON formats both produce valid output for a clean one-file project, exiting 0.
+// A failure means the text header, the JSON schemaVersion, the analysed-file count or a rule's parser capability changed.
 func TestAnalyseTextAndJSON(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -101,13 +105,15 @@ func TestAnalyseTextAndJSON(t *testing.T) {
 	}
 }
 
-// TestDeepScanBudgetCLIOverridesConfig verifies paired CLI precedence and explicit disablement.
+// TestDeepScanBudgetCLIOverridesConfig checks that --deep-scan-budget takes precedence over the deepScanBudget block in .gruff-go.yaml.
+// The config's tiny budget gives one override=config diagnostic; a paired value such as 100:10000, or off to disable it, gives none.
 func TestDeepScanBudgetCLIOverridesConfig(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a budget fixture.\npackage main\n\nfunc main() {}\n")
 	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  enabled: true\n  maxLines: 1\n  maxBytes: 1\n")
 	t.Chdir(root)
 
+	// run passes arguments to Main, fails the test on any nonzero exit, and returns the decoded JSON report, so each call below asserts exit 0.
 	run := func(arguments ...string) machineAnalysisReport {
 		t.Helper()
 		var out, errOut bytes.Buffer
@@ -133,8 +139,8 @@ func TestDeepScanBudgetCLIOverridesConfig(t *testing.T) {
 	}
 }
 
-// TestAnalyseChangedRangesFailOnNoneExitsZero checks that a changed-ranges scan
-// with --fail-on none exits 0 and still reports suppressedCount in the JSON.
+// TestAnalyseChangedRangesFailOnNoneExitsZero checks that a changed-ranges scan with --fail-on none exits 0.
+// The JSON must still include summary.suppressedFindings; a missing key fails the test.
 func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -153,9 +159,8 @@ func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	}
 }
 
-// TestAnalyseHelpDocumentsChangedRegionFlags checks that both `help analyse` and
-// `analyse --help` document every native changed-region flag so downstream hooks
-// can detect support by string-matching GNU-style long flags.
+// TestAnalyseHelpDocumentsChangedRegionFlags checks that every analyse help route lists --changed-ranges, --changed-scope and --no-baseline.
+// The routes are help analyse, analyse --help and analyse --diff --help; downstream hooks string-match GNU-style long flags to detect support.
 func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"help", "analyse"},
@@ -176,7 +181,8 @@ func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
 	}
 }
 
-// TestAnalyseTreatsHelpAfterTerminatorAsPath verifies `--` protects a help-shaped filename.
+// TestAnalyseTreatsHelpAfterTerminatorAsPath checks that in analyse main.go -- --help, the --help after -- is a path, not a help request.
+// The run must exit 0 without printing the analyse usage text, so a user can still name a file that looks like a flag.
 func TestAnalyseTreatsHelpAfterTerminatorAsPath(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -203,9 +209,8 @@ func TestAnalyseRecognisesHelpAfterPath(t *testing.T) {
 	}
 }
 
-// TestAnalyseFailOnRejectsLegacySeverity confirms the 5-bucket alias parser is
-// gone (ADR-009 + ADR-010): --fail-on critical is rejected by
-// ParseFailThreshold, exit 2.
+// TestAnalyseFailOnRejectsLegacySeverity checks that --fail-on critical exits 2 with unknown threshold "critical" on standard error.
+// The 5-bucket alias parser is gone (ADR-009 + ADR-010), so ParseFailThreshold rejects the old severity name.
 func TestAnalyseFailOnRejectsLegacySeverity(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -221,6 +226,7 @@ func TestAnalyseFailOnRejectsLegacySeverity(t *testing.T) {
 }
 
 // TestAnalyseJSONDeterministicShape verifies that repeated scans yield identical JSON.
+// Scanned paths must also come out sorted, a.go before b.go, even though b.go is written first.
 func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "b.go", "// Package main is a test fixture.\npackage main\n")
@@ -252,10 +258,10 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	}
 }
 
-// TestListRulesListsBuiltInCatalogueUnderAProjectConfig pins the family listing: a project config that overrides a
-// rule's severity, enablement and threshold changes nothing in either format, because `defaultSeverity`,
-// `defaultEnabled` and `thresholds` publish the release defaults in every port. The config is still loaded, so a
-// broken one is refused with exit 2 as every other command refuses it.
+// TestListRulesListsBuiltInCatalogueUnderAProjectConfig checks that list-rules prints the built-in catalogue even under a project config.
+//
+// A .gruff-go.yaml overriding severity, enablement or threshold leaves both formats on the release defaults, pinning the family listing.
+// list-rules still loads the project config and refuses an invalid one with exit 2.
 func TestListRulesListsBuiltInCatalogueUnderAProjectConfig(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -280,6 +286,7 @@ func TestListRulesListsBuiltInCatalogueUnderAProjectConfig(t *testing.T) {
 		}
 	}
 
+	// A rule ID gruff-go does not know, like a typo under rules, makes the config broken, and list-rules must exit 2.
 	broken := "schemaVersion: gruff-go.config.v0.1\nrules:\n  not.a-rule:\n    enabled: true\n"
 	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
@@ -290,7 +297,8 @@ func TestListRulesListsBuiltInCatalogueUnderAProjectConfig(t *testing.T) {
 	}
 }
 
-// TestListRulesAndDiagnostics covers list-rules output and diagnostic exit codes.
+// TestListRulesAndDiagnostics checks the list-rules JSON catalogue and the exit 2 a user gets for a missing path or an unparsable file.
+// Every medium- or low-confidence rule must ship false-positive guidance, and the catalogue is pinned at 80 rules with 43 medium or low.
 func TestListRulesAndDiagnostics(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -329,15 +337,18 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 			t.Fatalf("%s false-positive guidance = %#v", listedRule.ID, listedRule.FalsePositiveShapes)
 		}
 	}
+	// Update these pinned counts when the catalogue total changes or a rule moves into or out of medium or low confidence.
 	if len(catalogue.Rules) != 80 || precisionRuleCount != 43 {
 		t.Fatalf("list-rules counts = %d total, %d medium/low; want 80 and 43", len(catalogue.Rules), precisionRuleCount)
 	}
 
+	// A path that does not exist, such as a typo on the command line, makes analyse exit 2.
 	var missingOut, missingErr bytes.Buffer
 	if code := Main([]string{"analyse", "missing.go"}, &missingOut, &missingErr); code != 2 {
 		t.Fatalf("missing exit = %d, stderr = %s, stdout = %s", code, missingErr.String(), missingOut.String())
 	}
 
+	// A Go file with a syntax error, such as a half-saved edit, also makes analyse exit 2.
 	writeFile(t, ".", "broken.go", "package main\nfunc broken( {\n")
 	var parseOut, parseErr bytes.Buffer
 	if code := Main([]string{"analyse", "broken.go"}, &parseOut, &parseErr); code != 2 {
@@ -345,7 +356,8 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 	}
 }
 
-// TestAnalyseJSONIncludesFindingsAndScore asserts findings and score appear in JSON output.
+// TestAnalyseJSONIncludesFindingsAndScore checks that analyse on complexFixture exits 1 with one complexity.cognitive finding in JSON.
+// The finding needs a fingerprint and remediation, and the score must fall below 100 with a grade and exactly one finding-bearing pillar.
 func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -366,9 +378,9 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	if len(parsed.Findings) != 1 {
 		t.Fatalf("findings = %#v, want one", parsed.Findings)
 	}
-	finding := parsed.Findings[0]
-	if finding.RuleID != "complexity.cognitive" || finding.Fingerprint == "" || finding.Remediation == "" {
-		t.Fatalf("finding = %#v, want complete complexity finding", finding)
+	reportedFinding := parsed.Findings[0]
+	if reportedFinding.RuleID != "complexity.cognitive" || reportedFinding.Fingerprint == "" || reportedFinding.Remediation == "" {
+		t.Fatalf("finding = %#v, want complete complexity finding", reportedFinding)
 	}
 	// Every rule-backed pillar now carries a row, so the finding-bearing count is read from the rows
 	// themselves rather than from the length of a list that used to hold only penalised pillars.
@@ -383,7 +395,8 @@ func TestAnalyseJSONIncludesFindingsAndScore(t *testing.T) {
 	}
 }
 
-// TestAnalyseHonorsConfigThresholdAndBaseline checks config thresholds and baseline suppression.
+// TestAnalyseHonorsConfigThresholdAndBaseline checks that --config raising maxComplexity to 100 clears the complexity finding, exiting 0.
+// A baseline written by gruff-go baseline then hides that finding on the next analyse: one suppressed, zero reported, exit 0.
 func TestAnalyseHonorsConfigThresholdAndBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -419,9 +432,10 @@ rules:
 	}
 }
 
-// TestAnalyseGenerateBaselineWritesUsableBaseline verifies the analyse-side
-// onboarding flag writes the same kind of baseline the steady-state
-// --baseline flow can apply on the next run.
+// TestAnalyseGenerateBaselineWritesUsableBaseline checks that analyse --generate-baseline writes a baseline the next --baseline run applies.
+//
+// This onboarding run must exit 0 and confirm the write; the steady-state run then hides the one finding.
+// Its baseline section must carry all nine family keys, with generated false and an explicit source.
 func TestAnalyseGenerateBaselineWritesUsableBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -466,8 +480,8 @@ func TestAnalyseGenerateBaselineWritesUsableBaseline(t *testing.T) {
 	}
 }
 
-// TestAnalyseGenerateBaselineRejectsPartialScopeFlags protects the baseline
-// from being generated after suppression, diff filtering, or display filters.
+// TestAnalyseGenerateBaselineRejectsPartialScopeFlags checks that --generate-baseline exits 2 beside a baseline, diff or display filter.
+// This keeps a baseline from being generated after baseline suppression, diff filtering or display filters hid part of the findings.
 func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -500,7 +514,8 @@ func TestAnalyseGenerateBaselineRejectsPartialScopeFlags(t *testing.T) {
 	}
 }
 
-// TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt confirms config autoload and --no-config behaviour.
+// TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt checks that analyse picks up .gruff-go.yaml from the working directory without --config.
+// That config's threshold of 100 clears the complexity finding (exit 0); --no-config ignores it, so the finding returns and the run exits 1.
 func TestAnalyseAutoLoadsGruffGoYAMLAndNoConfigSkipsIt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -524,7 +539,8 @@ rules:
 	}
 }
 
-// TestAnalyseSummarySARIFAndGitHubFormats verifies non-empty output for alternative report formats.
+// TestAnalyseSummarySARIFAndGitHubFormats checks that --format summary-json, sarif and github each print non-empty output.
+// Each run must also exit 1, since the fixture's complexity finding fails the run whatever format renders it.
 func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -544,6 +560,7 @@ func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 }
 
 // TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs ensures display filters affect rendering only.
+// With --exclude-rules complexity.cognitive the finding leaves the findings list, yet the run still exits 1 and the summary still counts it.
 func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -562,10 +579,10 @@ func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	}
 }
 
-// TestReportIncludeIgnoredOverridesGitignore verifies the report subcommand
-// accepts --include-ignored and threads it into discovery so gitignored files
-// are scanned. Without this, gruff-go report --format json silently dropped
-// ignored files regardless of user intent.
+// TestReportIncludeIgnoredOverridesGitignore checks that gruff-go report accepts --include-ignored and scans gitignored files.
+//
+// Without the flag, report --format json scans main.go and records ignored.go as skipped with reason gitignored.
+// With it, ignored.go is scanned and no gitignored skip reason appears.
 func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n")
@@ -598,9 +615,10 @@ func TestReportIncludeIgnoredOverridesGitignore(t *testing.T) {
 	}
 }
 
-// complexFixture returns a Go source string that triggers a complexity finding.
-// The run of independent ifs keeps complexity.cognitive above threshold; the exported
-// name keeps dead-code.unused-private-function from firing.
+// complexFixture returns a Go source string whose only finding under the default rules is complexity.cognitive.
+//
+// Its run of independent ifs keeps complexity.cognitive above threshold; the exported name keeps dead-code.unused-private-function from firing.
+// Tests write it as complex.go and assert exact counts, so a fixture change that adds or removes a finding breaks them.
 func complexFixture() string {
 	return `// Package sample is a test package.
 package sample
@@ -691,6 +709,9 @@ func Risky(a int) {
 }
 
 // writeFile is a test helper that creates a file beneath root with the given contents.
+//
+// rel is the file path joined beneath root; missing parent directories are created first and an existing file there is replaced by contents.
+// A directory or write failure stops the test with t.Fatal.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

@@ -1,5 +1,7 @@
 // Package diff tests cover patch parsing, changed-line filtering, and git invocation.
-// They exercise both the in-process Parse path and the FromGit subprocess path.
+//
+// They exercise both the in-process Parse path and the FromGit and FromMode paths, which call git in a temporary directory.
+// A failure here means a run scoped to changed lines may keep findings outside the user's edit or drop findings inside it.
 package diff
 
 import (
@@ -13,6 +15,7 @@ import (
 )
 
 // TestParseAndFilterChangedLines verifies hunk parsing and filtering against changed lines.
+// A failure means a changed-lines run would list the wrong files or keep findings outside the edit.
 func TestParseAndFilterChangedLines(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
 --- a/a.go
@@ -29,6 +32,7 @@ diff --git a/b.go b/b.go
 	if len(changed.ChangedFiles) != 2 || changed.ChangedFiles[0] != "a.go" || changed.ChangedFiles[1] != "b.go" {
 		t.Fatalf("changed files = %#v, want sorted a.go/b.go", changed.ChangedFiles)
 	}
+	// The +2,2 hunk covers a.go lines 2 and 3, so only the line 2 finding stays; line 4 and c.go, a file outside the diff, are filtered.
 	items := []finding.Finding{
 		{RuleID: "r", File: "a.go", Location: &finding.Location{Line: 2}},
 		{RuleID: "r", File: "a.go", Location: &finding.Location{Line: 4}},
@@ -41,6 +45,7 @@ diff --git a/b.go b/b.go
 }
 
 // TestParseIgnoresDeletedOnlyFiles verifies fully deleted files yield no changed entries.
+// A failure means a file the diff removes, shown as +++ /dev/null, would still be listed as changed with nothing left to scan.
 func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/deleted.go b/deleted.go
 --- a/deleted.go
@@ -64,6 +69,7 @@ new file mode 100644
 +package main
 +func main() {}
 `))
+	// Line 99 lies far past the hunk's added lines, so only whole-file marking can keep this finding.
 	item := finding.Finding{RuleID: "r", File: "new.go", Location: &finding.Location{Line: 99}}
 	result := Filter([]finding.Finding{item}, changed)
 	if len(result.Findings) != 1 || result.FilteredFindings != 0 {
@@ -71,10 +77,10 @@ new file mode 100644
 	}
 }
 
-// TestParseAnchorsDeletionOnlyHunk verifies a pure-deletion hunk in a still-present
-// file (zero added lines) records its anchor line, so a deletion-only edit keeps its
-// enclosing region in scope instead of dropping out of the changed set with an empty
-// line map (which would silently suppress findings in the edited function).
+// TestParseAnchorsDeletionOnlyHunk verifies a pure-deletion hunk in a still-present file records its anchor line.
+//
+// The hunk adds zero lines, so without the anchor the file's line map would hold no changed lines.
+// That would silently suppress findings in the edited function; the anchor keeps its enclosing region in scope.
 func TestParseAnchorsDeletionOnlyHunk(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
 --- a/a.go
@@ -83,6 +89,7 @@ func TestParseAnchorsDeletionOnlyHunk(t *testing.T) {
 -removed one
 -removed two
 `))
+	// The +3,0 header names new line 3, the line just before the two removed lines, as the anchor.
 	if _, ok := changed.LinesByFile["a.go"][3]; !ok {
 		t.Fatalf("changed lines = %#v, want deletion anchored at line 3", changed.LinesByFile["a.go"])
 	}
@@ -106,6 +113,7 @@ func TestExplicitRangesApplyToFiles(t *testing.T) {
 }
 
 // TestFromGitReportsWorkingTreeBaseRef shells out to git and confirms changed line detection.
+// It commits main.go, edits it without committing, and expects FromGit against HEAD to report the uncommitted line 4.
 func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-q")
@@ -128,8 +136,8 @@ func TestFromGitReportsWorkingTreeBaseRef(t *testing.T) {
 	}
 }
 
-// TestFromModeWorkingTreeIncludesUntrackedWholeFiles checks that working-tree mode
-// counts an untracked file as wholly changed, not just edits to tracked files.
+// TestFromModeWorkingTreeIncludesUntrackedWholeFiles checks that working-tree mode counts an untracked file as wholly changed.
+// Edits to tracked files are not enough; a failure means a file the user has not yet added to git would escape a working-tree run.
 func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-q")
@@ -150,6 +158,7 @@ func TestFromModeWorkingTreeIncludesUntrackedWholeFiles(t *testing.T) {
 }
 
 // TestFromGitReportsNonGitDiagnostics ensures non-repo invocations return an error.
+// A failure means FromGit on a directory that is not a git repository returns no error, leaving the user with no diagnostic.
 func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
 	_, err := FromGit(context.Background(), t.TempDir(), "HEAD", []string{"."})
 	if err == nil {
@@ -158,10 +167,12 @@ func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
 }
 
 // runGit executes a git command inside root and fails the test on errors.
+// The args are passed to git unchanged as its arguments, and the failure message shows them with the error and the combined output.
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)
 	command.Dir = root
+	// A machine without git on PATH lands here, so the repository-building tests fail instead of skipping.
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %v failed: %v\n%s", args, err, output)
 	}

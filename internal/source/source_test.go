@@ -1,5 +1,7 @@
-// Package source tests exercise Discover across classification and ignore rules.
-// They construct temp directory trees and assert files, skips, and missing paths.
+// Package source tests in this file exercise Discover and CheckIgnore across classification and ignore rules.
+//
+// Tests build temporary trees and check the Files, Skipped and Missing fields Discover returns, or the decisions CheckIgnore returns.
+// Together they cover classification, ignore policy and missing inputs.
 package source
 
 import (
@@ -7,7 +9,8 @@ import (
 	"testing"
 )
 
-// TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths verifies built-in ignored directories.
+// TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths verifies the built-in classification on a tree with no .gitignore.
+// Config under .agents, .claude, .codex, .github and .goat-flow is scanned, while vendor and the generated Go file are listed in Skipped.
 func TestDiscoverClassifiesAndSkipsDefaultIgnoredPaths(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -83,7 +86,7 @@ func TestDiscoverRespectsGitignoreWithNegation(t *testing.T) {
 	}
 }
 
-// TestDiscoverGitignoreNestedOverride verifies nested .gitignore files override parent patterns.
+// TestDiscoverGitignoreNestedOverride verifies a nested !keep.tmp re-includes only that name; other *.tmp files under pkg stay gitignored.
 func TestDiscoverGitignoreNestedOverride(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "*.tmp\n")
@@ -106,9 +109,8 @@ func TestDiscoverGitignoreNestedOverride(t *testing.T) {
 			t.Fatalf("files = %#v missing %q", got, w)
 		}
 	}
-	// keep.tmp is re-included by negation but .tmp is not a recognised source
-	// extension; the classifier drops it. So it should not appear in Files,
-	// and should NOT appear in Skipped with reason gitignored either.
+	// keep.tmp is re-included by the negation, so it must not be skipped as gitignored.
+	// It is still absent from Files, because the classifier drops the unrecognised .tmp extension.
 	if contains(skippedReasons(result.Skipped), "pkg/keep.tmp:gitignored") {
 		t.Fatalf("pkg/keep.tmp should not be in skipped:gitignored after negation; got %#v", result.Skipped)
 	}
@@ -171,6 +173,7 @@ func TestDiscoverIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 // dist no longer defer (FAMILY-CONTRACT.md section 7, precision-floor M04).
 func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
 	root := t.TempDir()
+	// A root .gitignore holding only a comment is enough: its presence alone turns off the node_modules fallback.
 	writeFile(t, root, ".gitignore", "# project owns node_modules\n")
 	writeFile(t, root, "main.go", "package main\n")
 	writeFile(t, root, "node_modules/pkg/index.go", "package pkg\n")
@@ -212,7 +215,7 @@ func TestDiscoverExplicitIgnoredInputDirectoryPrunes(t *testing.T) {
 	}
 }
 
-// TestDiscoverExplicitDefaultIgnoredFileIsScanned verifies explicit files bypass fallback defaults.
+// TestDiscoverExplicitDefaultIgnoredFileIsScanned verifies an explicitly named file under dist bypasses its default build-output exclusion.
 func TestDiscoverExplicitDefaultIgnoredFileIsScanned(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "dist/config.json", "{}\n")
@@ -256,11 +259,10 @@ func TestDiscoverExplicitVCSFileRemainsBlocked(t *testing.T) {
 	}
 }
 
-// TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree confirms that a
-// subtree-only .gitignore takes ownership of its own subtree: the hardcoded
-// fallback no longer prunes node_modules under that subtree, while a
-// sibling subtree without its own .gitignore still gets the fallback. This
-// matches the monorepo case where each service manages its own ignore policy.
+// TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree confirms a subtree's own .gitignore takes over ignore policy for that subtree.
+//
+// The hardcoded fallback stops pruning services/api/node_modules, while services/web and the root, with no .gitignore, still get it.
+// This matches the monorepo case where each service manages its own ignore policy.
 func TestDiscoverSubtreeGitignoreDisablesFallbackInSubtree(t *testing.T) {
 	root := t.TempDir()
 	// No root .gitignore.
@@ -313,11 +315,10 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 	}
 }
 
-// TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore confirms that an
-// explicit file outside the discovery root is not silently dropped by the
-// repository's .gitignore. The regression: displayPath returned the absolute
-// path when filepath.Rel went up, and Matcher.Match treated that absolute path
-// as relative-to-root, so a root rule like "tmp/" could suppress /tmp/foo.go.
+// TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore confirms the repository .gitignore never drops an explicit file outside the root.
+//
+// displayPath gives a file outside the root an absolute path, so a root rule like "tmp/" must never be matched against /tmp/foo.go.
+// Explicit files bypass .gitignore matching, and repoRelative also keeps absolute paths out of Matcher.Match.
 func TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "tmp/\n")
@@ -359,7 +360,7 @@ func TestDiscoverMalformedGitignore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Malformed .gitignore: rules dropped, file flagged in Skipped.
+	// Malformed patterns are dropped, valid rules remain active, and the file is flagged in Skipped.
 	if !contains(paths(result.Files), "main.go") {
 		t.Fatalf("main.go should still be scanned despite malformed gitignore")
 	}
@@ -390,8 +391,8 @@ func TestCheckIgnoreSharesEngineWithDiscover(t *testing.T) {
 	}
 }
 
-// assertConfigIgnoreAgreement checks a directory walk, an explicit file, and
-// CheckIgnore against one ordered config-pattern list.
+// assertConfigIgnoreAgreement checks a directory walk, an explicit file, and CheckIgnore against one ordered config-pattern list.
+// pattern is the paths.ignore entry under test, set between two entries that never match; all three must name it as the config pattern.
 func assertConfigIgnoreAgreement(t *testing.T, pattern string) {
 	t.Helper()
 	root := t.TempDir()
@@ -427,8 +428,10 @@ func assertConfigIgnoreAgreement(t *testing.T, pattern string) {
 	}
 }
 
-// assertConfigSkip finds the named discovery skip and verifies its config
-// source and verbatim pattern.
+// assertConfigSkip finds the named discovery skip and verifies its config source and verbatim pattern.
+//
+// The first Skipped entry of result whose Path equals path must have Source OriginConfig and a Pattern equal to pattern, or the test fails.
+// The test also fails when result has no skipped entry for path.
 func assertConfigSkip(t *testing.T, result Result, path, pattern string) {
 	t.Helper()
 	for _, item := range result.Skipped {
@@ -442,9 +445,8 @@ func assertConfigSkip(t *testing.T, result Result, path, pattern string) {
 	t.Fatalf("skips = %#v, want config skip for %q with pattern %q", result.Skipped, path, pattern)
 }
 
-// TestCheckIgnoreIncludeIgnoredStillHonorsConfig proves --include-ignored opts
-// into git/default ignores only: a config paths.ignore match is still reported
-// as ignored, while a gitignore-only match is released.
+// TestCheckIgnoreIncludeIgnoredStillHonorsConfig proves --include-ignored never releases a config paths.ignore match.
+// CheckIgnore still reports that path as ignored with source config, while a gitignore-only match under the same flag is released.
 func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "gitignored.go\n")
@@ -463,10 +465,10 @@ func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreReportsGitignoreAndDefaultSources confirms the non-config
-// sources surface their classification without a pattern (pattern is config-only).
-// The default case uses VCS internals because an unrelated .gitignore disables
-// non-VCS fallbacks while VCS paths remain blocked.
+// TestCheckIgnoreReportsGitignoreAndDefaultSources confirms non-config ignores report their own source, and the gitignore one has no pattern.
+//
+// Only config ignores carry a pattern.
+// The default case uses VCS internals because an unrelated .gitignore disables non-VCS fallbacks while VCS paths remain blocked.
 func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored/\n")
@@ -535,9 +537,10 @@ func TestDiscoverThirdPartyClassesComeBackOnRequest(t *testing.T) {
 	}
 }
 
-// TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope verifies the control: names that only resemble the
-// classes, and the build, external and lib directories, are still scanned. The root .gitignore turns off the
-// no-gitignore fallback, which would otherwise prune build/.
+// TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope verifies the control: names that only resemble the classes are still scanned.
+//
+// So are the build, external and lib directories.
+// The root .gitignore turns off the no-gitignore fallback, which would otherwise prune build/.
 func TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "*.log\n")

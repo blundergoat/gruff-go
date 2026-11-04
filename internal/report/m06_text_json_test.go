@@ -1,9 +1,8 @@
-// Package report's M06 agreement test pins one property the ratified contract makes load-bearing:
-// the composite a person reads in the terminal and the composite a script reads from the envelope
-// come from one calculation and must never disagree.
+// Package report's M06 agreement test pins one property the ratified contract makes load-bearing.
 //
-// A renderer that formats the score itself, rather than printing the value the scorer produced, can
-// drift from the machine view without any test noticing - which is exactly what C4 exists to stop.
+// The composite a person reads in the terminal and the one a script reads from the envelope come from one calculation and must never disagree.
+// A renderer that formats the score itself, instead of printing the scorer's value, can drift from the machine view without any test noticing.
+// That drift is exactly what C4 exists to stop.
 package report
 
 import (
@@ -17,11 +16,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// canonicalComposite matches the composite line FAMILY-CONTRACT section 1 fixes: a grade letter and a
-// two-decimal score out of one hundred.
+// canonicalComposite matches the composite line FAMILY-CONTRACT section 1 fixes: a grade letter and a two-decimal score out of one hundred.
 var canonicalComposite = regexp.MustCompile(`(?m)^Composite: ([A-F]) \((\d+\.\d{2}) / 100\)$`)
 
 // agreementReport builds one scored report both views render from.
+//
+// It returns the report analysis.NewReport builds from a complexity.cognitive warning in a.go and a docs.package-comment advisory in b.go.
+// Every call uses the same input, adding complexity, documentation and security pillar definitions and four scanned files, a.go to d.go.
 func agreementReport(t *testing.T) analysis.Report {
 	t.Helper()
 
@@ -40,12 +41,16 @@ func agreementReport(t *testing.T) analysis.Report {
 	})
 }
 
-// compositeFromText extracts the grade and score the canonical block published, failing the test when
-// the block is absent or malformed rather than silently skipping the comparison.
+// compositeFromText extracts the grade and score from the Composite line of one rendered view.
+//
+// The rendered argument is the full text view, and the first line matching canonicalComposite supplies the grade letter and the score.
+// It returns that letter, A to F, and the two-decimal score as a float64; a missing match ends the test via t.Fatalf, so no empty grade comes back.
+// A missing or malformed Composite line fails the test rather than silently skipping the comparison.
 func compositeFromText(t *testing.T, rendered string) (string, float64) {
 	t.Helper()
 
 	match := canonicalComposite.FindStringSubmatch(rendered)
+	// A renderer that drops the Composite line or changes its shape, such as printing one decimal place, fails the test here.
 	if match == nil {
 		t.Fatalf("no canonical composite line in:\n%s", rendered)
 	}
@@ -58,8 +63,8 @@ func compositeFromText(t *testing.T, rendered string) (string, float64) {
 	return match[1], value
 }
 
-// TestTextAndMachineViewsAgreeOnTheComposite proves both human views publish exactly the score and
-// grade the envelope carries, for `analyse` and for `summary`.
+// TestTextAndMachineViewsAgreeOnTheComposite proves the analyse and summary text views publish exactly the score and grade the envelope carries.
+// A mismatch means the text and machine views disagree on the composite score or grade for this fixture.
 func TestTextAndMachineViewsAgreeOnTheComposite(t *testing.T) {
 	report := agreementReport(t)
 	envelope, err := report.MachineEnvelope()
@@ -100,6 +105,7 @@ func TestTextAndMachineViewsAgreeOnTheComposite(t *testing.T) {
 
 		grade, score := compositeFromText(t, buffer.String())
 
+		// Exact float equality is deliberate: the text view must print the scorer's own value, not a recomputed or re-rounded one.
 		if score != *wantScore {
 			t.Errorf("%s text composite %v disagrees with machine composite %v", name, score, *wantScore)
 		}
@@ -110,8 +116,8 @@ func TestTextAndMachineViewsAgreeOnTheComposite(t *testing.T) {
 	}
 }
 
-// TestCanonicalBlockLeadsBothViews proves FAMILY-CONTRACT section 1's ordering: the masthead and the
-// two-line composite block are the first three lines, and port-local detail sits below them.
+// TestCanonicalBlockLeadsBothViews checks that both views put a canonical composite line second and a Findings-prefixed line third.
+// That is the part of FAMILY-CONTRACT section 1's ordering this test pins; the first line and the full tally text are not checked.
 func TestCanonicalBlockLeadsBothViews(t *testing.T) {
 	report := agreementReport(t)
 	views := map[string]func(*bytes.Buffer) error{

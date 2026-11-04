@@ -1,5 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file owns analyse flag registration and validation.
+//
+// This file owns analyse flag registration and validation, turning what the user typed after gruff-go analyse into checked values.
+// Mistakes such as --format xml, or --generate-baseline with --baseline, stop the run with a message on stderr before the config loads.
 package cli
 
 import (
@@ -14,10 +16,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// analyseFlagValues is the parsed analyse command state after validation.
-// minSeverityRaw + minSeverityExplicit replace the resolved FailThreshold so
-// runAnalyse can apply the ADR-010 precedence (CLI flag > failOn.<cmd>
-// > DefaultFailThresholdFor) after the config has been loaded.
+// analyseFlagValues is the parsed analyse command state after validation, holding what the user typed after gruff-go analyse.
+//
+// minSeverityRaw and minSeverityExplicit replace a resolved FailThreshold so runAnalyse can apply ADR-010 precedence after config loads.
+// A threshold typed on the command line beats failOn.analyse in the config, which beats DefaultFailThresholdFor.
 type analyseFlagValues struct {
 	format               string
 	minSeverityRaw       string
@@ -96,13 +98,18 @@ type analyseFlagPointers struct {
 }
 
 // analyseFlagHasSeparateValue identifies analyse flags whose value is the next token.
-// The help pre-scan uses it so a flag value spelled `--help` is not mistaken for a help request.
+//
+// The help pre-scan uses it so a flag value spelled --help is not mistaken for a help request.
+//
+// flagArgument is one raw command-line token; its leading dashes are trimmed before the name is matched.
+// It returns true when the token has no equals sign and names a value-taking flag other than history-file, which the switch omits.
+// An inline assignment, a Boolean flag or an unknown name gives false.
 func analyseFlagHasSeparateValue(flagArgument string) bool {
 	// An inline assignment leaves the following token available as a path or another flag.
 	if strings.Contains(flagArgument, "=") {
 		return false
 	}
-	// These are analyse's non-Boolean flags; every other supported flag is self-contained.
+	// The help pre-scan reserves the next token for these flags; history-file also takes a value but is omitted here.
 	switch strings.TrimLeft(flagArgument, "-") {
 	case "include-rule", "exclude-rule", "include-pillar", "exclude-pillar",
 		"format", "min-severity", "fail-on", "config", "baseline",
@@ -119,12 +126,16 @@ func analyseFlagHasSeparateValue(flagArgument string) bool {
 }
 
 // parseAnalyseFlags validates analyse options and retains positional paths in the returned FlagSet.
+//
 // It writes usage errors to stderr; false tells runAnalyse to stop before loading config or scanning.
+// commandArguments holds the analyse flags and positional paths; it passes through normalizeAnalyseDiffArgs before the FlagSet parses it.
+//
+// It returns the FlagSet, the parsed analyse values and true on success, or the FlagSet, zero analyseFlagValues and false on any failure.
 func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagSet, analyseFlagValues, bool) {
 	flagSet := newAnalyseFlagSet(stderr)
 	registeredFlags := registerAnalyseFlags(flagSet)
 	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
-	// FlagSet already wrote a syntax error, so the command only needs the unsuccessful status.
+	// A misspelled flag such as --formt lands here; FlagSet already wrote the error to stderr, so only the failed status remains.
 	if err := parseCommandArguments(flagSet, normalizedArguments); err != nil {
 		return flagSet, analyseFlagValues{}, false
 	}
@@ -139,10 +150,10 @@ func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagS
 	if !validateAnalyseEnums(*registeredFlags.format, *registeredFlags.editorLink, *registeredFlags.changedScope, stderr) {
 		return flagSet, analyseFlagValues{}, false
 	}
-	// Reject an incompatible --generate-baseline combination before reading a
-	// --diff=- stdin patch, so the documented error returns immediately instead
-	// of blocking on stdin in an interactive shell or hook. generateBaselineState
-	// reads only flag values, not the patch, so validating here is safe.
+	// Reject a conflicting --generate-baseline, such as one paired with --baseline, before reading a --diff=- stdin patch.
+	//
+	// The error then prints at once instead of blocking on stdin in an interactive shell or hook.
+	// generateBaselineState reads only flag values, not the patch, so validating before the read is safe.
 	if *registeredFlags.generateBaselinePath != "" {
 		if err := validateGenerateBaselineFlags(registeredFlags.values(nil, false).generateBaselineState()); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -171,6 +182,9 @@ func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagS
 }
 
 // newAnalyseFlagSet creates the analyse flag parser with GNU-style usage text.
+//
+// stderr receives the FlagSet's parse errors and the analyse help text that its Usage function writes.
+// It returns a new FlagSet named analyse that uses ContinueOnError and has no flags registered yet; it is never nil.
 func newAnalyseFlagSet(stderr io.Writer) *flag.FlagSet {
 	flagSet := flag.NewFlagSet("analyse", flag.ContinueOnError)
 	flagSet.SetOutput(stderr)
@@ -181,11 +195,10 @@ func newAnalyseFlagSet(stderr io.Writer) *flag.FlagSet {
 }
 
 // registerAnalyseFlags registers every analyse flag and returns their storage.
+// flags is the FlagSet that receives every definition; min-severity and fail-on share one string, so both spellings set the same threshold.
 func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
-	// ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor("analyse")
-	// returns (currently advisory, intentionally permissive after the 3-bucket
-	// migration). Help text shows this default; precedence in runAnalyse lets
-	// .gruff-go.yaml's failOn.analyse override it.
+	// ADR-009 and ADR-010: the default exit threshold comes from DefaultFailThresholdFor for analyse, which gives advisory.
+	// runAnalyse lets failOn.analyse in .gruff-go.yaml override the default, and a command-line threshold wins over both.
 	format := flags.String("format", "text", "output format: text, json, summary-json, sarif, github, html, or markdown")
 	minSeverity := string(finding.DefaultFailThresholdFor("analyse"))
 	flags.StringVar(&minSeverity, "min-severity", minSeverity, "minimum severity that causes exit 1")
@@ -261,6 +274,10 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 }
 
 // values snapshots the parsed flag pointers into the immutable analyse state.
+//
+// diffPatch is the patch read for the diff flags and minSeverityExplicit marks a threshold set on the command line; both are copied in unchanged.
+// It returns that snapshot with superseded display spellings merged by firstNonEmpty and baselinePath left empty when noBaseline is set.
+// changedRangesSet and gates stay zero here; parseAnalyseFlags fills them in after this call.
 func (values analyseFlagPointers) values(diffPatch []byte, minSeverityExplicit bool) analyseFlagValues {
 	parsed := analyseFlagValues{
 		format:               *values.format,
@@ -292,6 +309,7 @@ func (values analyseFlagPointers) values(diffPatch []byte, minSeverityExplicit b
 		includeIgnored:       *values.includeIgnored,
 		deepScanBudget:       *values.deepScanBudget,
 	}
+	// --no-baseline overrides --baseline, so a run given both applies no baseline file.
 	if parsed.noBaseline {
 		parsed.baselinePath = ""
 	}
@@ -299,6 +317,11 @@ func (values analyseFlagPointers) values(diffPatch []byte, minSeverityExplicit b
 }
 
 // resolveDeepScanBudget applies CLI-over-config precedence to the atomic paired bound.
+//
+// raw is the --deep-scan-budget value: empty keeps the defaults overlaid by any set cfg DeepScanBudget field, and off disables the bound.
+// It returns the budget with Override naming the winning source as default, config or cli.
+//
+// Any other raw must be LINES:BYTES, two positive integers that replace both bounds; anything else fails with an error and a zero budget.
 func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudget, error) {
 	budget := analysis.DeepScanBudget{
 		Enabled:  true,
@@ -307,6 +330,7 @@ func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudg
 		Override: "default",
 	}
 	configured := cfg.DeepScanBudget.Enabled != nil || cfg.DeepScanBudget.MaxLines != nil || cfg.DeepScanBudget.MaxBytes != nil
+	// Any DeepScanBudget field set in the config file marks Override as config, even one that repeats a default value.
 	if configured {
 		budget.Override = "config"
 		if cfg.DeepScanBudget.Enabled != nil {
@@ -328,11 +352,13 @@ func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudg
 		return budget, nil
 	}
 	linesRaw, bytesRaw, ok := strings.Cut(raw, ":")
+	// A typo such as --deep-scan-budget 500 or 500:1000:2 lands here with the LINES:BYTES message.
 	if !ok || strings.Contains(bytesRaw, ":") {
 		return analysis.DeepScanBudget{}, fmt.Errorf("--deep-scan-budget must be two positive integers as LINES:BYTES, or off")
 	}
 	maxLines, linesErr := strconv.Atoi(linesRaw)
 	maxBytes, bytesErr := strconv.Atoi(bytesRaw)
+	// A non-number or a value below one, such as 500:1k or 0:1000, gets the same message.
 	if linesErr != nil || bytesErr != nil || maxLines <= 0 || maxBytes <= 0 {
 		return analysis.DeepScanBudget{}, fmt.Errorf("--deep-scan-budget must be two positive integers as LINES:BYTES, or off")
 	}
@@ -340,6 +366,9 @@ func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudg
 }
 
 // generateBaselineState projects analyse flags relevant to baseline generation.
+//
+// It returns the baseline, diff-base, diff, since and changed-ranges values, each empty when unset; --no-baseline also empties the baseline.
+// Its include and exclude fields carry the merged display filters, so a superseded plural spelling is checked too; run selection is not copied.
 func (values analyseFlagValues) generateBaselineState() generateBaselineFlagState {
 	return generateBaselineFlagState{
 		baselinePath:  values.baselinePath,
@@ -347,8 +376,8 @@ func (values analyseFlagValues) generateBaselineState() generateBaselineFlagStat
 		diffMode:      values.diffMode,
 		since:         values.since,
 		changedRanges: values.changedRanges,
-		// The family fields, because values() merges the superseded plural spellings into them. Reading the plural
-		// fields here would let --include-rules generate a baseline from a filtered view of the findings.
+		// The display fields, because values() merges the superseded plural spellings into them, so --include-rules is refused like --show-rule.
+		// values.includeRules and its siblings hold the run selection from --include-rule, which a generated baseline may follow, so they are not read.
 		includeRules:   values.showRules,
 		excludeRules:   values.hideRules,
 		includePillars: values.showPillars,
@@ -357,6 +386,9 @@ func (values analyseFlagValues) generateBaselineState() generateBaselineFlagStat
 }
 
 // generateBaselineFlagState groups analyse flags that change finding scope.
+//
+// Any non-empty field makes validateGenerateBaselineFlags refuse a --generate-baseline run.
+// The include and exclude fields hold the display filters, not the run-selection flags of the same name.
 type generateBaselineFlagState struct {
 	baselinePath   string
 	diffBase       string
@@ -369,9 +401,12 @@ type generateBaselineFlagState struct {
 	excludePillars string
 }
 
-// validateGenerateBaselineFlags rejects combinations that would make the
-// generated baseline partial rather than a fresh snapshot of current findings.
+// validateGenerateBaselineFlags refuses combinations that would make the generated baseline partial, not a fresh snapshot of current findings.
+//
+// state holds the flags that would narrow the snapshot; it returns nil only when every one of them is empty.
+// Otherwise it returns an error naming the first conflict in order: --baseline, --diff-base, the changed-region flags, then the display filters.
 func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
+	// A conflict such as --generate-baseline with --diff-base main stops the run before any scan; with none set, generation goes ahead.
 	switch {
 	case state.baselinePath != "":
 		return fmt.Errorf("--generate-baseline cannot be combined with --baseline")
@@ -388,8 +423,11 @@ func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
 
 // firstNonEmpty returns the family spelling when the user gave one, and the superseded spelling otherwise.
 //
-// Both write the same display filter, so a command line mixing them keeps the family value rather than concatenating
-// two lists the user never meant to combine.
+// Both spellings set one option, such as an analyse display filter or the baseline migration source, and a non-empty family value
+// wins rather than being combined with the superseded value, which is used only when the family value is empty.
+//
+// familyValue holds the family flag's value and supersededValue the value of the older spelling it replaced.
+// When both are empty the result is an empty string.
 func firstNonEmpty(familyValue, supersededValue string) string {
 	if familyValue != "" {
 		return familyValue

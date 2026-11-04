@@ -1,6 +1,7 @@
 // Package cli tests the command-line behavior exposed by gruff-go.
-// These tests pin flag placement and end-of-flags behavior for commands that accept positional
-// paths, preventing valid flags from being silently forwarded to file discovery.
+//
+// These tests pin flag placement and end-of-flags behavior for commands that accept positional paths.
+// They keep a valid flag typed after a path from being silently forwarded to file discovery as another path.
 package cli
 
 import (
@@ -16,6 +17,7 @@ import (
 )
 
 // TestPathCommandsAcceptFlagsAfterPaths verifies flag placement does not change output or exit status.
+// For analyse, baseline, summary, report, hook and check-ignore, flags after main.go must match flags before it in stdout and exit code.
 func TestPathCommandsAcceptFlagsAfterPaths(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -76,6 +78,7 @@ func TestPathCommandsAcceptFlagsAfterPaths(t *testing.T) {
 }
 
 // TestAnalyseRejectsUnknownFlagAfterPath verifies a trailing unknown flag fails during parsing.
+// analyse main.go --bogus must exit nonzero with a flag provided but not defined error, not scan --bogus as one more path.
 func TestAnalyseRejectsUnknownFlagAfterPath(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -92,6 +95,7 @@ func TestAnalyseRejectsUnknownFlagAfterPath(t *testing.T) {
 }
 
 // TestDoubleDashPreservesLeadingDashPaths verifies `--` makes later flag-shaped names scannable.
+// Directories named -weird-name and --quiet, given after --, must exit 0 with their main.go listed among the JSON scanned paths.
 func TestDoubleDashPreservesLeadingDashPaths(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "-weird-name/main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -118,6 +122,7 @@ func TestDoubleDashPreservesLeadingDashPaths(t *testing.T) {
 }
 
 // TestBareDashStopsFlagParsing verifies stdin syntax protects every later token as positional input.
+// After a bare -, parseCommandArguments must keep --format json as positionals, so the format stays text.
 func TestBareDashStopsFlagParsing(t *testing.T) {
 	flagSet := flag.NewFlagSet("test", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
@@ -134,7 +139,11 @@ func TestBareDashStopsFlagParsing(t *testing.T) {
 	}
 }
 
-// captureCLIResult runs one command with in-memory streams for user-visible result comparisons.
+// captureCLIResult runs one gruff-go command through Main with fresh in-memory streams so tests can compare what a user would see.
+//
+// commandArguments is passed unchanged to Main, starting with the subcommand name.
+// It returns the exit code, a copy of the standard-output bytes and the standard-error text.
+// A command that prints nothing gives a zero-length slice and an empty string.
 func captureCLIResult(commandArguments []string) (int, []byte, string) {
 	var stdout, stderr bytes.Buffer
 	exitCode := Main(commandArguments, &stdout, &stderr)
@@ -169,8 +178,9 @@ func TestAnalyseAcceptsHistoryFileAsDocumentedNoOp(t *testing.T) {
 }
 
 // TestAnalyseRefusesSeveralTargetsOutsideLaunchDirectoryWithEnvelope verifies the refusal a JSON caller can read.
-// From a sibling directory, `../a ../b` has no root the analyzer resolves both against; the run must publish one
-// run-invalidating target-error diagnostic and no findings, instead of failing while the report is written.
+//
+// From a sibling directory, ../a ../b is refused because several targets must all be inside the launch directory, so the run exits 2.
+// Its JSON has one run-invalidating discovery target-error and no findings; ../a alone exits 0 with --fail-on none.
 func TestAnalyseRefusesSeveralTargetsOutsideLaunchDirectoryWithEnvelope(t *testing.T) {
 	workspace := t.TempDir()
 	writeFile(t, workspace, "a/main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")

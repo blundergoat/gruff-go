@@ -1,5 +1,7 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file covers the cross-port canonical summary digest (text + v0.1 JSON).
+//
+// This file covers the cross-port canonical summary digest in text and v3 JSON.
+// A failure can mean drift in the rendered text or JSON, or in pillar-row values such as Penalty that the text block does not print.
 package report
 
 import (
@@ -15,15 +17,17 @@ import (
 )
 
 // TestSummarySchemaVersion locks down the cross-port summary digest schema string.
+// A failure means the schema string moved off gruff.summary.v3, which the other ports publish too.
 func TestSummarySchemaVersion(t *testing.T) {
 	if SummarySchemaVersion != "gruff.summary.v3" {
 		t.Fatalf("SummarySchemaVersion = %q, want %q", SummarySchemaVersion, "gruff.summary.v3")
 	}
 }
 
-// TestBuildPillarSummaryRowsCleanScan asserts a clean scan yields every
-// canonical pillar at grade A with zero counts so the summary block always
-// renders the same row set.
+// TestBuildPillarSummaryRowsCleanScan asserts a clean scan yields all ten canonical pillars at grade A, score 100 and zero counts.
+//
+// That keeps the summary block's row set fixed; the test also checks Penalty 0 and Applicable true on every clean row.
+// A failure means the clean row set, one of those row values, or the pillar-name tie-break is wrong.
 func TestBuildPillarSummaryRowsCleanScan(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -58,13 +62,18 @@ func TestBuildPillarSummaryRowsCleanScan(t *testing.T) {
 			t.Errorf("clean pillar %q applicable = false, want true", row.Pillar)
 		}
 	}
+	// With every count tied at zero, rows fall back to pillar name order, so test-quality sorts last.
 	if row := rows[len(rows)-1]; row.Pillar != "test-quality" {
 		t.Errorf("last clean row = %q, want test-quality (ASC tie-break)", row.Pillar)
 	}
 }
 
-// pillarDetail fills in the nullable score and grade the ratified contract publishes, so a fixture
-// can state its counts as a plain literal without repeating the address dance for two pointers.
+// pillarDetail fills in the nullable score and grade the ratified contract publishes for a pillar fixture.
+//
+// A fixture can then state its counts as a plain literal without repeating the address dance for two pointers.
+//
+// base carries the pillar name and counts; it is passed by value, so the caller's literal is left untouched.
+// It returns that copy of base with Applicable set to true and Score and Grade pointing at score and grade, so neither pointer is nil.
 func pillarDetail(base scoring.PillarDetail, score float64, grade string) scoring.PillarDetail {
 	base.Applicable = true
 	base.Score = &score
@@ -72,8 +81,8 @@ func pillarDetail(base scoring.PillarDetail, score float64, grade string) scorin
 	return base
 }
 
-// TestBuildPillarSummaryRowsMergesPillarDetails confirms PillarDetail entries
-// override the default zero rows and that rows sort by findings DESC.
+// TestBuildPillarSummaryRowsMergesPillarDetails confirms PillarDetail entries override the default zero rows and that rows sort by findings DESC.
+// A failure means a merged grade or raw penalty is wrong, rows are out of findings order, or a pillar without details is not clean.
 func TestBuildPillarSummaryRowsMergesPillarDetails(t *testing.T) {
 	report := analysis.Report{
 		Score: scoring.Score{
@@ -109,8 +118,8 @@ func TestBuildPillarSummaryRowsMergesPillarDetails(t *testing.T) {
 	}
 }
 
-// TestWritePillarsBlockCanonicalShape locks down the byte-for-byte column
-// alignment defined by the cross-port summary spec.
+// TestWritePillarsBlockCanonicalShape locks down the byte-for-byte column alignment defined by the cross-port summary spec.
+// A failure means the Pillars block a user reads in summary text has moved a column or changed how scores print.
 func TestWritePillarsBlockCanonicalShape(t *testing.T) {
 	rows := []PillarSummaryRow{
 		{Pillar: "documentation", Grade: "F", Score: 0.0, Applicable: true, Findings: 376, Advisory: 309, Warning: 67, Error: 0},
@@ -144,9 +153,8 @@ func TestWritePillarsBlockCanonicalShape(t *testing.T) {
 	}
 }
 
-// TestWritePillarsBlockEmptyEmitsHeader keeps the section discoverable even
-// when no rows feed into it (defensive: BuildPillarSummaryRows always returns
-// ten rows in production, but the renderer must still degrade gracefully).
+// TestWritePillarsBlockEmptyEmitsHeader keeps the Pillars section discoverable when no rows feed into it: the header still prints, then (none).
+// This is defensive: BuildPillarSummaryRows always returns ten rows in production, but the renderer must still degrade gracefully.
 func TestWritePillarsBlockEmptyEmitsHeader(t *testing.T) {
 	var buf bytes.Buffer
 	if err := writePillarsBlock(&buf, nil); err != nil {
@@ -157,8 +165,10 @@ func TestWritePillarsBlockEmptyEmitsHeader(t *testing.T) {
 	}
 }
 
-// TestWriteSummaryV01JSONShape locks the canonical analysis projection used by
-// the summary command.
+// TestWriteSummaryV01JSONShape locks the canonical analysis projection used by the summary command.
+//
+// Despite V01 in the writer's name, the document must announce gruff.summary.v3.
+// A failure means summary JSON changed its schema string, lost a top-level key such as run or score, or brought back the per-finding array.
 func TestWriteSummaryV01JSONShape(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -194,8 +204,8 @@ func TestWriteSummaryV01JSONShape(t *testing.T) {
 	}
 }
 
-// TestWriteSummaryTextIncludesPillarsBlock confirms the canonical Pillars
-// header reaches the summary text output and the old "pillars:" tag is gone.
+// TestWriteSummaryTextIncludesPillarsBlock confirms the canonical Pillars header reaches summary text and the old "pillars:" tag is gone.
+// A failure means a clean scan's summary lost the Pillars header or the complexity row, or fell back to the legacy block.
 func TestWriteSummaryTextIncludesPillarsBlock(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -223,6 +233,7 @@ func TestWriteSummaryTextIncludesPillarsBlock(t *testing.T) {
 }
 
 // TestWriteSummaryTextClassifiesScannedFiles verifies text inputs and failed Go files get distinct counts.
+// A parse diagnostic on broken.go moves it from parsed to failed; a failure means the summary files line shows wrong totals.
 func TestWriteSummaryTextClassifiesScannedFiles(t *testing.T) {
 	analysisReport := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -243,8 +254,8 @@ func TestWriteSummaryTextClassifiesScannedFiles(t *testing.T) {
 	}
 }
 
-// TestWriteSummaryTextCountsContextOnlyParseFailures includes supporting package
-// files that failed parsing even though they were not explicit scan targets.
+// TestWriteSummaryTextCountsContextOnlyParseFailures checks that summary text counts a supporting package file that failed parsing.
+// support.go was never an explicit scan target, yet its parse diagnostic must still show as 1 failed on the files line.
 func TestWriteSummaryTextCountsContextOnlyParseFailures(t *testing.T) {
 	analysisReport := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",

@@ -1,4 +1,5 @@
 // Package rule defines scanner rule contracts, registries, and built-in rules.
+//
 // This file declares metadata that powers configuration and rule catalogues.
 // Users see these values when deciding how to resolve or tune a finding.
 package rule
@@ -13,12 +14,20 @@ import (
 )
 
 // ruleIDPattern validates rule IDs of the form pillar.kebab-case.
+//
+// Each dot-separated part starts with a lowercase letter, then lowercase letters, digits and single inner hyphens; two or more parts are needed.
+// Validate rejects a definition whose ID fails it, and a registry holding that definition fails to build.
 var ruleIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*)+$`)
 
 // Capability names the analyser layer a rule needs (parser, types, SSA, dataflow).
+//
+// Each Definition declares one, and it is serialised with the rule as capability.
+// Validate treats an empty Capability as CapabilityParser and rejects any value outside the four constants below.
 type Capability string
 
 // Capability constants enumerate the supported analyser layers.
+//
+// Capability.Valid accepts exactly these four values; a definition naming any other layer fails Validate.
 const (
 	CapabilityParser   Capability = "parser"
 	CapabilityType     Capability = "type"
@@ -27,8 +36,10 @@ const (
 )
 
 // FalsePositiveShape documents a known case where a rule can lack context.
+//
 // Shape tells users what can be mistaken for a defect.
 // Mitigation gives a practical way to keep the scan actionable.
+// Validate rejects an entry whose Shape or Mitigation is blank.
 type FalsePositiveShape struct {
 	// Shape describes the source pattern that can be misclassified.
 	Shape string `json:"shape"`
@@ -37,6 +48,7 @@ type FalsePositiveShape struct {
 }
 
 // Definition is the static description of a registered scanner rule.
+//
 // Config validation and report findings share this source of truth.
 // Catalogue-only guidance is excluded from analysis-report JSON.
 type Definition struct {
@@ -60,18 +72,25 @@ type Definition struct {
 	DefaultEnabled bool `json:"defaultEnabled"`
 	// Thresholds exposes named numeric knobs (line caps, counts) that callers may override via config.
 	Thresholds map[string]float64 `json:"thresholds,omitempty"`
-	// Options exposes named non-numeric knobs (lists, allow-lists, modes) that callers may override via config.
+	// Options exposes named rule settings, such as lists, allow-lists, modes and some integer options, that callers may override via config.
 	Options map[string]any `json:"options,omitempty"`
 	// Tags categorise the rule for documentation and filtering (e.g. "go-style", "secrets").
 	Tags []string `json:"tags,omitempty"`
-	// Remediation is the actionable guidance copied onto each finding to tell users how to fix it.
+	// Remediation is the default fix guidance copied onto a finding only when the rule left that finding's Remediation empty.
 	Remediation string `json:"remediation,omitempty"`
 	// FalsePositiveShapes lists known precision limits shown only by the rule catalogue.
 	FalsePositiveShapes []FalsePositiveShape `json:"-"`
 }
 
 // Validate checks the definition fields are consistent and applies defaults.
+//
+// An empty Capability becomes CapabilityParser before the Capability check, and Tags are sorted in place only when every check passes.
+//
+// It returns an error quoting the rule ID when ID does not match ruleIDPattern, Title is empty, or Pillar or a SecondaryPillars entry is invalid.
+// It also fails on an invalid Severity, Confidence or Capability, or on an empty Thresholds or Options key.
+// A FalsePositiveShapes entry with a blank Shape or Mitigation also fails; otherwise Validate returns nil.
 func (d *Definition) Validate() error {
+	// An ID such as Size.FileLength, size_file_length or a lone word with no dot fails here, and registry construction stops with this error.
 	if !ruleIDPattern.MatchString(d.ID) {
 		return fmt.Errorf("invalid rule id %q", d.ID)
 	}
@@ -123,7 +142,8 @@ func (d *Definition) Validate() error {
 	return nil
 }
 
-// Valid reports whether the capability is a known analyser layer.
+// Valid reports whether the capability is one of the four known analyser layers.
+// It is false for any other value; Validate replaces an empty Capability with CapabilityParser first, so only an unknown name fails there.
 func (c Capability) Valid() bool {
 	switch c {
 	case CapabilityParser, CapabilityType, CapabilitySSA, CapabilityDataflow:

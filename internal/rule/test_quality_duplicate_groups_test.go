@@ -1,3 +1,7 @@
+// Package rule tests test-quality.duplicate-test-body, which groups four or more Go tests whose bodies differ only in literal values.
+//
+// Each group becomes one advisory finding anchored at its first member, with every member listed by line and column in the message and metadata.
+// A failing case can expose wrong grouping, member locations, enablement, finding metadata or case-loop advice in a gruff-go analyse report.
 package rule
 
 import (
@@ -10,7 +14,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestDuplicateTestBodyGroups preserves complete groups and source-order anchors.
+// TestDuplicateTestBodyGroups checks that interleaved duplicates form two complete groups, each anchored at its first test in source order.
+// Every member must appear in the message as name, line and column 6 and in the members metadata, alongside the case-loop advice.
 func TestDuplicateTestBodyGroups(t *testing.T) {
 	unit := parseOne(t, "groups_test.go", `package sample
 import "testing"
@@ -25,6 +30,7 @@ func TestOtherD(t *testing.T) { setup(t); warm(t); got := build("d"); check(got,
 func TestTail(t *testing.T) { setup(t); warm(t); got := parse("e"); check(got, 5) }
 `)
 	got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{})
+	// The fixture alternates parse and build bodies on lines 3 to 11, so source order, not test name, decides each group's anchor and member order.
 	wantNames := [][]string{{"TestZulu", "TestAlpha", "TestMiddle", "TestLast", "TestTail"}, {"TestOtherA", "TestOtherB", "TestOtherC", "TestOtherD"}}
 	wantLines := [][]int{{3, 5, 7, 9, 11}, {4, 6, 8, 10}}
 	if len(got) != len(wantNames) {
@@ -34,6 +40,7 @@ func TestTail(t *testing.T) { setup(t); warm(t); got := parse("e"); check(got, 5
 		if !strings.Contains(got[i].Message, "Go table-driven case loop with a descriptive label per case") {
 			t.Errorf("message omits labelled case advice: %q", got[i].Message)
 		}
+		// Each fixture test name starts at column 6, just after func and a space, which is the column every member and the anchor report.
 		wantMembers := make([]map[string]any, len(names))
 		for j, name := range names {
 			wantMembers[j] = map[string]any{"symbol": name, "line": wantLines[i][j], "column": 6}
@@ -52,7 +59,10 @@ func TestTail(t *testing.T) { setup(t); warm(t); got := parse("e"); check(got, 5
 	}
 }
 
-// TestDuplicateTestBodyNormalization protects value-sensitive literals and structural differences.
+// TestDuplicateTestBodyNormalization checks when a fourth body that differs from three identical ones still joins their group.
+//
+// Same-kind literal values, comments and formatting may differ; literal kinds, names, keys, indexes, operators and statement order may not.
+// Strings holding ASCII whitespace keep their value, and a body under the four-statement minimum never groups.
 func TestDuplicateTestBodyNormalization(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -93,6 +103,7 @@ func TestDuplicateTestBodyNormalization(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Three copies of first plus third make four tests, the group minimum, so one group forms only when third normalizes to first.
 			source := duplicateTestSource("testing", "Test", "*testing.T", []string{tc.first, tc.first, tc.first, tc.third})
 			unit := parseOne(t, "sample_test.go", source)
 			got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{})
@@ -103,7 +114,10 @@ func TestDuplicateTestBodyNormalization(t *testing.T) {
 	}
 }
 
-// TestDuplicateTestBodyDiscovery accepts only runnable tests in the same test file.
+// TestDuplicateTestBodyDiscovery checks that only top-level Test functions taking a *testing.T in one _test.go file can form a group.
+//
+// Aliased and dot imports count; benchmarks, fuzz targets, testing.M signatures, lowercase suffixes, methods and a non-testing T do not.
+// Production files, fewer than four tests, and one test in each of three files never form a group.
 func TestDuplicateTestBodyDiscovery(t *testing.T) {
 	cases := []struct {
 		name, path, imported, prefix, param string
@@ -135,6 +149,7 @@ func TestDuplicateTestBodyDiscovery(t *testing.T) {
 			}
 		})
 	}
+	// Each file is analysed alone and holds one test, under the four-test minimum, so none may report a duplicate-body finding.
 	for _, name := range []string{"first_test.go", "second_test.go", "third_test.go"} {
 		unit := parseOne(t, name, duplicateTestSource("testing", "Test", "*testing.T", []string{"got := parse(1); check(got)"}))
 		if got := (DuplicateTestBodyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
@@ -143,7 +158,8 @@ func TestDuplicateTestBodyDiscovery(t *testing.T) {
 	}
 }
 
-// TestDuplicateTestBodyCaseLoops keeps existing tables out without exempting unrelated loops.
+// TestDuplicateTestBodyCaseLoops checks that tests already looping over a case table, or calling t.Run in a loop, are not grouped.
+// Loops over loaded, reassigned or conditionally set data, another receiver's Run, a shadowed t and loops inside unused closures still group.
 func TestDuplicateTestBodyCaseLoops(t *testing.T) {
 	cases := []struct {
 		name, body string
@@ -172,7 +188,10 @@ func TestDuplicateTestBodyCaseLoops(t *testing.T) {
 	}
 }
 
-// TestDuplicateTestBodyTableBindings protects table variants and unrelated-loop counterexamples.
+// TestDuplicateTestBodyTableBindings checks that range, indexed and integer-range loops over a local or package table keep a test out of groups.
+//
+// A range loop qualifies on the table alone; an indexed or integer-range loop must also read the table through its counter.
+// Ignoring the element, shadowing the counter, table or len, indexing a string or reassigning a package table all still group.
 func TestDuplicateTestBodyTableBindings(t *testing.T) {
 	cases := []struct {
 		name, declarations, body string
@@ -205,7 +224,8 @@ func TestDuplicateTestBodyTableBindings(t *testing.T) {
 	}
 }
 
-// TestDuplicateTestBodyOptIn verifies default dispatch, opt-out and native finding metadata.
+// TestDuplicateTestBodyOptIn checks that test-quality.duplicate-test-body runs by default, turns off through Config.Enabled, and runs when enabled.
+// Each reported group must be an advisory, low-confidence finding whose remediation starts with the Go table-driven case loop advice.
 func TestDuplicateTestBodyOptIn(t *testing.T) {
 	unit := parseOne(t, "opt_in_test.go", duplicateTestSource("testing", "Test", "*testing.T", []string{
 		"got := parse(1); check(got)", "got := parse(2); check(got)", "got := parse(3); check(got)",
@@ -225,6 +245,7 @@ func TestDuplicateTestBodyOptIn(t *testing.T) {
 		}
 		count := 0
 		for _, got := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+			// Other default rules may also report on this fixture, so only this rule's findings are counted.
 			if got.RuleID != id {
 				continue
 			}
@@ -233,6 +254,7 @@ func TestDuplicateTestBodyOptIn(t *testing.T) {
 				t.Errorf("native metadata = %#v", got)
 			}
 		}
+		// Four distinct-value tests form exactly one group, so an enabled run must report one finding and a disabled run none.
 		if (count == 1) != enabled || count > 1 {
 			t.Errorf("enabled %v: got %d groups", enabled, count)
 		}
@@ -243,7 +265,13 @@ func TestDuplicateTestBodyOptIn(t *testing.T) {
 // meets the four-statement Go minimum while a one-statement body stays below it.
 const duplicateTestPrelude = "setup(t); warm(t); "
 
-// duplicateTestSource keeps discovery fixtures consistent while varying runnable signatures.
+// duplicateTestSource generates package sample source so the fixtures share one layout while the import, name prefix and parameter type vary.
+//
+// The imported value is the import spec; one with no double quote is quoted as a bare path, so alias and dot imports pass their own quotes.
+// Each entry of bodies becomes a function or method by appending A, B, C and so on to prefix; its parameter t has type param.
+//
+// Every body starts with duplicateTestPrelude before its entry text.
+// It returns the generated source in package sample; with no bodies it holds only the package clause and import line.
 func duplicateTestSource(imported, prefix, param string, bodies []string) string {
 	if !strings.Contains(imported, `"`) {
 		imported = fmt.Sprintf("%q", imported)

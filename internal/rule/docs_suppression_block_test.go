@@ -8,6 +8,9 @@ package rule
 import "testing"
 
 // suppressionLines reports the lines docs.suppression-without-rationale flags in one Go file.
+//
+// The source text is parsed as pkg/sample.go for SuppressionWithoutRationaleRule with an empty Context; source that fails to parse stops the test.
+// The slice holds one line number per finding in the order the rule emits them, and is empty but non-nil when nothing is flagged.
 func suppressionLines(t *testing.T, source string) []int {
 	t.Helper()
 	unit := parseOne(t, "pkg/sample.go", source)
@@ -19,6 +22,9 @@ func suppressionLines(t *testing.T, source string) []int {
 }
 
 // requireSuppressionCount fails unless the rule reported exactly n directives.
+//
+// The source text is a whole Go file checked through suppressionLines, so source that fails to parse stops the test before any count is compared.
+// On a count mismatch the test stops via t.Fatalf, listing the reported lines.
 func requireSuppressionCount(t *testing.T, source string, n int) {
 	t.Helper()
 	if got := suppressionLines(t, source); len(got) != n {
@@ -27,6 +33,7 @@ func requireSuppressionCount(t *testing.T, source string, n int) {
 }
 
 // The cobra shape: a prose block above, the directive trailing the statement below.
+// A failure means a gosec suppression with a two-sentence rationale above it is reported again, the false positive this file pins.
 func TestSuppressionAcceptsAProseBlockAboveTheDirective(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 
@@ -41,7 +48,8 @@ func find(matches []string) string {
 `, 0)
 }
 
-// The control the task names: a bare directive with nothing explaining it still fires.
+// The control: a bare directive with nothing explaining it still fires.
+// A failure means a suppression with no rationale at all stops being reported.
 func TestSuppressionStillReportsABareDirective(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 
@@ -52,7 +60,8 @@ func widget() int {
 `, 1)
 }
 
-// A declaration's doc group describes the declaration, not the suppression below it.
+// Ordinary prose in a declaration's doc group describes the declaration, not the suppression below it.
+// A failure means a function's doc comment would excuse the directive placed under it.
 func TestSuppressionRejectsADeclarationDocGroup(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 
@@ -65,6 +74,7 @@ func Execute() int {
 }
 
 // A detached comment is about something else, so a blank line breaks the block.
+// A failure means any comment above a blank line would excuse the directive below it.
 func TestSuppressionRejectsADetachedComment(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 
@@ -78,6 +88,7 @@ func widget() int {
 }
 
 // One suppression cannot excuse another, so a stack of directives is still reported.
+// Both must be reported; a failure means one directive is taken as the other's rationale.
 func TestSuppressionRejectsAStackOfDirectives(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 
@@ -89,9 +100,10 @@ func widget() int {
 `, 2)
 }
 
-// A comment trailing code explains that code, not the directive on the next line.
-// Measured in prometheus: `var pathBuf [4]Node // To reduce allocations during recursion.`
-// sits directly above a //nolint:errcheck and says nothing about it.
+// Ordinary prose trailing code explains that code, not the directive on the next line, so the directive is still reported.
+//
+// Measured in prometheus: the pathBuf array declaration carries a trailing comment about reducing allocations during recursion.
+// It sits directly above an errcheck suppression and says nothing about it.
 func TestSuppressionRejectsACommentTrailingCode(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 

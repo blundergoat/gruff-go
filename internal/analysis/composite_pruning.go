@@ -1,15 +1,17 @@
-// Composite-finding pruning. A composite finding (e.g. design.hotspot-file) is
-// kept only while at least one of its recorded underlying-evidence fingerprints
-// still survives the changed-region filter, so --diff scans never surface a
-// composite for code the diff never touched.
+// Composite-finding pruning keeps a composite finding only while its underlying evidence survives the changed-region filter.
+//
+// A composite such as design.hotspot-file records its underlying-evidence fingerprints and stays while at least one of them survives.
+// So a --diff scan never shows the user a composite for code the diff never touched.
 package analysis
 
 import "github.com/blundergoat/gruff-go/internal/finding"
 
-// pruneOrphanedComposites drops composite findings whose recorded underlying
-// fingerprints are not present among the surviving non-composite findings.
-// A composite is identified by a non-empty underlyingFingerprints metadata
-// slice; that is the contract composite rules use when emitting evidence.
+// pruneOrphanedComposites drops composite findings whose recorded underlying fingerprints are not among the surviving non-composite findings.
+//
+// A composite is identified by an underlyingFingerprints metadata slice; that is the contract composite rules use when emitting evidence.
+//
+// It returns the kept findings in input order and the number of composites dropped, which is zero when no composite is orphaned.
+// An empty underlyingFingerprints slice still marks a composite, and such a composite is always dropped.
 func pruneOrphanedComposites(findings []finding.Finding) ([]finding.Finding, int) {
 	survivingFingerprints := collectNonCompositeFingerprints(findings)
 	kept := make([]finding.Finding, 0, len(findings))
@@ -24,9 +26,10 @@ func pruneOrphanedComposites(findings []finding.Finding) ([]finding.Finding, int
 	return kept, pruned
 }
 
-// collectNonCompositeFingerprints returns the set of fingerprints belonging to
-// non-composite findings. Composites are identified by an underlyingFingerprints
-// metadata slice and are excluded from the surviving-evidence set.
+// collectNonCompositeFingerprints returns the set of fingerprints belonging to non-composite findings.
+//
+// Composites, identified by an underlyingFingerprints metadata slice, are excluded, and so is any finding with an empty Fingerprint.
+// The set is empty, never nil, when findings holds no fingerprinted non-composite finding, and every composite is then dropped.
 func collectNonCompositeFingerprints(findings []finding.Finding) map[string]struct{} {
 	out := map[string]struct{}{}
 	for _, candidate := range findings {
@@ -40,10 +43,11 @@ func collectNonCompositeFingerprints(findings []finding.Finding) map[string]stru
 	return out
 }
 
-// compositeEvidenceSurvives reports whether the candidate should be kept after
-// composite pruning. Non-composite findings always survive; composites survive
-// only when at least one of their recorded underlying fingerprints is in the
-// surviving set.
+// compositeEvidenceSurvives reports whether candidate should be kept after composite pruning; false means pruneOrphanedComposites drops it.
+//
+// Non-composite findings always survive; a composite survives only when at least one of its underlying fingerprints is in the surviving set.
+// The survivingFingerprints map is that surviving set, keyed by fingerprint as collectNonCompositeFingerprints builds it.
+// A composite whose underlying fingerprint list is empty never survives.
 func compositeEvidenceSurvives(candidate finding.Finding, survivingFingerprints map[string]struct{}) bool {
 	underlying, isComposite := compositeUnderlyingFingerprints(candidate)
 	if !isComposite {
@@ -57,11 +61,13 @@ func compositeEvidenceSurvives(candidate finding.Finding, survivingFingerprints 
 	return false
 }
 
-// compositeUnderlyingFingerprints extracts the recorded underlying fingerprint
-// set from a composite finding's metadata. Returns (fingerprints, true) when
-// the finding carries an underlyingFingerprints slice. The slice may be empty
-// for composites whose evidence had no fingerprints, in which case the
-// composite still counts as composite but is treated as orphan-eligible.
+// compositeUnderlyingFingerprints extracts the recorded underlying fingerprint set from a composite finding's metadata.
+//
+// It returns the fingerprints and true when item carries an underlyingFingerprints slice of strings or of any values.
+// The slice may be empty for a composite whose evidence had no fingerprints; it still counts as a composite, so pruning drops it.
+//
+// It returns (nil, false) when item has nil Metadata, lacks the key, or holds a value that is neither a string slice nor an any slice.
+// Non-string elements of an any slice are skipped, so the returned slice can be shorter than the stored one.
 func compositeUnderlyingFingerprints(item finding.Finding) ([]string, bool) {
 	if item.Metadata == nil {
 		return nil, false

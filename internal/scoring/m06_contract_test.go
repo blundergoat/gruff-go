@@ -22,8 +22,10 @@ type contractShape struct {
 	symbol     string
 }
 
-// contractFinding builds one finding with an explicit severity, confidence, and symbol so a test can
-// state exactly what weight it expects without depending on a rule's real thresholds.
+// contractFinding builds a finding with test-chosen severity and confidence, so a test can predict its weight without a rule's real thresholds.
+//
+// ruleID names the simulated rule that attribution rows group by, and shape supplies the pillar, severity, confidence, file and symbol.
+// It returns the finding with Location fixed at line 1, and any shape field left unset stays at its zero value.
 func contractFinding(ruleID string, shape contractShape) finding.Finding {
 	return finding.Finding{
 		RuleID:     ruleID,
@@ -36,10 +38,9 @@ func contractFinding(ruleID string, shape contractShape) finding.Finding {
 	}
 }
 
-// TestScaleIsNotAnAutomaticPenalty proves the property the ratified shape exists to deliver:
-// duplicating a project duplicates its findings and its evaluated files together, and the density
-// those two make is unchanged, so the grade must not move. The retired absolute-sum shape failed
-// this - a 4x duplication of identical code cost gruff-go three composite points.
+// TestScaleIsNotAnAutomaticPenalty proves duplicating a project 2x or 4x, findings and evaluated files together, leaves the composite unchanged.
+//
+// Finding density does not change, so the grade must not move; t reports a composite that shifts at 2x or at 4x.
 func TestScaleIsNotAnAutomaticPenalty(t *testing.T) {
 	pillars := registeredRuleBackedPillars(t)
 	single := []finding.Finding{
@@ -66,8 +67,8 @@ func TestScaleIsNotAnAutomaticPenalty(t *testing.T) {
 	}
 }
 
-// TestMonotonicityAtAFixedDenominator proves adding a finding without adding a file can only worsen
-// the pillar it lands in, and never touches a pillar it does not.
+// TestMonotonicityAtAFixedDenominator checks that adding an unclustered security error, with no new file, lowers security and the composite.
+// t also requires the untouched documentation pillar to keep its score; a finding that joins a cross-pillar cluster is not covered here.
 func TestMonotonicityAtAFixedDenominator(t *testing.T) {
 	pillars := registeredRuleBackedPillars(t)
 	before := Calculate([]finding.Finding{
@@ -89,7 +90,7 @@ func TestMonotonicityAtAFixedDenominator(t *testing.T) {
 		t.Errorf("adding an error left the composite at %v, was %v", *after.Composite, *before.Composite)
 	}
 
-	// A pillar that gained no finding must not move, or the composite is coupling unrelated areas.
+	// With no cross-pillar cluster in this fixture, a pillar that gained no finding must not move, or the composite is coupling unrelated areas.
 	if *findPillarDetail(t, after, "documentation").Score != *findPillarDetail(t, before, "documentation").Score {
 		t.Error("an untouched pillar moved when security gained a finding")
 	}
@@ -123,9 +124,10 @@ func TestApplicabilityKeepsNullApartFromPerfect(t *testing.T) {
 	}
 }
 
-// TestSerializationRoundsToTwoDecimals proves the ratified precision, including that an exact half
-// rounds away from zero. Ties matter: the four sibling ports round the same way, and a port that
-// broke half to even would disagree with them on the last cent for reasons unrelated to the formula.
+// TestSerializationRoundsToTwoDecimals proves the ratified precision, including that an exact half rounds away from zero.
+//
+// Ties matter because the four sibling ports round the same way, and t reports every raw value whose rounding differs.
+// A port that broke half to even would disagree with them on the last cent for reasons unrelated to the formula.
 func TestSerializationRoundsToTwoDecimals(t *testing.T) {
 	cases := []struct {
 		raw  float64
@@ -150,13 +152,15 @@ func TestSerializationRoundsToTwoDecimals(t *testing.T) {
 }
 
 // isPositiveZero reports whether value is zero without a sign bit.
+// It reports false for any nonzero value and for negative zero, the form roundScore must never publish.
 func isPositiveZero(value float64) bool {
 	return value == 0 && 1/value > 0
 }
 
-// TestClusteringKeysOnSymbolWithoutLineIdentity proves the ratified cluster key. Correlated rules do
-// not agree about which line to report - a size rule may name the declaration and a complexity rule
-// the body - so a line in the key would split one root cause into two and bill it twice.
+// TestClusteringKeysOnSymbolWithoutLineIdentity proves the ratified cluster key groups by symbol and leaves the line out.
+//
+// Correlated rules disagree on which line to report: a size rule may name the declaration and a complexity rule the body.
+// A line in the key would split one root cause into two and bill it twice; t checks the shared cluster and that distinct symbols stay apart.
 func TestClusteringKeysOnSymbolWithoutLineIdentity(t *testing.T) {
 	sameSymbolDifferentLines := []finding.Finding{
 		{RuleID: "size.function-length", Pillar: finding.PillarSize, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go", Symbol: "Run", Location: &finding.Location{Line: 1}},
@@ -188,9 +192,10 @@ func TestClusteringKeysOnSymbolWithoutLineIdentity(t *testing.T) {
 	}
 }
 
-// TestRuleAttributionIsKeyedByNativeRuleID proves every rule that produced a finding owes exactly one
-// attribution row, that the rows carry the post-clustering weight, and that they are sorted so two
-// runs over unchanged input publish the same bytes.
+// TestRuleAttributionIsKeyedByNativeRuleID checks each naming rule in its fixture gets one attribution row with its finding count and weight.
+//
+// Rows must sort by rule ID so two runs over unchanged input publish the same bytes.
+// Its findings name distinct symbols, so t sees no cluster form and post-clustering weight is not covered here.
 func TestRuleAttributionIsKeyedByNativeRuleID(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		contractFinding("naming.b-rule", contractShape{pillar: finding.PillarNaming, severity: finding.SeverityAdvisory, confidence: finding.ConfidenceHigh, file: "a.go", symbol: "One"}),
@@ -212,6 +217,7 @@ func TestRuleAttributionIsKeyedByNativeRuleID(t *testing.T) {
 		t.Errorf("naming.a-rule = %#v, want 2 findings weighing 6", score.RuleAttribution[0])
 	}
 
+	// One advisory at high confidence weighs 1.
 	if score.RuleAttribution[1].Findings != 1 || score.RuleAttribution[1].Weight != 1 {
 		t.Errorf("naming.b-rule = %#v, want 1 finding weighing 1", score.RuleAttribution[1])
 	}

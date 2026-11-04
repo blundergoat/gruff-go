@@ -1,4 +1,7 @@
 // Package rule tests the parser-only GitHub Actions workflow security rules.
+//
+// Most tests feed workflow YAML through workflowUnit and check how many findings one rule reports for each snippet.
+// A failing case means a gruff-go scan of .github/workflows files would gain or lose a finding the user relies on.
 package rule
 
 import (
@@ -8,7 +11,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// TestWorkflowEventGuards binds conservative expression and ownership proof to the existing sink.
+// TestWorkflowEventGuards checks which if: guards may hide the secrets-in-PR finding in a pull_request_target workflow.
+//
+// Only a guard that provably rules out pull_request_target, on the job or step that holds the secret, drops the finding to zero.
+// Ambiguous expressions, guards placed elsewhere, duplicate keys, anchors and flow-style YAML keep it, so the user still sees the exposure.
 func TestWorkflowEventGuards(t *testing.T) {
 	cases := []struct {
 		name, body string
@@ -50,6 +56,7 @@ func TestWorkflowEventGuards(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Every body runs under an on: pull_request_target trigger, so only a proven guard can stop the finding.
 			got := GitHubActionsSecretsInPRRule{}.AnalyzeUnit(workflowUnit("guard.yml", "on:\n  pull_request_target:\n"+tc.body), Context{})
 			if len(got) != tc.want {
 				t.Fatalf("findings = %#v, want %d", got, tc.want)
@@ -58,7 +65,10 @@ func TestWorkflowEventGuards(t *testing.T) {
 	}
 }
 
-// workflowUnit builds a text unit located under .github/workflows for rule tests.
+// workflowUnit builds a text unit under .github/workflows/ for the workflow rule tests, which all pass a .yml file name.
+//
+// The name is the file name appended to .github/workflows/ to form File.Path, and src becomes the unit's Source text unchanged.
+// It returns a text-classified parser.Unit with only File and Source set; an empty name gives the bare .github/workflows/ path.
 func workflowUnit(name, src string) parser.Unit {
 	return parser.Unit{
 		File:   source.File{Path: ".github/workflows/" + name, Type: source.FileTypeText},
@@ -66,8 +76,8 @@ func workflowUnit(name, src string) parser.Unit {
 	}
 }
 
-// TestGitHubActionsUnpinnedActionRule covers mutable third-party refs and the
-// first-party, tag, SHA, and local cases that must not fire.
+// TestGitHubActionsUnpinnedActionRule checks that a third-party uses: ref on a branch name or partial SHA is reported.
+// Numeric version tags like v2.1.3, full 40-character SHAs, actions/ refs even on a branch, local paths and docker:// images must stay quiet.
 func TestGitHubActionsUnpinnedActionRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -98,8 +108,8 @@ func TestGitHubActionsUnpinnedActionRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsRemoteShellRule covers download-pipe-to-shell steps and safe
-// install commands.
+// TestGitHubActionsRemoteShellRule checks that a run: step piping curl or wget into a shell, or bash <(curl ...), is reported.
+// go install and apt-get install steps, and the same pipe on a comment line, stay quiet; a trailing comment does not hide a real pipe.
 func TestGitHubActionsRemoteShellRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -126,8 +136,8 @@ func TestGitHubActionsRemoteShellRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsBroadPermissionsRule covers blanket write grants and scoped
-// permission blocks.
+// TestGitHubActionsBroadPermissionsRule checks that permissions: write-all or a bare write, quoted or not, is reported.
+// A scoped permissions block and read-all stay quiet, so per-scope write grants such as contents: write get no finding.
 func TestGitHubActionsBroadPermissionsRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -151,8 +161,8 @@ func TestGitHubActionsBroadPermissionsRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsPullRequestTargetRule covers risky pull_request_target use and
-// the plain pull_request / no-execution cases.
+// TestGitHubActionsPullRequestTargetRule checks that a pull_request_target workflow which checks out or runs code is reported.
+// Plain pull_request triggers, and a target workflow with no steps or only a commented-out checkout, stay quiet.
 func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -175,8 +185,8 @@ func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsSecretsInPRRule covers named secrets in pull_request_target
-// workflows and the GITHUB_TOKEN, plain pull_request and non-PR exemptions.
+// TestGitHubActionsSecretsInPRRule checks that a named secret in a pull_request_target workflow is reported, because forks can reach it.
+// GITHUB_TOKEN, plain pull_request and push workflows stay quiet, and a pull_request word in a comment, if: or with: is not a trigger.
 func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -202,8 +212,8 @@ func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	}
 }
 
-// TestWorkflowRulesIgnoreNonWorkflowFiles confirms the rules only run on
-// .github/workflows YAML, not arbitrary config files.
+// TestWorkflowRulesIgnoreNonWorkflowFiles checks that YAML outside .github/workflows, such as config/ci.yml, gets no workflow findings.
+// A failure means users would see broad-permission or unpinned-action findings on ordinary YAML config files.
 func TestWorkflowRulesIgnoreNonWorkflowFiles(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config/ci.yml", Type: source.FileTypeText},

@@ -1,6 +1,7 @@
-// Package rule tests the destination evidence shown in URL security findings.
-// Its fixtures model user handlers that parse, validate, fetch, or redirect so
-// terminal, JSON, and dashboard results agree on what counts as safe.
+// Package rule tests which destination evidence clears the request-URL and open-redirect security findings.
+//
+// Its fixtures model handlers that parse, validate, fetch or redirect a submitted URL, and each case checks the finding count.
+// A wrong count means gruff-go would flag a checked destination or stay silent on an unchecked one.
 package rule
 
 import "testing"
@@ -182,8 +183,8 @@ func TestRequestControlledURLRequiresAffirmativeConstraint(t *testing.T) {
 	}
 }
 
-// TestOpenRedirectRequiresAffirmativeConstraint pins robust relative and
-// destination allowlists while rejecting parse/prefix-only evidence.
+// TestOpenRedirectRequiresAffirmativeConstraint pins relative-path and destination allowlists while rejecting parsing alone or a bare slash prefix.
+// For a submitted target, a slash-stripping loop clears the finding only when a backslash fold assignment appears earlier in the source.
 func TestOpenRedirectRequiresAffirmativeConstraint(t *testing.T) {
 	testCases := []struct {
 		journeyName      string
@@ -351,6 +352,10 @@ func TestOpenRedirectRequiresAffirmativeConstraint(t *testing.T) {
 
 // requestURLHelperBody builds a handler where a user URL passes one named check
 // before an outbound fetch, making token-collision expectations easy to review.
+//
+// helperName is spliced verbatim as the function the guard calls on target, so callers pass a helper that requestURLConstraintSource declares.
+// It returns Go statement text, never empty, that reads target from the url form field and returns early when the helper call is false.
+// Otherwise the statements pass target to http.Get.
 func requestURLHelperBody(helperName string) string {
 	return `target := r.FormValue("url")
 	// The helper name is the only evidence available to the parser-only scan.
@@ -362,6 +367,10 @@ func requestURLHelperBody(helperName string) string {
 
 // redirectHelperBody builds the equivalent user journey for redirect sinks so
 // request and redirect naming policies stay aligned.
+//
+// helperName is spliced verbatim as the function the guard calls on target, so callers pass a helper that requestURLConstraintSource declares.
+// It returns Go statement text, never empty, that reads target from the next form field and returns early when the helper call is false.
+// Otherwise the statements pass target to http.Redirect with status 302.
 func redirectHelperBody(helperName string) string {
 	return `target := r.FormValue("next")
 	// The helper name is the only evidence available to the parser-only scan.
@@ -373,6 +382,9 @@ func redirectHelperBody(helperName string) string {
 
 // requestURLConstraintSource wraps one journey in a parseable handler with all
 // helper-name variants a user project might expose to the scanner.
+//
+// handlerName names the generated handler function, and handlerBody is spliced verbatim as its body, where w and r are in scope.
+// It returns the complete source of package handler, never empty, importing context, net/http, net/url and strings.
 func requestURLConstraintSource(handlerName, handlerBody string) string {
 	return `// Package handler models URL choices submitted through a web UI.
 // It exercises syntax checks, destination validators, outbound fetches, and
@@ -426,12 +438,10 @@ func ` + handlerName + `(w http.ResponseWriter, r *http.Request) {
 `
 }
 
-// TestTrimLoopBranchAttribution pins which `break` spellings void the
-// slash-normalisation proof. Go binds an unlabelled break to the innermost
-// enclosing loop or switch, so a break inside a nested construct never escapes
-// the trim; reading every break as an escape reported handlers that were in
-// fact fully normalised, and a false open-redirect finding fails the default
-// advisory gate.
+// TestTrimLoopBranchAttribution pins which break statements void the slash-normalisation proof for an open redirect.
+//
+// An unlabelled break binds to the innermost loop or switch, so a nested one keeps the proof and avoids a false advisory-gate finding.
+// A break bound to the trim loop itself, or a labelled break out of a nested loop, still keeps the finding.
 func TestTrimLoopBranchAttribution(t *testing.T) {
 	testCases := []struct {
 		journeyName      string
@@ -517,10 +527,10 @@ outer:
 	}
 }
 
-// TestRedirectPrefixSurvivesAppend pins that extending an already-normalised
-// redirect target on the right keeps its proof. Caddy's file server writes the
-// canonical form - strip every leading slash in a loop, then append the query
-// string - and reading that append as invalidation reported correct code.
+// TestRedirectPrefixSurvivesAppend pins that extending an already-normalised redirect target on the right keeps its proof.
+//
+// Caddy's file server writes the canonical form: strip repeated leading slashes in a loop, then append the query string.
+// Prepending text or replacing the target with another request value after the strip still keeps the finding.
 func TestRedirectPrefixSurvivesAppend(t *testing.T) {
 	testCases := []struct {
 		journeyName      string

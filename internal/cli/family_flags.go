@@ -42,6 +42,9 @@ var supersededSpellings = map[string]string{
 //
 // It writes the ratified message and returns true so the caller can exit 2 before scanning anything, because a run that
 // proceeded would produce a verdict under semantics the user did not ask for.
+//
+// flags is the parsed flag set, and only flags actually passed are visited, looking for min-severity by name.
+// stderr receives minSeverityBreakMessage only when that flag was passed; otherwise nothing is written and it returns false.
 func refuseMinSeverity(flags *flag.FlagSet, stderr io.Writer) bool {
 	refused := false
 
@@ -63,6 +66,9 @@ func refuseMinSeverity(flags *flag.FlagSet, stderr io.Writer) bool {
 //
 // The run continues: behaviour is identical under the family spelling, so refusing would break a working command line
 // for a rename. The warning is what tells the user the old name is going away.
+//
+// flags is the parsed flag set; only flags actually passed are visited, in lexical order, and each is looked up in supersededSpellings.
+// stderr receives one warning per match naming the old flag and its replacement; nothing is written when no superseded name was passed.
 func warnSupersededSpellings(flags *flag.FlagSet, stderr io.Writer) {
 	flags.Visit(func(passed *flag.Flag) {
 		if replacement, superseded := supersededSpellings[passed.Name]; superseded {
@@ -72,6 +78,9 @@ func warnSupersededSpellings(flags *flag.FlagSet, stderr io.Writer) {
 }
 
 // familyGateValues carries the two exit gates gruff-go gains from the family contract.
+//
+// parseFamilyGates fills it from --min-confidence and --fail-on-new before a scan starts; a blank --min-confidence is stored as low.
+// reachesFamilyGate compares each finding's confidence against minConfidence and never reads failOnNew.
 type familyGateValues struct {
 	// minConfidence is the lowest confidence a finding needs to reach the exit gate, independent of severity.
 	minConfidence string
@@ -83,6 +92,9 @@ type familyGateValues struct {
 //
 // An unparseable confidence is a usage error rather than a silent fallback, for the same reason a mistyped severity is:
 // a gate the user did not get is worse than a command that refused.
+//
+// minConfidence is trimmed and lowercased, and a blank value becomes finding.ConfidenceLow; failOnNew is copied into the gates unchanged.
+// It returns the normalised gates and true, or zero familyGateValues and false after writing an unknown confidence message to stderr.
 func parseFamilyGates(minConfidence string, failOnNew bool, stderr io.Writer) (familyGateValues, bool) {
 	gates := familyGateValues{minConfidence: strings.ToLower(strings.TrimSpace(minConfidence)), failOnNew: failOnNew}
 
@@ -92,6 +104,7 @@ func parseFamilyGates(minConfidence string, failOnNew bool, stderr io.Writer) (f
 		return gates, true
 	}
 
+	// A typo such as --min-confidence hgh lands here; the message quotes the value exactly as typed, before trimming and lowercasing.
 	if !validConfidenceFloor(gates.minConfidence) {
 		fmt.Fprintf(stderr, "unknown confidence %q: want one of low, medium, high\n", minConfidence)
 		return familyGateValues{}, false
@@ -101,6 +114,9 @@ func parseFamilyGates(minConfidence string, failOnNew bool, stderr io.Writer) (f
 }
 
 // validConfidenceFloor reports whether a confidence floor names one of the three ratified levels.
+//
+// candidate is compared exactly, with no trimming or case folding, against finding.ConfidenceLow, ConfidenceMedium and ConfidenceHigh.
+// It returns false for any other value, including the empty string.
 func validConfidenceFloor(candidate string) bool {
 	switch candidate {
 	case string(finding.ConfidenceLow), string(finding.ConfidenceMedium), string(finding.ConfidenceHigh):
@@ -112,6 +128,8 @@ func validConfidenceFloor(candidate string) bool {
 
 // confidenceRank orders the three confidence levels so a floor can be compared against a finding.
 //
+// confidence is the level to rank, such as a finding's confidence or the gate floor; it is lowercased with strings.ToLower but not trimmed.
+// It returns 0 for finding.ConfidenceLow and 1 for ConfidenceMedium; every other value, ConfidenceHigh and the empty string included, ranks 2.
 // An unrecognised value ranks highest, because a finding whose confidence nobody rated must not slip under a gate.
 func confidenceRank(confidence string) int {
 	switch strings.ToLower(string(confidence)) {
@@ -124,10 +142,14 @@ func confidenceRank(confidence string) int {
 	}
 }
 
-// reachesFamilyGate reports whether one finding reaches both the severity and the confidence floor.
+// reachesFamilyGate reports whether one finding reaches the confidence floor; it does not look at severity.
 //
 // Severity is already decided by the caller's threshold comparison; this adds the independent confidence dimension the
 // family contract introduces, so neither floor alone decides the exit code.
+//
+// findingConfidence is the finding's confidence level, and gates supplies the floor through minConfidence; failOnNew is not consulted.
+// It returns true when confidenceRank of findingConfidence is at least the rank of gates.minConfidence, and false otherwise.
+// An unrecognised or empty findingConfidence ranks highest, so it always reaches the floor.
 func reachesFamilyGate(findingConfidence string, gates familyGateValues) bool {
 	return confidenceRank(findingConfidence) >= confidenceRank(gates.minConfidence)
 }

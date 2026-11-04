@@ -1,5 +1,6 @@
-// Package rule tests the deny-by-default preview policy across every
-// sensitive-data detector route and category.
+// Package rule tests the deny-by-default preview policy across every sensitive-data detector route and category.
+//
+// A failure means a fixture went unreported, its preview differs from the approved marker, or its metadata holds bytes of the matched value.
 package rule
 
 import (
@@ -12,8 +13,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// sensitivePreviewFixture describes one detector/category output without
-// storing a reusable credential literal contiguously in this source file.
+// sensitivePreviewFixture describes one detector/category output without storing a reusable credential literal contiguously in this source file.
+//
+// secret is the value metadata must never contain and allowedPreview the exact marker; secondarySecret and secondary cover a second field.
 type sensitivePreviewFixture struct {
 	name            string
 	ruleID          string
@@ -28,8 +30,8 @@ type sensitivePreviewFixture struct {
 
 // TestSensitivePreviewPolicyMatrix pins the one marker every sensitive-data rule and every PII/PHI category emits.
 //
-// Section 5 made markers unconditional: each one names a class the detector already decided and carries none of the
-// matched value, so there is no configuration that could make one safer or less safe.
+// Section 5 makes markers unconditional: specific categories name their class, while the generic secret-pattern marker names none.
+// Markers carry no credential or personal data and cannot be configured; a connection-string marker may name its approved scheme, such as postgres.
 func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	states := []struct {
 		name string
@@ -64,6 +66,9 @@ func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 }
 
 // sensitivePreviewRegistry enables the opt-in sensitive detectors across the complete default rule family.
+//
+// It returns the Registry DefaultsConfigured builds from a Config that enables sensitive-data rules, including pii-pattern and phi-pattern.
+// An error from DefaultsConfigured fails the test at once through t.Fatal.
 func sensitivePreviewRegistry(t *testing.T) Registry {
 	t.Helper()
 	registry, err := DefaultsConfigured(Config{
@@ -83,8 +88,9 @@ func sensitivePreviewRegistry(t *testing.T) Registry {
 	return registry
 }
 
-// sensitivePreviewUnit converts a fixture into the text unit used by every
-// line-oriented sensitive detector.
+// sensitivePreviewUnit converts a fixture into the text unit used by every line-oriented sensitive detector.
+//
+// It returns a Unit whose File holds the fixture path typed as text and whose Source is the fixture source; every other field stays zero.
 func sensitivePreviewUnit(fixture sensitivePreviewFixture) parser.Unit {
 	return parser.Unit{
 		File:   source.File{Path: fixture.path, Type: source.FileTypeText},
@@ -93,6 +99,9 @@ func sensitivePreviewUnit(fixture sensitivePreviewFixture) parser.Unit {
 }
 
 // sensitivePreviewFinding selects a rule/category pair from a registry run.
+//
+// It returns the first of items whose RuleID equals ruleID and, when category is non-empty, whose category metadata equals category, plus true.
+// An empty category matches any category; when no item matches, it returns a zero Finding and false.
 func sensitivePreviewFinding(items []finding.Finding, ruleID, category string) (finding.Finding, bool) {
 	for _, item := range items {
 		if item.RuleID != ruleID {
@@ -106,8 +115,10 @@ func sensitivePreviewFinding(items []finding.Finding, ruleID, category string) (
 	return finding.Finding{}, false
 }
 
-// assertSensitivePreviewHasNoReusableBytes rejects complete values and the
-// legacy first-six/last-four fragments without printing those bytes on failure.
+// assertSensitivePreviewHasNoReusableBytes rejects whole values and the legacy first-six/last-four fragments without printing them on failure.
+//
+// It fails the test when item Metadata cannot be JSON-encoded, or when its JSON holds any fragment of a non-empty entry in secrets.
+// A fragment failure names only the fragment and secret indexes.
 func assertSensitivePreviewHasNoReusableBytes(t *testing.T, item finding.Finding, secrets ...string) {
 	t.Helper()
 	payload, err := json.Marshal(item.Metadata)
@@ -115,6 +126,7 @@ func assertSensitivePreviewHasNoReusableBytes(t *testing.T, item finding.Finding
 		t.Fatal(err)
 	}
 	for secretIndex, secret := range secrets {
+		// Fixtures without a second field pass an empty secondarySecret, which has nothing to leak and is skipped.
 		if secret == "" {
 			continue
 		}
@@ -126,8 +138,9 @@ func assertSensitivePreviewHasNoReusableBytes(t *testing.T, item finding.Finding
 	}
 }
 
-// sensitiveReusableFragments returns the whole value and the fragments exposed
-// by the legacy redact helper.
+// sensitiveReusableFragments returns the whole value and the fragments exposed by the legacy redact helper.
+//
+// The secret itself comes first, then its first six bytes when it has at least six, then its last four bytes when it has at least four.
 func sensitiveReusableFragments(secret string) []string {
 	fragments := []string{secret}
 	if len(secret) >= 6 {
@@ -139,8 +152,9 @@ func sensitiveReusableFragments(secret string) []string {
 	return fragments
 }
 
-// sensitivePreviewFixtures inventories all 16 rules and expands the PII/PHI
-// routes so each dynamic category has an exact approved marker.
+// sensitivePreviewFixtures inventories the sensitive-data rules and expands the PII/PHI routes so each dynamic category has its approved marker.
+//
+// It returns one fixture per rule other than pii-pattern and phi-pattern, plus one per category of those two rules.
 func sensitivePreviewFixtures() []sensitivePreviewFixture {
 	generic := "generic-" + strings.Repeat("Q7", 10)
 	privateKey := "-----BEGIN " + "RSA PRIVATE KEY-----"

@@ -9,13 +9,17 @@ import (
 )
 
 // inlineFinding builds a finding at one line of main.go, so each case names only the rule, pillar and line.
+//
+// It returns a main.go fixture where ruleID and pillar determine which suppression directives apply and line is the 1-based finding location.
+// Other fields remain zero.
 func inlineFinding(ruleID string, pillar finding.Pillar, line int) finding.Finding {
 	return finding.Finding{RuleID: ruleID, File: "main.go", Pillar: pillar, Location: &finding.Location{Line: line}}
 }
 
-// TestInlineCommentsSuppressOnlyTheChecksSection13cNames walks each comment form section 13c decides for gruff-go,
-// beside the controls that must keep reporting: an unrelated gosec check, gosec G101 on a security rule, a sibling line, a
-// comment above that shares its line with code, and gruff-go's own rationale rule on the comment it reports.
+// TestInlineCommentsSuppressOnlyTheChecksSection13cNames walks each comment form section 13c decides for gruff-go.
+//
+// Controls keep reporting: gosec G304, G101 and nolint:funlen leave security findings, bare nosec leaves function length.
+// Sibling lines and lines below a comment that shares its line with code stay kept, as does the rationale rule on its own comment.
 func TestInlineCommentsSuppressOnlyTheChecksSection13cNames(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -53,8 +57,10 @@ func TestInlineCommentsSuppressOnlyTheChecksSection13cNames(t *testing.T) {
 	}
 }
 
-// TestInlineRowsFollowTheBuiltInRows proves the audit rows: one per file and rule with the contract's source and
-// reason, numbered after the built-in rows, and SARIF's copy of each suppressed finding carrying the same reason.
+// TestInlineRowsFollowTheBuiltInRows proves the audit rows: one inline row per file and rule, numbered after the built-in rows.
+//
+// Two commented lines must merge into one row with the contract's inline source and section 13c reason; uncommented line 4 stays kept.
+// It also checks the suppressed count and that the first suppressed finding's justification carries the row's reason.
 func TestInlineRowsFollowTheBuiltInRows(t *testing.T) {
 	builtIn := []SuppressionSummary{
 		{Index: 0, Rule: "sensitive-data.high-entropy-string", Paths: []string{"go.sum"}, Reason: "lockfile", Suppressed: 3, Source: SuppressionSourceBuiltIn},
@@ -85,9 +91,10 @@ func TestInlineRowsFollowTheBuiltInRows(t *testing.T) {
 	}
 }
 
-// TestAnalyzeCountsAnInlineSuppressionAndKeepsTheRationaleFinding runs the whole pipeline: a `//nolint:funlen` above
-// one long function suppresses it and is counted, its unsuppressed sibling still reports, and the rationale-free comment still
-// draws gruff-go's own docs.suppression-without-rationale finding where it was written.
+// TestAnalyzeCountsAnInlineSuppressionAndKeepsTheRationaleFinding runs the whole Analyze pipeline on a temporary main.go.
+//
+// A nolint:funlen comment above one long function suppresses it and counts in one inline row; its unsuppressed sibling still reports.
+// The rationale-free comment on line 4 still draws gruff-go's own docs.suppression-without-rationale finding where it was written.
 func TestAnalyzeCountsAnInlineSuppressionAndKeepsTheRationaleFinding(t *testing.T) {
 	root := t.TempDir()
 	body := strings.Repeat("\t_ = 1\n", 90)

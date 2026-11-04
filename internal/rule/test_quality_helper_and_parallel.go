@@ -1,5 +1,6 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements additional parser-only test-quality checks.
+//
+// This file implements two parser-only test-quality checks: test-quality.helper-missing-t-helper and test-quality.parallel-range-capture.
 package rule
 
 import (
@@ -17,9 +18,12 @@ import (
 )
 
 // HelperMissingTHelperRule flags test helper functions that fail tests without marking themselves as helpers.
+//
+// Without t.Helper, a failure inside the helper reports the helper's line instead of the calling test's line, which slows triage.
 type HelperMissingTHelperRule struct{}
 
-// Definition declares the test-quality.helper-missing-t-helper rule for helper diagnostics.
+// Definition declares the test-quality.helper-missing-t-helper rule that gruff-go analyse reports on test helpers.
+// It returns the same advisory, medium-confidence, default-enabled Definition on every call.
 func (HelperMissingTHelperRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.helper-missing-t-helper",
@@ -35,6 +39,10 @@ func (HelperMissingTHelperRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for assertion-style helpers that omit t.Helper().
+//
+// unit is the parsed file, analysed only when it has an AST, a file set and a _test.go path; runnable test functions are never reported.
+// It returns one finding per helper that takes a testing handle, can fail through it, never calls Helper, and is not a whole test body.
+// The slice is empty when no helper qualifies, and nil when unit is not analysed.
 func (HelperMissingTHelperRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
@@ -65,14 +73,18 @@ func (HelperMissingTHelperRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return findings
 }
 
-// wholeTestBodyMinLines is the span from which a test-named function with no
-// results reads as a whole parameterized test body rather than a helper.
+// wholeTestBodyMinLines is the span from which a test-named function with no results reads as a whole parameterized test body, not a helper.
+//
+// A testXxx function that returns nothing and spans 30 or more lines, func line to closing brace, gets no finding even without t.Helper.
 const wholeTestBodyMinLines = 30
 
-// isWholeTestBody reports a benchmark or parameterized test body, where the
-// operator ruled (2026-10-04) that t.Helper only moves a failure off the line
-// that failed: a function driving the benchmark timer or loop, or one named
-// testXxx that returns nothing and spans wholeTestBodyMinLines or more.
+// isWholeTestBody reports whether fn reads as a whole test body, which this rule exempts from a missing-Helper finding.
+//
+// It matches selector use drivesBenchmark finds, or a testXxx function that returns nothing and spans wholeTestBodyMinLines or more.
+// These bodies are exempt so their failures keep their own source lines rather than being attributed to a caller.
+//
+// unit supplies the file set that measures the span of fn, the candidate helper, and receivers holds its testing handle names.
+// It reports false for any other function, so its missing Helper call can still raise a finding.
 func isWholeTestBody(unit parser.Unit, fn *ast.FuncDecl, receivers map[string]bool) bool {
 	if drivesBenchmark(fn.Body, receivers) {
 		return true
@@ -88,7 +100,10 @@ func isWholeTestBody(unit parser.Unit, fn *ast.FuncDecl, receivers map[string]bo
 	return end-start+1 >= wholeTestBodyMinLines
 }
 
-// drivesBenchmark reports whether a testing handle runs the benchmark loop or timer.
+// drivesBenchmark reports whether body selects a benchmark-shaped member on a testing handle, exempting the function from the missing-Helper rule.
+//
+// body is the helper body, searched with its closures, and receivers holds the testing handle names to match.
+// Any selector of N, Loop, ResetTimer, StartTimer, StopTimer, ReportAllocs, ReportMetric or RunParallel on a receiver counts, called or not.
 func drivesBenchmark(body *ast.BlockStmt, receivers map[string]bool) bool {
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -107,21 +122,25 @@ func drivesBenchmark(body *ast.BlockStmt, receivers map[string]bool) bool {
 	return found
 }
 
-// failsThroughOwnHandle reports whether the helper can fail through its own
-// testing handle. A closure parameter that redeclares the handle's name, such as
-// t.Run's func(t *testing.T), is the subtest's handle, so failures there, and
-// the delegation to the subtest, do not need this helper to call Helper.
+// failsThroughOwnHandle reports whether the helper can fail through its own testing handle, the trigger for a missing-Helper finding.
+//
+// A closure parameter that redeclares the handle's name, such as t.Run's func(t *testing.T), is the subtest's handle.
+// Failures there, and the delegation to the subtest, do not need this helper to call Helper.
+//
+// body is the helper body and receivers its testing handle names, plus any that collectTestingReceiverVariables finds in body.
+// testingPackages and assertionPackages hold the testing and assertion import names used to recognise failure calls and assertion helpers.
 func failsThroughOwnHandle(body *ast.BlockStmt, testingPackages, assertionPackages, receivers map[string]bool) bool {
-	local := copyReceiverNames(receivers)
-	collectTestingReceiverVariables(body, testingPackages, local)
-	helperObjects := capturedAssertionHelperObjects(body, local)
+	ownHandles := copyReceiverNames(receivers)
+	collectTestingReceiverVariables(body, testingPackages, ownHandles)
+	helperObjects := capturedAssertionHelperObjects(body, ownHandles)
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if found {
 			return false
 		}
+		// A closure such as t.Run's func(t *testing.T) redeclares t, so only the handles it does not redeclare are followed inside.
 		if closure, ok := node.(*ast.FuncLit); ok {
-			inherited := copyReceiverNames(local)
+			inherited := copyReceiverNames(ownHandles)
 			for _, field := range closure.Type.Params.List {
 				removeFieldNames(field, inherited)
 			}
@@ -132,15 +151,16 @@ func failsThroughOwnHandle(body *ast.BlockStmt, testingPackages, assertionPackag
 		if !ok {
 			return true
 		}
-		found = isReceiverFailureCall(call, local) || isAssertionHelperCall(call, local, assertionPackages) ||
-			isCapturedAssertionHelperCall(call, helperObjects) || isInPackageAssertionCall(call, local, assertionPackages)
+		found = isReceiverFailureCall(call, ownHandles) || isAssertionHelperCall(call, ownHandles, assertionPackages) ||
+			isCapturedAssertionHelperCall(call, helperObjects) || isInPackageAssertionCall(call, ownHandles, assertionPackages)
 		return !found
 	})
 	return found
 }
 
-// typeAssertedNames returns names assigned from a type assertion, such as h in
-// `h, ok := ti.(tHelper)`, whose Helper call marks the function as a helper.
+// typeAssertedNames returns names assigned from a type assertion, such as h in h, ok := ti.(tHelper), whose Helper call marks a helper.
+//
+// body is searched outside nested closures for single type-assertion assignments; the map is empty when body has none.
 func typeAssertedNames(body *ast.BlockStmt) map[string]bool {
 	names := map[string]bool{}
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -162,9 +182,12 @@ func typeAssertedNames(body *ast.BlockStmt) map[string]bool {
 }
 
 // ParallelRangeCaptureRule flags parallel subtests that close over range variables.
+//
+// It reports only in modules on pre-Go 1.22 loop-variable semantics, where parallel subtests can all see the loop's last value.
 type ParallelRangeCaptureRule struct{}
 
 // Definition declares the test-quality.parallel-range-capture rule for table-test closure capture.
+// It returns the same advisory, medium-confidence, default-enabled Definition on every call.
 func (ParallelRangeCaptureRule) Definition() Definition {
 	return Definition{
 		ID:             "test-quality.parallel-range-capture",
@@ -180,10 +203,15 @@ func (ParallelRangeCaptureRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for table-driven parallel subtests that capture range variables.
+//
+// unit is the parsed file, analysed only with an AST, a file set and a _test.go path, and ctx holds the scan root bounding the go.mod search.
+// It returns the findings for parallel subtest calls that capture a range variable, and an empty slice when none does.
+// It returns nil when unit is not analysed, its module targets Go 1.22 or later, or no go.mod version can be read.
 func (ParallelRangeCaptureRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
 		return nil
 	}
+	// A module on Go 1.22 or later, or a file with no go.mod version up to the scan root, gets no finding from this rule.
 	if !usesLegacyRangeLoopVariables(unit, ctx) {
 		return nil
 	}
@@ -200,6 +228,9 @@ func (ParallelRangeCaptureRule) AnalyzeUnit(unit parser.Unit, ctx Context) []fin
 }
 
 // testingHelperReceiverNames returns parameter names that can act as test handles inside helper functions.
+//
+// fn is the function whose parameters are read and testingPackages the testing import names; method receivers and blank names are left out.
+// The map is empty when fn has no named parameter of a testing handle type.
 func testingHelperReceiverNames(fn *ast.FuncDecl, testingPackages map[string]bool) map[string]bool {
 	receivers := map[string]bool{}
 	if fn.Type == nil || fn.Type.Params == nil {
@@ -219,6 +250,9 @@ func testingHelperReceiverNames(fn *ast.FuncDecl, testingPackages map[string]boo
 }
 
 // isTestingHelperReceiverType recognises testing.TB plus pointer T/B/F receivers.
+//
+// expr is a parameter type and testingPackages the testing import names, where the key "." marks a dot import.
+// It reports true for those types, an unqualified TB under a dot import included, and false for any other expr.
 func isTestingHelperReceiverType(expr ast.Expr, testingPackages map[string]bool) bool {
 	if isTestingTBFType(expr, testingPackages) {
 		return true
@@ -235,6 +269,9 @@ func isTestingHelperReceiverType(expr ast.Expr, testingPackages map[string]bool)
 }
 
 // helperCallPresent reports whether a known testing receiver invokes Helper in the helper's own body.
+//
+// body is the helper body, searched outside nested closures, and receivers holds its testing handle names.
+// A Helper call through a type-asserted name, or directly on a type assertion expression, also counts.
 func helperCallPresent(body *ast.BlockStmt, receivers map[string]bool) bool {
 	asserted := typeAssertedNames(body)
 	found := false
@@ -266,6 +303,9 @@ func helperCallPresent(body *ast.BlockStmt, receivers map[string]bool) bool {
 }
 
 // parallelRangeCaptureFindings finds t.Run closures with t.Parallel that use unshadowed range variables.
+//
+// unit supplies the file path and positions, body is the function body to search, and testingPackages holds the testing import names.
+// It returns the parallelCapturesInRange findings of every range statement in body, nested ones included; the slice is empty when nothing is found.
 func parallelRangeCaptureFindings(unit parser.Unit, body *ast.BlockStmt, testingPackages map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -274,6 +314,7 @@ func parallelRangeCaptureFindings(unit parser.Unit, body *ast.BlockStmt, testing
 			return true
 		}
 		rangeVars := rangeVariableNames(rangeStmt)
+		// A range with blank or absent key and value, such as for range items, has nothing a subtest could capture.
 		if len(rangeVars) == 0 {
 			return true
 		}
@@ -284,6 +325,10 @@ func parallelRangeCaptureFindings(unit parser.Unit, body *ast.BlockStmt, testing
 }
 
 // parallelCapturesInRange checks one range body for unsafe parallel subtest captures.
+//
+// unit supplies the file path and positions, rangeStmt is the loop whose body is read, and rangeVars holds its key and value names.
+// testingPackages holds the testing import names used to find t.Parallel inside each Run closure.
+// It returns at most one finding per Run call, naming one unshadowed captured variable, and an empty slice when none is found.
 func parallelCapturesInRange(unit parser.Unit, rangeStmt *ast.RangeStmt, rangeVars map[string]bool, testingPackages map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	shadowed := map[string]bool{}
@@ -298,6 +343,7 @@ func parallelCapturesInRange(unit parser.Unit, rangeStmt *ast.RangeStmt, rangeVa
 			if lit == nil || !funcLitCallsParallel(lit, testingPackages) {
 				return true
 			}
+			// With both key and value captured, map order picks which one the finding names, so the message can change between runs.
 			for name := range rangeVars {
 				if shadowed[name] || !funcLitUsesIdent(lit, name) {
 					continue
@@ -317,7 +363,8 @@ func parallelCapturesInRange(unit parser.Unit, rangeStmt *ast.RangeStmt, rangeVa
 	return findings
 }
 
-// rangeVariableNames returns non-blank key/value identifiers declared by a range statement.
+// rangeVariableNames returns non-blank key/value identifiers named by a range statement, whether declared with := or assigned with =.
+// stmt is the range statement read; the map is empty when neither key nor value is a non-blank identifier.
 func rangeVariableNames(stmt *ast.RangeStmt) map[string]bool {
 	out := map[string]bool{}
 	for _, expr := range []ast.Expr{stmt.Key, stmt.Value} {
@@ -329,7 +376,8 @@ func rangeVariableNames(stmt *ast.RangeStmt) map[string]bool {
 	return out
 }
 
-// recordRangeShadow recognises `tc := tc`-style copies before t.Run.
+// recordRangeShadow recognises tc := tc style copies before t.Run, which stop a range variable from raising a capture finding.
+// stmt is one statement of the range body, rangeVars holds the loop's variable names, and shadowed receives each one copied to itself with :=.
 func recordRangeShadow(stmt ast.Stmt, rangeVars, shadowed map[string]bool) {
 	assign, ok := stmt.(*ast.AssignStmt)
 	if !ok || assign.Tok != token.DEFINE || len(assign.Lhs) != len(assign.Rhs) {
@@ -345,12 +393,14 @@ func recordRangeShadow(stmt ast.Stmt, rangeVars, shadowed map[string]bool) {
 }
 
 // isSubtestRunCall reports whether call is a selector Run invocation.
+// Any x.Run counts, not only a testing handle's, so a Run method on another type is checked as a subtest too.
 func isSubtestRunCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	return ok && selector.Sel.Name == "Run"
 }
 
 // subtestFuncLiteral returns the function literal argument passed to t.Run.
+// call is the Run call; the first function literal among its arguments is returned, or nil when call has none.
 func subtestFuncLiteral(call *ast.CallExpr) *ast.FuncLit {
 	for _, arg := range call.Args {
 		if lit, ok := arg.(*ast.FuncLit); ok {
@@ -361,6 +411,7 @@ func subtestFuncLiteral(call *ast.CallExpr) *ast.FuncLit {
 }
 
 // funcLitCallsParallel reports whether the subtest closure calls t.Parallel.
+// lit is the subtest closure and testingPackages the testing import names that identify its handle parameters; a nil lit or body reports false.
 func funcLitCallsParallel(lit *ast.FuncLit, testingPackages map[string]bool) bool {
 	if lit == nil || lit.Body == nil {
 		return false
@@ -387,6 +438,9 @@ func funcLitCallsParallel(lit *ast.FuncLit, testingPackages map[string]bool) boo
 }
 
 // funcLitUsesIdent reports whether lit references name without redeclaring it inside the closure.
+//
+// Closures nested inside lit are skipped; parameters, := assignments and var or const specs hide later uses of name, but range bindings do not.
+// A nil lit or body reports false.
 func funcLitUsesIdent(lit *ast.FuncLit, name string) bool {
 	if lit == nil || lit.Body == nil {
 		return false
@@ -430,16 +484,19 @@ func funcLitUsesIdent(lit *ast.FuncLit, name string) bool {
 	return used
 }
 
-// usesLegacyRangeLoopVariables reports whether the nearest module still uses
-// the pre-Go 1.22 range-loop capture semantics. Without module metadata the
-// default-on rule stays silent instead of guessing.
+// usesLegacyRangeLoopVariables reports whether the nearest module still uses the pre-Go 1.22 range-loop capture semantics.
+//
+// Without module metadata the default-on rule stays silent instead of guessing, so the result is false when no go.mod version is found.
+// unit is the file whose directory starts the go.mod search, and ctx supplies the scan root that ends it.
 func usesLegacyRangeLoopVariables(unit parser.Unit, ctx Context) bool {
 	major, minor, ok := nearestGoModVersion(unit, ctx)
 	return ok && majorMinorLessThan(major, minor, 1, 22)
 }
 
-// nearestGoModVersion finds the nearest go.mod from the unit's directory up to
-// the scan root and returns its `go` directive major/minor version.
+// nearestGoModVersion finds the nearest go.mod from the unit's directory up to the scan root and returns its go directive major/minor version.
+//
+// unit supplies the file's absolute path, and ctx supplies the scan root, which falls back to the file's own directory when ctx.Root is empty.
+// It returns 0, 0 and false when unit has no absolute path or no readable go.mod sits within the root; otherwise parseGoDirective decides.
 func nearestGoModVersion(unit parser.Unit, ctx Context) (int, int, bool) {
 	if unit.File.AbsPath == "" {
 		return 0, 0, false
@@ -458,9 +515,11 @@ func nearestGoModVersion(unit parser.Unit, ctx Context) (int, int, bool) {
 	}
 	for dir := fileDir; pathWithinOrEqual(dir, rootAbs); dir = filepath.Dir(dir) {
 		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+		// The nearest go.mod decides even when its go line is missing or malformed; a parent module's go.mod is never consulted.
 		if err == nil {
 			return parseGoDirective(data)
 		}
+		// The search stops at the scan root, so a go.mod above that root never decides the finding.
 		if dir == rootAbs || filepath.Dir(dir) == dir {
 			break
 		}
@@ -477,8 +536,10 @@ func pathWithinOrEqual(path string, root string) bool {
 	return rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// parseGoDirective returns the major/minor version from the first `go`
-// directive. A module without that directive has implicit Go 1.16 semantics.
+// parseGoDirective returns the major/minor version from the first go directive in a go.mod file.
+//
+// A module without that directive has implicit Go 1.16 semantics, so the rule treats it as legacy and can report captures.
+// data is the go.mod content; a go line with no version gives 0, 0 and false, and a module with no go line gives 1, 16 and true.
 func parseGoDirective(data []byte) (int, int, bool) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
@@ -494,6 +555,9 @@ func parseGoDirective(data []byte) (int, int, bool) {
 }
 
 // parseGoMajorMinor parses Go directives such as 1.21, 1.22.0, or 1.25rc1.
+//
+// version is the directive's text; minor keeps only the leading digits of the second dot-separated part, so 25rc1 reads as 25.
+// It returns major, minor and true, or 0, 0 and false when version has no dot, a non-numeric major part, or no leading minor digit.
 func parseGoMajorMinor(version string) (int, int, bool) {
 	parts := strings.Split(version, ".")
 	if len(parts) < 2 {
@@ -520,7 +584,10 @@ func parseGoMajorMinor(version string) (int, int, bool) {
 	return major, minor, true
 }
 
-// majorMinorLessThan compares two Go major/minor versions.
+// majorMinorLessThan compares two Go major/minor versions, used here to decide whether a module predates Go 1.22 loop variables.
+//
+// major and minor are the version checked, and thresholdMajor and thresholdMinor the version it is compared against.
+// It reports true only when the checked version is strictly older than the threshold, and false when the two are equal.
 func majorMinorLessThan(major, minor, thresholdMajor, thresholdMinor int) bool {
 	if major != thresholdMajor {
 		return major < thresholdMajor

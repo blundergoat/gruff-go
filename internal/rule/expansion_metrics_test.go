@@ -1,6 +1,7 @@
-// Package rule tests structural metrics shown in gruff-go scan results.
-// These fixtures connect parameter, nesting, and documentation findings to fixes.
-// Nested Go syntax stays parser-owned so users do not see truncated signatures.
+// Package rule tests the parameter-count, nesting-depth and exported-symbol doc findings that gruff-go analyse reports.
+//
+// These fixtures connect parameter, nesting and documentation findings to fixes, and pin the message that lists what a doc must describe.
+// Nested Go syntax stays parser-owned, so users never see a truncated generic or function-typed signature.
 package rule
 
 import (
@@ -11,6 +12,7 @@ import (
 )
 
 // TestParameterCountRule verifies the parameter-count threshold and metadata payload.
+// Only the nine-parameter Wide reports, with parameters=9 in its metadata, and size.parameter-count must be on by default.
 func TestParameterCountRule(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
@@ -30,6 +32,7 @@ func (Builder) Many(a, b, c, d, e int) {}
 		t.Fatalf("metadata = %#v, want parameters=9", findings[0].Metadata)
 	}
 
+	// A function with exactly MaxParameters parameters is not reported; only counts above the limit are.
 	below := ParameterCountRule{MaxParameters: 9}.AnalyzeUnit(unit, Context{})
 	if len(below) != 0 {
 		t.Fatalf("threshold-9 findings = %#v, want none", below)
@@ -41,8 +44,8 @@ func (Builder) Many(a, b, c, d, e int) {}
 	}
 }
 
-// TestParameterCountHandlesNestedSignatureSyntax proves generic, function-typed,
-// and grouped parameters stay balanced and that an options type clears the result.
+// TestParameterCountHandlesNestedSignatureSyntax checks generic, function-typed and grouped parameters count four on Transform.
+// It also checks an options struct for y, z and value clears the finding, and the catalogue's first false-positive shape has a mitigation.
 func TestParameterCountHandlesNestedSignatureSyntax(t *testing.T) {
 	driftUnit := parseOne(t, "signature.go", `package sample
 
@@ -68,7 +71,7 @@ func Transform[T ~int](x func(int) error, options TransformOptions[T]) error {
 }
 `)
 	fixedFindings := (ParameterCountRule{MaxParameters: 3}).AnalyzeUnit(fixedUnit, Context{})
-	// Grouping related values into options clears the finding as the UI instructs.
+	// Moving y, z and value into one options struct drops Transform to two parameters and clears the finding.
 	if len(fixedFindings) != 0 {
 		t.Fatalf("options remediation findings = %#v, want none", fixedFindings)
 	}
@@ -80,7 +83,8 @@ func Transform[T ~int](x func(int) error, options TransformOptions[T]) error {
 	}
 }
 
-// TestNestingDepthRule covers deep/shallow/func-lit nesting cases for the rule.
+// TestNestingDepthRule checks Deep, six blocks deep, reports depth=6 while Shallow stays quiet, and that the rule is on by default.
+// Five ifs nested in a function literal inside Outer must give no finding, as Outer is measured apart from the literal.
 func TestNestingDepthRule(t *testing.T) {
 	deep := parseOne(t, "deep.go", `package sample
 
@@ -151,7 +155,8 @@ func Outer() {
 	}
 }
 
-// TestExportedSymbolCommentRule verifies which exported declarations get flagged.
+// TestExportedSymbolCommentRule checks undocumented exported funcs, types, consts, vars and methods on exported types are reported.
+// Documented or unexported symbols, methods on unexported types and exports in a _test.go file must stay quiet; the rule runs by default.
 func TestExportedSymbolCommentRule(t *testing.T) {
 	unit := parseOne(t, "sample.go", `package sample
 
@@ -222,9 +227,10 @@ func ExportedTestHelper() {}
 	}
 }
 
-// TestGenericMethodsCarryTheirBaseTypeSymbol pins the generic-receiver correction that rides the 0.6.0 identity break:
-// an exported generic type's undocumented methods are reported, an unexported generic type's are not, and a finding
-// inside a generic method names it `Stack.Deep`, the same symbol a plain receiver's method has always carried.
+// TestGenericMethodsCarryTheirBaseTypeSymbol checks generic methods carry the same Type.Method symbol as methods on plain receivers.
+//
+// Undocumented methods on an exported generic type are reported, and those on an unexported generic type are not.
+// A finding inside a generic method names it Stack.Deep, never the bare method name, and that symbol feeds the finding's stable identity.
 func TestGenericMethodsCarryTheirBaseTypeSymbol(t *testing.T) {
 	unit := parseOne(t, "stack.go", `package sample
 
@@ -277,7 +283,8 @@ func (s *Stack[T]) Deep(a, b, c bool) {
 	}
 }
 
-// TestExportedSymbolCommentRuleCanIgnoreInternalPackages exercises the ignoreInternalPackages=true option, asserting an internal/service export is silenced while a public pkg/api export still surfaces.
+// TestExportedSymbolCommentRuleCanIgnoreInternalPackages sets ignoreInternalPackages to true in the rule options.
+// An undocumented export under internal/service is then silenced, while one under pkg/api is still the only finding.
 func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 
@@ -309,7 +316,8 @@ func VisibleOutsideModule() {}
 	}
 }
 
-// TestExportedSymbolCommentRuleCanIncludeInternalPackages exercises ignoreInternalPackages=false, asserting an undocumented internal/service export does report a finding once the opt-out is disabled.
+// TestExportedSymbolCommentRuleCanIncludeInternalPackages sets ignoreInternalPackages to false in the rule options.
+// An undocumented export under internal/service must then report docs.exported-symbol-comment.
 func TestExportedSymbolCommentRuleCanIncludeInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 
@@ -330,9 +338,8 @@ func VisibleInsideModule() {}
 	}
 }
 
-// TestExportedSymbolCommentRuleInternalPackagesCoverGenericCallables confirms that
-// ignoreInternalPackages=false reports undocumented exported generic functions and
-// methods on generic receivers under internal/, and that the default still skips them.
+// TestExportedSymbolCommentRuleInternalPackagesCoverGenericCallables checks generic exports with ignoreInternalPackages explicitly true and false.
+// With true, the default, it reports nothing under internal/; with false it reports exactly Box.Get, Pair.Len and Map.
 func TestExportedSymbolCommentRuleInternalPackagesCoverGenericCallables(t *testing.T) {
 	unit := parseOne(t, "internal/service/service.go", `package service
 
@@ -366,6 +373,7 @@ func Map[T any](items []T) []T { return items }
 		}
 		got := map[string]bool{}
 		for _, f := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+			// Other default rules may report on the same fixture, so only docs.exported-symbol-comment symbols are compared.
 			if f.RuleID == "docs.exported-symbol-comment" {
 				got[f.Symbol] = true
 			}
@@ -382,6 +390,7 @@ func Map[T any](items []T) []T { return items }
 }
 
 // containsRuleID reports whether any finding in the slice has the given rule ID.
+// It compares the RuleID of each element of findings against id, so a nil or empty findings slice reports false.
 func containsRuleID(findings []finding.Finding, id string) bool {
 	for _, f := range findings {
 		if f.RuleID == id {
@@ -392,6 +401,9 @@ func containsRuleID(findings []finding.Finding, id string) bool {
 }
 
 // exportedFuncMessages runs docs.exported-symbol-comment over src and maps each finding's symbol to its message.
+//
+// It returns a non-nil map of Symbol to Message, empty when the rule reports nothing, and a later finding on one Symbol overwrites an earlier one.
+// The test stops through parseOne when the temp fixture cannot be written or src parses with any diagnostic.
 func exportedFuncMessages(t *testing.T, src string) map[string]string {
 	t.Helper()
 	messages := map[string]string{}
@@ -401,7 +413,8 @@ func exportedFuncMessages(t *testing.T, src string) map[string]string {
 	return messages
 }
 
-// assertExportedFuncMessages fails the test when the findings differ from want, symbol by symbol.
+// assertExportedFuncMessages fails the test when got and want differ in symbol count or in the message got holds for a symbol in want.
+// It reports each mismatch with t.Errorf, so the test keeps running, and a symbol missing from got reads as an empty message.
 func assertExportedFuncMessages(t *testing.T, got map[string]string, want map[string]string) {
 	t.Helper()
 	if len(got) != len(want) {

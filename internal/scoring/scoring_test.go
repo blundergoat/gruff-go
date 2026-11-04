@@ -1,6 +1,7 @@
-// Package scoring tests the quality totals shown in CLI and machine reports.
-// Crafted findings keep score changes predictable for users comparing scans.
-// The suite also protects the aggregate from moving backwards after a fix.
+// Package scoring tests the quality score gruff-go shows in CLI and machine reports.
+//
+// Crafted findings pin pillar scores, the composite, grades and top offenders, so score changes stay predictable for users comparing scans.
+// It also checks that clearing a finding never lowers the composite, and that a run that evaluated no file reports null, not 100/A.
 package scoring
 
 import (
@@ -10,7 +11,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestCalculateScoresFindings verifies pillar penalties and coverage caveats.
+// TestCalculateScoresFindings scores a warning and an error in two pillars and checks the composite, grade, coverage and top-offender order.
+// A failure means a two-pillar scan shows an out-of-range composite, no grade, misordered pillars or offenders, or no coverage caveat.
 func TestCalculateScoresFindings(t *testing.T) {
 	score := Calculate([]finding.Finding{{
 		File:       "a.go",
@@ -44,7 +46,8 @@ func TestCalculateScoresFindings(t *testing.T) {
 	}
 }
 
-// TestCalculateCleanScore confirms an all-clean run returns the perfect A grade.
+// TestCalculateCleanScore confirms a clean scan of 10 files across every rule-backed pillar scores 100 with grade A and no top offenders.
+// A failure flags an unexpected score, grade, top offender, histogram bin or scope, coverage caveat, or per-pillar detail row.
 func TestCalculateCleanScore(t *testing.T) {
 	// The pillar set has to come from the catalogue: with no reachable pillar there is nothing to be
 	// clean about, and that case is the applicability contract's null, not an A.
@@ -88,7 +91,7 @@ func TestCalculateCompositeCountsCleanRuleBackedPillars(t *testing.T) {
 	sizeScore := pillarScoreFor(4, 10)
 	complexityScore := pillarScoreFor(9, 10)
 	want := roundScore((sizeScore + complexityScore + 100*float64(pillarCount-2)) / float64(pillarCount))
-	// A different value means the headline omitted at least one clean rule-backed area.
+	// A different value means the headline is not the mean across finding-bearing and clean rule-backed pillars, for example an omitted clean area.
 	if score.Composite == nil || *score.Composite != want {
 		t.Fatalf("composite = %v, want %v across %d rule-backed pillars", score.Composite, want, pillarCount)
 	}
@@ -194,6 +197,7 @@ func TestCalculateEvaluatedNothingIsNotPerfect(t *testing.T) {
 	if len(score.ScoredPillars) != len(registeredPillars) {
 		t.Fatalf("scoredPillars = %d, want all %d rule-backed pillars", len(score.ScoredPillars), len(registeredPillars))
 	}
+	// A pillar score here would grade code that gruff-go never evaluated.
 	for _, detail := range score.PillarDetails {
 		if detail.Score != nil || detail.Grade != nil {
 			t.Fatalf("pillar %s = %v, want no score when nothing was evaluated", detail.Pillar, detail.Score)
@@ -201,8 +205,10 @@ func TestCalculateEvaluatedNothingIsNotPerfect(t *testing.T) {
 	}
 }
 
-// registeredRuleBackedPillars derives the product areas from the live catalogue.
-// Tests follow new areas without hardcoding names or hiding opt-in rules.
+// registeredRuleBackedPillars derives the product areas, or pillars, from the live rule.Defaults() catalogue.
+//
+// Tests follow new areas this way without hardcoding names or hiding opt-in rules.
+// It returns each distinct Pillar once, in no fixed order; t fails the test if the catalogue has none, so the result is never empty.
 func registeredRuleBackedPillars(t *testing.T) []finding.Pillar {
 	t.Helper()
 	uniquePillars := map[finding.Pillar]struct{}{}
@@ -223,7 +229,8 @@ func registeredRuleBackedPillars(t *testing.T) []finding.Pillar {
 	return pillars
 }
 
-// TestCalculatePillarDetailsSortedAndCounted verifies pillar detail counts and ordering.
+// TestCalculatePillarDetailsSortedAndCounted checks pillar detail rows for alphabetical order, per-severity counts and ratified penalties.
+// A failure means pillar details come out of order, miscount severities, or carry a penalty other than the ratified weight.
 func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		{File: "a.go", Severity: finding.SeverityError, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSecurity},
@@ -262,9 +269,9 @@ func TestCalculatePillarDetailsSortedAndCounted(t *testing.T) {
 	}
 }
 
-// TestCalculatePillarPenaltyIsRawUnclamped verifies PillarDetail.Penalty records the raw summed
-// weight, preserving the worst-pillar ranking signal once the score itself has settled on the
-// ratified floor and can no longer separate a noisy pillar from a far noisier one.
+// TestCalculatePillarPenaltyIsRawUnclamped verifies PillarDetail.Penalty records the raw summed weight, 200 for 200 advisory findings.
+//
+// The raw penalty keeps the worst-pillar ranking once the score nears the ratified floor and can no longer tell noisy from far noisier.
 func TestCalculatePillarPenaltyIsRawUnclamped(t *testing.T) {
 	findings := make([]finding.Finding, 0, 200)
 	for range 200 {
@@ -289,7 +296,8 @@ func TestCalculatePillarPenaltyIsRawUnclamped(t *testing.T) {
 	}
 }
 
-// TestCalculateFileScoreEnrichment confirms top offenders carry max cyclomatic info.
+// TestCalculateFileScoreEnrichment confirms top-offender files carry their highest cyclomatic complexity, a grade, and a per-file curve score.
+// A file with no complexity.cyclomatic finding must keep MaxCyclomatic nil.
 func TestCalculateFileScoreEnrichment(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		{
@@ -340,7 +348,8 @@ func TestCalculateFileScoreEnrichment(t *testing.T) {
 	}
 }
 
-// TestCalculateComplexityDistribution checks complexity histogram bucketing.
+// TestCalculateComplexityDistribution checks that complexity.cyclomatic findings land in the right histogram bin by their complexity metadata.
+// A size.function-length finding must not count, so bin 1-5 stays at zero.
 func TestCalculateComplexityDistribution(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		{File: "a.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityWarning, Pillar: finding.PillarComplexity, Metadata: map[string]any{"complexity": 12}},
@@ -364,12 +373,13 @@ func TestCalculateComplexityDistribution(t *testing.T) {
 }
 
 // TestCalculateCompositeDesignFindingsAreScoreNeutral ensures design.* findings do not penalize the score.
+// Adding a design.hotspot-file finding must leave the composite and the top offender's penalty unchanged and add no design pillar.
 func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	base := []finding.Finding{
 		{File: "hot.go", RuleID: "size.function-length", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
 		{File: "hot.go", RuleID: "complexity.cyclomatic", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarComplexity},
 	}
-	withComposite := append(append([]finding.Finding{}, base...), finding.Finding{
+	withDesignFinding := append(append([]finding.Finding{}, base...), finding.Finding{
 		File:       "hot.go",
 		RuleID:     "design.hotspot-file",
 		Severity:   finding.SeverityAdvisory,
@@ -378,20 +388,21 @@ func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	})
 
 	baseScore := Calculate(base, 10)
-	compositeScore := Calculate(withComposite, 10)
-	if *compositeScore.Composite != *baseScore.Composite {
-		t.Fatalf("composite score = %v, want score-neutral %v", *compositeScore.Composite, *baseScore.Composite)
+	withDesignScore := Calculate(withDesignFinding, 10)
+	if *withDesignScore.Composite != *baseScore.Composite {
+		t.Fatalf("composite score = %v, want score-neutral %v", *withDesignScore.Composite, *baseScore.Composite)
 	}
-	if len(compositeScore.TopOffender) != len(baseScore.TopOffender) || compositeScore.TopOffender[0].Penalty != baseScore.TopOffender[0].Penalty {
-		t.Fatalf("top offenders changed: base=%#v composite=%#v", baseScore.TopOffender, compositeScore.TopOffender)
+	if len(withDesignScore.TopOffender) != len(baseScore.TopOffender) || withDesignScore.TopOffender[0].Penalty != baseScore.TopOffender[0].Penalty {
+		t.Fatalf("top offenders changed: base=%#v composite=%#v", baseScore.TopOffender, withDesignScore.TopOffender)
 	}
-	if _, ok := compositeScore.Pillars["design"]; ok {
-		t.Fatalf("design pillar should be score-neutral, got pillars %#v", compositeScore.Pillars)
+	if _, ok := withDesignScore.Pillars["design"]; ok {
+		t.Fatalf("design pillar should be score-neutral, got pillars %#v", withDesignScore.Pillars)
 	}
 }
 
-// correlatedFinding builds a per-symbol finding anchored at a.go:Foo line 10,
-// the shared coordinate the clustering tests use to land findings on one symbol.
+// correlatedFinding builds a per-symbol finding at a.go:Foo line 10, the coordinate clustering tests share to land findings on one symbol.
+//
+// It returns a high-confidence finding whose RuleID, Pillar and Severity come from ruleID, pillar and severity.
 func correlatedFinding(ruleID string, pillar finding.Pillar, severity finding.Severity) finding.Finding {
 	return finding.Finding{
 		RuleID:     ruleID,
@@ -405,6 +416,7 @@ func correlatedFinding(ruleID string, pillar finding.Pillar, severity finding.Se
 }
 
 // findPillarDetail returns the PillarDetail for name, failing the test if absent.
+// It searches the PillarDetails of score, the calculated result, and returns the first row whose Pillar equals name.
 func findPillarDetail(t *testing.T, score Score, name string) PillarDetail {
 	t.Helper()
 	for _, detail := range score.PillarDetails {
@@ -416,11 +428,10 @@ func findPillarDetail(t *testing.T, score Score, name string) PillarDetail {
 	return PillarDetail{}
 }
 
-// TestCalculateClustersTwoCorrelatedFindings verifies P5 for the minimal case:
-// a function that is both long and complex trips size.function-length and
-// complexity.cyclomatic on one symbol. Each member contributes max(4)/2 = 2, so
-// the cluster bills 4 total (one ratified warning) instead of 8, split across the
-// two member pillars. len 2 keeps the penalty exact in float64.
+// TestCalculateClustersTwoCorrelatedFindings verifies P5 for the minimal case, one function tripping two correlated rules on one symbol.
+//
+// The function is long and complex, so size.function-length and complexity.cyclomatic each bill max(4)/2 = 2 instead of their full 4.
+// The cluster bills 4 in total, one ratified warning, not 8, split across the two member pillars; two members keep the penalty exact in float64.
 func TestCalculateClustersTwoCorrelatedFindings(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		correlatedFinding("size.function-length", finding.PillarSize, finding.SeverityWarning),
@@ -442,11 +453,10 @@ func TestCalculateClustersTwoCorrelatedFindings(t *testing.T) {
 	}
 }
 
-// TestCalculateClustersFullSymbolStack verifies the realistic case: one function
-// trips all four warning-level size/complexity rules plus an advisory
-// parameter-count finding. Summing raw weights would charge complexity 12;
-// clustering (max 4 / 5 members = 0.8 each) charges 2.4, proving correlated
-// findings bill once, and confirms every finding still counts toward its pillar.
+// TestCalculateClustersFullSymbolStack covers one function with four size and complexity warnings plus an advisory size.parameter-count finding.
+//
+// Summing raw weights would charge complexity 12; clustering bills each of the 5 members max 4 / 5 = 0.8, so complexity pays 2.4 and size 1.6.
+// A failure flags wrong clustered pillar scores, a wrong composite mean of them, or a wrong per-pillar finding count.
 func TestCalculateClustersFullSymbolStack(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
@@ -471,11 +481,10 @@ func TestCalculateClustersFullSymbolStack(t *testing.T) {
 	}
 }
 
-// TestCalculateDoesNotClusterAcrossSymbols verifies clustering keys on the symbol
-// occurrence: two distinct functions that each trip the same two correlated rules
-// form two clusters, not one. Each cluster bills 4/2 = 2 per member, so complexity
-// totals 4 (2 from each function) - had the four findings merged into one cluster,
-// each member would be 4/4 = 1 and complexity would total 2.
+// TestCalculateDoesNotClusterAcrossSymbols verifies clustering keys on the symbol occurrence, so two functions in one file form two clusters.
+//
+// Foo and Bar each trip complexity.cyclomatic and size.function-length, and each cluster bills 4/2 = 2 per member, so complexity totals 4.
+// Had the four findings merged into one cluster, each member would bill 4/4 = 1 and complexity would total 2.
 func TestCalculateDoesNotClusterAcrossSymbols(t *testing.T) {
 	finding10 := func(ruleID string, pillar finding.Pillar) finding.Finding {
 		return finding.Finding{RuleID: ruleID, Pillar: pillar, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go", Symbol: "Foo", Location: &finding.Location{Line: 10}}
@@ -495,9 +504,9 @@ func TestCalculateDoesNotClusterAcrossSymbols(t *testing.T) {
 	}
 }
 
-// TestCalculateLoneCorrelatedFindingKeepsFullPenalty confirms a single correlated
-// finding is not divided: a cluster needs at least two members, so one complexity
-// finding on a symbol still bills its full warning penalty.
+// TestCalculateLoneCorrelatedFindingKeepsFullPenalty confirms a single correlated finding is not divided.
+//
+// A cluster needs at least two members, so one complexity finding on a symbol still bills its full warning penalty of 4.
 func TestCalculateLoneCorrelatedFindingKeepsFullPenalty(t *testing.T) {
 	score := Calculate([]finding.Finding{
 		correlatedFinding("complexity.cyclomatic", finding.PillarComplexity, finding.SeverityWarning),
@@ -508,9 +517,9 @@ func TestCalculateLoneCorrelatedFindingKeepsFullPenalty(t *testing.T) {
 	}
 }
 
-// TestCalculateClusteringRequiresSymbolAndLine confirms findings without a symbol
-// (and a line) never cluster: two complexity findings with no symbol bill the full
-// sum, because clustering can't prove they share one symbol occurrence.
+// TestCalculateClusteringRequiresSymbolAndLine confirms findings without a symbol and line never cluster.
+//
+// Two complexity findings with neither bill the full sum of 8, because clustering cannot prove they share one symbol occurrence.
 func TestCalculateClusteringRequiresSymbolAndLine(t *testing.T) {
 	noSymbol := func() finding.Finding {
 		return finding.Finding{RuleID: "complexity.cyclomatic", Pillar: finding.PillarComplexity, Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, File: "a.go"}

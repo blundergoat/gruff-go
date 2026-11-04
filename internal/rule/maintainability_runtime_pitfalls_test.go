@@ -1,4 +1,7 @@
-// Package rule tests additional parser-only maintainability rules.
+// Package rule tests the parser-only runtime-pitfall rules: defer in a loop, fatal exits in library code and addresses of loop variables.
+//
+// Each test parses an inline fixture and counts the findings the rule reports for it.
+// The loop-variable tests also write go.mod files: from Go 1.22 a := range loop gets fresh variables, so only = loops still report.
 package rule
 
 import (
@@ -56,6 +59,7 @@ func Load() {
 		t.Fatalf("library findings = %#v, want two fatal exits", findings)
 	}
 
+	// The same log.Fatal in package main under cmd/tool is the command's own exit, so it must not be reported.
 	mainFile := parseOne(t, "cmd/tool/main.go", `package main
 
 import "log"
@@ -69,8 +73,8 @@ func main() {
 	}
 }
 
-// TestLoopVariableAddressRuleLegacyEscapesAndSafeAlternatives preserves every
-// escaping context while pinning indexed and non-escaping address negatives.
+// TestLoopVariableAddressRuleLegacyEscapesAndSafeAlternatives expects three findings across escaping and safe-address fixtures.
+// The fixture has append, return and field-store escapes under a go 1.21 module; only the total is asserted, not which lines report.
 func TestLoopVariableAddressRuleLegacyEscapesAndSafeAlternatives(t *testing.T) {
 	unit := parseOne(t, "range.go", `// Package sample is a test package.
 package sample
@@ -110,6 +114,7 @@ func Safe(values []int) []*int {
 	return out
 }
 `)
+	// A go 1.21 module predates per-iteration loop variables, so every &v here aliases one variable shared across iterations.
 	root := writeGoModForUnit(t, unit, ".", "module sample\n\ngo 1.21\n")
 	findings := LoopVariableAddressRule{}.AnalyzeUnit(unit, Context{Root: root})
 	if len(findings) != 3 {
@@ -117,8 +122,7 @@ func Safe(values []int) []*int {
 	}
 }
 
-// TestLoopVariableAddressRuleSyntaxVersionMatrix pins declaration and assignment
-// forms independently across every supported module-version state.
+// TestLoopVariableAddressRuleSyntaxVersionMatrix pins declaration and assignment forms independently across every supported module-version state.
 func TestLoopVariableAddressRuleSyntaxVersionMatrix(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -157,6 +161,7 @@ func TestLoopVariableAddressRuleSyntaxVersionMatrix(t *testing.T) {
 			} else if tt.rootWithoutDirective {
 				ctx.Root = writeGoModForUnit(t, unit, ".", "module root\n")
 			}
+			// The nested go.mod goes in the directory above pkg, so a nestedVersion row needs a path ending in /pkg/range.go; an empty path panics here.
 			if tt.nestedVersion != "" {
 				writeGoModForUnit(t, unit, tt.path[:len(tt.path)-len("/pkg/range.go")], loopVariableAddressGoMod("nested", tt.nestedVersion))
 			}
@@ -172,9 +177,8 @@ func TestLoopVariableAddressRuleSyntaxVersionMatrix(t *testing.T) {
 	}
 }
 
-// TestLoopVariableAddressRuleGatesEachRangeStatement proves a Go 1.22 module
-// suppresses declaration-form aliases without hiding assignment-form aliases in
-// the same analysis unit.
+// TestLoopVariableAddressRuleGatesEachRangeStatement proves the Go version gate applies to each range statement, not the whole file.
+// Under a go 1.22 module the := loop is suppressed while the = loop in the same unit still reports assignedIndex and assignedValue.
 func TestLoopVariableAddressRuleGatesEachRangeStatement(t *testing.T) {
 	unit := parseOne(t, "pkg/range.go", `// Package sample is a test package.
 package sample
@@ -200,8 +204,8 @@ func collect(values []int) []*int {
 	assertLoopVariableAddressVariables(t, findings, "assignedIndex", "assignedValue")
 }
 
-// loopVariableAddressMatrixFixture returns key/value address escapes for one
-// declaration or assignment range form.
+// loopVariableAddressMatrixFixture returns a Go file whose one range loop appends &i and &v, escaping both the key and the value.
+// rangeToken goes between the i, v loop variables and range, so := gives the declaration form; with =, the fixture predeclares i and v as int.
 func loopVariableAddressMatrixFixture(rangeToken string) string {
 	predeclared := ""
 	if rangeToken == "=" {
@@ -221,12 +225,13 @@ func collect(values []int) []*int {
 }
 
 // loopVariableAddressGoMod returns a minimal versioned module fixture.
+// The text names module on its module line and sets version on its go directive, with no other directives.
 func loopVariableAddressGoMod(module string, version string) string {
 	return "module " + module + "\n\ngo " + version + "\n"
 }
 
-// assertLoopVariableAddressVariables verifies findings cover each expected key
-// or value operand exactly once.
+// assertLoopVariableAddressVariables checks each key or value name in variables is the variable metadata of exactly one entry in findings.
+// It calls t.Fatalf for the first name not seen exactly once; other names, and findings without variable metadata, go unchecked.
 func assertLoopVariableAddressVariables(t *testing.T, findings []finding.Finding, variables ...string) {
 	t.Helper()
 	seen := map[string]int{}

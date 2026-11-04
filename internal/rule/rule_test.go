@@ -1,4 +1,5 @@
 // Package rule defines gruff-go's rule registry and analysers.
+//
 // This file covers Definition validation and Registry dispatch semantics.
 // The tests keep catalogue errors actionable before a user starts a scan.
 package rule
@@ -13,6 +14,7 @@ import (
 )
 
 // TestDefinitionValidationRejectsBadIDs ensures Definition.Validate refuses malformed rule IDs.
+// A failure means Validate accepted the malformed rule ID bad_id.
 func TestDefinitionValidationRejectsBadIDs(t *testing.T) {
 	definition := validDefinition("bad_id")
 	if err := definition.Validate(); err == nil {
@@ -21,6 +23,7 @@ func TestDefinitionValidationRejectsBadIDs(t *testing.T) {
 }
 
 // TestDefinitionValidateDefaultsCapability confirms an empty Capability defaults to CapabilityParser.
+// A failure means Validate rejected the blank Capability or left it blank instead of filling in the parser default.
 func TestDefinitionValidateDefaultsCapability(t *testing.T) {
 	definition := validDefinition("size.file-length")
 	definition.Capability = ""
@@ -34,6 +37,7 @@ func TestDefinitionValidateDefaultsCapability(t *testing.T) {
 }
 
 // TestDefinitionValidateRejectsInvalidCapability ensures unknown capability values are rejected.
+// A failure means Validate accepted the made-up capability magic.
 func TestDefinitionValidateRejectsInvalidCapability(t *testing.T) {
 	definition := validDefinition("size.file-length")
 	definition.Capability = Capability("magic")
@@ -77,6 +81,7 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 }
 
 // TestRegistrySortsAndDispatchesRuleShapes checks Registry sorts definitions and dispatches both unit and project rules.
+// It also checks that every finding leaves Analyze with a non-empty Fingerprint.
 func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	unit := parser.Unit{File: source.File{Path: "b.go", Type: source.FileTypeGo}}
 	unitRule := fakeUnitRule{id: "size.file-length"}
@@ -88,6 +93,7 @@ func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 	}
 
 	definitions := registry.Definitions()
+	// Definitions sort by rule ID, so design.project-shape comes first even though the unit rule was passed first.
 	if len(definitions) != 2 || definitions[0].ID != "design.project-shape" || definitions[1].ID != "size.file-length" {
 		t.Fatalf("definitions = %#v, want sorted definitions", definitions)
 	}
@@ -102,6 +108,7 @@ func TestRegistrySortsAndDispatchesRuleShapes(t *testing.T) {
 }
 
 // TestRegistryCachesDefinitionsForDispatch ensures Definition() is invoked only once per rule.
+// A failure means NewRegistry did not call Definition exactly once, or Analyze called it again instead of reusing the cached copy.
 func TestRegistryCachesDefinitionsForDispatch(t *testing.T) {
 	calls := 0
 	registry, err := NewRegistry([]UnitRule{countedUnitRule{id: "size.file-length", calls: &calls}}, nil)
@@ -120,6 +127,7 @@ func TestRegistryCachesDefinitionsForDispatch(t *testing.T) {
 }
 
 // TestRegistryDoesNotDispatchDisabledRules confirms rules with DefaultEnabled=false are skipped during Analyze.
+// A failure means Analyze, given a zero Context, still ran a rule that is off by default.
 func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
 	calls := 0
 	registry, err := NewRegistry([]UnitRule{disabledUnitRule{id: "size.parameter-count", calls: &calls}}, nil)
@@ -138,6 +146,7 @@ func TestRegistryDoesNotDispatchDisabledRules(t *testing.T) {
 func TestDefaultsCapability(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
+	// An empty catalogue would pass the loop below without checking anything, so it fails here first.
 	if len(definitions) == 0 {
 		t.Fatal("expected built-in definitions")
 	}
@@ -148,8 +157,9 @@ func TestDefaultsCapability(t *testing.T) {
 	}
 }
 
-// TestDefaultsPrecisionGuidance ensures every medium- or low-confidence rule
-// tells catalogue users how to recognise and mitigate its known context limit.
+// TestDefaultsPrecisionGuidance ensures every medium- or low-confidence rule tells catalogue users how to spot and mitigate its known context limit.
+//
+// The totals 80 and 43 are pinned, so adding or removing a rule, or moving one across the high-confidence line, fails until they are updated.
 func TestDefaultsPrecisionGuidance(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
@@ -179,6 +189,7 @@ func TestDefaultsPrecisionGuidance(t *testing.T) {
 }
 
 // TestRegistryDefinitionsCapabilityInvariant verifies a freshly built Registry exposes parser-capability definitions.
+// The stub leaves Capability blank, so a failure means NewRegistry stopped filling in the CapabilityParser default.
 func TestRegistryDefinitionsCapabilityInvariant(t *testing.T) {
 	registry, err := NewRegistry([]UnitRule{fakeUnitRule{id: "size.file-length"}}, nil)
 	if err != nil {
@@ -219,6 +230,7 @@ func (r fakeProjectRule) Definition() Definition {
 }
 
 // AnalyzeProject returns a single canned project-level finding for the given units.
+// The finding takes its file from the first unit, so an empty units slice panics.
 func (r fakeProjectRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	return []finding.Finding{{
 		Message: "project finding",
@@ -261,12 +273,18 @@ func (r disabledUnitRule) Definition() Definition {
 }
 
 // AnalyzeUnit increments the call counter so tests can assert the registry skipped this rule.
+// It always returns nil, reporting no findings, because the test only checks how many times the registry called it.
 func (r disabledUnitRule) AnalyzeUnit(parser.Unit, Context) []finding.Finding {
 	(*r.calls)++
 	return nil
 }
 
 // validDefinition builds a minimal Definition that passes Validate using the supplied id.
+//
+// Validate still rejects the result when id is not a well-formed rule ID, as TestDefinitionValidationRejectsBadIDs checks.
+//
+// It returns a Definition titled Test rule that holds id, the size pillar, warning severity, high confidence and DefaultEnabled true.
+// Every other field is left at its zero value, including Capability, which Validate defaults to CapabilityParser.
 func validDefinition(id string) Definition {
 	return Definition{
 		ID:             id,

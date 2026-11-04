@@ -1,6 +1,8 @@
 // Package rule tests when a Go developer names a PEM marker to parse or re-wrap a caller's key.
+//
 // The confirmed gosec declarations are checked with their real syntax, while nearby source shapes must still warn.
-// These tests keep each header independent when several appear on one line.
+// A line holding both a parser-safe and a bare header must still give one finding.
+//
 // Parser-free units model deep-scan fallback, where the developer must still see the warning.
 package rule
 
@@ -13,7 +15,11 @@ import (
 )
 
 // privateKeyTestSource expands PEM marker placeholders when a test parses Go code for a developer's scan.
-// Keeping complete marker bytes out of this test file lets candidate redaction bind the actual regression source safely.
+//
+// Each marker is split across two string literals so this test file never holds a complete PEM header for a private-key scan to report.
+//
+// The template is test source text whose {{PRIVATE}}, {{RSA}}, {{DSA}}, {{EC}} and {{END_PRIVATE}} placeholders become PEM BEGIN or END markers.
+// It returns the expanded text; a template with no placeholders, including an empty one, comes back unchanged.
 func privateKeyTestSource(template string) string {
 	return strings.NewReplacer(
 		"{{PRIVATE}}", "-----BEGIN "+"PRIVATE KEY-----",
@@ -113,7 +119,7 @@ func TestPrivateKeyRuleKeepsUnprovenGoHeadersVisible(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			unit := parseOne(t, "keys.go", privateKeyTestSource(testCase.source))
-			// A single visible warning means the unproven header was not hidden by another call or header.
+			// Each shape must give exactly one private-key finding; the count alone does not show which header on a mixed line was reported.
 			if findings := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(findings) != 1 {
 				t.Fatalf("private-key findings = %#v, want one", findings)
 			}
@@ -152,7 +158,7 @@ func TestPrivateKeyRuleKeepsEmbeddedBodyVisible(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			unit := parseOne(t, "keys.go", privateKeyTestSource(testCase.source))
-			// The matched header belongs to a body-bearing literal and cannot be exempted as a parser marker.
+			// Each case must report once, whether the authored body shares the header's literal or reaches it through an assigned parameter.
 			if findings := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(findings) != 1 {
 				t.Fatalf("embedded-key findings = %#v, want one", findings)
 			}

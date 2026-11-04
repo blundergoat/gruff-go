@@ -1,5 +1,7 @@
 // Package rule holds the expected default rule-ID catalogue for the registry tests.
+//
 // Keeping the long sorted lists here keeps builtin_test.go within the size budget.
+// Adding, retiring or switching off a rule by default must update these lists; until then TestDefaultsListRules fails.
 package rule
 
 import (
@@ -8,8 +10,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch covers both catalogue
-// membership and runtime execution on code each retired detector reported.
+// TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch checks that three retired low-precision rules are gone from Defaults.
+//
+// It covers both catalogue membership and runtime execution on code each retired detector reported.
+// A failure means the catalogue still lists one of them, or an analyse run still reports its finding.
 func TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch(t *testing.T) {
 	retired := map[string]bool{
 		"naming.negated-boolean":       true,
@@ -22,6 +26,7 @@ func TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch(t *testing.T) {
 			t.Errorf("retired rule %s remains in the catalogue", definition.ID)
 		}
 	}
+	// The fixture gives each retired rule its old trigger: a negated boolean field, a skipped test and a test that only logs.
 	unit := parseOne(t, "pkg/retirement_test.go", `package sample
 import "testing"
 type Settings struct { DisableCache bool }
@@ -35,15 +40,14 @@ func TestLogging(t *testing.T) { t.Log("running") }
 	}
 }
 
-// defaultRuleIDs returns the sorted built-in rule IDs expected from Defaults.
-// The catalogue is split into two halves at the security pillar boundary so each
-// helper stays within the function-length threshold.
+// defaultRuleIDs returns every built-in rule ID Defaults must list, in sorted order; the slice is never empty.
+// The catalogue is split into two halves at the security pillar boundary so each helper stays within the function-length threshold.
 func defaultRuleIDs() []string {
 	return append(defaultRuleIDsThroughNaming(), defaultRuleIDsSecurityOnward()...)
 }
 
-// defaultRuleIDsThroughNaming lists the sorted rule IDs from the complexity
-// pillar through the naming pillar (everything before security).
+// defaultRuleIDsThroughNaming lists the sorted rule IDs from the complexity pillar through the naming pillar, everything before security.
+// It returns a new non-empty slice on each call, which defaultRuleIDs places ahead of defaultRuleIDsSecurityOnward.
 func defaultRuleIDsThroughNaming() []string {
 	return []string{
 		"complexity.cognitive",
@@ -83,8 +87,8 @@ func defaultRuleIDsThroughNaming() []string {
 	}
 }
 
-// defaultRuleIDsSecurityOnward lists the sorted rule IDs from the security pillar
-// through test-quality (security, sensitive-data, size, test-quality).
+// defaultRuleIDsSecurityOnward lists the sorted rule IDs for the security, sensitive-data, size and test-quality pillars.
+// It returns a new non-empty slice on each call, which defaultRuleIDs appends after defaultRuleIDsThroughNaming.
 func defaultRuleIDsSecurityOnward() []string {
 	return []string{
 		"security.archive-path-traversal",
@@ -136,8 +140,10 @@ func defaultRuleIDsSecurityOnward() []string {
 	}
 }
 
-// defaultDisabledRuleIDs returns rules that ship opt-in because they enforce
-// house-style conventions or candidate checks that still need calibration.
+// defaultDisabledRuleIDs returns the rule IDs that ship opt-in, each mapped to true, for TestDefaultsListRules to compare against.
+//
+// They enforce house-style conventions or are candidate checks that still need calibration.
+// An ID absent from the map reads as false, which means the rule must be on by default.
 func defaultDisabledRuleIDs() map[string]bool {
 	// Precision-floor M19 added seven rules on 2026-10-04: each was right less than half the time
 	// on fewer than ten findings, so it is off by default rather than deleted (ADR-021).

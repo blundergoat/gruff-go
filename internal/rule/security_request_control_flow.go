@@ -1,5 +1,8 @@
 // Package rule provides bounded control-flow evidence for request security rules.
+//
 // It distinguishes mutually exclusive syntax branches without adding type or SSA analysis.
+// A validator inside an optional branch or loop body cannot clear a sink that runs after it, so that sink can still be reported.
+// A Location header and a redirect status written in different branches of one if or switch are never paired into a finding.
 package rule
 
 import (
@@ -7,9 +10,11 @@ import (
 	"go/token"
 )
 
-// enclosingControlRegionsContainPosition reports whether a later position stays
-// inside every optional control region that contains target. A validator inside
-// an optional branch cannot protect a sink after that branch has been skipped.
+// enclosingControlRegionsContainPosition reports whether a later position stays inside every optional control region that contains target.
+//
+// A validator inside an optional branch cannot protect a sink after that branch has been skipped.
+// root is the tree searched for the regions around target, and containment of position uses half-open node ranges.
+// The result is also true when target sits in no optional region, and false as soon as one region misses position.
 func enclosingControlRegionsContainPosition(root ast.Node, target ast.Node, position token.Pos) bool {
 	for _, region := range enclosingControlRegions(root, target) {
 		if !nodeContainsPosition(region, position) {
@@ -19,9 +24,11 @@ func enclosingControlRegionsContainPosition(root ast.Node, target ast.Node, posi
 	return true
 }
 
-// nodesCanShareControlPath rejects nodes placed in different branches of the
-// same if, switch, type switch, or select. Independent conditions stay
-// compatible because a runtime path may execute both.
+// nodesCanShareControlPath rejects nodes placed in different branches of the same if, switch, type switch, or select.
+//
+// Independent conditions stay compatible because a runtime path may execute both.
+// It reports false when firstNode and secondNode under root sit in different branches of one if, switch, type switch or select, else true.
+// The check is syntactic, so switch clauses joined by fallthrough still conflict, and a condition is in none of its own statement's branches.
 func nodesCanShareControlPath(root ast.Node, firstNode, secondNode ast.Node) bool {
 	firstBranches := exclusiveControlBranches(root, firstNode)
 	secondBranches := exclusiveControlBranches(root, secondNode)
@@ -33,8 +40,10 @@ func nodesCanShareControlPath(root ast.Node, firstNode, secondNode ast.Node) boo
 	return true
 }
 
-// enclosingControlRegions returns the optional branch or loop regions that
-// must execute before target can execute.
+// enclosingControlRegions returns the optional branches and loop bodies under root that must be entered for target to run.
+//
+// If and else branches, for and range bodies, and switch, type switch and select clauses count when they hold the start of target.
+// Code in an if condition or a loop header adds no region, and regions come outermost first; the slice is empty, not nil, when none apply.
 func enclosingControlRegions(root ast.Node, target ast.Node) []ast.Node {
 	regions := []ast.Node{}
 	targetPosition := target.Pos()
@@ -47,6 +56,7 @@ func enclosingControlRegions(root ast.Node, target ast.Node) []ast.Node {
 			if branch := ifBranchContainingPosition(statement, targetPosition); branch != nil {
 				regions = append(regions, branch)
 			}
+		// A loop body may run zero times, so code inside it is as optional as an if branch.
 		case *ast.ForStmt:
 			if nodeContainsPosition(statement.Body, targetPosition) {
 				regions = append(regions, statement.Body)
@@ -73,8 +83,8 @@ func enclosingControlRegions(root ast.Node, target ast.Node) []ast.Node {
 	return regions
 }
 
-// exclusiveControlBranches maps each enclosing multi-branch statement to the
-// exact branch containing target.
+// exclusiveControlBranches maps each enclosing multi-branch statement to the exact branch containing target.
+// It returns a non-nil map for the if, switch, type switch and select statements under root, empty when target sits in no such branch.
 func exclusiveControlBranches(root ast.Node, target ast.Node) map[ast.Node]ast.Node {
 	branches := map[ast.Node]ast.Node{}
 	targetPosition := target.Pos()
@@ -105,8 +115,8 @@ func exclusiveControlBranches(root ast.Node, target ast.Node) map[ast.Node]ast.N
 	return branches
 }
 
-// ifBranchContainingPosition returns the body or else branch that contains a
-// position, or nil when the position belongs to the condition itself.
+// ifBranchContainingPosition returns the body or else branch of statement that contains position, or nil when position is in the condition.
+// The else branch is a block or a nested if, and nil is also returned for the init clause or a position outside statement.
 func ifBranchContainingPosition(statement *ast.IfStmt, position token.Pos) ast.Node {
 	if nodeContainsPosition(statement.Body, position) {
 		return statement.Body
@@ -118,6 +128,9 @@ func ifBranchContainingPosition(statement *ast.IfStmt, position token.Pos) ast.N
 }
 
 // clauseContainingPosition returns one switch/select clause containing position.
+//
+// body is the block of a switch, type switch or select statement, and its clauses are searched in order.
+// It returns nil when body is nil or no clause contains position, such as a position in the statement's tag or init.
 func clauseContainingPosition(body *ast.BlockStmt, position token.Pos) ast.Node {
 	if body == nil {
 		return nil
@@ -131,6 +144,7 @@ func clauseContainingPosition(body *ast.BlockStmt, position token.Pos) ast.Node 
 }
 
 // nodeContainsPosition uses half-open AST source ranges for containment checks.
+// It reports whether position lies within node, from node.Pos() inclusive to node.End() exclusive; the result is false for a nil node interface.
 func nodeContainsPosition(node ast.Node, position token.Pos) bool {
 	return node != nil && node.Pos() <= position && position < node.End()
 }

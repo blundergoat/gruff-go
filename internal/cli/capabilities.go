@@ -7,9 +7,14 @@ import (
 )
 
 // hookContractVersion is the cross-analyzer contract emitted by hook mode.
+//
+// It is sent as contractVersion in the capabilities JSON, telling a hook consumer which hook payload shape gruff-go speaks.
 const hookContractVersion = "gruff.hook.v2"
 
 // hookCapabilities is the §4 capability negotiation payload.
+//
+// A hook consumer reads it to learn the contract version, which hook features gruff-go supports and how each flag is spelled.
+// FlagOrder is any because gruff-go accepts flags after the path as well as before it.
 type hookCapabilities struct {
 	ContractVersion string              `json:"contractVersion"`
 	Analyzer        hookAnalyzer        `json:"analyzer"`
@@ -19,12 +24,16 @@ type hookCapabilities struct {
 }
 
 // hookAnalyzer identifies the analyzer binary in hook payloads.
+//
+// In the capabilities JSON, Name is gruff-go and Version is toolVersion, so a consumer can tell which build answered.
 type hookAnalyzer struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 
 // hookCapabilityFlags advertises which hook contract features are implemented.
+//
+// hookCapabilitiesPayload sets every field to true, so a consumer may rely on each of these features when it runs gruff-go hook.
 type hookCapabilityFlags struct {
 	Baseline       bool `json:"baseline"`
 	BaselineV3     bool `json:"baselineV3"`
@@ -41,6 +50,8 @@ type hookCapabilityFlags struct {
 }
 
 // hookFlagNames maps contract concepts to this analyzer's real flags.
+//
+// A consumer reads the flag for each concept here, such as --diff or --min-confidence, instead of guessing how gruff-go spells it.
 type hookFlagNames struct {
 	Baseline          string `json:"baseline"`
 	ChangedRanges     string `json:"changedRanges"`
@@ -51,11 +62,15 @@ type hookFlagNames struct {
 }
 
 // writeHookCapabilities writes the stable §4 JSON payload.
+//
+// writer receives the payload built by hookCapabilitiesPayload, encoded by report.WriteJSON.
+// It returns the writer's error unchanged if writing the capability JSON fails, and nil on success.
 func writeHookCapabilities(writer io.Writer) error {
 	return report.WriteJSON(writer, hookCapabilitiesPayload())
 }
 
 // hookCapabilitiesPayload returns gruff-go's hook contract support matrix.
+// The result marks every feature supported, lists gruff-go's real flag spellings, and sets FlagOrder to any.
 func hookCapabilitiesPayload() hookCapabilities {
 	return hookCapabilities{
 		ContractVersion: hookContractVersion,

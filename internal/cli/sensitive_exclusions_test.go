@@ -1,7 +1,8 @@
-// Package cli tests cover the sensitiveExclusions section end to end.
-// They prove the config file actually reaches the analyser: an accepted entry
-// removes the finding and publishes its audit row, and a rejected entry stops
-// the run with exit 2.
+// Package cli tests cover the sensitiveExclusions section of .gruff-go.yaml end to end.
+//
+// They prove the config file reaches the analyser: an accepted entry removes the finding and publishes its suppression audit row.
+// A rejected entry stops the run with exit 2 and a config diagnostic in the JSON report.
+// The summary text output must print the same audit line as analyse for the same tree.
 package cli
 
 import (
@@ -13,15 +14,18 @@ import (
 	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
-// sensitiveExclusionFixture returns a Go source file carrying a synthetic AWS
-// access key. The literal is assembled from fragments so this test file never
-// contains a complete secret-shaped token for the dogfood scan to report.
+// sensitiveExclusionFixture returns the text of a Go source file whose AccessKey const holds a synthetic AWS access key.
+//
+// The literal is assembled from fragments so this test file never contains a complete secret-shaped token for the dogfood scan to report.
 func sensitiveExclusionFixture() string {
 	key := "AKIA" + strings.Repeat("Q", 16)
 	return "// Package fixture is a sensitive-data test fixture.\npackage fixture\n\n// AccessKey is a synthetic identifier used by the exclusion tests.\nconst AccessKey = \"" + key + "\"\n"
 }
 
-// analyseJSONReport runs analyse in root and decodes the machine report.
+// analyseJSONReport runs analyse --format json through Main in the current directory and decodes the JSON report.
+//
+// The args follow analyse --format json on the command line, such as the file path to scan; any exit code but 2 is accepted.
+// It returns the decoded JSON report as a map keyed by top-level field name, and fails the test instead on exit 2 or stdout that is not JSON.
 func analyseJSONReport(t *testing.T, args ...string) map[string]any {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -36,9 +40,8 @@ func analyseJSONReport(t *testing.T, args ...string) map[string]any {
 	return payload
 }
 
-// TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit verifies an accepted
-// entry removes the finding from the report and counts it in the suppressions
-// array, so the suppression is never silently invisible.
+// TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit verifies an accepted entry removes the finding from the report.
+// The suppressions array must count it in one audit row with no symbol, so the suppression is never silently invisible.
 func TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
@@ -77,9 +80,8 @@ func TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit(t *testing.T) {
 	}
 }
 
-// TestAnalyseKeepsUnexcludedSensitiveFinding is the control: without the config
-// the same fixture reports, so the test above proves suppression rather than a
-// rule that never fired.
+// TestAnalyseKeepsUnexcludedSensitiveFinding is the control: the enabled AWS rule reports the fixture when no sensitive exclusion is configured.
+// This shows TestAnalyseHonoursSensitiveExclusionAndPublishesTheAudit sees a real suppression, not a rule that never fired.
 func TestAnalyseKeepsUnexcludedSensitiveFinding(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
@@ -100,9 +102,8 @@ func TestAnalyseKeepsUnexcludedSensitiveFinding(t *testing.T) {
 	}
 }
 
-// TestAnalyseRejectsValueMatchingExclusion verifies a value-matching key is a
-// fatal configuration diagnostic: exit 2, no report, and a message naming both
-// the entry index and the offending key.
+// TestAnalyseRejectsValueMatchingExclusion verifies a sensitiveExclusions entry that matches by value is a fatal configuration error.
+// Analyse must exit 2, publish a JSON report with no findings and one config diagnostic, and name the entry index and offending key on stderr.
 func TestAnalyseRejectsValueMatchingExclusion(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())
@@ -146,8 +147,10 @@ func TestAnalyseRejectsValueMatchingExclusion(t *testing.T) {
 	}
 }
 
-// suppressionAuditLine returns the single `suppressed findings:` line a text
-// surface printed, failing the test when the surface published none.
+// suppressionAuditLine returns the first line starting "suppressed findings:" in a text output, failing the test when there is none.
+//
+// The output is the captured text searched line by line, and surface names the command, such as summary or analyse, in the failure message.
+// Later lines with the same prefix are ignored, so a duplicate audit line goes unnoticed.
 func suppressionAuditLine(t *testing.T, surface, output string) string {
 	t.Helper()
 	for _, line := range strings.Split(output, "\n") {
@@ -159,11 +162,10 @@ func suppressionAuditLine(t *testing.T, surface, output string) string {
 	return ""
 }
 
-// TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse verifies the surface
-// that applies a sensitive exclusion also reports it: with one entry
-// configured, `summary --format text` prints the suppression count, and the
-// line is byte-identical to the one `analyse` prints for the same tree
-// (FAMILY-CONTRACT.md section 13a, "Where the audit must appear").
+// TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse verifies the summary text output reports the sensitive exclusion it applied.
+//
+// With one entry configured, summary prints the suppression count on a line byte-identical to the one analyse prints for the same tree.
+// FAMILY-CONTRACT.md section 13a, "Where the audit must appear", requires the line; it must also sit below the Composite block.
 func TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())

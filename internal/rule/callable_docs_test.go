@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the docs.missing-param-doc and docs.missing-return-doc rules across callable
-// forms, skipped handles, result shapes, natural prose, and their opt-in defaults.
+//
+// This file tests docs.missing-param-doc and docs.missing-return-doc across callable forms, skipped handles, result shapes and natural prose.
+// A failure means users who enable either rule would get wrong or missing doc findings, or a default scan would start reporting them.
 package rule
 
 import (
@@ -9,6 +10,9 @@ import (
 )
 
 // analyseMissingParamDoc parses one source file and runs the docs.missing-param-doc rule over it.
+//
+// path is the file path handed to parseOne and source is the Go source text parsed under that path.
+// It returns one view per finding with its symbol, message and line, or an empty, non-nil slice when the rule reports nothing.
 func analyseMissingParamDoc(t *testing.T, path string, source string) []callableDocView {
 	t.Helper()
 	unit := parseOne(t, path, source)
@@ -173,6 +177,9 @@ func convert(amount int) int { return amount }
 }
 
 // analyseMissingReturnDoc parses one source file and runs the docs.missing-return-doc rule over it.
+//
+// path is the file path handed to parseOne and source is the Go source text parsed under that path.
+// It returns one view per finding with its symbol, message and line, or an empty, non-nil slice when the rule reports nothing.
 func analyseMissingReturnDoc(t *testing.T, path string, source string) []callableDocView {
 	t.Helper()
 	unit := parseOne(t, path, source)
@@ -184,6 +191,9 @@ func analyseMissingReturnDoc(t *testing.T, path string, source string) []callabl
 }
 
 // assertReturnDocMessages fails unless the findings carry exactly the wanted messages in order.
+//
+// findings holds the views under test and want lists the expected messages in order; a nil or empty want requires no findings.
+// Only messages are compared, never symbols or lines, and the first mismatch stops the test through t.Fatalf.
 func assertReturnDocMessages(t *testing.T, findings []callableDocView, want []string) {
 	t.Helper()
 	if len(findings) != len(want) {
@@ -196,8 +206,7 @@ func assertReturnDocMessages(t *testing.T, findings []callableDocView, want []st
 	}
 }
 
-// TestMissingReturnDocRuleIsOptIn pins the return-prose rule as shipped off by default, so default scans do
-// not change.
+// TestMissingReturnDocRuleIsOptIn pins the return-prose rule as shipped off by default, so default scans do not change.
 func TestMissingReturnDocRuleIsOptIn(t *testing.T) {
 	definition := (MissingReturnDocRule{}).Definition()
 	if definition.ID != "docs.missing-return-doc" || definition.DefaultEnabled {
@@ -222,8 +231,7 @@ func split(line string) (head string) { return line }
 	assertReturnDocMessages(t, findings, nil)
 }
 
-// TestMissingReturnDocRuleSkipsCallablesThatReturnNothing confirms a callable with no results is never asked
-// for return or error prose.
+// TestMissingReturnDocRuleSkipsCallablesThatReturnNothing confirms a callable with no results is never asked for return or error prose.
 func TestMissingReturnDocRuleSkipsCallablesThatReturnNothing(t *testing.T) {
 	findings := analyseMissingReturnDoc(t, "cache/cache.go", `package cache
 
@@ -236,9 +244,10 @@ func store(value int) {}
 	assertReturnDocMessages(t, findings, nil)
 }
 
-// TestMissingReturnDocRuleAsksOnlyForWhatTheSignatureHas confirms the message asks for the returned value only
-// when one exists and for the error case only when a result is an error, across methods and function
-// variables, without calling a private callable public.
+// TestMissingReturnDocRuleAsksOnlyForWhatTheSignatureHas confirms the message asks only for the prose the signature needs.
+//
+// Value prose is requested only when a non-error result exists, and error prose only when a result is an error.
+// Methods and function variables are covered, and no message calls a private callable public.
 func TestMissingReturnDocRuleAsksOnlyForWhatTheSignatureHas(t *testing.T) {
 	findings := analyseMissingReturnDoc(t, "store/store.go", `package store
 

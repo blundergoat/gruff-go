@@ -1,6 +1,7 @@
-// rules_docs_contract_fixtures_test.go exercises the narrow rules-doc parser
-// and registry comparator with isolated Markdown records. These fixtures prove
-// malformed markers fail while ordinary author prose stays freely editable.
+// rules_docs_contract_fixtures_test.go tests the narrow rules-doc parser and the registry comparator on isolated Markdown fixtures.
+//
+// Missing required metadata and duplicate or malformed markers must fail, while ordinary author prose stays free to edit.
+// It also checks docs/rules.md against the default registry; repository lookup, the file read, parsing or metadata drift can fail it.
 package cli
 
 import (
@@ -14,8 +15,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestRulesDocsStructuredParserFixtures covers the narrow marker grammar,
-// including errors and prose changes that must not affect parsed metadata.
+// TestRulesDocsStructuredParserFixtures checks the rules-doc marker grammar on small edits of the one-rule fixture.
+//
+// Missing required metadata and duplicate or malformed markers fail with the expected error; reordered bullets and two thresholds must parse.
+// Rewriting the free prose must leave the parsed contract identical; a difference means the parser is reading prose as metadata.
 func TestRulesDocsStructuredParserFixtures(t *testing.T) {
 	base := rulesDocsFixture()
 	tests := []struct {
@@ -43,6 +46,7 @@ func TestRulesDocsStructuredParserFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Only the two-threshold case checks parsed content; the reordered case passes as soon as it parses.
 			if test.wantTwo && len(parsed.Sections["test.sample"].Thresholds) != 2 {
 				t.Fatalf("thresholds = %#v, want two", parsed.Sections["test.sample"].Thresholds)
 			}
@@ -61,9 +65,10 @@ func TestRulesDocsStructuredParserFixtures(t *testing.T) {
 	}
 }
 
-// TestRulesDocsStructuredMetadataMatchesRegistry compares every declared docs
-// field to the no-config registry and exercises each comparator field in an
-// isolated in-memory fixture.
+// TestRulesDocsStructuredMetadataMatchesRegistry checks docs/rules.md against rule.Defaults, then breaks one fixture field per subtest.
+//
+// Before the subtests, the repository lookup, file read, parse or comparison can fail; a comparison error names the first mismatch.
+// A subtest failure reports a fixture parse error, or a comparison that did not return its field's expected error text.
 func TestRulesDocsStructuredMetadataMatchesRegistry(t *testing.T) {
 	root := repoRootForTest(t)
 	data, err := os.ReadFile(filepath.Join(root, "docs", "rules.md"))
@@ -82,12 +87,14 @@ func TestRulesDocsStructuredMetadataMatchesRegistry(t *testing.T) {
 	expected := rulesDocsExpectedFixtureDefinition()
 	for _, test := range rulesDocsMismatchCases() {
 		t.Run(test.name, func(t *testing.T) {
+			// Each subtest parses a fresh fixture, so one case's mutation cannot leak into the next.
 			fixture, err := parseRulesDocsContract(rulesDocsFixture())
 			if err != nil {
 				t.Fatal(err)
 			}
 			applyRulesDocsMismatch(&fixture, test.name)
 			err = compareRulesDocsWithRegistry(fixture, []rule.Definition{expected})
+			// A nil error means the drift went unnoticed; unexpected text can come from another check or from changed error wording.
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("comparison error = %v, want substring %q", err, test.want)
 			}
@@ -95,15 +102,15 @@ func TestRulesDocsStructuredMetadataMatchesRegistry(t *testing.T) {
 	}
 }
 
-// rulesDocsMismatchCase names one isolated field mutation and the error text
-// that proves its intended comparator rejected the drift.
+// rulesDocsMismatchCase pairs one field mutation with the error substring that proves the intended comparator rejected the drift.
 type rulesDocsMismatchCase struct {
 	name string
 	want string
 }
 
-// rulesDocsMismatchCases names every summary, catalog, and section field that
-// must independently reject drift.
+// rulesDocsMismatchCases lists every summary, catalog and section field that must reject drift on its own.
+//
+// It returns one case per field, pairing a mutation name applyRulesDocsMismatch handles with the error substring the comparison must report.
 func rulesDocsMismatchCases() []rulesDocsMismatchCase {
 	return []rulesDocsMismatchCase{
 		{name: "summary rule count", want: "summary rule count"},
@@ -125,11 +132,14 @@ func rulesDocsMismatchCases() []rulesDocsMismatchCase {
 	}
 }
 
-// applyRulesDocsMismatch changes exactly one fixture field so each negative
-// subtest proves the intended comparison rather than a neighbouring check.
+// applyRulesDocsMismatch changes exactly one fixture field, so each negative subtest proves its own comparison and not a neighbouring check.
+//
+// The parsed contract is changed in place, in its summary header or its test.sample catalog row or section.
+// The name argument is a case name from rulesDocsMismatchCases and selects the single field to change.
 func applyRulesDocsMismatch(parsed *rulesDocsContract, name string) {
 	catalog := parsed.Catalog["test.sample"]
 	section := parsed.Sections["test.sample"]
+	// A case name missing from this switch changes nothing, so its subtest fails because the comparison returns nil.
 	switch name {
 	case "summary rule count":
 		parsed.Header.RuleCount++
@@ -164,12 +174,14 @@ func applyRulesDocsMismatch(parsed *rulesDocsContract, name string) {
 	case "section tag":
 		section.Tags = []string{"other"}
 	}
+	// The maps hold copies, so both records are stored back; without this the field change would never reach the comparator.
 	parsed.Catalog["test.sample"] = catalog
 	parsed.Sections["test.sample"] = section
 }
 
-// rulesDocsExpectedFixtureDefinition is the registry side of the isolated
-// comparator fixture used by every negative field test.
+// rulesDocsExpectedFixtureDefinition is the registry side of the one-rule fixture that every negative field subtest compares against.
+//
+// It returns the opt-in test.sample definition whose pillar, severity, confidence, capability, limit threshold and tags match rulesDocsFixture.
 func rulesDocsExpectedFixtureDefinition() rule.Definition {
 	return rule.Definition{
 		ID:             "test.sample",
@@ -183,8 +195,9 @@ func rulesDocsExpectedFixtureDefinition() rule.Definition {
 	}
 }
 
-// rulesDocsFixture returns a complete one-rule contract plus prose that the
-// parser must ignore.
+// rulesDocsFixture returns a complete one-rule docs page for test.sample, plus prose that the parser must ignore.
+//
+// Other fixtures edit this text by exact string replacement, so rewording a bullet here can turn their edits into no-ops.
 func rulesDocsFixture() string {
 	return strings.Join([]string{
 		"# Rule Catalog", "",
@@ -205,8 +218,10 @@ func rulesDocsFixture() string {
 	}, "\n")
 }
 
-// rulesDocsReorderedFixture proves metadata bullet display order is not part
-// of the structured contract.
+// rulesDocsReorderedFixture supplies reordered metadata for a test that checks parsing succeeds.
+//
+// It returns rulesDocsFixture with the test.sample metadata bullets in reverse order and every other line unchanged.
+// If those bullets in rulesDocsFixture are reworded, the replacement misses and this returns the fixture in its original order.
 func rulesDocsReorderedFixture() string {
 	return strings.Replace(rulesDocsFixture(), strings.Join([]string{
 		"- **Pillar:** test-quality", "- **Default severity:** advisory",
@@ -219,8 +234,10 @@ func rulesDocsReorderedFixture() string {
 	}, "\n"), 1)
 }
 
-// rulesDocsMultiThresholdFixture proves both table and section representations
-// preserve more than one numeric knob without map-order dependence.
+// rulesDocsMultiThresholdFixture supplies a parser fixture with two numeric thresholds in both the catalog row and the section metadata.
+//
+// Its caller checks only that parsing succeeds and that the test.sample section holds two thresholds.
+// It returns rulesDocsFixture with a minimum threshold of 1.5 added beside limit in both the catalog row and the section Threshold bullet.
 func rulesDocsMultiThresholdFixture() string {
 	body := strings.Replace(rulesDocsFixture(), "`limit: 2`", "`limit: 2`, `minimum: 1.5`", 1)
 	return strings.Replace(body, "`limit` (default `2`)", "`minimum` (default `1.5` units), `limit` (default `2`)", 1)

@@ -1,5 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file holds golden-file CLI tests that lock down rendered output.
+//
+// This file holds golden-file CLI tests that lock down rendered output against files under testdata/golden.
+// When an output change is intended, regenerate with UPDATE_GOLDEN=1 go test ./internal/cli/... and review the diff.
 package cli
 
 import (
@@ -14,7 +16,8 @@ import (
 	"testing"
 )
 
-// TestGoldenAnalysisFormats compares analyse output against committed golden files.
+// TestGoldenAnalysisFormats compares analyse text, summary-json, sarif and github output, plus list-rules text, against golden files.
+// Each case also requires its exit code and an empty stderr; an exit mismatch prints both streams to show what changed.
 func TestGoldenAnalysisFormats(t *testing.T) {
 	cases := []struct {
 		name string
@@ -149,7 +152,8 @@ func TestGoldenCompositeRuleOutputs(t *testing.T) {
 	}
 }
 
-// expansionFixture returns a Go source string that triggers expansion rule findings.
+// expansionFixture returns Go source for TestGoldenConfiguredExpansionRules: Wide has nine parameters, six nested ifs and no doc comment.
+// They target the rules the test config enables: size.parameter-count, complexity.nesting-depth and docs.exported-symbol-comment.
 func expansionFixture() string {
 	return `// Package sample is a test package.
 package sample
@@ -188,11 +192,11 @@ func Hot(a bool, b bool) {
 `
 }
 
-// compositeConfig returns a YAML config enabling rules used by compositeFixture.
-// hotspot-file is tuned to minFindings 2 so it fires on the two findings (size +
-// complexity) the fixture trips, keeping the composite golden exercising a
-// composite rule; the default minFindings of 3 would leave the fixture below
-// threshold.
+// compositeConfig returns a YAML config enabling the rules compositeFixture needs to fire design.hotspot-file.
+//
+// It lowers size.function-length to 4 and complexity.cognitive to 2, and sets hotspot-file to minFindings 2 and minPillars 2.
+// With those settings the small Hot function yields the two findings, from two pillars, that keep the golden on a composite rule.
+// The default minFindings of 3 would leave the fixture below threshold.
 func compositeConfig() string {
 	return `
 schemaVersion: gruff-go.config.v0.1
@@ -211,6 +215,7 @@ rules:
 
 // TestGoldenDiffMode locks down diff-mode output by setting up a temp git repo.
 func TestGoldenDiffMode(t *testing.T) {
+	// A machine without git fails here rather than skipping, so diff-mode golden coverage is never lost silently.
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatalf("git is required for diff-mode golden coverage: %v", err)
 	}
@@ -289,7 +294,8 @@ func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 	}
 }
 
-// TestAnalyseIncludeIgnoredPreservesConfigIgnores confirms config ignore paths still apply.
+// TestAnalyseIncludeIgnoredPreservesConfigIgnores confirms paths.ignore still applies under --include-ignored.
+// secret.go is gitignored and in paths.ignore, so it must stay unscanned, appear in paths.ignoredPaths and keep the config-ignore reason.
 func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "secret.go\n")
@@ -330,11 +336,11 @@ func TestAnalyseIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	if !slices.Contains(parsed.Paths.IgnoredPaths, "secret.go") {
 		t.Fatalf("secret.go should be listed in paths.ignoredPaths; got %#v", parsed.Paths.IgnoredPaths)
 	}
-	foundSkip := false
+	configIgnoreReported := false
 	for _, item := range parsed.Paths.Details {
-		foundSkip = foundSkip || (item.Path == "secret.go" && item.Reason == "config-ignore")
+		configIgnoreReported = configIgnoreReported || (item.Path == "secret.go" && item.Reason == "config-ignore")
 	}
-	if !foundSkip {
+	if !configIgnoreReported {
 		t.Fatalf("secret.go should remain config-ignored with --include-ignored; got %#v", parsed.Paths.Details)
 	}
 }
@@ -347,10 +353,14 @@ func runGoldenCLI(args ...string) (string, string, int) {
 }
 
 // assertGolden compares got against the named golden file, honouring UPDATE_GOLDEN.
+//
+// name is the file under testdata/golden, and got is the actual output, compared after CRLF line endings become LF.
+// When UPDATE_GOLDEN is 1 it writes the normalized got to the file instead; a read or write failure, or a mismatch, fails the test.
 func assertGolden(t *testing.T, name string, got string) {
 	t.Helper()
 	path := goldenPath(t, name)
 	got = normalizeLineEndings(got)
+	// With UPDATE_GOLDEN=1 the actual output overwrites the golden file; review the diff, since a wrong output becomes the new expectation.
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 			t.Fatal(err)
@@ -358,6 +368,7 @@ func assertGolden(t *testing.T, name string, got string) {
 		return
 	}
 	expected, err := os.ReadFile(path)
+	// A new case whose golden file does not exist yet fails here; create it with UPDATE_GOLDEN=1 and review it.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,6 +378,9 @@ func assertGolden(t *testing.T, name string, got string) {
 }
 
 // goldenPath returns the on-disk location of the named golden file.
+//
+// name is the golden file name, joined under the testdata/golden directory beside this source file.
+// The test fails when runtime.Caller cannot resolve that source file.
 func goldenPath(t *testing.T, name string) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -377,6 +391,9 @@ func goldenPath(t *testing.T, name string) string {
 }
 
 // normalizeGoldenOutput rewrites tmp paths to <WORKDIR> so goldens stay stable across runs.
+//
+// root is the temporary project directory and value is the CLI output; both the native and slash forms of root are replaced.
+// It returns value with CRLF converted to LF and every occurrence of root replaced by <WORKDIR>.
 func normalizeGoldenOutput(root string, value string) string {
 	value = normalizeLineEndings(value)
 	value = strings.ReplaceAll(value, root, "<WORKDIR>")
@@ -385,11 +402,13 @@ func normalizeGoldenOutput(root string, value string) string {
 }
 
 // normalizeLineEndings rewrites CRLF into LF so goldens stay stable on Windows.
+// It returns value with every CRLF pair replaced by LF; lone CR characters are left as they are.
 func normalizeLineEndings(value string) string {
 	return strings.ReplaceAll(value, "\r\n", "\n")
 }
 
 // runGit invokes git inside root and fails the test if the command errors.
+// args are the git arguments after the program name, and on failure the message includes them and git's combined output.
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)

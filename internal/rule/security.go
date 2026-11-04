@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements focused parser-only security checks beyond secret literals.
+//
+// This file holds two parser-only security rules, security.tls-insecure-config and security.archive-path-traversal.
+// Both read only the syntax tree, with no type information, so they flag what the file spells out and miss values that come from elsewhere.
 package rule
 
 import (
@@ -17,9 +19,13 @@ import (
 var sqlKeywordPattern = regexp.MustCompile(`(?i)\b(select|insert|update|delete|create|drop|alter)\b`)
 
 // TLSInsecureConfigRule flags tls.Config literals with concrete insecure settings.
+//
+// It backs the security.tls-insecure-config rule ID, on by default at warning severity.
+// Only values written inside the literal count, so cfg.InsecureSkipVerify = true or a field set from a variable is not flagged.
 type TLSInsecureConfigRule struct{}
 
 // Definition declares the security.tls-insecure-config rule for direct TLS misconfiguration evidence.
+// It returns the same populated Definition on every call: security pillar, warning severity, high confidence, enabled by default.
 func (TLSInsecureConfigRule) Definition() Definition {
 	return Definition{
 		ID:             "security.tls-insecure-config",
@@ -35,6 +41,10 @@ func (TLSInsecureConfigRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for tls.Config literals with explicit insecure field values.
+//
+// unit is the parsed file; Config literals are matched only through its crypto/tls import names, anywhere in the file.
+// It returns one finding per InsecureSkipVerify set to the literal true or MinVersion set to VersionSSL30, VersionTLS10 or VersionTLS11.
+// The result is nil when unit has no AST or FileSet, and empty but non-nil when no insecure field is found.
 func (TLSInsecureConfigRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -60,6 +70,7 @@ func (TLSInsecureConfigRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 				if isTrueLiteral(keyValue.Value) {
 					findings = append(findings, tlsConfigFinding(unit, keyValue, "TLS config disables certificate verification", field.Name, "true"))
 				}
+			// A numeric MinVersion such as 0x0301 or one held in a variable is not flagged; only the named SSL 3.0, TLS 1.0 and TLS 1.1 constants are.
 			case "MinVersion":
 				value, unsafe := unsafeTLSMinVersion(keyValue.Value, tlsPackages)
 				if unsafe {
@@ -73,6 +84,7 @@ func (TLSInsecureConfigRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 }
 
 // isTLSConfigLiteral reports whether literal has type crypto/tls.Config through a selector import name.
+// tlsPackages holds the file's local names for crypto/tls; a Config literal written without a package selector reports false.
 func isTLSConfigLiteral(literal *ast.CompositeLit, tlsPackages map[string]bool) bool {
 	selector, ok := literal.Type.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Config" {
@@ -89,6 +101,9 @@ func isTrueLiteral(expr ast.Expr) bool {
 }
 
 // unsafeTLSMinVersion reports obsolete crypto/tls version selectors that should not be a minimum version.
+//
+// expr is the MinVersion value and tlsPackages the file's local names for crypto/tls; only VersionSSL30, VersionTLS10 and VersionTLS11 count.
+// It returns the selector text with its import name, such as tls.VersionTLS10, and true; any other expr gives an empty string and false.
 func unsafeTLSMinVersion(expr ast.Expr, tlsPackages map[string]bool) (string, bool) {
 	selector, ok := expr.(*ast.SelectorExpr)
 	if !ok {
@@ -106,7 +121,10 @@ func unsafeTLSMinVersion(expr ast.Expr, tlsPackages map[string]bool) (string, bo
 	}
 }
 
-// tlsConfigFinding builds a finding located at the unsafe tls.Config field key.
+// tlsConfigFinding builds a finding located at the unsafe tls.Config field key, so the report points at that key's line and column.
+//
+// unit supplies the file path and the FileSet that turns the keyValue key into a line and column; message becomes the finding message.
+// It returns a Finding with only Message, File, Location and Metadata set; field and value are stored as metadata under their own names.
 func tlsConfigFinding(unit parser.Unit, keyValue *ast.KeyValueExpr, message string, field string, value string) finding.Finding {
 	position := unit.FileSet.Position(keyValue.Key.Pos())
 	return finding.Finding{
@@ -121,9 +139,13 @@ func tlsConfigFinding(unit parser.Unit, keyValue *ast.KeyValueExpr, message stri
 }
 
 // ArchivePathTraversalRule flags archive extraction paths that use entry names without containment evidence.
+//
+// It backs the security.archive-path-traversal rule ID, on by default at advisory severity.
+// A zip or tar entry named ../../etc/passwd, joined straight onto an extraction directory, can land outside it; this rule looks for that join.
 type ArchivePathTraversalRule struct{}
 
 // Definition declares the security.archive-path-traversal rule for parser-only archive extraction evidence.
+// It returns the same populated Definition on every call: security pillar, advisory severity, medium confidence, enabled by default.
 func (ArchivePathTraversalRule) Definition() Definition {
 	return Definition{
 		ID:             "security.archive-path-traversal",
@@ -139,6 +161,13 @@ func (ArchivePathTraversalRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for archive entry names joined into extraction paths without nearby containment checks.
+//
+// unit is the parsed file; with an archive/zip or archive/tar import name, only function and method bodies are scanned, skipping function literals.
+// In those bodies it returns one finding per path or path/filepath Join call that has no containment evidence and takes an archive entry name.
+// An archive entry name is a Name selector argument, or an identifier that collectArchiveNameVars recorded as assigned from one.
+//
+// The result is nil without an AST or FileSet, or when packageImportNames finds no archive/zip or archive/tar import name in unit.
+// Otherwise it is empty but non-nil when no join is flagged.
 func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !importsArchivePackage(unit.AST) {
 		return nil
@@ -155,6 +184,7 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 		}
 		archiveNameVars := collectArchiveNameVars(fn.Body)
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			// Extraction code inside a func literal, such as a goroutine or a callback, is never checked by this rule.
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
@@ -185,12 +215,18 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return findings
 }
 
-// importsArchivePackage reports whether the file imports a standard archive package.
+// importsArchivePackage reports whether file imports archive/zip or archive/tar, excluding blank and dot imports.
+// A file that reaches either package only through a dot import is never checked by security.archive-path-traversal.
 func importsArchivePackage(file *ast.File) bool {
 	return len(packageImportNames(file, "archive/zip", "zip")) > 0 || len(packageImportNames(file, "archive/tar", "tar")) > 0
 }
 
-// collectArchiveNameVars records locals assigned from archive entry Name fields.
+// collectArchiveNameVars records locals assigned from archive entry Name fields, so name := header.Name then a Join on name is still caught.
+//
+// body is a function body; var declarations and assignments are scanned, skipping nested function literals and the blank identifier.
+// It returns a map from each such local name to the Name selector assigned to it; the map is empty, not nil, when no local qualifies.
+//
+// A later non-Name assignment does not clear a recorded local, so name = filepath.Base(name) still counts as an entry name.
 func collectArchiveNameVars(body *ast.BlockStmt) map[string]ast.Expr {
 	vars := map[string]ast.Expr{}
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -220,6 +256,7 @@ func collectArchiveNameVars(body *ast.BlockStmt) map[string]ast.Expr {
 }
 
 // isPathJoinCall reports whether call is path/filepath.Join or path.Join through an imported package name.
+// pathPackages holds the file's local names for path and path/filepath; a Join call without such a package selector reports false.
 func isPathJoinCall(call *ast.CallExpr, pathPackages map[string]bool) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Join" {
@@ -230,6 +267,10 @@ func isPathJoinCall(call *ast.CallExpr, pathPackages map[string]bool) bool {
 }
 
 // archiveEntryNameArg returns the first archive entry name expression among call arguments.
+//
+// args are the Join call arguments; an identifier counts when archiveNameVars maps it, and its recorded Name selector is returned instead.
+// So the finding's entry metadata shows the Name selector, such as header.Name, even when the Join used a local copy.
+// When no argument qualifies it returns nil and false.
 func archiveEntryNameArg(args []ast.Expr, archiveNameVars map[string]ast.Expr) (ast.Expr, bool) {
 	for _, arg := range args {
 		if isArchiveNameExpr(arg) {
@@ -247,12 +288,14 @@ func archiveEntryNameArg(args []ast.Expr, archiveNameVars map[string]ast.Expr) (
 }
 
 // isArchiveNameExpr recognises field access to an archive entry's Name field.
+// It reports true for any selector expr ending in .Name, so non-archive Name fields match too; any other expr gives false.
 func isArchiveNameExpr(expr ast.Expr) bool {
 	selector, ok := expr.(*ast.SelectorExpr)
 	return ok && selector.Sel.Name == "Name"
 }
 
 // callName returns a best-effort selector or function identifier name.
+// call is read by its callee: a selector gives the selected name, an identifier its own name, and any other callee an empty string.
 func callName(call *ast.CallExpr) string {
 	switch fun := call.Fun.(type) {
 	case *ast.SelectorExpr:
@@ -265,6 +308,9 @@ func callName(call *ast.CallExpr) string {
 }
 
 // formatExpr renders an AST expression for metadata without requiring type information.
+//
+// expr is printed by go/printer with a fresh token.FileSet rather than the file's own.
+// It returns the printed source text, or the fixed text archive entry name when printing fails.
 func formatExpr(expr ast.Expr) string {
 	var out bytes.Buffer
 	if err := printer.Fprint(&out, token.NewFileSet(), expr); err != nil {

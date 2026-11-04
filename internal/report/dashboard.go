@@ -1,5 +1,8 @@
 // Package report renders gruff-go analysis results into output formats.
+//
 // It supports text, JSON, HTML, SARIF, GitHub annotations, and the dashboard shell.
+// This file builds the dashboard shell page and its error page.
+// It also adds the script that reports a finished scan from the report iframe back to the shell.
 package report
 
 import (
@@ -11,14 +14,18 @@ import (
 )
 
 // DashboardState describes the form state rendered into the dashboard shell.
+//
+// Each field prefills one control in the dashboard controls panel; an empty text field renders as an empty input.
+// An empty ScanScope or FailOn selects no option, so the browser shows the first one, full or advisory.
+// DashboardScanQuery turns the same state into the /scan URL that dashboardHTML stores on the report iframe.
 type DashboardState struct {
 	// Project is the currently selected project root path.
 	Project string
-	// Paths is the comma-separated list of discovery paths under Project.
+	// Paths is the comma-separated list of scan targets; relative paths resolve against Project, and absolute paths can lie outside it.
 	Paths string
 	// ScanScope selects "full" or "diff" scan mode for the next run.
 	ScanScope string
-	// FailOn is the severity threshold used for the scan exit code ("advisory", "warning", "error").
+	// FailOn is the failure threshold for the scan exit code: advisory, warning or error, or none, which never fails on findings.
 	FailOn string
 	// Config is the configured .gruff-go.yaml path.
 	Config string
@@ -35,31 +42,41 @@ type DashboardState struct {
 }
 
 // WriteDashboard renders the dashboard shell HTML to the writer.
+//
+// The state prefills the controls form and supplies the /scan URL stored on the report iframe.
+// It returns the error from writing the page to writer, or nil when the write succeeds.
 func WriteDashboard(writer io.Writer, state DashboardState) error {
 	_, err := io.WriteString(writer, dashboardHTML(state))
 	return err
 }
 
 // WriteDashboardError renders a self-contained dashboard error document.
+//
+// The page shows message as its lead paragraph, exitCode and durationMs, in milliseconds, on one line, and detail in a preformatted block.
+// Both message and detail are HTML-escaped; the page goes to writer, and it returns the error from that write, or nil when the write succeeds.
 func WriteDashboardError(writer io.Writer, message, detail string, exitCode, durationMs int) error {
 	_, err := io.WriteString(writer, dashboardErrorHTML(message, detail, exitCode, durationMs))
 	return err
 }
 
 // ScanMetadata is the payload posted from the iframe back to the dashboard shell.
+//
+// InjectScanMetadata embeds it as JSON in the report page, with a script that posts it to the parent window as type gruff-scan-complete.
 type ScanMetadata struct {
 	// ExitCode is the process exit code the scan would have produced on the CLI.
 	ExitCode int `json:"exitCode"`
 	// DurationMs is the wall-clock duration of the scan in milliseconds.
 	DurationMs int `json:"durationMs"`
-	// ProjectRoot is the absolute path the scan was rooted at.
+	// ProjectRoot is the scan root as requested, so it may be relative to the dashboard server's working directory.
 	ProjectRoot string `json:"projectRoot"`
-	// Command is the CLI command line that reproduces the scan.
+	// Command is a display string of the scan's CLI flags and paths, with no shell quoting or directory change, so it may not rerun the same scan.
 	Command string `json:"command"`
 }
 
 // InjectScanMetadata adds the postMessage hand-off script to the rendered report HTML.
+//
 // The metadata is JSON-encoded and dispatched to window.parent on the matching origin.
+// It returns reportHTML with both script tags inserted right after its first literal <body> tag, or prepended when it has no such tag.
 func InjectScanMetadata(reportHTML string, metadata ScanMetadata) string {
 	payload := struct {
 		Type        string `json:"type"`
@@ -75,6 +92,7 @@ func InjectScanMetadata(reportHTML string, metadata ScanMetadata) string {
 		Command:     metadata.Command,
 	}
 	encoded, err := json.Marshal(payload)
+	// If encoding ever failed, the shell would still learn the scan finished, but without its exit code, duration, root or command.
 	if err != nil {
 		encoded = []byte(`{"type":"gruff-scan-complete"}`)
 	}
@@ -87,6 +105,9 @@ func InjectScanMetadata(reportHTML string, metadata ScanMetadata) string {
 }
 
 // DashboardScanQuery encodes the form state for a /scan request.
+//
+// It returns a URL-encoded query string with sorted keys and no leading question mark; the non-flag fields appear even when empty.
+// The flags noBaseline, noConfig, includeIgnored and reportInteractive appear, set to 1, only when the matching state field is 1.
 func DashboardScanQuery(state DashboardState) string {
 	values := url.Values{}
 	values.Set("project", state.Project)
@@ -111,6 +132,9 @@ func DashboardScanQuery(state DashboardState) string {
 }
 
 // dashboardHTML composes the dashboard shell document from the current form state.
+//
+// It returns a complete HTML page whose controls form is prefilled from state.
+// Its report iframe shows a loading placeholder and carries the /scan URL for state in its data-initial-src attribute.
 func dashboardHTML(state DashboardState) string {
 	var builder strings.Builder
 	builder.WriteString(`<!DOCTYPE html><html lang="en-NZ"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>gruff-go dashboard</title><style>`)
@@ -138,10 +162,8 @@ func dashboardHTML(state DashboardState) string {
 	builder.WriteString(dashboardOption("diff", state.ScanScope, "diff only"))
 	builder.WriteString(`</select></label>`)
 	builder.WriteString(`<label>Fail on<select name="failOn">`)
-	// `none` listed alongside the three Severity-equivalent values so the
-	// dashboard's binary default (DefaultFailThresholdFor("dashboard") = none)
-	// is selectable in the rendered form. Order is descending strictness
-	// (advisory fails on most) then the gate-disabled sentinel last.
+	// Besides the three severities, none is offered because it is the dashboard's default from DefaultFailThresholdFor("dashboard").
+	// Options run strictest first, advisory failing on the most findings, with none, which never fails on findings, last.
 	for _, value := range []string{"advisory", "warning", "error", "none"} {
 		builder.WriteString(dashboardOption(value, state.FailOn, value))
 	}
@@ -163,6 +185,9 @@ func dashboardHTML(state DashboardState) string {
 }
 
 // dashboardErrorHTML produces a self-contained error document for the dashboard.
+//
+// It returns a full HTML page that shows message as the lead paragraph, exitCode and durationMs, in milliseconds, on one line, and detail below.
+// Both message and detail are HTML-escaped, and detail sits in a preformatted block that keeps its line breaks.
 func dashboardErrorHTML(message, detail string, exitCode, durationMs int) string {
 	return `<!DOCTYPE html><html lang="en-NZ"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>gruff-go dashboard error</title>` +
 		`<style>body{font:14px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#161412;color:#f3e9d2;padding:32px}main{max-width:920px;margin:0 auto}pre{white-space:pre-wrap;background:#0d0c0a;border:1px solid #2a2622;padding:16px;overflow:auto}</style></head><body><main>` +
@@ -174,11 +199,15 @@ func dashboardErrorHTML(message, detail string, exitCode, durationMs int) string
 }
 
 // dashboardLoadingFrame returns the placeholder HTML used inside the iframe before a scan completes.
+// The user sees the words Ready to scan centred on a dark page.
 func dashboardLoadingFrame() string {
 	return `<!DOCTYPE html><html lang="en-NZ"><head><meta charset="UTF-8"><style>body{margin:0;background:#0d0c0a;color:#f3e9d2;font:14px ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;display:grid;place-items:center;min-height:100vh}</style></head><body>Ready to scan.</body></html>`
 }
 
 // dashboardField renders a labelled text input for the dashboard form.
+//
+// It returns a label element whose text is label and whose input carries name, value and placeholder as attributes, all four HTML-escaped.
+// An empty value or placeholder still renders as an empty attribute.
 func dashboardField(label, name, value, placeholder string) string {
 	return fmt.Sprintf(
 		`<label>%s<input name="%s" value="%s" placeholder="%s"></label>`,
@@ -190,6 +219,9 @@ func dashboardField(label, name, value, placeholder string) string {
 }
 
 // dashboardOption renders a single select option, marking it selected when the value matches.
+//
+// It returns an option element whose value attribute is value and whose text is label, both HTML-escaped.
+// The selected attribute is added only when value equals selected exactly.
 func dashboardOption(value, selected, label string) string {
 	selectedAttr := ""
 	if value == selected {
@@ -204,6 +236,9 @@ func dashboardOption(value, selected, label string) string {
 }
 
 // dashboardCheck renders a labelled checkbox for the dashboard form.
+//
+// It returns a checkbox input named name with value 1, wrapped in a label whose text is label; name and label are HTML-escaped.
+// The box is checked only when value is exactly 1, the value DashboardState flag fields hold when set.
 func dashboardCheck(name, label, value string) string {
 	checked := ""
 	if value == "1" {

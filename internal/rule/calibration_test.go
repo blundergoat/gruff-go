@@ -1,6 +1,7 @@
 // Package rule tests size findings shown for Go test files.
-// Fixtures prove defaults soften test noise without overriding project choices.
-// Users therefore see the severity they configured when intent is explicit.
+//
+// Fixtures prove default file and function length findings on a _test.go file soften to advisory with medium confidence.
+// The upper-band fixture verifies that an explicitly configured severity is preserved.
 package rule
 
 import (
@@ -12,8 +13,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// TestSizeRulesCalibrateTestFiles ensures warning-size findings on _test.go
-// files get softened while already-advisory defaults keep their confidence.
+// TestSizeRulesCalibrateTestFiles checks that default file and function length findings on a _test.go file are softened for test code.
+//
+// Each must come out advisory with medium confidence and carry true testFile metadata.
+// A failure means test-file calibration changed, or the fixture no longer yields exactly those two findings.
 func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	unit := parser.Unit{
 		File:      source.File{Path: "long_test.go", Type: source.FileTypeGo},
@@ -40,7 +43,8 @@ func TestSizeRulesCalibrateTestFiles(t *testing.T) {
 	assertCalibratedTestSizeFinding(t, "size.function-length", byRule["size.function-length"])
 }
 
-// TestSizeRuleConfiguredSeverityOverridesTestCalibration verifies configured severity wins over calibration.
+// TestSizeRuleConfiguredSeverityOverridesTestCalibration verifies a configured severity beats test-file calibration for an upper-band finding.
+// A user who sets size.file-length to error in the config file sees error with high confidence on a _test.go file twice the length limit.
 func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	registry, err := DefaultsConfigured(Config{
 		Severities: map[string]finding.Severity{"size.file-length": finding.SeverityError},
@@ -64,7 +68,11 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	}
 }
 
-// assertCalibratedTestSizeFinding asserts the given finding was calibrated as expected for test files.
+// assertCalibratedTestSizeFinding fails the test unless item is a size finding softened for a test file.
+//
+// It fails when item has an empty RuleID, is not advisory severity with medium confidence, or lacks true testFile metadata.
+// An empty RuleID means the rule never fired on the fixture.
+// ruleID only labels the failure messages; it is not compared with item.RuleID.
 func assertCalibratedTestSizeFinding(t *testing.T, ruleID string, item finding.Finding) {
 	t.Helper()
 	if item.RuleID == "" {

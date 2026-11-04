@@ -1,7 +1,8 @@
 // Package analysis tests cover the ratified sensitive-exclusion matcher.
-// The cases mirror gruff-spec/fixtures/sensitive-exclusions/cases.v1.json,
-// including its sibling rule: an exclusion may remove only the findings whose
-// rule and path match a declared entry, and nothing else.
+//
+// The cases mirror gruff-spec/fixtures/sensitive-exclusions/cases.v1.json, including its sibling rule.
+// An exclusion may remove only the findings whose rule and path, and symbol when set, match a declared entry, and nothing else.
+// The direct JSON encoding of a suppression summary row is pinned here too.
 package analysis
 
 import (
@@ -12,9 +13,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// corpusFindings returns the synthetic finding set the acceptance cases run
-// against: one rule repeated in one file, the same rule in a sibling file, a
-// second sensitive rule in its own file, and an unrelated non-sensitive finding.
+// corpusFindings builds the synthetic finding set the acceptance cases run their exclusions against.
+//
+// It returns the AWS key rule twice in secrets/aws.env and once in a sibling file, plus a JWT rule in its own file.
+// The same aws.env file also carries a GitHub token finding and a non-sensitive size finding that no case may suppress.
 func corpusFindings() []finding.Finding {
 	return []finding.Finding{
 		{RuleID: "sensitive-data.aws-access-key", File: "secrets/aws.env", Message: "[redacted:aws-access-key]", Pillar: finding.PillarSensitiveData},
@@ -27,6 +29,9 @@ func corpusFindings() []finding.Finding {
 }
 
 // findingKeys renders findings as rule+path pairs for set comparison.
+//
+// It returns one key per finding, its RuleID and File joined by a single space, in input order with duplicates kept.
+// An empty or nil findings slice gives an empty, non-nil result.
 func findingKeys(findings []finding.Finding) []string {
 	keys := make([]string, 0, len(findings))
 	for _, item := range findings {
@@ -35,22 +40,25 @@ func findingKeys(findings []finding.Finding) []string {
 	return keys
 }
 
-// assertRemovedExactly fails unless the exclusions removed the expected rule+path
-// pairs and nothing else. This is the spec's sibling rule: an unintended
-// suppression is a failure even when the intended one also happened.
+// assertRemovedExactly fails the test through t unless the exclusions removed the expected rule+path pairs and nothing else.
+//
+// This is the spec's sibling rule: an unintended suppression is a failure even when the intended one also happened.
+//
+// kept is the finding list left after the exclusions ran over corpusFindings; the removed keys are the corpus key counts minus those in kept.
+// wantRemoved lists the expected findingKeys entries, one per removed occurrence in any order; nil or empty means nothing may be removed.
 func assertRemovedExactly(t *testing.T, kept []finding.Finding, wantRemoved []string) {
 	t.Helper()
-	remaining := map[string]int{}
+	keptCounts := map[string]int{}
 	for _, key := range findingKeys(kept) {
-		remaining[key]++
+		keptCounts[key]++
 	}
-	original := map[string]int{}
+	corpusCounts := map[string]int{}
 	for _, key := range findingKeys(corpusFindings()) {
-		original[key]++
+		corpusCounts[key]++
 	}
 	removed := []string{}
-	for key, count := range original {
-		for index := 0; index < count-remaining[key]; index++ {
+	for key, count := range corpusCounts {
+		for index := 0; index < count-keptCounts[key]; index++ {
 			removed = append(removed, key)
 		}
 	}
@@ -63,15 +71,16 @@ func assertRemovedExactly(t *testing.T, kept []finding.Finding, wantRemoved []st
 	}
 	for _, key := range removed {
 		wanted[key]--
+		// A negative count means the exclusions removed this key more often than the case expects, an unintended sibling suppression.
 		if wanted[key] < 0 {
 			t.Fatalf("unintended sibling suppression of %q; removed %v, want %v", key, removed, wantRemoved)
 		}
 	}
 }
 
-// TestExactRuleAndPathSuppressesEveryOccurrence covers the exact-rule-and-path
-// case: both occurrences of one rule in one file go, its sibling file keeps
-// reporting, and another rule in the same file keeps reporting.
+// TestExactRuleAndPathSuppressesEveryOccurrence covers the exact-rule-and-path case.
+//
+// Both occurrences of one rule in one file go, its sibling file keeps reporting, and another rule in the same file keeps reporting.
 func TestExactRuleAndPathSuppressesEveryOccurrence(t *testing.T) {
 	exclusions := []SensitiveExclusion{{
 		Rule:   "sensitive-data.aws-access-key",
@@ -90,9 +99,9 @@ func TestExactRuleAndPathSuppressesEveryOccurrence(t *testing.T) {
 	}
 }
 
-// TestScopeMatchingNothingReportsZero covers the scope-matching-nothing case:
-// an entry whose file carries no such finding is not an error, so fixing the
-// underlying problem never breaks a build.
+// TestScopeMatchingNothingReportsZero covers the scope-matching-nothing case.
+//
+// An entry whose file carries no such finding is not an error and reports 0 suppressed, so fixing the underlying problem never breaks a build.
 func TestScopeMatchingNothingReportsZero(t *testing.T) {
 	exclusions := []SensitiveExclusion{{
 		Rule:   "sensitive-data.aws-access-key",
@@ -108,9 +117,9 @@ func TestScopeMatchingNothingReportsZero(t *testing.T) {
 	}
 }
 
-// TestSymbolNarrowsScope covers the symbol-narrows-scope case: no sensitive-data
-// rule stamps a symbol, so an entry carrying one correctly claims nothing and
-// the finding survives.
+// TestSymbolNarrowsScope covers the symbol-narrows-scope case.
+//
+// No sensitive-data rule stamps a symbol, so an entry carrying one correctly claims nothing and the finding survives.
 func TestSymbolNarrowsScope(t *testing.T) {
 	exclusions := []SensitiveExclusion{{
 		Rule:   "sensitive-data.aws-access-key",
@@ -127,9 +136,9 @@ func TestSymbolNarrowsScope(t *testing.T) {
 	}
 }
 
-// TestSymbolMatchesWhenTheFindingStampsOne verifies the symbol narrowing is real
-// rather than inert by construction: a finding carrying the configured symbol is
-// suppressed and its symbol-free sibling is not.
+// TestSymbolMatchesWhenTheFindingStampsOne verifies the symbol narrowing is real rather than inert by construction.
+//
+// A finding carrying the configured symbol is suppressed and its symbol-free sibling is not.
 func TestSymbolMatchesWhenTheFindingStampsOne(t *testing.T) {
 	findings := []finding.Finding{
 		{RuleID: "sensitive-data.aws-access-key", File: "secrets/aws.env", Symbol: "SyntheticFixtureSymbol"},
@@ -189,9 +198,10 @@ func TestSameRuleInAnotherFileSurvives(t *testing.T) {
 	}
 }
 
-// TestSuppressedFindingsLeaveScoringAndExitCodes verifies a suppressed finding is
-// gone from the report the way the existing suppression channel removes one: out
-// of the finding list, out of the counts, and out of the resolved exit code.
+// TestSuppressedFindingsLeaveScoringAndExitCodes verifies sensitive exclusions remove a finding the way the existing suppression channel does.
+//
+// The error-severity AWS key leaves the finding list, the counts and the resolved exit code, so a report that fails on errors exits 0.
+// The suppressions audit row still records the one finding it removed.
 func TestSuppressedFindingsLeaveScoringAndExitCodes(t *testing.T) {
 	findings := []finding.Finding{{
 		RuleID:   "sensitive-data.aws-access-key",
@@ -227,9 +237,9 @@ func TestSuppressedFindingsLeaveScoringAndExitCodes(t *testing.T) {
 	}
 }
 
-// TestSuppressionAuditSerialisesTheFamilyShape locks the audit row down to the
-// keys the family contract publishes, and proves the row carries configuration
-// text only - never a message excerpt, preview, or matched value.
+// TestSuppressionAuditSerialisesTheFamilyShape pins the direct JSON encoding of one suppression summary from ApplySensitiveExclusions.
+//
+// It also proves the row carries configuration text only, never a message excerpt, preview, or matched value.
 func TestSuppressionAuditSerialisesTheFamilyShape(t *testing.T) {
 	exclusions := []SensitiveExclusion{{
 		Rule:   "sensitive-data.aws-access-key",
@@ -246,14 +256,14 @@ func TestSuppressionAuditSerialisesTheFamilyShape(t *testing.T) {
 	if string(encoded) != want {
 		t.Fatalf("audit row =\n%s\nwant\n%s", encoded, want)
 	}
+	// The corpus AWS messages contain the word redacted, so finding it here means finding message text leaked into the audit row.
 	if strings.Contains(string(encoded), "redacted") {
 		t.Fatal("audit row carries finding message material")
 	}
 }
 
-// TestReportAlwaysCarriesASuppressionsArray verifies the machine report publishes
-// an empty array rather than null when a project configured no exclusions, so
-// consumers can read the key unconditionally.
+// TestReportAlwaysCarriesASuppressionsArray verifies the machine report publishes an empty suppressions array rather than null.
+// A project that configured no exclusions still gets the key, so consumers can read it unconditionally.
 func TestReportAlwaysCarriesASuppressionsArray(t *testing.T) {
 	report := NewReport(ReportInput{
 		Root:    "/repo",
@@ -273,7 +283,7 @@ func TestReportAlwaysCarriesASuppressionsArray(t *testing.T) {
 
 // TestBuiltInTestPathMatchesAsEveryPortDoes pins the two comparisons gruff-go once made differently from the other ports.
 //
-// Case folds over ASCII letters only, so a dotted capital I never becomes `i`.
+// Case folds over ASCII letters only, so a dotted capital I never becomes a plain i.
 // A backslash separates directories even on Unix, as the other four ports split on it.
 func TestBuiltInTestPathMatchesAsEveryPortDoes(t *testing.T) {
 	cases := map[string]bool{

@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements documentation checks for suppression comments.
+//
+// This file implements docs.suppression-without-rationale, which flags nolint and nosec comments that give no reason for the suppression.
+// The rule emits one finding per unexplained directive; vendored files and skipped generated files report nothing.
 package rule
 
 import (
@@ -12,9 +14,13 @@ import (
 )
 
 // SuppressionWithoutRationaleRule flags tool suppression comments that omit the reason.
+//
+// It backs docs.suppression-without-rationale, on by default, with one finding per nolint or nosec directive that gives no reason.
+// A reason after the directive, an adjacent reason: comment, or in a parsed file a free-standing prose block right above it clears the finding.
 type SuppressionWithoutRationaleRule struct{}
 
 // Definition declares the docs.suppression-without-rationale rule for suppression comments.
+// It returns the same fixed metadata on every call: advisory severity, medium confidence, the documentation pillar, and enabled by default.
 func (SuppressionWithoutRationaleRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.suppression-without-rationale",
@@ -30,6 +36,10 @@ func (SuppressionWithoutRationaleRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for suppression directives that contain no rationale.
+//
+// When unit has a parsed AST and FileSet, only real Go comments are checked; otherwise each trimmed line of unit.Source is checked as text.
+// ctx is passed to shouldSkipGeneratedUnit, which decides whether a generated unit is skipped.
+// It returns one finding per directive lacking a rationale, and nil for an empty source, a skipped generated unit or a vendored path.
 func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.Source == "" || shouldSkipGeneratedUnit(unit, ctx) || isVendorPath(unit.File.Path) {
 		return nil
@@ -39,6 +49,7 @@ func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, ctx Context
 	}
 	findings := []finding.Finding{}
 	lines := strings.Split(unit.Source, "\n")
+	// Without a parse tree only a trimmed line that begins with the bare directive word matches, so a line written with comment slashes is missed.
 	for lineNumber, line := range lines {
 		directive, rest, ok := suppressionDirectiveTail(strings.TrimSpace(line))
 		if !ok || suppressionHasRationale(rest) || nearbyLineHasRationale(lines, lineNumber) {
@@ -54,7 +65,10 @@ func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, ctx Context
 	return findings
 }
 
-// suppressionFindingsFromGoComments emits findings only for actual Go comments, not raw string examples.
+// suppressionFindingsFromGoComments emits findings only for actual Go comments, so a directive quoted inside a string literal is never flagged.
+//
+// The unit must carry the parsed AST and FileSet that AnalyzeUnit checks for; each finding records the comment's line, column and directive.
+// It returns one finding per directive comment that lacks a rationale, and an empty slice when every directive is explained.
 func suppressionFindingsFromGoComments(unit parser.Unit) []finding.Finding {
 	comments := parsedComments(unit)
 	findings := []finding.Finding{}
@@ -75,21 +89,25 @@ func suppressionFindingsFromGoComments(unit parser.Unit) []finding.Finding {
 
 // parsedComment is a normalized Go comment with source position.
 type parsedComment struct {
+	// Text is the comment body with its // or /* */ delimiters removed and surrounding space trimmed.
 	Text string
+	// Line is the 1-based line the comment starts on.
 	Line int
 	// Column is the 1-based column the comment starts at.
 	Column int
-	// InDocGroup marks a comment that documents the declaration below it rather than standing
-	// on its own. A doc comment explains what a function is; it is not a reason for suppressing
-	// a check inside it, so it never carries a rationale.
+	// InDocGroup marks a comment inside a package, declaration or field doc comment, which describes that code rather than a suppression.
+	// The prose search above a directive stops at such a comment; an adjacent comment starting reason:, rationale: or because: still counts.
 	InDocGroup bool
-	// FreeStanding marks a comment that is the only thing on its line. A comment trailing code
-	// explains that code, so it cannot be read as the reason for a directive underneath it.
+	// FreeStanding marks a comment preceded only by whitespace on its source line, so a block comment followed by code still qualifies.
+	// The prose search stops at a comment trailing code, which explains that code; adjacent explicit reason: comments ignore this flag.
 	FreeStanding bool
 }
 
-// parsedComments normalizes Go comments while preserving file positions and whether each one
-// documents a declaration.
+// parsedComments turns each comment in the file into a parsedComment, keeping its position and whether it documents a declaration.
+//
+// The unit must carry a parsed AST and FileSet.
+// It returns one parsedComment per comment in file order, carrying its cleaned text, line, column, InDocGroup and FreeStanding flags.
+// The result is an empty slice when the file has no comments.
 func parsedComments(unit parser.Unit) []parsedComment {
 	docLines := declarationDocLines(unit)
 	sourceLines := strings.Split(unit.Source, "\n")
@@ -109,12 +127,13 @@ func parsedComments(unit parser.Unit) []parsedComment {
 	return comments
 }
 
-// declarationDocLines records every line occupied by a declaration's doc comment.
+// declarationDocLines records the line each comment starts on in the package doc and in every declaration's doc comment.
 //
-// The distinction matters because a doc group sits in exactly the position a rationale would:
-// directly above the thing it describes. Crediting it would let `// Execute runs the command.`
-// excuse a `//nolint` on the next line, which documents the function and says nothing about the
-// suppression.
+// A doc group sits where a rationale would but explains the declaration, so "Execute runs the command." cannot excuse a nolint below it.
+//
+// It reads the package doc and the Doc of every FuncDecl, GenDecl, TypeSpec, ValueSpec and Field in unit, whose AST and FileSet must be set.
+// It returns a set keyed by the line each such comment starts on, and an empty map when unit has no such comments.
+// A multi-line block comment therefore marks only its first line.
 func declarationDocLines(unit parser.Unit) map[int]bool {
 	lines := map[int]bool{}
 	record := func(group *ast.CommentGroup) {
@@ -146,8 +165,10 @@ func declarationDocLines(unit parser.Unit) map[int]bool {
 
 // commentStartsItsLine reports whether only whitespace precedes a comment on its source line.
 //
-// Positions are 1-based, and a malformed position simply fails closed: a comment this cannot
-// place is not credited as a rationale.
+// Positions are 1-based, and a malformed position reports false, so the prose search cannot credit that comment as a rationale.
+// An adjacent explicit reason: comment is checked separately and can still count.
+//
+// sourceLines holds the file split on newlines; line picks the comment's line from it and column is the comment's 1-based byte column.
 func commentStartsItsLine(sourceLines []string, line int, column int) bool {
 	if line < 1 || line > len(sourceLines) || column < 1 {
 		return false
@@ -159,7 +180,10 @@ func commentStartsItsLine(sourceLines []string, line int, column int) bool {
 	return strings.TrimSpace(text[:column-1]) == ""
 }
 
-// cleanCommentText strips Go comment delimiters from one parsed comment.
+// cleanCommentText strips Go comment delimiters from one parsed comment so the directive and reason checks see only its words.
+//
+// text is the raw comment as go/ast stores it; a leading // is removed, then a leading /* and trailing */ even inside a line comment.
+// It returns what remains with whitespace trimmed, which is empty for a comment holding only delimiters.
 func cleanCommentText(text string) string {
 	text = strings.TrimSpace(strings.TrimPrefix(text, "//"))
 	text = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(text, "/*"), "*/"))
@@ -167,6 +191,9 @@ func cleanCommentText(text string) string {
 }
 
 // suppressionDirectiveTail returns a leading suppression directive and the trailing text after it.
+//
+// line is a cleaned comment or trimmed source line; it matches only when it begins with nolint or #nosec, giving nolint or nosec and true.
+// Any other line gives two empty strings and false.
 func suppressionDirectiveTail(line string) (string, string, bool) {
 	if strings.HasPrefix(line, "nolint") {
 		return "nolint", line[len("nolint"):], true
@@ -177,7 +204,10 @@ func suppressionDirectiveTail(line string) (string, string, bool) {
 	return "", "", false
 }
 
-// suppressionHasRationale reports whether trailing suppression text contains a human reason.
+// suppressionHasRationale reports whether the text after a directive holds a human reason; a bare rule list or gosec code is not one.
+//
+// rest is the text after the directive; a leading colon rule list and gosec codes are dropped before hasReasonWord looks for a reason.
+// An empty rest, or one holding only a rule list or codes, reports false.
 func suppressionHasRationale(rest string) bool {
 	rest = strings.TrimSpace(rest)
 	if rest == "" {
@@ -195,12 +225,17 @@ func suppressionHasRationale(rest string) bool {
 }
 
 // nearbyCommentHasRationale accepts an immediately adjacent explicit rationale comment.
+//
+// comments holds the file's parsed comments in order and index is the directive's position in it, which must be in range.
+// It reports true when the comment just before or after, within one line, starts with reason:, rationale: or because: plus a reason word.
+// Otherwise the result comes from contiguousCommentBlockExplains, so false means neither check found a rationale.
 func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
 	line := comments[index].Line
 	for _, neighbor := range []int{index - 1, index + 1} {
 		if neighbor < 0 || neighbor >= len(comments) {
 			continue
 		}
+		// This explicit check ignores InDocGroup and FreeStanding, so a reason: line in a doc comment or after code still clears the directive.
 		if absInt(comments[neighbor].Line-line) <= 1 && explicitRationaleComment(comments[neighbor].Text) {
 			return true
 		}
@@ -208,28 +243,22 @@ func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
 	return contiguousCommentBlockExplains(comments, index)
 }
 
-// contiguousCommentBlockExplains reports whether a free-standing comment block immediately above
-// the directive explains it in prose.
+// contiguousCommentBlockExplains reports whether a free-standing comment block directly above the directive explains it in prose.
 //
-// The `reason:` prefix is not required. Real code writes the explanation as ordinary sentences:
-// cobra's command.go carries two lines naming the analyser, the false positive and the upstream
-// issue, then trails the directive on the statement below. Demanding a keyword rejected that and
-// every comment like it, which is the one confirmed false positive this rule carries.
+// Ordinary prose counts without a reason: marker, as in cobra's command.go; a line gap, a doc group or a comment trailing code stops the search.
+// Free-standing directives in between are skipped, so one prose block can explain several directives stacked under it.
 //
-// Four things disqualify a neighbour: a gap in the lines, because a detached comment is about
-// something else; another directive, because one suppression cannot excuse another; a
-// declaration's doc group, which describes the declaration rather than the suppression; and a
-// comment trailing code, which explains that code. The last was measured: prometheus writes
-// `var pathBuf [4]Node // To reduce allocations during recursion.` directly above a
-// `//nolint:errcheck`, and that sentence is about the variable, not the suppression.
+// comments holds the file's parsed comments in order, and index is the directive's position in it, which must be in range.
+// Directives and comments with no reason word are passed over; a line gap, a doc-group line or a trailing comment stops the search with false.
+// It reports true at the first comment above holding a word hasReasonWord accepts, and false when it runs out of comments.
 func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
-	expected := comments[index].Line - 1
+	expectedLine := comments[index].Line - 1
 	for cursor := index - 1; cursor >= 0; cursor-- {
 		candidate := comments[cursor]
-		if candidate.Line != expected {
+		if candidate.Line != expectedLine {
 			return false
 		}
-		expected = candidate.Line - 1
+		expectedLine = candidate.Line - 1
 		if candidate.InDocGroup || !candidate.FreeStanding {
 			return false
 		}
@@ -244,6 +273,10 @@ func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
 }
 
 // nearbyLineHasRationale accepts an immediately adjacent explicit rationale line in text units.
+//
+// lines holds the unit source split on newlines and index is the directive line's 0-based position in it.
+// It reports true when the line above or below, minus a leading // or # marker, starts with reason:, rationale: or because: plus a reason word.
+// It reports false when neither neighbour exists or qualifies.
 func nearbyLineHasRationale(lines []string, index int) bool {
 	for _, neighbor := range []int{index - 1, index + 1} {
 		if neighbor < 0 || neighbor >= len(lines) {
@@ -256,7 +289,8 @@ func nearbyLineHasRationale(lines []string, index int) bool {
 	return false
 }
 
-// explicitRationaleComment reports whether text starts with a rationale marker plus reason words.
+// explicitRationaleComment reports whether text starts with reason:, rationale: or because:, in any case, followed by a reason word.
+// Leading space is ignored; a bare marker, or text without one, reports false.
 func explicitRationaleComment(text string) bool {
 	trimmed := strings.TrimSpace(text)
 	lower := strings.ToLower(trimmed)
@@ -269,6 +303,9 @@ func explicitRationaleComment(text string) bool {
 }
 
 // stripLineCommentPrefix removes common text-file comment prefixes from rationale lines.
+//
+// line is one raw source line; it is trimmed, then a single leading // or # marker is removed and the remainder trimmed again.
+// It returns the trimmed line unchanged when it has neither marker, and an empty string for a blank or marker-only line.
 func stripLineCommentPrefix(line string) string {
 	line = strings.TrimSpace(line)
 	for _, prefix := range []string{"//", "#"} {
@@ -280,6 +317,9 @@ func stripLineCommentPrefix(line string) string {
 }
 
 // trimSuppressionRuleList removes a nolint rule-list prefix.
+//
+// rest is the directive tail after its colon, such as a comma-separated linter list followed by any explanation.
+// It returns rest from the first space, tab or slash onward, and an empty string when rest has none of those, as in a bare rule list.
 func trimSuppressionRuleList(rest string) string {
 	index := strings.IndexAny(rest, " \t/")
 	if index < 0 {
@@ -289,16 +329,20 @@ func trimSuppressionRuleList(rest string) string {
 }
 
 // trimNoSecCodes removes leading gosec rule codes such as G101 or G204.
+//
+// rest is the suppression text after the directive, with any colon rule list already removed.
+// It returns rest unchanged when its first word is not a gosec code, and otherwise the words after the codes joined by single spaces.
+// The result is empty when rest holds nothing but codes.
 func trimNoSecCodes(rest string) string {
 	fields := strings.Fields(rest)
-	trimmed := 0
-	for trimmed < len(fields) && looksLikeNoSecCode(fields[trimmed]) {
-		trimmed++
+	leadingCodes := 0
+	for leadingCodes < len(fields) && looksLikeNoSecCode(fields[leadingCodes]) {
+		leadingCodes++
 	}
-	if trimmed == 0 {
+	if leadingCodes == 0 {
 		return rest
 	}
-	return strings.Join(fields[trimmed:], " ")
+	return strings.Join(fields[leadingCodes:], " ")
 }
 
 // looksLikeNoSecCode reports whether value is a gosec code token such as G101.
@@ -314,7 +358,10 @@ func looksLikeNoSecCode(value string) bool {
 	return true
 }
 
-// hasReasonWord requires at least one alphabetic word outside punctuation and rule lists.
+// hasReasonWord requires at least one alphabetic word outside punctuation and gosec rule codes.
+//
+// value is comment or suppression text; fields shorter than three bytes after trimming punctuation, and gosec codes, are skipped.
+// It reports true when any remaining field holds a letter, and false otherwise, so a bare nolint rule list such as errcheck still counts.
 func hasReasonWord(value string) bool {
 	for _, field := range strings.Fields(value) {
 		field = strings.Trim(field, " \t-:/.,;#()[]{}")
@@ -338,7 +385,8 @@ func absInt(value int) int {
 	return value
 }
 
-// isVendorPath reports whether a path is under a vendored dependency tree.
+// isVendorPath reports whether path is under a vendored dependency tree; this rule's AnalyzeUnit reports nothing for such a file.
+// Backslashes count as forward slashes, so a path that starts with vendor/ or holds /vendor/ matches on Windows too.
 func isVendorPath(path string) bool {
 	clean := strings.ReplaceAll(path, "\\", "/")
 	return strings.HasPrefix(clean, "vendor/") || strings.Contains(clean, "/vendor/")

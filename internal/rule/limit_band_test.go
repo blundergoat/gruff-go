@@ -1,7 +1,11 @@
 // Package rule tests the two bands every size and complexity finding reports in.
-// A unit just over its limit gets an advisory notice not to grow; at one and a
-// half times the limit it keeps the rule's severity and the advice to split or
-// simplify (FAMILY-CONTRACT.md section 12, "Size and complexity findings in two bands").
+//
+// A unit just over its limit gets an advisory notice not to grow.
+// At one and a half times the limit it keeps the rule's severity and the advice to split or simplify.
+// With default settings, file-length and function-length findings in a _test.go file stay advisory at medium confidence in both bands.
+//
+// The bands follow FAMILY-CONTRACT.md section 12, "Size and complexity findings in two bands".
+// It also pins the keyed-literal discount, data files skipped by file-length, dispatch and guard scoring, and package-var function literals.
 package rule
 
 import (
@@ -15,7 +19,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// bandCase builds a fixture whose measure for one rule is the given value.
+// bandCase is one rule's band test: rule ID, a value just over the limit, an upper-band value, a fixture builder and the lower-band advice.
+// Its fixture builds Go source whose measure for that rule equals the value it is given.
 type bandCase struct {
 	rule        string
 	lowerValue  int
@@ -24,7 +29,10 @@ type bandCase struct {
 	lowerAdvice string
 }
 
-// bandCases cover every gruff-go size and complexity rule just over its limit and at twice it.
+// bandCases covers every gruff-go size and complexity rule just over its limit and at twice it.
+//
+// It returns a non-empty slice with one bandCase per size and complexity rule.
+// Each holds the rule ID, the lower and upper fixture values, the fixture builder and the advice expected in the lower band.
 func bandCases() []bandCase {
 	return []bandCase{
 		{"size.file-length", fileLengthThreshold + 1, 2 * fileLengthThreshold, fileOfCodeLines, lowerBandFileAdvice},
@@ -74,6 +82,7 @@ func functionWithParameters(value int) string {
 }
 
 // findingFor returns the one finding the named rule reports, failing when there is not exactly one.
+// It filters findings to those whose RuleID equals ruleID and stops the test with t.Fatalf when none or several match.
 func findingFor(t *testing.T, findings []finding.Finding, ruleID string) finding.Finding {
 	t.Helper()
 	var matched []finding.Finding
@@ -89,6 +98,7 @@ func findingFor(t *testing.T, findings []finding.Finding, ruleID string) finding
 }
 
 // definitionFor returns the default definition of one rule.
+// It searches Defaults().Definitions() for the entry whose ID equals ruleID and stops the test with t.Fatalf when none does.
 func definitionFor(t *testing.T, ruleID string) Definition {
 	t.Helper()
 	defaults := Defaults()
@@ -131,6 +141,7 @@ func TestEverySizeAndComplexityRuleReportsInTwoBands(t *testing.T) {
 				if item.Remediation != band.advice {
 					t.Fatalf("remediation = %q, want %q", item.Remediation, band.advice)
 				}
+				// Advice must not tell users to add helpers, raise a threshold, or ignore or disable the rule, unless it says Moving branches into helpers.
 				for _, banned := range []string{"helper", "raise", "threshold", "ignore", "disable"} {
 					if strings.Contains(strings.ToLower(item.Remediation), banned) && !strings.Contains(item.Remediation, "Moving branches into helpers") {
 						t.Fatalf("remediation %q mentions %q", item.Remediation, banned)
@@ -142,6 +153,7 @@ func TestEverySizeAndComplexityRuleReportsInTwoBands(t *testing.T) {
 }
 
 // TestLowerBandIsAdvisoryEvenWhenSeverityIsConfigured checks a configured severity applies only in the upper band.
+// With size.function-length set to error, a function just over the limit stays advisory and one at twice the limit reports as error.
 func TestLowerBandIsAdvisoryEvenWhenSeverityIsConfigured(t *testing.T) {
 	registry, err := DefaultsConfigured(Config{Severities: map[string]finding.Severity{"size.function-length": finding.SeverityError}})
 	if err != nil {
@@ -160,6 +172,7 @@ func TestLowerBandIsAdvisoryEvenWhenSeverityIsConfigured(t *testing.T) {
 }
 
 // TestBandBoundaryComparesWithoutRounding pins the boundary at exactly one and a half times the limit.
+// It also checks 37 against 25 stays lower, proving the 37.5 boundary is not truncated to 37.
 func TestBandBoundaryComparesWithoutRounding(t *testing.T) {
 	for _, tc := range []struct {
 		value, limit int
@@ -178,8 +191,8 @@ func TestBandBoundaryComparesWithoutRounding(t *testing.T) {
 	}
 }
 
-// TestTestFileSizeFindingsStayAdvisoryInBothBands checks gruff-go's test-file softening keeps an upper-band
-// test function advisory at medium confidence, while the band key and advice still follow the band.
+// TestTestFileSizeFindingsStayAdvisoryInBothBands checks advisory severity, medium confidence and the band key for test functions in both bands.
+// A function in a _test.go file stays advisory at medium confidence even at twice the limit, while the band key still names its band.
 func TestTestFileSizeFindingsStayAdvisoryInBothBands(t *testing.T) {
 	defaults := Defaults()
 	for value, want := range map[int]string{functionLengthThreshold + 1: limitBandLower, 2 * functionLengthThreshold: limitBandUpper} {
@@ -210,7 +223,7 @@ func TestFileLengthIgnoresDataFiles(t *testing.T) {
 	}
 }
 
-// keyedCallsFixture is GO-09's shape: twelve calls, each passing a keyed request struct over five lines.
+// keyedCallsFixture is GO-09's shape: a function the test fills with twelve calls, each passing a keyed request struct across six lines.
 const keyedCallsFixture = `package sample
 
 type Request struct {

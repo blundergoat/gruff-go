@@ -1,7 +1,10 @@
-// Package baseline tests exercise the v3 contract as users meet it: reviewed
-// debt that survives line movement, siblings that never inherit a review,
-// secrets that never become entries, and a migration that leaves the 0.5
-// original untouched.
+// Package baseline tests exercise the v3 contract as users meet it.
+//
+// Among other things, they pin these promises a user relies on once a team commits a baseline.
+//   - reviewed debt survives line movement.
+//   - a sibling never inherits a review.
+//   - a secret never becomes an entry.
+//   - a migration leaves the 0.5 original untouched.
 package baseline
 
 import (
@@ -22,6 +25,9 @@ import (
 var stamp = time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
 
 // ordinary builds one symbol-bearing finding on a declaration at line.
+//
+// It returns a docs.missing-package-comment finding in internal/widget/widget.go with that symbol and line, fingerprinted by WithFingerprint.
+// An empty symbol yields a symbol-less finding, the shape the tests use for file-level cases.
 func ordinary(symbol string, line int) finding.Finding {
 	return finding.Finding{
 		RuleID:   "docs.missing-package-comment",
@@ -32,8 +38,9 @@ func ordinary(symbol string, line int) finding.Finding {
 	}.WithFingerprint()
 }
 
-// classify applies a baseline built from reviewed against run, failing the
-// test on any error so every case reads as a plain expectation.
+// classify applies a baseline built from reviewed against run, failing the test on any error so every case reads as a plain expectation.
+//
+// It returns the ApplyResult that Apply gives for run against the baseline FromFindingsAt builds from reviewed at the fixed stamp time.
 func classify(t *testing.T, reviewed []finding.Finding, run []finding.Finding) ApplyResult {
 	t.Helper()
 	file, err := FromFindingsAt(reviewed, stamp)
@@ -47,13 +54,14 @@ func classify(t *testing.T, reviewed []finding.Finding, run []finding.Finding) A
 	return result
 }
 
-// counts is the six-way classification a test expects, in contract order.
+// counts holds the expected unchanged, new, resolved, collision and not-eligible totals in contract order.
 type counts struct {
 	unchanged, added, resolved, collision, notEligible int
 }
 
-// expectCounts compares all five run-side counts at once: reaching one expected
-// number while moving another is not a pass.
+// expectCounts compares all five run-side counts at once: reaching one expected number while moving another is not a pass.
+//
+// It reads the unchanged, new, resolved, collision and not-eligible counts from result and fails the test unless they equal want exactly.
 func expectCounts(t *testing.T, result ApplyResult, want counts) {
 	t.Helper()
 	got := counts{result.UnchangedFindings, result.NewFindings, result.ResolvedFindings, result.CollisionFindings, result.NotEligibleFindings}
@@ -88,9 +96,10 @@ func TestIdentityMatchesTheFamilyOracle(t *testing.T) {
 	}
 }
 
-// TestIdentityIgnoresEveryExcludedField is the property the whole line-free
-// identity exists for: an edit that changes nothing about the finding changes
-// nothing about its identity.
+// TestIdentityIgnoresEveryExcludedField is the property the whole line-free identity exists for.
+//
+// An edit that only moves the line or column, rewords the message or raises the severity of a symbol-bearing finding keeps its identity.
+// A symbol without a declaration ordinal must get an error, not an identity.
 func TestIdentityIgnoresEveryExcludedField(t *testing.T) {
 	base := ordinary("process", 10)
 	base.SymbolOrdinal = 1
@@ -179,10 +188,10 @@ func TestSameNamedDeclarationsStayApart(t *testing.T) {
 	expectCounts(t, result, counts{1, 1, 0, 0, 0})
 }
 
-// TestAnEarlierCleanDeclarationKeepsItsOrdinalSlot reviews only the second of
-// two same-named methods, then lets the first start warning. Ranking findings
-// alone handed the first one ordinal 1 and the stored review; counting every
-// same-named declaration keeps the review on the second.
+// TestAnEarlierCleanDeclarationKeepsItsOrdinalSlot reviews only the second of two same-named methods, then lets the first start warning.
+//
+// Ranking findings alone handed the first one ordinal 1 and the stored review.
+// Counting every same-named declaration keeps the review on the second, so the user sees only the newly warning first method.
 func TestAnEarlierCleanDeclarationKeepsItsOrdinalSlot(t *testing.T) {
 	byLine := func(item finding.Finding) int { return item.Location.Line }
 	bothDeclarations := func(finding.Finding) []int { return []int{10, 20} }
@@ -195,9 +204,9 @@ func TestAnEarlierCleanDeclarationKeepsItsOrdinalSlot(t *testing.T) {
 	}
 }
 
-// TestCollisionSuppressesNothingAndIsNamed forces the defect the ordinal
-// prevents, by handing two declarations the same ordinal, and expects both
-// findings reported with a diagnostic naming the subject.
+// TestCollisionSuppressesNothingAndIsNamed forces the defect the ordinal prevents by handing two declarations the same ordinal.
+//
+// It expects both findings counted as collisions, so neither is suppressed, and one diagnostic naming the process#1 subject.
 func TestCollisionSuppressesNothingAndIsNamed(t *testing.T) {
 	first := ordinary("process", 10)
 	first.SymbolOrdinal, first.DeclarationPosition = 1, 10
@@ -225,9 +234,10 @@ func TestMessageRewordingOnlyMattersWithoutASymbol(t *testing.T) {
 	expectCounts(t, result, counts{0, 1, 1, 0, 0})
 }
 
-// TestSeparatorBearingSymbolHasNoIdentity covers a symbol that carries the ordinal
-// separator: it could pose as another symbol's ordinal, so it is reported with no
-// identity instead of aborting the baseline, and it is never counted as a secret.
+// TestSeparatorBearingSymbolHasNoIdentity covers a symbol that carries the ordinal separator, such as process#2.
+//
+// It could pose as another symbol's ordinal, so it stays visible with no identity, counted as not eligible, instead of aborting the baseline.
+// It is never counted as a secret, so the written baseline's sensitive total stays 0.
 func TestSeparatorBearingSymbolHasNoIdentity(t *testing.T) {
 	separated := ordinary("process#2", 20)
 	written, err := FromFindingsAt([]finding.Finding{ordinary("process", 10), separated}, stamp)
@@ -247,9 +257,10 @@ func TestSeparatorBearingSymbolHasNoIdentity(t *testing.T) {
 	}
 }
 
-// TestSensitiveFindingsAreNeverEligible covers both directions: a written
-// baseline carries no sensitive entry and nothing that could name one, and a
-// hand-written entry claiming a secret's identity suppresses nothing.
+// TestSensitiveFindingsAreNeverEligible covers both directions: what a written baseline stores and what a hand-written one can suppress.
+//
+// A written baseline keeps one ordinary entry and two sensitive counts, and its JSON holds neither the raw secret nor the secret's file path.
+// A hand-written entry claiming a secret's identity suppresses nothing: it counts as resolved and the secret stays visible.
 func TestSensitiveFindingsAreNeverEligible(t *testing.T) {
 	rawSecret := "synthetic-fixture-credential-body"
 	secret := finding.Finding{
@@ -301,8 +312,8 @@ func TestForeignBaselineIsRefused(t *testing.T) {
 	}
 }
 
-// TestGeneratedFilesAreDeterministic proves two builds over one run in
-// different orders produce identical bytes, so regeneration is a no-op diff.
+// TestGeneratedFilesAreDeterministic proves that finding order cannot change baseline bytes when the generation time is fixed.
+// The generated file must also parse.
 func TestGeneratedFilesAreDeterministic(t *testing.T) {
 	run := []finding.Finding{ordinary("process", 10), ordinary("handle", 40), ordinary("", 1)}
 	first, err := FromFindingsAt(run, stamp)
@@ -364,6 +375,7 @@ func TestMigrationPreservesTheRetreatPath(t *testing.T) {
 		t.Fatalf("same-path migration = %v, want refusal", err)
 	}
 	linkPath := filepath.Join(root, "link.json")
+	// Without symlink support the test skips here, so the successful-migration checks below go unrun on that machine.
 	if err := os.Symlink(inputPath, linkPath); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
@@ -395,6 +407,7 @@ func TestMigrationPreservesTheRetreatPath(t *testing.T) {
 }
 
 // mustRead reads a file or fails the test.
+// It returns the bytes os.ReadFile reads from path, empty for an empty file; a read error stops the test through t.Fatal.
 func mustRead(t *testing.T, path string) []byte {
 	t.Helper()
 	raw, err := os.ReadFile(path)
@@ -437,9 +450,9 @@ func TestMeasuredValuesNeverEnterASymbolLessIdentity(t *testing.T) {
 	}
 }
 
-// TestSymbolLessOccurrencesAreCountedNotCollided keeps two measurements of one
-// file matched by count: they name no declaration, so nothing could separate
-// them and a collision would suppress neither and block the run forever.
+// TestSymbolLessOccurrencesAreCountedNotCollided keeps two measurements of one file matched by count.
+//
+// They name no declaration, so nothing could separate them, and a collision would leave both findings unsuppressed.
 func TestSymbolLessOccurrencesAreCountedNotCollided(t *testing.T) {
 	reviewed := finding.Finding{RuleID: "size.function-length", File: "src/widget.go", Message: "Function has 12 parameters", Location: &finding.Location{Line: 10}}
 	second := reviewed
@@ -517,10 +530,10 @@ func TestMigrationRefusesAHardLinkedOutput(t *testing.T) {
 	}
 }
 
-// TestABaselineOnlyEverRemovesReviewedFindings is the ratified score-and-exit
-// invariant: applying a baseline may remove unchanged ordinary findings from the
-// score and the exit code and nothing else. If any other total moves, enforcement
-// moved silently and the run is wrong.
+// TestABaselineOnlyEverRemovesReviewedFindings is the ratified score-and-exit invariant.
+//
+// Applying a baseline may remove unchanged ordinary findings from the score and the exit code and nothing else.
+// If any other total moves, enforcement moved silently and the run is wrong.
 func TestABaselineOnlyEverRemovesReviewedFindings(t *testing.T) {
 	reviewed := ordinary("Process", 10)
 	fresh := ordinary("Handle", 40)
@@ -541,7 +554,7 @@ func TestABaselineOnlyEverRemovesReviewedFindings(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	// Only the reviewed finding leaves the gated set; the new one and the secret still fail the run.
+	// Only the reviewed finding leaves the gated set; the new one and the secret stay gated and remain subject to the exit gate.
 	if len(result.Findings) != 2 {
 		t.Fatalf("gated findings = %d, want the new finding and the secret: %#v", len(result.Findings), result.Findings)
 	}
@@ -554,9 +567,10 @@ func TestABaselineOnlyEverRemovesReviewedFindings(t *testing.T) {
 	}
 }
 
-// TestDefaultPathProtectionKeepsTheRetreatCopy covers the four ratified cases:
-// a pathless generate refuses over a 0.5 file, --force overrides it, v3 over v3
-// is not destructive, and an empty project has nothing to protect.
+// TestDefaultPathProtectionKeepsTheRetreatCopy covers RequireOverwritableDefaultPath at the default baseline path.
+//
+// A missing default file or an existing v3 baseline passes the guard; a 0.5 file is refused unless --force is supplied.
+// A refused 0.5 file is left byte-for-byte as the user wrote it.
 func TestDefaultPathProtectionKeepsTheRetreatCopy(t *testing.T) {
 	root := t.TempDir()
 	defaultPath := filepath.Join(root, DefaultFilename)
@@ -600,9 +614,9 @@ func TestDefaultPathProtectionKeepsTheRetreatCopy(t *testing.T) {
 	}
 }
 
-// TestAWrittenBaselineCarriesNoSentinel is proof C2's artifact half: a generated
-// baseline holds no sensitive material in any form, so a file a team commits and
-// shares cannot leak the secret it was counting.
+// TestAWrittenBaselineCarriesNoSentinel checks that a written baseline omits the sentinel forms sentinelForms returns.
+//
+// It also checks that the baseline still counts the sensitive finding under its rule ID.
 func TestAWrittenBaselineCarriesNoSentinel(t *testing.T) {
 	// A synthetic AWS-shaped literal, not a live credential; it exists to be searched for.
 	sentinel := "AKIA" + "IOSFODNN7EXAMPLE"
@@ -640,7 +654,10 @@ func TestAWrittenBaselineCarriesNoSentinel(t *testing.T) {
 	}
 }
 
-// sentinelForms returns every shape a leaked secret could take in an artifact.
+// sentinelForms returns the forms of sentinel that TestAWrittenBaselineCarriesNoSentinel searches a written baseline for.
+//
+// Keys raw, partial, hashed and encoded hold the sentinel, its first eight bytes, its hex SHA-256 digest and its standard base64 encoding.
+// It panics when sentinel is shorter than eight bytes.
 func sentinelForms(sentinel string) map[string]string {
 	digest := sha256.Sum256([]byte(sentinel))
 	return map[string]string{

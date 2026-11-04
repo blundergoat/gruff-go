@@ -1,15 +1,11 @@
 // Package rule defines gruff-go's rule registry and analysers.
 //
-// This file holds `security.insecure-random-secret`, which answers one question
-// about the code a user pointed gruff-go at: is this random value protecting
-// something. It reports `math/rand` only where the value looks like a secret -
-// a token, nonce, session key, password, salt, or OTP. Digest, cipher, and RSA
-// key strength are a separate rule in `security_weak_crypto.go`.
+// This file holds security.insecure-random-secret, which reports math/rand only where the value looks like a secret.
+// A secret here is a token, nonce, session key, password, salt, or OTP; digest, cipher, and RSA key strength live in security_weak_crypto.go.
 //
-// The hard part is telling secret *generation* from ordinary *selection*: both
-// spell `pool[rand.Intn(len(pool))]`. Building a token one character per pass is
-// a finding; picking one item out of a list the user already has is not. Getting
-// that wrong either floods the report with noise or hides a guessable token.
+// The hard part is telling secret generation from selection, because both index a pool with rand.Intn(len(pool)).
+// Building a token one character per pass is a finding; picking one item from a list the user already has is not.
+// Getting that wrong either floods the report with noise or hides a guessable token.
 package rule
 
 import (
@@ -21,6 +17,9 @@ import (
 )
 
 // randomSecretContextWords names contexts where math/rand is not appropriate.
+//
+// A word of the enclosing function name, receiving target, or call argument text that equals one of these marks the value as a secret.
+// A secret word wins even when a safe word such as test also appears, so the user still sees the finding.
 var randomSecretContextWords = []string{
 	"token",
 	"nonce",
@@ -35,9 +34,13 @@ var randomSecretContextWords = []string{
 }
 
 // randomStateContextWords keeps OAuth-style state in scope without making it a strong signal.
+//
+// A state word marks a secret only when the same name or text carries no word from randomSafeContextWords.
 var randomStateContextWords = []string{"state"}
 
 // randomSafeContextWords describe ordinary pseudo-random use that should not fire on state alone.
+//
+// They silence only the weaker state word; a secret word such as token in the same name still reports.
 var randomSafeContextWords = []string{
 	"bench",
 	"benchmark",
@@ -55,6 +58,10 @@ var randomSafeContextWords = []string{
 }
 
 // mathRandAPIs are package-level math/rand calls that produce pseudo-random values.
+//
+// A call outside this list, such as rand.Shuffle or rand.Perm, is never reported.
+// A method on a generator value such as r.Intn is not matched, because the receiver's spelling must equal a math/rand import name.
+// Shadowing is not resolved, so a local generator spelled like the import name can still match.
 var mathRandAPIs = map[string]bool{
 	"Float32":   true,
 	"Float64":   true,
@@ -70,9 +77,12 @@ var mathRandAPIs = map[string]bool{
 }
 
 // InsecureRandomSecretRule flags math/rand use in secret-bearing contexts.
+//
+// It ships disabled by default at advisory severity, so a user sees its findings only after turning security.insecure-random-secret on.
 type InsecureRandomSecretRule struct{}
 
 // Definition declares the security.insecure-random-secret rule for pseudo-random secret generation evidence.
+// It returns an advisory, medium-confidence security definition that is disabled by default and points remediation at crypto/rand.
 func (InsecureRandomSecretRule) Definition() Definition {
 	return Definition{
 		ID:             "security.insecure-random-secret",
@@ -87,38 +97,42 @@ func (InsecureRandomSecretRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit reports every math/rand call in one scanned file that produces a
-// value the surrounding code treats as a secret. This is the entry point the
-// scan pipeline calls once per file; everything else here supports its verdict.
-// It returns an empty slice when the file is safe, which is the common case.
+// AnalyzeUnit reports supported math/rand calls in the declared function bodies of one scanned file when the value looks like a secret.
+//
+// The enclosing function name, receiving target, or call arguments must mark the value as a secret.
+// The scan pipeline calls it once per file; everything else here supports its verdict.
+//
+// It returns nil when unit has no parsed AST or file set or does not import math/rand; package-level initializers and closures are not examined.
+// It returns an empty slice when no supported call in the examined function bodies qualifies for a finding.
+// An Intn index into the same identifier or selector chain its len argument measures is skipped when randomSelectionBuildsSecretBuffer is false.
+//
+// Each finding sits at the call position in unit and records the api name and the context word that marked the value as a secret.
 func (InsecureRandomSecretRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	// A file the parser could not read has no tree to walk, so it cannot be
-	// judged either way and is reported as clean rather than guessed at.
+	// A file the parser could not read has no tree to walk, so this rule adds no finding for it rather than guessing.
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
 	}
 	randPackages := packageImportNames(unit.AST, "math/rand", "rand")
-	// No math/rand import means nothing in this file can be the weak generator,
-	// including a file that imports crypto/rand under the same `rand` name.
+	// A file without a named math/rand import is skipped, including one that imports crypto/rand under the rand name.
+	// Calls through a dot import of math/rand are not examined either.
 	if len(randPackages) == 0 {
 		return nil
 	}
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		// Only a function body can contain the call. Interface methods, type
-		// declarations, and imports are skipped without comment.
+		// Only declared function bodies are examined; package-level initializers and functions without bodies are skipped.
+		// A math/rand call in a package-level var, such as var sessionKey = rand.Int63(), is never reported.
 		if !ok || fn.Body == nil {
 			continue
 		}
 		parents := astParentMap(fn.Body)
 		seen := map[tokenKey]bool{}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			// A closure has no name of its own, so the enclosing function's name
-			// would be the only evidence and would describe the wrong code. The
-			// loop above visits declared functions only, so a `math/rand` call
-			// inside a closure is skipped entirely rather than judged elsewhere -
-			// a known blind spot, and the quiet direction.
+			// A closure has no name of its own, so the enclosing function's name would describe the wrong code.
+			//
+			// AnalyzeUnit visits declared functions only, so a math/rand call inside a closure is never judged anywhere.
+			// That is a known blind spot in the quiet direction: a token built inside a func literal yields no finding.
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
@@ -128,33 +142,27 @@ func (InsecureRandomSecretRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 				return true
 			}
 			api, ok := mathRandCallName(call, randPackages)
-			// A call to something other than a supported math/rand API - the
-			// user's own helper, or a strings call - is not this rule's concern.
+			// A call that is not a listed math/rand API, such as the user's own helper or rand.Shuffle, is not this rule's concern.
 			if !ok {
 				return true
 			}
-			// The security context decides both questions below, so resolve it
-			// once: whether a buffer-filling selection builds a secret, and
-			// whether the call is worth reporting at all.
+			// The security context decides both the sampling exemption and whether the call is reported, so it is resolved once.
 			contextWord, securityContext := randomCallSecurityContext(call, fn, parents)
-			// The user is picking one item out of a collection they already
-			// have - `values[rand.Intn(len(values))]` - and not assembling a
-			// secret from it. Ordinary sampling stays out of the report.
+			// Direct Intn indexing of an identifier or selector chain bounded by its len is skipped when randomSelectionBuildsSecretBuffer returns false.
+			// Picking one existing item into a plain variable is ordinary sampling and stays out of the report.
 			if randomCallSelectsExistingValue(call, parents) &&
 				!randomSelectionBuildsSecretBuffer(call, parents, securityContext) {
 				return true
 			}
-			// Nothing around the call suggests the value guards anything, so
-			// this is a shuffle, a jitter, or a test fixture. Weak randomness
-			// is the correct choice there and reporting it would be noise.
+			// No checked name or argument yields a security context, so the rule leaves this call unreported.
+			// A guessable ID from id := rand.Int63() inside func newID is missed this way.
 			if !securityContext {
 				return true
 			}
 			key := tokenKey{pos: call.Pos(), label: api}
-			// Defensive: the walk reaches each node once, so this does not fire
-			// today. It guarantees one finding per call site if the traversal
-			// ever revisits a node, because a duplicate line in the report reads
-			// as two separate problems to fix.
+			// Defensive: the walk reaches each node once, so this does not fire today.
+			//
+			// It keeps one finding per call site if the traversal ever revisits a node, because a duplicate line reads as two problems to fix.
 			if seen[key] {
 				return true
 			}
@@ -182,6 +190,7 @@ type tokenKey struct {
 }
 
 // astParentMap records parent links for AST nodes under root.
+// It returns a map from each node under root to its direct parent, with no entry for root itself, so a childless root gives an empty map.
 func astParentMap(root ast.Node) map[ast.Node]ast.Node {
 	parents := map[ast.Node]ast.Node{}
 	stack := []ast.Node{}
@@ -202,6 +211,9 @@ func astParentMap(root ast.Node) map[ast.Node]ast.Node {
 }
 
 // mathRandCallName returns the package-qualified math/rand API name for supported calls.
+//
+// The call must select a listed math/rand API through an identifier in randPackages, the names under which the file imports math/rand.
+// It returns that name, such as rand.Intn, with true; any other call shape gives an empty name and false.
 func mathRandCallName(call *ast.CallExpr, randPackages map[string]bool) (string, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || !mathRandAPIs[selector.Sel.Name] {
@@ -214,8 +226,9 @@ func mathRandCallName(call *ast.CallExpr, randPackages map[string]bool) (string,
 	return receiver.Name + "." + selector.Sel.Name, true
 }
 
-// randomCallSelectsExistingValue reports the narrow sampling role where Intn
-// directly indexes the same identifier or selector chain used by len.
+// randomCallSelectsExistingValue reports the narrow sampling role where Intn directly indexes the same identifier or selector chain used by len.
+//
+// It walks parents up from call past parentheses and reports false unless call is the whole index of a collection matching its len argument.
 func randomCallSelectsExistingValue(call *ast.CallExpr, parents map[ast.Node]ast.Node) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Intn" || len(call.Args) != 1 {
@@ -244,19 +257,19 @@ func randomCallSelectsExistingValue(call *ast.CallExpr, parents map[ast.Node]ast
 	return sameRandomSelectionCollection(index.X, lengthCall.Args[0])
 }
 
-// randomSelectionBuildsSecretBuffer distinguishes token generation such as
-// `token[i] = alphabet[rand.Intn(len(alphabet))]`,
-// `token = append(token, alphabet[rand.Intn(len(alphabet))])`, and
-// `token += string(alphabet[rand.Intn(len(alphabet))])` from choosing one
-// existing key or sample. Only the shape is decided here; securityContext
-// carries the caller's already-resolved answer to whether the value matters.
-// Returning false sends the call back to the sampling exemption and no finding
-// is shown, so this is the last thing standing between a real token builder and
-// a silent report.
+// randomSelectionBuildsSecretBuffer tells token generation apart from choosing one existing key or sample.
+//
+// Generation adds one drawn element per pass: an indexed write into a buffer, an append of the element, or a += that grows a string.
+// Only the shape is decided here; securityContext carries the caller's resolved answer to whether the value matters.
+//
+// From call it climbs parents past parentheses to the indexing expression, then up its ancestors until one settles the verdict.
+// An append that adds the selection yields securityContext and an assignment defers to assignmentBuildsSecretBuffer.
+// A return, value spec, closure, or reaching the top without either gives false, as does a call not directly inside an index expression.
+//
+// A false result sends the call back to the sampling exemption and no finding is shown, so a wrong false hides a real token builder.
 func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]ast.Node, securityContext bool) bool {
 	parent := parents[call]
-	// A user may have written `(pool)[(rand.Intn(len(pool)))]` while debugging.
-	// Step past those parentheses so spelling does not change the verdict.
+	// Parentheses around the call must not change whether the pool selection is treated as generation, so step past them.
 	for {
 		paren, ok := parent.(*ast.ParenExpr)
 		if !ok {
@@ -265,69 +278,66 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 		parent = parents[paren]
 	}
 	selection, ok := parent.(*ast.IndexExpr)
-	// The random number is not indexing anything, so no character is being
-	// drawn from a pool and this shape cannot be assembling a secret.
+	// The random number is not indexing anything, so no character is drawn from a pool and this shape cannot be assembling a secret.
 	if !ok {
 		return false
 	}
 	for ancestor := parents[selection]; ancestor != nil; ancestor = parents[ancestor] {
 		switch statement := ancestor.(type) {
 		case *ast.CallExpr:
-			// `token = append(token, pool[...])` inside a loop: each pass adds
-			// one more character, which is generation however it is named.
+			// Appending the drawn element adds one more element per pass, which is generation; securityContext still decides whether it matters.
 			if appendCallAddsSelection(statement, selection) {
 				return securityContext
 			}
 		case *ast.AssignStmt:
 			return assignmentBuildsSecretBuffer(statement, call, securityContext)
 		case *ast.ReturnStmt, *ast.ValueSpec, *ast.FuncLit:
-			// Returned or bound straight to a new name, the drawn element is
-			// the whole result - one pick, not a buffer being filled.
+			// A return, value spec, or closure reached before a recognized builder keeps this call in the sampling exemption.
 			return false
 		}
 	}
 	return false
 }
 
-// assignmentBuildsSecretBuffer decides whether the assignment carrying the
-// random selection grows a secret. A plain binding such as
-// `chosen := keys[rand.Intn(len(keys))]` picks one existing value instead.
-// It reports true for the two shapes that add one element per pass: an
-// accumulating `token += ...` and an indexed write `token[i] = ...`.
+// assignmentBuildsSecretBuffer decides whether the assignment carrying the random selection grows a secret.
+//
+// A plain binding of one drawn element to a variable picks one existing value instead.
+// When securityContext is true it reports true for the two shapes that add one element per pass: an accumulating += and an indexed write.
+//
+// Only the first right-hand value of assignment that contains call and has a target at the same position is judged.
+// An accumulating target reports true, an indexed write reports securityContext, and a plain target or no matching value reports false.
 func assignmentBuildsSecretBuffer(assignment *ast.AssignStmt, call *ast.CallExpr, securityContext bool) bool {
 	for valueIndex, assignedValue := range assignment.Rhs {
-		// Skip any value that does not contain this call - a multi-assignment
-		// such as `a, b := pick(), pool[rand.Intn(len(pool))]` has both - and
-		// skip a right-hand side with no matching target to describe it.
+		// A multi-assignment can mix this call with unrelated values, so only the value holding the call is judged, and only when it has a target.
 		if !exprContainsNode(assignedValue, call) || valueIndex >= len(assignment.Lhs) {
 			continue
 		}
 		target := unwrapRandomSelectionParens(assignment.Lhs[valueIndex])
-		// An accumulating assignment extends a value it already holds, so it
-		// generates one element per pass whatever the destination is called.
+		// An accumulating assignment extends a value it already holds, so it generates one element per pass whatever the destination is called.
 		// randomCallSecurityContext still decides whether that value matters.
 		if randomSelectionAccumulates(assignment, target) {
 			return true
 		}
-		// The destination is a plain name, so this replaces it rather than
-		// filling it: `chosen := keys[rand.Intn(len(keys))]` is one pick.
+		// A non-indexed target that did not accumulate, such as a plain name or a field, replaces one value, so this call stays exempt.
 		if _, indexedTarget := target.(*ast.IndexExpr); !indexedTarget {
 			return false
 		}
-		// An indexed write fills a buffer one element per pass. Reading only the
-		// target's own name lost `buf[i] = pool[rand.Intn(len(pool))]` inside
-		// generateToken, which builds the same secret as `token[i] = ...`; the
-		// enclosing-function evidence the caller already resolved answers this.
+		// An indexed write fills a buffer one element per pass.
+		//
+		// Judging only the target name would hide an indexed write into buf inside generateToken, which builds the same secret as a write into token.
+		// The enclosing-function evidence the caller already resolved answers this instead.
 		return securityContext
 	}
 	return false
 }
 
-// randomSelectionAccumulates reports whether an assignment extends its own
-// target rather than binding a fresh sample: `token += pool[i]` or the
-// equivalent `token = token + pool[i]`. Both grow a secret one element per
-// pass, so treating either as plain selection hid the common string-concat
-// token generator behind the existing-value exemption.
+// randomSelectionAccumulates reports whether an assignment extends its own target rather than binding a fresh sample.
+//
+// Both token += piece and token = token + piece grow a secret one element per pass.
+// Treating either spelling as sampling would hide string-concatenated token generators from the report.
+//
+// It reports true for any += and for a plain = whose identifier target appears inside a + expression on the right-hand side.
+// Anything else, including a := binding, reports false.
 func randomSelectionAccumulates(assignment *ast.AssignStmt, target ast.Expr) bool {
 	if assignment.Tok == token.ADD_ASSIGN {
 		return true
@@ -348,8 +358,9 @@ func randomSelectionAccumulates(assignment *ast.AssignStmt, target ast.Expr) boo
 	return false
 }
 
-// concatExtendsIdent reports whether a `+` expression reads the name it is
-// assigned back to, which separates extending a buffer from replacing it.
+// concatExtendsIdent reports whether a + expression reads the name it is assigned back to, which separates extending a buffer from replacing it.
+//
+// It reports true only when value, once unwrapped from parentheses, is a + expression with an identifier named targetName anywhere inside it.
 func concatExtendsIdent(value ast.Expr, targetName string) bool {
 	concatenation, isConcatenation := unwrapRandomSelectionParens(value).(*ast.BinaryExpr)
 	if !isConcatenation || concatenation.Op != token.ADD {
@@ -369,9 +380,10 @@ func concatExtendsIdent(value ast.Expr, targetName string) bool {
 	return extendsTarget
 }
 
-// appendCallAddsSelection reports when the selected alphabet element is one of
-// append's added values rather than its destination slice. Appending a freshly
-// selected element grows a buffer, which is generation rather than sampling.
+// appendCallAddsSelection reports when the selected alphabet element is one of append's added values rather than its destination slice.
+//
+// Appending a freshly selected element grows a buffer, which is generation rather than sampling.
+// It reports true only when call invokes append with at least one added value and selection sits inside one of those added values.
 func appendCallAddsSelection(call *ast.CallExpr, selection *ast.IndexExpr) bool {
 	functionName, isIdentifier := unwrapRandomSelectionParens(call.Fun).(*ast.Ident)
 	if !isIdentifier || functionName.Name != "append" || len(call.Args) < 2 {
@@ -385,8 +397,9 @@ func appendCallAddsSelection(call *ast.CallExpr, selection *ast.IndexExpr) bool 
 	return false
 }
 
-// unwrapRandomSelectionParens removes syntax-only parentheses before the
-// selection predicate compares a call, collection, or length expression.
+// unwrapRandomSelectionParens removes syntax-only parentheses before the selection predicate compares a call, collection, or length expression.
+//
+// It returns expr with every enclosing ParenExpr layer stripped, or expr itself when it is not parenthesized.
 func unwrapRandomSelectionParens(expr ast.Expr) ast.Expr {
 	for {
 		paren, ok := expr.(*ast.ParenExpr)
@@ -397,8 +410,10 @@ func unwrapRandomSelectionParens(expr ast.Expr) ast.Expr {
 	}
 }
 
-// sameRandomSelectionCollection compares supported collection paths without
-// admitting calls, computed indexes, or other expressions that need type flow.
+// sameRandomSelectionCollection compares supported collection paths, refusing calls, computed indexes, and anything that needs type flow.
+//
+// A pool reached through a call or an index never counts as the same, so a pick from it stays eligible for a finding.
+// It reports true when left and right, ignoring parentheses, name the same identifier or the same selector chain on one identifier, else false.
 func sameRandomSelectionCollection(left, right ast.Expr) bool {
 	left = unwrapRandomSelectionParens(left)
 	right = unwrapRandomSelectionParens(right)
@@ -416,6 +431,9 @@ func sameRandomSelectionCollection(left, right ast.Expr) bool {
 }
 
 // randomCallSecurityContext finds the security word that makes a math/rand call actionable.
+//
+// It checks the name of fn first, then the assignment or declaration target that parents show receiving call, and finally the arguments of call.
+// It returns the first matched word and true, or an empty word and false when none of the three carries a security word.
 func randomCallSecurityContext(call *ast.CallExpr, fn *ast.FuncDecl, parents map[ast.Node]ast.Node) (string, bool) {
 	if word, ok := randomSecurityContextWord(fn.Name.Name); ok {
 		return word, true
@@ -426,7 +444,10 @@ func randomCallSecurityContext(call *ast.CallExpr, fn *ast.FuncDecl, parents map
 	return callArgumentContext(call, randomSecurityContextWord)
 }
 
-// enclosingAssignmentContext returns the target-name context for a call nested in an assignment, value, or return statement.
+// enclosingAssignmentContext returns the target-name context for a call nested in an assignment or value spec.
+//
+// It walks parents up from call and lets classify judge the target receiving it in the first enclosing assignment or value spec.
+// A return statement or closure reached first, or no such ancestor at all, ends the walk with an empty word and false.
 func enclosingAssignmentContext(call *ast.CallExpr, parents map[ast.Node]ast.Node, classify func(string) (string, bool)) (string, bool) {
 	for parent := parents[call]; parent != nil; parent = parents[parent] {
 		switch stmt := parent.(type) {
@@ -434,6 +455,7 @@ func enclosingAssignmentContext(call *ast.CallExpr, parents map[ast.Node]ast.Nod
 			return assignStmtContext(stmt, call, classify)
 		case *ast.ValueSpec:
 			return valueSpecContext(stmt, call, classify)
+		// A value returned straight out has no receiving name, so only the function name or the call arguments can still mark it.
 		case *ast.ReturnStmt:
 			return "", false
 		case *ast.FuncLit:
@@ -444,6 +466,9 @@ func enclosingAssignmentContext(call *ast.CallExpr, parents map[ast.Node]ast.Nod
 }
 
 // assignStmtContext finds a security word on the assignment target receiving call's expression.
+//
+// Each value in stmt that contains call is paired with its same-position target, which exprTextContext searches using classify.
+// It returns the first word classify accepts and true, or an empty word and false when no such target matches.
 func assignStmtContext(stmt *ast.AssignStmt, call *ast.CallExpr, classify func(string) (string, bool)) (string, bool) {
 	for index, expr := range stmt.Rhs {
 		if !exprContainsNode(expr, call) || index >= len(stmt.Lhs) {
@@ -457,6 +482,9 @@ func assignStmtContext(stmt *ast.AssignStmt, call *ast.CallExpr, classify func(s
 }
 
 // valueSpecContext finds a security word on the value-spec name receiving call's expression.
+//
+// Each value in spec that contains call is paired with its same-position name, and classify judges that name alone.
+// It returns the first word classify accepts and true, or an empty word and false when no such name matches.
 func valueSpecContext(spec *ast.ValueSpec, call *ast.CallExpr, classify func(string) (string, bool)) (string, bool) {
 	for index, expr := range spec.Values {
 		if !exprContainsNode(expr, call) || index >= len(spec.Names) {
@@ -470,6 +498,9 @@ func valueSpecContext(spec *ast.ValueSpec, call *ast.CallExpr, classify func(str
 }
 
 // callArgumentContext finds a security word in any call argument expression.
+//
+// Each argument of call is searched in order by exprTextContext, with classify judging its identifiers, selectors, and string literals.
+// It returns the first word found and true, or an empty word and false when no argument carries one.
 func callArgumentContext(call *ast.CallExpr, classify func(string) (string, bool)) (string, bool) {
 	for _, arg := range call.Args {
 		if word, ok := exprTextContext(arg, classify); ok {
@@ -480,6 +511,7 @@ func callArgumentContext(call *ast.CallExpr, classify func(string) (string, bool
 }
 
 // exprTextContext scans identifiers, selectors, and string literals inside expr for a context word.
+// It returns the first word classify accepts, in walk order, with true, or an empty word and false when nothing inside expr matches.
 func exprTextContext(expr ast.Expr, classify func(string) (string, bool)) (string, bool) {
 	var matched string
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -510,7 +542,7 @@ func exprTextContext(expr ast.Expr, classify func(string) (string, bool)) (strin
 	return matched, matched != ""
 }
 
-// exprContainsNode reports whether target appears under expr.
+// exprContainsNode reports whether target is expr itself or appears anywhere under it.
 func exprContainsNode(expr ast.Expr, target ast.Node) bool {
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -527,6 +559,9 @@ func exprContainsNode(expr ast.Expr, target ast.Node) bool {
 }
 
 // randomSecurityContextWord classifies token, nonce, key, and similar random-secret names.
+//
+// A secret word anywhere in text wins outright; otherwise a safe word such as test or shuffle suppresses the weaker state word.
+// It returns the matched word and true, or an empty word and false when text holds no secret word and no unsuppressed state word.
 func randomSecurityContextWord(text string) (string, bool) {
 	if word, ok := firstContextWord(text, randomSecretContextWords); ok {
 		return word, true
@@ -538,6 +573,9 @@ func randomSecurityContextWord(text string) (string, bool) {
 }
 
 // firstContextWord returns the first configured word present as a token in text.
+//
+// The earliest token of text equal to any entry in words decides, so token order rather than list order picks the word.
+// It returns an empty word and false when no token of text matches.
 func firstContextWord(text string, words []string) (string, bool) {
 	tokens := tokenizeForMisspelling(text)
 	for _, token := range tokens {

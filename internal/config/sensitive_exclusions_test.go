@@ -1,6 +1,7 @@
 // Package config tests cover the ratified sensitiveExclusions section.
-// The cases mirror gruff-spec/fixtures/sensitive-exclusions/cases.v1.json so the
-// port's own gate fails on the same inputs the family conformance suite uses.
+//
+// The cases mirror gruff-spec/fixtures/sensitive-exclusions/cases.v1.json, the inputs the family conformance suite uses.
+// A failure points to a change in parsing, path normalization, exclusion preservation or the generated authoring guidance.
 package config
 
 import (
@@ -20,17 +21,19 @@ const nonSensitiveExclusionRule = "size.file-length"
 // awsExclusionPath is the synthetic corpus path the acceptance cases exclude.
 const awsExclusionPath = "secrets/aws.env"
 
-// parseSensitiveExclusions parses a sensitiveExclusions YAML body against the
-// live registry and returns the parsed config or the fatal diagnostic.
+// parseSensitiveExclusions parses a sensitiveExclusions YAML body against the live rule registry.
+//
+// It returns Parse's results for body with defaultDefinitions: the parsed Config, or the fatal diagnostic as an error when Parse rejects it.
+// An empty, whitespace-only or comment-only body yields a zero Config and nil error, with no schema or registry validation.
 func parseSensitiveExclusions(t *testing.T, body string) (Config, error) {
 	t.Helper()
 	return Parse([]byte(body), defaultDefinitions())
 }
 
-// TestSensitiveExclusionsAcceptsRatifiedShape covers the acceptance cases:
-// a rule plus a path, an entry that narrows by symbol, and two distinct entries.
-// Parsing the mapping-item list at all is the construction seam here - the
-// hand-rolled YAML parser accepted only scalar list items before this section.
+// TestSensitiveExclusionsAcceptsRatifiedShape covers the acceptance cases for a valid sensitiveExclusions section.
+//
+// The cases are a rule plus a path, an entry that narrows by symbol, and two distinct entries.
+// Each entry is a list item holding a mapping, so a parser that rejected mapping items would refuse any non-empty sensitiveExclusions section.
 func TestSensitiveExclusionsAcceptsRatifiedShape(t *testing.T) {
 	body := strings.Join([]string{
 		"schemaVersion: gruff-go.config.v0.1",
@@ -66,9 +69,10 @@ func TestSensitiveExclusionsAcceptsRatifiedShape(t *testing.T) {
 	}
 }
 
-// TestSensitiveExclusionsNormalizesPathToDisplayForm verifies a leading `./`
-// is folded away, so an entry claims findings by the same project-relative
-// display path the finding carries regardless of how the user wrote it.
+// TestSensitiveExclusionsNormalizesPathToDisplayForm verifies that a leading ./ on an entry's path is folded away.
+//
+// The entry then claims findings by the same project-relative display path the finding carries, however the user wrote it.
+// A failure means an entry written as ./secrets/aws.env would no longer match the finding it was meant to cover.
 func TestSensitiveExclusionsNormalizesPathToDisplayForm(t *testing.T) {
 	body := strings.Join([]string{
 		"schemaVersion: gruff-go.config.v0.1",
@@ -87,10 +91,10 @@ func TestSensitiveExclusionsNormalizesPathToDisplayForm(t *testing.T) {
 	}
 }
 
-// TestSensitiveExclusionsRejectsUnreviewableEntries covers every numbered
-// rejection in section 13a. Each is fatal, and each diagnostic must name the
-// entry index and the offending key so a reviewer can find the entry without
-// counting list items.
+// TestSensitiveExclusionsRejectsUnreviewableEntries covers every numbered rejection in section 13a.
+//
+// Each is fatal, and each diagnostic must name the entry index and the offending key, so a reviewer finds the entry without counting list items.
+// A failure means such an entry was accepted, or its diagnostic omits the offending key or the sensitiveExclusions index.
 func TestSensitiveExclusionsRejectsUnreviewableEntries(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -218,9 +222,10 @@ func TestSensitiveExclusionsNameTheOffendingEntryIndex(t *testing.T) {
 	}
 }
 
-// TestSensitiveExclusionsSurviveRenderRoundTrip verifies `init --force` keeps
-// accepted suppressions: the rendered file must parse back into the same
-// entries, so regenerating config never silently drops a reviewed exclusion.
+// TestSensitiveExclusionsSurviveRenderRoundTrip verifies that Render followed by Parse preserves every field of one supplied exclusion.
+//
+// The exclusion is passed in memory as RenderOptions.Existing; the test does not run init --force or write a file.
+// A failure means rendered config would drop the section or alter a reviewed exclusion's rule, path, symbol or reason.
 func TestSensitiveExclusionsSurviveRenderRoundTrip(t *testing.T) {
 	definitions := defaultDefinitions()
 	existing := Config{SensitiveExclusions: []SensitiveExclusion{{
@@ -247,9 +252,10 @@ func TestSensitiveExclusionsSurviveRenderRoundTrip(t *testing.T) {
 	}
 }
 
-// TestRenderDocumentsManualSensitiveExclusionAuthoring verifies the generated
-// config tells a user the section exists and that entries are written by hand,
-// so nobody expects a reported preview to become an exclusion automatically.
+// TestRenderDocumentsManualSensitiveExclusionAuthoring verifies the generated config explains how to write sensitiveExclusions.
+//
+// With no existing config, it must show an empty section, say a written reason is required and mention the suppressions array.
+// It must also say entries are written by hand, so nobody expects a reported preview to become an exclusion automatically.
 func TestRenderDocumentsManualSensitiveExclusionAuthoring(t *testing.T) {
 	rendered := string(Render(defaultDefinitions(), RenderOptions{}))
 	for _, want := range []string{

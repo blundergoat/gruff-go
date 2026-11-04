@@ -1,4 +1,7 @@
-// Package rule tests that a cgo preamble counts as code, not as documentation.
+// Package rule holds gruff-go's rules, which turn a parsed Go file into findings.
+//
+// This file tests that a cgo preamble counts as code, not as documentation, in FileLengthRule's line count.
+// The C declarations above import "C" are real code, so a large mixed Go/C file must still be reported as too long.
 package rule
 
 import (
@@ -7,9 +10,10 @@ import (
 	"testing"
 )
 
-// TestFileLengthCountsCgoPreamble pins that C source in a cgo preamble reaches the
-// substantive line count while ordinary prose stays masked. go/parser reports both
-// as comments, so masking indiscriminately let large mixed Go/C files go unreported.
+// TestFileLengthCountsCgoPreamble pins that C source in a cgo preamble reaches the substantive line count while ordinary prose stays masked.
+//
+// go/parser reports both as comments, so masking indiscriminately let large mixed Go/C files go unreported.
+// A failure means a large mixed Go/C file goes unreported again, or a prose-heavy file gets a length finding it should not.
 func TestFileLengthCountsCgoPreamble(t *testing.T) {
 	tests := []struct {
 		name string
@@ -64,6 +68,9 @@ func TestFileLengthCountsCgoPreamble(t *testing.T) {
 }
 
 // repeatLines builds count numbered lines from a printf-style template.
+//
+// Each line formats template with its 1-based index as the single argument and ends with a newline.
+// It returns the lines concatenated in order, or the empty string when count is zero or negative.
 func repeatLines(template string, count int) string {
 	var builder strings.Builder
 	for index := 1; index <= count; index++ {

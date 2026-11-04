@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements parser-only SSRF and open-redirect checks that trace
-// request-controlled values into net/http URL and redirect sinks.
+//
+// This file implements parser-only SSRF and open-redirect checks that trace request-controlled values into net/http URL and redirect sinks.
+// Guard evidence is recognised from syntax alone: it suppresses a candidate without proving the destination was really validated.
 package rule
 
 import (
@@ -12,8 +13,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// destinationSanitizerTokens are exact identifier tokens that affirmatively name
-// a destination allowlist or validator. Syntax parsers are intentionally absent.
+// destinationSanitizerTokens are exact identifier tokens that affirmatively name a destination allowlist or validator.
+//
+// A call whose name holds one of these tokens, such as validateURL, counts as guard evidence and can hide a finding.
+// The validator's body is never read, so a validator that accepts everything still suppresses; syntax parsers are intentionally absent.
 var destinationSanitizerTokens = map[string]bool{
 	"allow": true, "allowed": true, "allowlist": true, "whitelist": true,
 	"validate": true, "validated": true, "validation": true, "validator": true,
@@ -27,13 +30,14 @@ var destinationSanitizerTokens = map[string]bool{
 // relative-target terminology. A generic prefix operation is not sufficient.
 var redirectDestinationTokens = map[string]bool{"local": true, "relative": true}
 
-// RequestControlledURLRule flags request-derived values used as the URL of an
-// outbound HTTP request without allowlist or validation evidence.
-// Use its finding when reviewing whether a UI-submitted URL can reach net/http.
+// RequestControlledURLRule flags request-derived values used as the URL of an outbound HTTP request without allowlist or validation evidence.
+//
+// It reports as security.request-controlled-url, on by default; review each finding for a submitted URL that can reach net/http.
+// Recognised guard syntax suppresses a candidate, but validator behaviour is not inspected, so a quiet scan is not proof against SSRF.
 type RequestControlledURLRule struct{}
 
-// Definition provides the request-URL metadata shown in scan output.
-// The UI uses it to explain the risk and the trusted-destination fix.
+// Definition provides the request-URL metadata shown in scan output, explaining the SSRF risk and the trusted-destination fix.
+// It returns the default-enabled, advisory, medium-confidence security.request-controlled-url definition with its SSRF wording and fix.
 func (RequestControlledURLRule) Definition() Definition {
 	return Definition{
 		ID:             "security.request-controlled-url",
@@ -48,15 +52,22 @@ func (RequestControlledURLRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit finds request-controlled URLs that reach HTTP client sinks.
-// Run it to populate the user's report with unconstrained outbound destinations.
+// AnalyzeUnit finds request-controlled URLs that reach HTTP client sinks, filling the user's report with unconstrained outbound destinations.
+//
+// Only functions and closures that declare a named http.Request pointer parameter are scanned.
+// A nested closure is scanned only when it declares such a parameter itself, so a sink in one that captures the outer request is missed.
+//
+// It returns one finding, with sink and source metadata, per HTTP client sink whose request-controlled URL lacks recognised guard syntax.
+// With no such sink it gives an empty slice; guard evidence is syntactic, so a validator is trusted by name and placement, not by its body.
+//
+// It returns nil when unit has no AST or FileSet, isProductionCodePath rejects its path, or the file does not import net/http.
 func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	// A user sees no URL findings for unparsed, non-production, or test-only input.
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
 	}
 	httpPackageAliases := packageImportNames(unit.AST, "net/http", "http")
-	// Without net/http, this file cannot send the request shown in this rule's UI.
+	// A file without a net/http import gets no findings, even when it fetches URLs through another HTTP library.
 	if len(httpPackageAliases) == 0 {
 		return nil
 	}
@@ -65,7 +76,7 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	forEachRequestFunc(unit.AST, httpPackageAliases, func(requestScope *requestTaintScope, functionBody *ast.BlockStmt) {
 		httpClientBindings := collectHTTPClientBindings(requestScope.functionType, functionBody, httpPackageAliases)
 		ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
-			// Nested callbacks are analysed as their own request handlers.
+			// Skip nested closures here; only those declaring their own named request parameter receive a separate scan.
 			if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 				return false
 			}
@@ -81,11 +92,11 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			}
 			urlArgument := candidateCall.Args[urlArgumentIndex]
 			requestSource, isRequestControlled := requestScope.exprHasRequest(urlArgument, candidateCall.Pos())
-			// Fixed or internal destinations stay out of the user's findings list.
+			// A destination with no traced request input produces no URL finding; an internal host alone does not suppress it.
 			if !isRequestControlled {
 				return true
 			}
-			// An affirmative destination guard makes this request safe to omit.
+			// Recognised destination-guard syntax suppresses this candidate; validator behaviour is not inspected.
 			if destinationHasConstraint(requestScope, functionBody, urlArgument, destinationConstraintOptions{}, candidateCall.Pos()) {
 				return true
 			}
@@ -102,13 +113,14 @@ func (RequestControlledURLRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return scanFindings
 }
 
-// OpenRedirectRule flags request-derived values used as a redirect destination
-// without validation that the target is safe.
-// Use its finding when a submitted next-page value can steer the user's browser.
+// OpenRedirectRule flags request-derived values used as a redirect destination without validation that the target is safe.
+//
+// It reports as security.open-redirect-candidate, off by default; a finding marks a submitted value that can steer a visitor's browser.
+// Recognised guard syntax suppresses a candidate, but validator behaviour is not inspected, so a quiet scan is not proof of a safe redirect.
 type OpenRedirectRule struct{}
 
-// Definition provides the open-redirect metadata shown in scan output.
-// The UI uses it to explain when a submitted destination can steer the browser.
+// Definition provides the open-redirect metadata shown in scan output, explaining when a submitted destination can steer the browser.
+// It returns the advisory, medium-confidence security.open-redirect-candidate definition, disabled by default, with its wording and fix.
 func (OpenRedirectRule) Definition() Definition {
 	return Definition{
 		ID:             "security.open-redirect-candidate",
@@ -123,24 +135,32 @@ func (OpenRedirectRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit finds request-controlled redirect destinations without safeguards.
-// Run it to populate the user's report with redirects that may leave the site.
+// AnalyzeUnit reports request-controlled redirect destinations without recognised guards, which may send a visitor off the site.
+//
+// Only functions and closures that declare a named http.Request pointer parameter are scanned.
+// A nested closure is scanned only when it declares such a parameter itself, so a sink in one that captures the outer request is missed.
+//
+// It returns one finding, with sink and source metadata, per http.Redirect or Location-header sink whose target is request-controlled.
+// A target is skipped when it is a recognised HTTPS upgrade, starts with a safe relative prefix, or has recognised guard syntax.
+// With no such sink it gives an empty slice; guard evidence is syntactic, so a validator is trusted by name and placement, not by its body.
+//
+// It returns nil when unit has no AST or FileSet, isProductionCodePath rejects its path, or the file does not import net/http.
 func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	// A user sees no redirect findings for unparsed, non-production, or test input.
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
 	}
 	httpPackageAliases := packageImportNames(unit.AST, "net/http", "http")
-	// Without net/http, this file cannot emit the redirect represented by the rule.
+	// A file with no net/http import of its own is skipped, even when it redirects through writer types declared in another file.
 	if len(httpPackageAliases) == 0 {
 		return nil
 	}
 	stringsPackageAliases := packageImportNames(unit.AST, "strings", "strings")
 	scanFindings := []finding.Finding{}
-	// Review each handler separately so UI locations stay tied to one response.
+	// Review each handler separately so each reported location stays tied to one response.
 	forEachRequestFunc(unit.AST, httpPackageAliases, func(requestScope *requestTaintScope, functionBody *ast.BlockStmt) {
 		ast.Inspect(functionBody, func(syntaxNode ast.Node) bool {
-			// Nested callbacks are analysed independently with their own request input.
+			// Skip nested closures here; only those declaring their own named request parameter receive a separate scan.
 			if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 				return false
 			}
@@ -169,7 +189,7 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 				return true
 			}
 			constraintOptions := destinationConstraintOptions{additionalValidatorTokens: redirectDestinationTokens, stringPackageAliases: stringsPackageAliases}
-			// Robust validation or normalization makes the redirect safe to omit.
+			// Recognised destination-guard syntax suppresses this candidate; validator behaviour is not inspected.
 			if destinationHasConstraint(requestScope, functionBody, redirectTarget, constraintOptions, candidateCall.Pos()) {
 				return true
 			}
@@ -186,15 +206,18 @@ func (OpenRedirectRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return scanFindings
 }
 
-// redirectTargetArg returns the destination and UI sink label for a redirect call.
-// Use it to keep http.Redirect and Location-header findings consistent.
+// redirectTargetArg returns the destination and sink label for a redirect call, so http.Redirect and Location-header findings read alike.
+//
+// candidateCall is the call under test, httpPackageAliases the local names of net/http, and functionBody is searched for a later WriteHeader.
+// A Location write qualifies only when a later WriteHeader on the same writer may share its control path and has a redirect or unresolved status.
+// It reports false with a nil destination and an empty label when no supported sink matches.
 func redirectTargetArg(candidateCall *ast.CallExpr, httpPackageAliases map[string]bool, functionBody *ast.BlockStmt) (ast.Expr, string, bool) {
 	// A standard redirect exposes its destination as the third argument in reports.
 	if selectorCallMatches(candidateCall, httpPackageAliases, "Redirect") && len(candidateCall.Args) >= 4 {
 		return candidateCall.Args[2], "http.Redirect", true
 	}
 	methodSelector, isSelector := candidateCall.Fun.(*ast.SelectorExpr)
-	// Only a two-argument Set call can write a Location response header.
+	// Only two-argument Set calls are recognised as Location-header sinks here; Header.Add and direct map writes are missed.
 	if !isSelector || methodSelector.Sel.Name != "Set" || len(candidateCall.Args) != 2 {
 		return nil, "", false
 	}
@@ -207,16 +230,16 @@ func redirectTargetArg(candidateCall *ast.CallExpr, httpPackageAliases map[strin
 	if !hasLiteralHeader || !isLocationHeader(headerName) {
 		return nil, "", false
 	}
-	// Location is also valid metadata on non-redirect responses (for example
-	// 201 Created). Only a matching later redirect status makes it a browser sink.
+	// Location is also valid metadata on non-redirect responses, for example 201 Created.
+	// A later WriteHeader on the same writer keeps this a redirect candidate when its status is a redirect or cannot be resolved.
 	if !locationHeaderHasRedirectStatus(functionBody, candidateCall, httpPackageAliases) {
 		return nil, "", false
 	}
 	return candidateCall.Args[1], "Header.Set(Location)", true
 }
 
-// isHeaderMethodCallReceiver recognises `<x>.Header()` response access.
-// It keeps request-header writes out of the user's redirect findings.
+// isHeaderMethodCallReceiver recognises x.Header() response access, which keeps request-header writes out of redirect findings.
+// It reports true only when headerAccessorExpression is a no-argument call of a method named Header, and false otherwise.
 func isHeaderMethodCallReceiver(headerAccessorExpression ast.Expr) bool {
 	headerAccessorCall, isCall := headerAccessorExpression.(*ast.CallExpr)
 	// The browser response header accessor has no arguments.
@@ -227,14 +250,14 @@ func isHeaderMethodCallReceiver(headerAccessorExpression ast.Expr) bool {
 	return isSelector && methodSelector.Sel.Name == "Header"
 }
 
-// isLocationHeader reports whether a header name targets the redirect Location
-// header, ignoring case as net/http canonicalises header keys.
+// isLocationHeader reports whether headerName targets the redirect Location header, ignoring case as net/http canonicalises header keys.
+// headerName is compared to Location with equalFoldASCII, so only a case-insensitive exact match counts.
 func isLocationHeader(headerName string) bool {
 	return equalFoldASCII(headerName, "Location")
 }
 
-// equalFoldASCII reports case-insensitive equality for ASCII header names without
-// pulling in Unicode folding.
+// equalFoldASCII reports case-insensitive equality for ASCII header names without pulling in Unicode folding.
+// leftValue and rightValue match when they have the same byte length and agree byte by byte after the letters A to Z are lowercased.
 func equalFoldASCII(leftValue, rightValue string) bool {
 	// Different lengths cannot name the same response header.
 	if len(leftValue) != len(rightValue) {
@@ -259,8 +282,10 @@ func equalFoldASCII(leftValue, rightValue string) bool {
 	return true
 }
 
-// leftmostStringLiteral returns the value of the left-most string literal in a
-// + concatenation, used to inspect the fixed prefix of a constructed target.
+// leftmostStringLiteral returns the text of the leftmost literal in a + concatenation, the fixed prefix of a constructed redirect target.
+//
+// targetExpression is followed through parentheses and the left operand of each +; a leftmost string or rune literal gives its unquoted value.
+// Any other shape, including a number literal or a non-addition operator, gives an empty string and false.
 func leftmostStringLiteral(targetExpression ast.Expr) (string, bool) {
 	switch targetSyntax := targetExpression.(type) {
 	case *ast.ParenExpr:
@@ -276,10 +301,14 @@ func leftmostStringLiteral(targetExpression ast.Expr) (string, bool) {
 	return "", false
 }
 
-// redirectIsHTTPSUpgrade accepts only a fixed HTTPS scheme, the current request's
-// host, and its escaped request URI. Submitted host or path values stay candidates.
-// A write to the request before the sink keeps the finding; writes made inside a
-// closure, a called function or through another name for the request are not seen.
+// redirectIsHTTPSUpgrade accepts only a fixed HTTPS scheme, the current request's host, and its escaped request URI.
+//
+// Submitted host or path values stay candidates, and a write to the request before the sink keeps the finding.
+// Writes made inside a closure, a called function or through another name for the request are not seen.
+//
+// target is traced through one unchanged local assignment made before sinkPosition; scope supplies the request names and handler body.
+// file supplies the net import names a host-preserving helper must call, and sinkPosition ends the check for writes to the request.
+// It reports true only for that exact upgrade shape, and false for any other target.
 func redirectIsHTTPSUpgrade(file *ast.File, scope *requestTaintScope, target ast.Expr, sinkPosition token.Pos) bool {
 	target = redirectAssignedTarget(scope.body, target, sinkPosition)
 	host, uri := redirectHTTPSParts(target)
@@ -302,8 +331,13 @@ func redirectIsHTTPSUpgrade(file *ast.File, scope *requestTaintScope, target ast
 		!anyNameAssignedBetween(scope.body, map[string]bool{request.Name: true}, scope.body.Pos(), sinkPosition)
 }
 
-// redirectAssignedTarget follows one unchanged local assignment. Reassignment
-// keeps the finding because the original destination no longer proves the sink.
+// redirectAssignedTarget follows one unchanged local assignment, so a target built earlier in the handler is judged by its assigned value.
+//
+// Reassignment keeps the finding because the original destination no longer proves the sink.
+// It returns target without parentheses, or the assigned value when target is a resolved identifier.
+// It returns nil when that declaration is not an assignment ending before sinkPosition, or the name is reassigned in body before the sink.
+//
+// It also returns nil when replacementValueFor finds no assigned value; in redirectIsHTTPSUpgrade a nil target keeps the redirect a candidate.
 func redirectAssignedTarget(body *ast.BlockStmt, target ast.Expr, sinkPosition token.Pos) ast.Expr {
 	target = unwrapRequestExprParens(target)
 	if identifier, ok := target.(*ast.Ident); ok && identifier.Obj != nil {
@@ -321,8 +355,8 @@ func redirectAssignedTarget(body *ast.BlockStmt, target ast.Expr, sinkPosition t
 	return target
 }
 
-// redirectHTTPSParts separates an exact three-part HTTPS target; extra inputs
-// could change the destination and are deliberately left unrecognised.
+// redirectHTTPSParts separates an exact three-part HTTPS target; extra inputs could change the destination, so they are never recognised.
+// It returns the host and URI operands, without parentheses, of a target built as "https://" + host + URI, and two nils for any other shape.
 func redirectHTTPSParts(target ast.Expr) (ast.Expr, ast.Expr) {
 	outer, ok := unwrapRequestExprParens(target).(*ast.BinaryExpr)
 	if !ok || outer.Op != token.ADD {
@@ -339,8 +373,10 @@ func redirectHTTPSParts(target ast.Expr) (ast.Expr, ast.Expr) {
 	return unwrapRequestExprParens(prefix.Y), unwrapRequestExprParens(outer.Y)
 }
 
-// redirectHelperPreservesHost recognises the observed SplitHostPort/JoinHostPort
-// helper by its complete body, rather than trusting a helper's name.
+// redirectHelperPreservesHost recognises the observed SplitHostPort and JoinHostPort helper by its complete body, never by its name.
+//
+// call must name a receiverless function in this file with one parameter and a three-statement body; file gives the net import names.
+// It reports true only when those statements split the host, return the parameter on a split error, and join the host with port 443.
 func redirectHelperPreservesHost(file *ast.File, call *ast.CallExpr) bool {
 	name, ok := call.Fun.(*ast.Ident)
 	if !ok || name.Obj == nil {
@@ -357,8 +393,11 @@ func redirectHelperPreservesHost(file *ast.File, call *ast.CallExpr) bool {
 		redirectJoinedHost(function.Body.List[2], host, netPackages)
 }
 
-// redirectSplitHostPort links the helper's request host to net.SplitHostPort's
-// host and error results, so a different input cannot inherit this exemption.
+// redirectSplitHostPort ties the helper's host to net.SplitHostPort's host and error results, so no other input inherits the exemption.
+//
+// function must already have one named parameter and a non-empty body, as redirectHelperPreservesHost checks before calling.
+// netPackages holds the local names of the net import; success gives the parameter, host and error identifiers with true.
+// Failure gives false with nils when the first statement is not that split, or partial results when the host or error target is not an identifier.
 func redirectSplitHostPort(function *ast.FuncDecl, netPackages map[string]bool) (*ast.Ident, *ast.Ident, *ast.Ident, bool) {
 	parameter := function.Type.Params.List[0].Names[0]
 	split, ok := function.Body.List[0].(*ast.AssignStmt)
@@ -375,7 +414,10 @@ func redirectSplitHostPort(function *ast.FuncDecl, netPackages map[string]bool) 
 	return parameter, host, errName, hostOK && errOK
 }
 
-// redirectPortFallback requires the split error to return the original host.
+// redirectPortFallback requires the helper to return the original host when net.SplitHostPort fails.
+//
+// statement must be an if without init or else whose condition is errName != nil and whose only statement returns parameter alone.
+// It reports true for that exact fallback and false for any other statement shape.
 func redirectPortFallback(statement ast.Stmt, parameter, errName *ast.Ident) bool {
 	guard, ok := statement.(*ast.IfStmt)
 	if !ok || guard.Init != nil || guard.Else != nil || len(guard.Body.List) != 1 {
@@ -390,6 +432,9 @@ func redirectPortFallback(statement ast.Stmt, parameter, errName *ast.Ident) boo
 }
 
 // redirectJoinedHost accepts only the split host with the fixed HTTPS port.
+//
+// statement must return only a net.JoinHostPort call, through a name in netPackages, that joins host with the string literal "443".
+// It reports true for that exact return and false for any other statement.
 func redirectJoinedHost(statement ast.Stmt, host *ast.Ident, netPackages map[string]bool) bool {
 	returned, ok := statement.(*ast.ReturnStmt)
 	if !ok || len(returned.Results) != 1 {
@@ -405,7 +450,9 @@ func redirectJoinedHost(statement ast.Stmt, host *ast.Ident, netPackages map[str
 }
 
 // isSafeRelativePrefix requires a literal path segment before submitted text.
-// A bare slash is unsafe because a user can extend it into `//external-host`.
+//
+// A bare slash is unsafe because a visitor can extend it into //external-host and leave the site.
+// It reports true only when fixedPrefix has at least two bytes, starts with a slash, and has a second byte that is neither slash nor backslash.
 func isSafeRelativePrefix(fixedPrefix string) bool {
 	// Empty, bare-slash, and absolute inputs can still become external redirects.
 	if len(fixedPrefix) < 2 || fixedPrefix[0] != '/' {
@@ -415,15 +462,21 @@ func isSafeRelativePrefix(fixedPrefix string) bool {
 }
 
 // destinationConstraintOptions adds redirect-only evidence to the shared URL policy.
-// Request scans leave both maps empty; redirect scans provide relative tokens
-// and strings aliases so the user sees only destinations lacking real guards.
+//
+// Request scans leave both maps empty; redirect scans provide relative tokens and strings aliases.
+// Recognised destination-guard syntax suppresses a candidate; validator behaviour is not inspected.
 type destinationConstraintOptions struct {
 	additionalValidatorTokens map[string]bool
 	stringPackageAliases      map[string]bool
 }
 
-// destinationHasConstraint reports an exact validator token, parsed scheme+host
-// allowlist, or redirect guard requiring a committed relative-path segment.
+// destinationHasConstraint looks for guard syntax that suppresses a URL or redirect candidate before it reaches the report.
+//
+// It accepts an exact validator token, a parsed scheme and host allowlist, or a redirect guard requiring a committed relative-path segment.
+// requestScope and functionBody give the handler's request input and body, sinkArgument is the destination, and sinkPosition marks the sink.
+// constraintOptions adds redirect validator tokens, and its strings aliases turn on the relative-prefix and protocol-relative checks.
+//
+// It reports true when any such evidence is found, and false when the finding stands; validator bodies are never inspected.
 func destinationHasConstraint(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkArgument ast.Expr, constraintOptions destinationConstraintOptions, sinkPosition token.Pos) bool {
 	// An inline validator explains why the destination is absent from the report.
 	if argHasDestinationSanitizer(requestScope, sinkArgument, constraintOptions.additionalValidatorTokens) {
@@ -446,9 +499,11 @@ func destinationHasConstraint(requestScope *requestTaintScope, functionBody *ast
 	return false
 }
 
-// argHasDestinationSanitizer recognises an exact validator token whose complete
-// result is passed to the sink. A sanitizer nested beside raw request input does
-// not constrain the final destination expression.
+// argHasDestinationSanitizer recognises a call named with an exact validator token whose complete result is passed to the sink.
+//
+// A sanitizer nested beside raw request input does not constrain the final destination expression.
+// sinkArgument must itself be that call, additionalValidatorTokens widens the token set, and requestScope must find request input in it.
+// It reports true for such a call, which suppresses the candidate, and false for any other sinkArgument.
 func argHasDestinationSanitizer(requestScope *requestTaintScope, sinkArgument ast.Expr, additionalValidatorTokens map[string]bool) bool {
 	candidateCall, isCall := unwrapRequestExprParens(sinkArgument).(*ast.CallExpr)
 	if !isCall || !callHasDestinationToken(candidateCall, additionalValidatorTokens) {
@@ -458,8 +513,10 @@ func argHasDestinationSanitizer(requestScope *requestTaintScope, sinkArgument as
 	return containsRequestInput
 }
 
-// bodyHasDestinationSanitizer recognises a validator call before the sink only
-// when its call name contains a complete approved identifier token.
+// bodyHasDestinationSanitizer recognises a validator call before the sink only when its call name holds a complete approved identifier token.
+//
+// functionBody is searched outside nested closures for such a call before sinkPosition, with additionalValidatorTokens added to the shared set.
+// It reports true when the call reads one of sinkValueNames, none is reassigned before the sink, and the call guards it; no names give false.
 func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, additionalValidatorTokens map[string]bool, sinkPosition token.Pos) bool {
 	// Inline request expressions have no local name for a separate validator call.
 	if len(sinkValueNames) == 0 {
@@ -471,7 +528,7 @@ func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, ad
 		if foundBodySanitizer {
 			return false
 		}
-		// A nested callback cannot validate the outer user's destination.
+		// Validator calls inside nested closures do not suppress this sink, even when the closure runs before it.
 		if _, isNestedFunction := syntaxNode.(*ast.FuncLit); isNestedFunction {
 			return false
 		}
@@ -492,9 +549,13 @@ func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, ad
 	return foundBodySanitizer
 }
 
-// validatorCallProtectsSink recognises the two affirmative control-flow forms:
-// a rejecting guard whose false path reaches a later sink, or a positive guard
-// whose true body contains the sink.
+// validatorCallProtectsSink recognises the two affirmative control-flow forms a validator guard can take around the sink.
+//
+// A rejecting guard counts when its body returns and only its false path reaches a later sink.
+// A positive guard counts when its true body contains the sink.
+//
+// It searches functionBody, outside nested closures, for an if whose condition holds validatorCall and whose enclosing regions hold sinkPosition.
+// It reports true when such a guard has either form for the sink, and false otherwise.
 func validatorCallProtectsSink(functionBody *ast.BlockStmt, validatorCall *ast.CallExpr, sinkPosition token.Pos) bool {
 	protected := false
 	ast.Inspect(functionBody, func(node ast.Node) bool {
@@ -528,9 +589,11 @@ func validatorCallProtectsSink(functionBody *ast.BlockStmt, validatorCall *ast.C
 	return protected
 }
 
-// conditionOutcomeImpliesValidator reports whether observing one boolean result
-// proves that validatorCall itself returned true. It preserves AND/OR semantics
-// instead of counting a call merely because it appears somewhere in a condition.
+// conditionOutcomeImpliesValidator reports whether observing one boolean result of condition proves that validatorCall itself returned true.
+//
+// It preserves AND and OR semantics instead of counting a call merely because it appears somewhere in a condition.
+// outcome is the observed value of condition, and a condition that is validatorCall itself gives outcome back.
+// Negation, comparison with true or false, && and || are followed recursively, and any other form gives false.
 func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.CallExpr, outcome bool) bool {
 	condition = unwrapRequestExprParens(condition)
 	if condition == validatorCall {
@@ -544,9 +607,8 @@ func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.Cal
 	case *ast.BinaryExpr:
 		switch expression.Op {
 		case token.EQL, token.NEQ:
-			// `validate(u) == false` guards exactly what `!validate(u)` guards.
-			// Without this the explicit-boolean style reads as an unguarded sink
-			// and fails a default scan on correctly validated code.
+			// validate(u) == false guards exactly what !validate(u) guards.
+			// Without this, the explicit-boolean style reads as an unguarded sink and fails a default scan on correctly validated code.
 			if operand, literal, ok := booleanComparisonOperand(expression); ok {
 				return conditionOutcomeImpliesValidator(operand, validatorCall,
 					comparisonOperandOutcome(expression.Op, literal, outcome))
@@ -570,9 +632,10 @@ func conditionOutcomeImpliesValidator(condition ast.Expr, validatorCall *ast.Cal
 	return false
 }
 
-// booleanComparisonOperand splits a comparison against a predeclared `true` or
-// `false` into the other operand and that literal's value. Only comparisons that
-// name a boolean literal qualify, so `a == b` still falls through unproven.
+// booleanComparisonOperand splits a comparison against a predeclared true or false into the other operand and that literal's value.
+//
+// Only comparisons that name a boolean literal qualify, so a == b still falls through unproven.
+// It returns the other operand, the literal's value and true, checking the right side first, or nil, false and false when neither side qualifies.
 func booleanComparisonOperand(comparison *ast.BinaryExpr) (ast.Expr, bool, bool) {
 	if literal, ok := universeBoolLiteral(comparison.Y); ok {
 		return comparison.X, literal, true
@@ -583,7 +646,7 @@ func booleanComparisonOperand(comparison *ast.BinaryExpr) (ast.Expr, bool, bool)
 	return nil, false, false
 }
 
-// universeBoolLiteral reports whether expr is the predeclared `true` or `false`.
+// universeBoolLiteral reports whether expr is the predeclared true or false; it returns that constant's value and true, or false and false.
 // A local may shadow either name, so a resolved identifier is not the constant.
 func universeBoolLiteral(expr ast.Expr) (bool, bool) {
 	identifier, isIdentifier := unwrapRequestExprParens(expr).(*ast.Ident)
@@ -600,8 +663,8 @@ func universeBoolLiteral(expr ast.Expr) (bool, bool) {
 	return false, false
 }
 
-// comparisonOperandOutcome maps an observed comparison result back to the value
-// the non-literal operand must have held for that result to occur.
+// comparisonOperandOutcome maps an observed comparison result back to the value the non-literal operand must have held for it to occur.
+// For the == operator it gives outcome == literal, and for any other operator outcome != literal, where literal is the compared constant.
 func comparisonOperandOutcome(operator token.Token, literal bool, outcome bool) bool {
 	// Observing `operand == literal` as outcome means they agree exactly when outcome holds.
 	if operator == token.EQL {
@@ -610,8 +673,8 @@ func comparisonOperandOutcome(operator token.Token, literal bool, outcome bool) 
 	return outcome != literal
 }
 
-// exprContainsExactCall reports whether the condition contains this AST call,
-// not merely another call with the same text or name.
+// exprContainsExactCall reports whether expression contains this very AST call node, not merely another call with the same text or name.
+// It walks expression and compares each node to targetCall by pointer identity, so only that very node counts.
 func exprContainsExactCall(expression ast.Expr, targetCall *ast.CallExpr) bool {
 	found := false
 	ast.Inspect(expression, func(node ast.Node) bool {
@@ -624,11 +687,14 @@ func exprContainsExactCall(expression ast.Expr, targetCall *ast.CallExpr) bool {
 	return found
 }
 
-// callHasDestinationToken uses complete camel/snake-case tokens so names such
-// as parser, allowance, disallow, untrusted, and sanitation cannot collide.
+// callHasDestinationToken looks for a validator token in the name of candidateCall, matching complete camel-case and snake-case tokens.
+//
+// Whole tokens keep names such as parser, allowance, disallow, untrusted and sanitation from colliding with a validator word.
+// Each lowercased token of the name of candidateCall is looked up in destinationSanitizerTokens and additionalValidatorTokens.
+// It reports true for the first match whose immediately preceding token is not a recognised negation, and false when none qualifies.
 func callHasDestinationToken(candidateCall *ast.CallExpr, additionalValidatorTokens map[string]bool) bool {
 	callNameTokens := splitIdentifierTokens(callName(candidateCall))
-	// Inspect complete tokens so UI labels never trust a substring collision.
+	// Whole tokens only, so a validator word buried inside a longer token never suppresses a finding.
 	for tokenIndex, identifierToken := range callNameTokens {
 		identifierToken = strings.ToLower(identifierToken)
 		// Negated names such as notTrusted remain visible findings for the user.

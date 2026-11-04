@@ -1,9 +1,10 @@
 // Package config resolves the two severity keys the family contract separates.
 //
-// Before 0.6.0 gruff-go had one key, minimumSeverity, and it set the exit gate. The family ratified the opposite
-// meaning: minimumSeverity is the display floor and a new failOn key carries the gate. A configuration written against
-// the old meaning is refused rather than reinterpreted, because silently turning a gate into a display filter would let
-// a build that used to fail start passing without anyone changing a line.
+// Before 0.6.0 gruff-go had one key, minimumSeverity, and it set the exit gate.
+// The family ratified the opposite meaning: minimumSeverity is the display floor and a new failOn key carries the gate.
+//
+// The per-command map form of minimumSeverity is refused rather than reinterpreted as a display floor.
+// Silently turning a gate into a display filter would let a build that used to fail start passing without anyone changing a line.
 package config
 
 import (
@@ -14,6 +15,8 @@ import (
 )
 
 // SeverityFloor is the lowest severity a report displays, read from the scalar minimumSeverity key.
+//
+// Reading the key does not check the value; validateSeverityFloor is what refuses a value that is not a severity.
 type SeverityFloor struct {
 	// Value is the configured severity, empty when the key is absent and every severity is shown.
 	Value string
@@ -21,8 +24,12 @@ type SeverityFloor struct {
 
 // UnmarshalJSON reads the scalar display floor and refuses the map form that used to mean the exit gate.
 //
-// The map form is the whole reason this type exists: it is valid YAML that used to gate a build, and reading it as a
-// display floor would change what the file does without changing what it says.
+// The map form is the whole reason this type exists: it is valid YAML that used to gate a build.
+// Reading it as a display floor would change what the file does without changing what it says.
+//
+// The data argument is the raw minimumSeverity JSON; a value that decodes as a string is stored in Value without a severity check.
+// JSON null decodes as the empty string, so it sets Value to empty, the same as an absent key.
+// Any shape other than a string or null, such as a per-command map, returns an error that points the reader to failOn for the exit gate.
 func (floor *SeverityFloor) UnmarshalJSON(data []byte) error {
 	var scalar string
 
@@ -32,18 +39,22 @@ func (floor *SeverityFloor) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	// A minimumSeverity map, number or list is refused here with an error telling the user to move the exit gate to failOn.
 	return fmt.Errorf("minimumSeverity is the display floor in 0.6.0 and takes one severity, not a per-command map; " +
 		"move the per-command exit gate to failOn, which is the key that gates the exit code")
 }
 
 // MarshalJSON writes the scalar form, so a round-tripped configuration says what the loader will read.
+//
+// It returns Value encoded as a JSON string, which is the empty JSON string when no floor is configured.
+// The error result is always nil, because json.Marshal does not fail on a string.
 func (floor SeverityFloor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(floor.Value)
 }
 
 // Severity returns the display floor as a severity, and false when no floor is configured.
 func (floor SeverityFloor) Severity() (finding.Severity, bool) {
-	// An absent key is not a floor of advisory; it means the report shows everything it found.
+	// An absent key is not a floor of advisory; with no floor, no finding is hidden because of its severity.
 	if floor.Value == "" {
 		return "", false
 	}
@@ -51,10 +62,19 @@ func (floor SeverityFloor) Severity() (finding.Severity, bool) {
 	return finding.Severity(floor.Value), true
 }
 
-// CommandThresholds is the exit gate keyed by command, accepting a bare severity for every command.
+// CommandThresholds is the exit gate read from failOn, keyed by command, accepting a bare severity for every command.
+//
+// A bare severity is copied to each command in minimumSeverityCommands; no value is checked against the severity vocabulary on read.
 type CommandThresholds map[string]string
 
 // UnmarshalJSON accepts both the per-command map and the bare severity the family contract describes.
+//
+// The data argument is the raw failOn JSON; a bare string replaces the map with that severity for every command in minimumSeverityCommands.
+// JSON null counts as a bare empty string, so each of those commands gets an empty threshold.
+// An object of command names to strings replaces the map as given, with a null value read as an empty string.
+//
+// None of these values is checked against the severity vocabulary here, so the empty thresholds from null are accepted at this point.
+// Any other shape returns an error saying what failOn accepts and leaves thresholds unchanged; object values may be strings or null.
 func (thresholds *CommandThresholds) UnmarshalJSON(data []byte) error {
 	var scalar string
 
@@ -70,22 +90,25 @@ func (thresholds *CommandThresholds) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	keyed := map[string]string{}
-	if err := json.Unmarshal(data, &keyed); err != nil {
+	byCommand := map[string]string{}
+	// A failOn number or list, or a map value that is neither a string nor null, is refused here, leaving the configured thresholds unchanged.
+	if err := json.Unmarshal(data, &byCommand); err != nil {
 		return fmt.Errorf("failOn takes one severity, or a map of command names to severities")
 	}
 
-	*thresholds = keyed
+	*thresholds = byCommand
 	return nil
 }
 
 // validateSeverityFloor refuses a display floor outside the ratified severity vocabulary.
+// It returns nil when floor.Value is empty or a valid severity, and otherwise an error that quotes the value and lists the accepted severities.
 func validateSeverityFloor(floor SeverityFloor) error {
-	// An absent floor is the default, not an error: a report with no floor shows every finding it made.
+	// An absent floor is the default, not an error: with no floor, no finding is hidden because of its severity.
 	if floor.Value == "" {
 		return nil
 	}
 
+	// A misspelt severity in minimumSeverity lands here, and the error lists the accepted values.
 	if !finding.Severity(floor.Value).Valid() {
 		return fmt.Errorf("minimumSeverity %q is not a severity: want advisory, warning, or error", floor.Value)
 	}
@@ -93,11 +116,13 @@ func validateSeverityFloor(floor SeverityFloor) error {
 	return nil
 }
 
-// refuseRemovedPreviewKeys rejects a configuration that still carries the removed preview allowlist under either
-// of its pre-0.6.0 spellings, allowlists.secretPreviews or sensitiveData.previewAllowlist.
+// refuseRemovedPreviewKeys rejects a configuration that still carries the removed preview allowlist under either pre-0.6.0 spelling.
 //
-// Section 5 makes every category marker unconditional and zero-payload, so the key gates nothing. Leaving it accepted
-// would tell a reader their redaction is configured when it is not, which is worse than having no key at all.
+// The two spellings are allowlists.secretPreviews and sensitiveData.previewAllowlist.
+// FAMILY-CONTRACT.md section 5 makes markers unconditional and zero-payload, so accepting either key would falsely imply configurable redaction.
+//
+// The data argument is the configuration document as JSON; data that is not an object yields nil, leaving its shape to the strict decoder.
+// It returns an error when allowlists carries secretPreviews or sensitiveData carries previewAllowlist, whatever its value, and nil otherwise.
 func refuseRemovedPreviewKeys(data []byte) error {
 	var sections map[string]json.RawMessage
 	// Anything that is not an object is left for the strict decoder to describe; there is no key to refuse in it.
@@ -113,12 +138,14 @@ func refuseRemovedPreviewKeys(data []byte) error {
 }
 
 // sectionHasKey reports whether a raw config section is an object carrying the named key, whatever its value.
+// It reports false when section is missing or is not an object, and when the object lacks key.
 func sectionHasKey(section json.RawMessage, key string) bool {
-	// A missing or non-object section cannot carry the key; the strict decoder reports its shape separately.
+	// An omitted section cannot carry the removed key, so this check passes it.
 	if section == nil {
 		return false
 	}
 	var entries map[string]json.RawMessage
+	// A section that is not an object is left for the strict decoder to report.
 	if err := json.Unmarshal(section, &entries); err != nil {
 		return false
 	}

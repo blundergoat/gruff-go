@@ -1,4 +1,7 @@
 // Package rule tests the parser-only test-quality.sleep-in-test rule.
+//
+// Each fixture is inline Go source parsed as a _test.go file, except one production file that checks the rule stays out of non-test code.
+// A failing test points at a change in what the rule reports: its finding count, the Symbol it names, its file scope, or its shipped definition.
 package rule
 
 import (
@@ -7,7 +10,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestSleepInTestRuleFlagsDirectCall asserts the basic time.Sleep call site is reported.
+// TestSleepInTestRuleFlagsDirectCall asserts the basic time.Sleep call site is reported, with the enclosing test function as its Symbol.
+// t fails on any finding count other than one, or on a Symbol other than TestSleepy, for the fixture's direct sleep.
 func TestSleepInTestRuleFlagsDirectCall(t *testing.T) {
 	unit := parseOne(t, "sleep_test.go", `package sample
 
@@ -30,6 +34,7 @@ func TestSleepy(t *testing.T) {
 }
 
 // TestSleepInTestRuleFlagsNestedSubtest verifies subtests and goroutines inside tests are reached.
+// t fails on any finding count other than one for the sleep inside the subtest's goroutine.
 func TestSleepInTestRuleFlagsNestedSubtest(t *testing.T) {
 	unit := parseOne(t, "sleep_test.go", `package sample
 
@@ -51,6 +56,7 @@ func TestSubtests(t *testing.T) {
 }
 
 // TestSleepInTestRuleFlagsHelperCall confirms private helpers in _test.go are in scope.
+// t requires exactly one finding for waitOnce, a helper that no test in the fixture calls.
 func TestSleepInTestRuleFlagsHelperCall(t *testing.T) {
 	unit := parseOne(t, "sleep_test.go", `package sample
 
@@ -66,8 +72,8 @@ func waitOnce() {
 	}
 }
 
-// TestSleepInTestRuleAcceptsBoundedPolling accepts sleeps only when the loop
-// has a finite bound, observable condition, and failure after timeout.
+// TestSleepInTestRuleAcceptsBoundedPolling checks a poll with a finite bound, observable condition and timeout failure raises no finding.
+// t fails on any finding for the deadline poll, whose ready check returns and whose timeout calls t.Fatalf.
 func TestSleepInTestRuleAcceptsBoundedPolling(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 
@@ -97,8 +103,8 @@ func TestPollReady(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleKeepsIncompletePollingFindings rejects polling loops that
-// are missing a timeout, observable condition, or failure path.
+// TestSleepInTestRuleKeepsIncompletePollingFindings keeps sleeps reported in polls that lack a finite bound or a failure after timeout.
+// The plain sleep before an assertion must flag too; t fails naming the first fixture test, in list order, that drew no finding.
 func TestSleepInTestRuleKeepsIncompletePollingFindings(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 
@@ -150,20 +156,19 @@ func TestStateComparisonIsNotFiniteBound(t *testing.T) {
 }
 `)
 	findings := SleepInTestRule{}.AnalyzeUnit(unit, Context{})
-	got := map[string]bool{}
+	flaggedSymbols := map[string]bool{}
 	for _, item := range findings {
-		got[item.Symbol] = true
+		flaggedSymbols[item.Symbol] = true
 	}
 	for _, want := range []string{"TestNoTimeout", "TestNoFailureAfterTimeout", "TestBlindSleepBeforeAssertion", "TestStateComparisonIsNotFiniteBound"} {
-		if !got[want] {
+		if !flaggedSymbols[want] {
 			t.Fatalf("%s should still flag; got %#v", want, findings)
 		}
 	}
 }
 
-// TestSleepInTestRuleRejectsContinueAsPollingExit confirms a polling loop whose
-// success branch only continues still flags the sleep: continue keeps iterating,
-// so the test is sleeping instead of synchronizing on the observed condition.
+// TestSleepInTestRuleRejectsContinueAsPollingExit confirms a polling loop whose success branch only continues still flags the sleep.
+// t requires one finding, because continue stays in the loop instead of leaving it once the condition is observed.
 func TestSleepInTestRuleRejectsContinueAsPollingExit(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 
@@ -211,6 +216,7 @@ func waitAlias() {
 }
 
 // TestSleepInTestRuleSkipsProductionFiles confirms the rule is scoped to _test.go.
+// t fails on any finding from the service.go fixture, where this test-quality rule must stay silent.
 func TestSleepInTestRuleSkipsProductionFiles(t *testing.T) {
 	unit := parseOne(t, "service.go", `package sample
 
@@ -226,7 +232,8 @@ func Wait() {
 	}
 }
 
-// TestSleepInTestRuleIgnoresShadowedReceiver verifies non-time receivers named "time" do not fire.
+// TestSleepInTestRuleIgnoresShadowedReceiver verifies a local value named time with its own Sleep method does not fire.
+// The fixture has no time import, so t checks that path only; a shadowed time in a file that also imports time is not covered here.
 func TestSleepInTestRuleIgnoresShadowedReceiver(t *testing.T) {
 	unit := parseOne(t, "shadow_test.go", `package sample
 
@@ -247,7 +254,8 @@ func TestShadow(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleIsDefaultEnabled asserts the rule ships enabled with parser capability.
+// TestSleepInTestRuleIsDefaultEnabled asserts the rule ships enabled with parser capability at advisory severity.
+// t reports each of those three Definition fields that differs from what the rule ships with.
 func TestSleepInTestRuleIsDefaultEnabled(t *testing.T) {
 	def := SleepInTestRule{}.Definition()
 	if !def.DefaultEnabled {
@@ -261,9 +269,8 @@ func TestSleepInTestRuleIsDefaultEnabled(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling ensures a sleep in a
-// goroutine spawned inside a bounded polling loop still flags: it is not the
-// loop's backoff, so accepting the loop must not whitelist nested-closure sleeps.
+// TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling ensures a sleep in a goroutine spawned inside a bounded polling loop still flags.
+// That sleep is not the loop's backoff, so t requires exactly one finding: accepting the loop must not whitelist nested-closure sleeps.
 func TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 
@@ -297,9 +304,8 @@ func TestPollWithGoroutineSleep(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleRejectsWallClockOnlyExit ensures a polling loop whose only
-// exit checks elapsed wall-clock time (time.Since) is not accepted: it is still
-// sleeping on the clock rather than synchronizing on the system under test.
+// TestSleepInTestRuleRejectsWallClockOnlyExit ensures a polling loop whose only exit checks elapsed wall-clock time (time.Since) is not accepted.
+// Such a loop still sleeps on the clock rather than synchronizing on the system under test, so t requires its sleep to flag.
 func TestSleepInTestRuleRejectsWallClockOnlyExit(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 
@@ -327,9 +333,8 @@ func TestWallClockPolling(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleRejectsNoProgressCounter ensures a loop whose counter never
-// advances (`i = i`) is not treated as a finite attempt bound, so its sleep still
-// flags instead of being accepted as bounded polling.
+// TestSleepInTestRuleRejectsNoProgressCounter ensures a loop whose counter never advances (i = i) is not treated as a finite attempt bound.
+// t requires the sleep to stay reported instead of being accepted as bounded polling.
 func TestSleepInTestRuleRejectsNoProgressCounter(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 
@@ -359,9 +364,8 @@ func TestNoProgressPolling(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleSkipsDeliberateSleeps covers the sleeps M02 measured as not
-// worth acting on: a fake-clock bubble, a test double's configured delay, a sleep
-// the test times itself, and bounded polls in observed forms.
+// TestSleepInTestRuleSkipsDeliberateSleeps covers sleeps the rule accepts as deliberate, and t requires each case to yield no finding.
+// Cases: a synctest fake-clock bubble, a test double's configured delay, a sleep the test times itself, and bounded polls in observed forms.
 func TestSleepInTestRuleSkipsDeliberateSleeps(t *testing.T) {
 	cases := map[string]string{
 		"synctest test bubble": `func TestBubble(t *testing.T) {
@@ -432,6 +436,7 @@ Loop:
 }
 
 // TestSleepInTestRuleKeepsLookalikeSleeps keeps each skipped shape's near miss reported.
+// t requires exactly one finding per case, so a skip shape must not widen enough to hide a nearby blind sleep.
 func TestSleepInTestRuleKeepsLookalikeSleeps(t *testing.T) {
 	cases := map[string]string{
 		"sleep before the bubble opens": `func TestBubble(t *testing.T) {
@@ -499,6 +504,7 @@ func TestSleepInTestRuleKeepsLookalikeSleeps(t *testing.T) {
 }
 
 // sleepFixture wraps one case body in a test file importing every package the cases name.
+// It returns the fixture source: the package sample clause, imports, slowWriter type and scan, probe and ready stubs, then body and a newline.
 func sleepFixture(body string) string {
 	return `package sample
 

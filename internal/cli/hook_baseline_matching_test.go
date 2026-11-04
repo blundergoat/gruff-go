@@ -1,6 +1,7 @@
 // Package cli tests count-aware baseline filtering in the agent hook.
-// Its journeys mirror duplicate and shifted findings a user can create while
-// editing code, keeping hook JSON aligned with ordinary baseline analysis.
+//
+// Its journeys mirror duplicate and shifted findings a user can create while editing code.
+// They keep hook JSON aligned with ordinary baseline analysis.
 package cli
 
 import (
@@ -10,9 +11,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestHookBaselineConsumesIdentityPairsOneToOne checks that one prior hook
-// finding hides only one current occurrence, and that a count is spent rather
-// than matched by membership.
+// TestHookBaselineConsumesIdentityPairsOneToOne checks that one prior hook finding hides only one current occurrence.
+//
+// A count is spent rather than matched by membership, so one prior finding against two exact duplicates leaves one visible.
+// A failure means gruff-go hook would hide a new duplicate, or resurface a finding the user already reviewed.
 func TestHookBaselineConsumesIdentityPairsOneToOne(t *testing.T) {
 	exactFinding := hookBaselineTestFinding("duplicate finding", 10)
 	shiftedFinding := hookBaselineTestFinding("duplicate finding", 20)
@@ -31,6 +33,7 @@ func TestHookBaselineConsumesIdentityPairsOneToOne(t *testing.T) {
 		Location: &finding.Location{Line: 820},
 		Metadata: map[string]any{"lines": 820, "threshold": 500},
 	}.WithFingerprint()
+	// A fresh scan would recompute the fingerprint after rewording; this fixture keeps the old one, so that change is outside this case.
 	rewordedSymbolFinding := exactFinding
 	rewordedSymbolFinding.Message = "the same duplicate finding, reworded"
 
@@ -84,7 +87,7 @@ func TestHookBaselineConsumesIdentityPairsOneToOne(t *testing.T) {
 				t.Fatalf("prior base: %v", err)
 			}
 			visibleFindings, _ := hookFindings(testCase.currentFindings, nil, diff.ChangedLines{}, false, hookBaseline)
-			// The hook UI should expose only occurrences beyond the reviewed count.
+			// Only occurrences beyond the reviewed count may stay visible in gruff-go hook output.
 			if len(visibleFindings) != testCase.expectedVisibleFinding {
 				t.Fatalf("visible findings = %d, want %d: %#v", len(visibleFindings), testCase.expectedVisibleFinding, visibleFindings)
 			}
@@ -114,6 +117,9 @@ func TestHookNeverHidesASensitiveFinding(t *testing.T) {
 
 // hookBaselineTestFinding creates one same-subject finding at a chosen line.
 // Different lines model separate declarations of one symbol name.
+//
+// message becomes the finding message and lineNumber its location line, while rule ID test.duplicate, file duplicate.go and symbol Run stay fixed.
+// It returns that finding after WithFingerprint, always with a non-nil Location.
 func hookBaselineTestFinding(message string, lineNumber int) finding.Finding {
 	return finding.Finding{
 		RuleID:   "test.duplicate",

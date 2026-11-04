@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements shared parser-only detection of request-controlled
-// expressions, used by the request-driven application-security sink rules.
+//
+// This file implements shared parser-only detection of request-controlled expressions for the request-driven application-security sink rules.
+// exprHasRequest also gives a short source label, such as r.FormValue, for finding metadata.
 package rule
 
 import (
@@ -10,10 +11,10 @@ import (
 	"unicode"
 )
 
-// requestTaintedMembers names the *http.Request fields and methods that expose
-// caller-controlled input. An access rooted at a request parameter that passes
-// through one of these members is treated as request-controlled; benign members
-// such as Method, Context, or RemoteAddr are intentionally excluded.
+// requestTaintedMembers names the request fields, methods and nested URL members that expose caller-controlled input.
+//
+// An access rooted at a request parameter that passes through one of these members is treated as request-controlled.
+// Benign members such as Method, Context or RemoteAddr are intentionally excluded, so reading only them is not request input.
 var requestTaintedMembers = map[string]bool{
 	"URL": true, "RawQuery": true, "Path": true, "RawPath": true,
 	"Fragment": true, "Opaque": true, "RequestURI": true, "Host": true,
@@ -23,9 +24,10 @@ var requestTaintedMembers = map[string]bool{
 	"PathValue": true, "Cookie": true, "Referer": true, "UserAgent": true,
 }
 
-// requestTaintScope carries the per-function evidence shared by request-driven
-// rules: lexical request and taint bindings, imported builder aliases, and URL
-// parse results that preserve caller-controlled destinations.
+// requestTaintScope carries the per-function evidence shared by request-driven rules.
+//
+// It holds lexical request and taint bindings, helper import aliases, and parsed-URL bindings that keep caller-controlled destinations.
+// A new scope is built for each handler body, so taint found in one handler never marks values in another.
 type requestTaintScope struct {
 	functionType      *ast.FuncType
 	requestNames      map[string]bool
@@ -39,20 +41,21 @@ type requestTaintScope struct {
 	parsedURLBindings map[*ast.Object]bool
 	ioPkgs            map[string]bool
 	ioutilPkgs        map[string]bool
-	// firstTaintPos records, per tainted binding, the position of the earliest
-	// assignment that introduced request-controlled data. Sinks consult it so a
-	// value is only treated as tainted at a sink that follows its taint, not at
-	// an earlier use that precedes a later request assignment.
+	// firstTaintPos records, per tainted binding, the position of the earliest assignment that introduced request-controlled data.
+	// Sinks consult it so a value counts as tainted only at a sink after its taint, not at a use before a later request assignment.
 	firstTaintPos map[*ast.Object]token.Pos
 	// body is the analysed function body. Sinks walk it to find writes that
 	// replace a tainted value with request-free data before the sink runs.
 	body *ast.BlockStmt
 }
 
-// forEachRequestFunc invokes visit for every function body in the file that
-// declares an *http.Request parameter, covering both top-level handlers and
-// closures registered with mux.HandleFunc. Each body is analysed under its own
-// bounded same-function scope.
+// forEachRequestFunc invokes visit for every function body in file with a named, non-blank *http.Request parameter.
+//
+// This covers top-level handlers and closures such as those registered with mux.HandleFunc; a nested handler closure is visited separately.
+// Each body gets a separate taint scope; sanitizer-call searches also inspect nested closures and can count calls that never execute.
+//
+// httpPkgs holds the net/http import names of file, used to recognise request parameters; declarations without a body are skipped.
+// visit receives each scope together with the body it was built from.
 func forEachRequestFunc(file *ast.File, httpPkgs map[string]bool, visit func(scope *requestTaintScope, body *ast.BlockStmt)) {
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch fn := node.(type) {
@@ -72,9 +75,11 @@ func forEachRequestFunc(file *ast.File, httpPkgs map[string]bool, visit func(sco
 	})
 }
 
-// newRequestTaintScope builds request-controlled evidence for one function body,
-// given the file's net/http aliases. It returns ok=false when the function has
-// no *http.Request parameter so callers skip cheaply.
+// newRequestTaintScope builds the request-controlled evidence for one function body, given the file's net/http aliases.
+//
+// funcType is searched for request parameters using httpPkgs, and file supplies the helper package import aliases the scope recognises.
+// It returns nil and false when no named, non-blank *http.Request parameter is found or body is nil, so callers skip that body.
+// Otherwise it returns the scope and true, with collectTaintedVars already run over body.
 func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.BlockStmt, httpPkgs map[string]bool) (*requestTaintScope, bool) {
 	requestNames, requestBindings := requestParameters(funcType, httpPkgs)
 	if len(requestNames) == 0 || body == nil {
@@ -100,9 +105,11 @@ func newRequestTaintScope(file *ast.File, funcType *ast.FuncType, body *ast.Bloc
 	return scope, true
 }
 
-// requestParameters returns the names and lexical bindings declared as
-// *http.Request parameters. Names support sanitizer filtering; bindings prevent
-// a shadowed local from inheriting request-control status.
+// requestParameters returns the names and lexical bindings of funcType's *http.Request parameters.
+//
+// Names support sanitizer filtering; bindings stop a shadowed local from inheriting request-control status.
+// Parameters of funcType are matched against httpPkgs, the file's import names for net/http, and blank names are skipped.
+// A nil funcType or parameter list gives two empty, non-nil maps; a name without a resolved object is recorded only in the names map.
 func requestParameters(funcType *ast.FuncType, httpPkgs map[string]bool) (map[string]bool, map[*ast.Object]bool) {
 	requestNames := map[string]bool{}
 	requestBindings := map[*ast.Object]bool{}
@@ -110,7 +117,7 @@ func requestParameters(funcType *ast.FuncType, httpPkgs map[string]bool) (map[st
 	if funcType == nil || funcType.Params == nil {
 		return requestNames, requestBindings
 	}
-	// Record every request parameter the handler can read from.
+	// A function with no named, non-blank *http.Request parameter leaves both maps empty, so forEachRequestFunc never visits it.
 	for _, field := range funcType.Params.List {
 		// Other parameter types do not expose caller-controlled HTTP input.
 		if !isHTTPRequestPointer(field.Type, httpPkgs) {
@@ -130,13 +137,17 @@ func requestParameters(funcType *ast.FuncType, httpPkgs map[string]bool) (map[st
 	return requestNames, requestBindings
 }
 
-// collectTaintedVars records locals whose value derives from request-controlled
-// input, propagating only through string builders, conversions, and concatenation
-// so passing a value into an unknown helper (which may sanitise it) does not taint
-// the result. Two passes settle simple out-of-order assignments.
+// collectTaintedVars records locals in body whose value derives from request-controlled input.
+//
+// Taint flows only through the transparent operations directRequestExpr knows, such as string builders, conversions and concatenation.
+// Passing a value into an unknown helper, which may sanitise it, leaves the result untainted.
+//
+// body is walked twice so simple out-of-order assignments settle, without entering nested function literals.
+// Only plain identifier targets of assignments and value specs are marked.
 func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 	for pass := 0; pass < 2; pass++ {
 		ast.Inspect(body, func(node ast.Node) bool {
+			// Locals assigned inside a closure are not tracked here; a closure with its own request parameter gets its own scope.
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
@@ -144,6 +155,7 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 			case *ast.AssignStmt:
 				for i, lhs := range stmt.Lhs {
 					ident, ok := lhs.(*ast.Ident)
+					// With one call feeding several targets, as in data, err := io.ReadAll(r.Body), only the first target can become tainted.
 					if !ok || ident.Name == "_" || i >= len(stmt.Rhs) {
 						continue
 					}
@@ -173,7 +185,10 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 }
 
 // directRequestExpr follows request input through known transparent operations.
-// Syntax-only URL/path work stays visible; an arbitrary helper may sanitize it.
+//
+// It reports whether expr is a request access or tainted local, or reaches one through parentheses, a dereference, or an addition operand.
+// Conversions, path Clean, URL syntax parses, string builders and reader drains pass taint through, as does stringifying a parsed request URL.
+// Any other call, such as an unknown helper that may sanitize its argument, reports false.
 func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 	switch e := expr.(type) {
 	case *ast.ParenExpr:
@@ -217,9 +232,10 @@ func (s *requestTaintScope) directRequestExpr(expr ast.Expr) bool {
 	return false
 }
 
-// pathCleanArg returns the input to path.Clean/filepath.Clean. Clean normalises
-// syntax but does not remove attacker control, so request taint must flow through
-// it for callers that need a later containment check.
+// pathCleanArg returns the argument of a path.Clean or filepath.Clean call, so request taint flows through Clean.
+//
+// Clean normalises syntax but does not remove attacker control: it keeps a leading ../, so callers still need a containment check.
+// call must have exactly one argument and a Clean selector on an unshadowed path or filepath import; otherwise it returns nil and false.
 func (s *requestTaintScope) pathCleanArg(call *ast.CallExpr) (ast.Expr, bool) {
 	if len(call.Args) != 1 {
 		return nil, false
@@ -235,10 +251,13 @@ func (s *requestTaintScope) pathCleanArg(call *ast.CallExpr) (ast.Expr, bool) {
 	return call.Args[0], true
 }
 
-// exprHasRequest walks expr for any request access or tainted local and returns a
-// short source label for finding metadata. Unlike directRequestExpr it descends
-// into arbitrary calls, so callers pair it with sanitizer checks to suppress
-// values that a recognised sanitiser already cleaned.
+// exprHasRequest walks expr for any request access or tainted local and returns a short source label for finding metadata.
+//
+// Unlike directRequestExpr it descends into arbitrary calls; some callers suppress findings based on sanitizer call names.
+// A request access always counts; a tainted local counts at a valid sinkPos only if tainted earlier and not cleared first.
+// Clearing needs a dominating request-free write, and an invalid sinkPos skips both checks.
+//
+// The label is the request access, such as r.FormValue, or the local's name; an empty label and false mean expr holds neither.
 func (s *requestTaintScope) exprHasRequest(expr ast.Expr, sinkPos token.Pos) (string, bool) {
 	label := ""
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -262,8 +281,10 @@ func (s *requestTaintScope) exprHasRequest(expr ast.Expr, sinkPos token.Pos) (st
 	return label, label != ""
 }
 
-// requestAccessLabel reports whether expr reads request-controlled data and, if
-// so, returns a short root.member label (for example "r.FormValue").
+// requestAccessLabel reports whether expr reads request-controlled data and, if so, returns a short root.member label such as r.FormValue.
+//
+// A requestTaintedMembers entry anywhere in the chain counts, so r.URL.Query() is request input while r.Context() is not.
+// The label names the first member after the request parameter, so r.URL.Query().Get(...) gives r.URL; it is empty when the result is false.
 func (s *requestTaintScope) requestAccessLabel(expr ast.Expr) (string, bool) {
 	root, members := flattenChain(expr)
 	// A bare request identifier does not expose a caller-controlled member.
@@ -281,9 +302,10 @@ func (s *requestTaintScope) requestAccessLabel(expr ast.Expr) (string, bool) {
 	return "", false
 }
 
-// isRequestIdentifier reports whether an identifier is the handler's request
-// parameter. Resolved syntax uses lexical identity; malformed partial Go falls
-// back to the declared request name because no binding is available.
+// isRequestIdentifier reports whether identifier is the handler's request parameter; a nil identifier reports false.
+//
+// Resolved syntax uses lexical identity, so a local that shadows the request name is not request input.
+// Malformed partial Go falls back to the declared request name because no binding is available.
 func (s *requestTaintScope) isRequestIdentifier(identifier *ast.Ident) bool {
 	// Missing syntax cannot identify a request parameter.
 	if identifier == nil {
@@ -296,9 +318,8 @@ func (s *requestTaintScope) isRequestIdentifier(identifier *ast.Ident) bool {
 	return s.requestNames[identifier.Name]
 }
 
-// isStringBuilderCall reports whether call is one of the concatenating/formatting
-// calls (fmt.Sprint*, strings.Join, path[/filepath].Join) that carry taint from
-// their arguments into the result.
+// isStringBuilderCall reports whether call is fmt.Sprintf, Sprint or Sprintln, or strings, path or filepath Join, on an unshadowed import.
+// A true result carries taint from any argument into the built string; every other call, including methods on locals, reports false.
 func (s *requestTaintScope) isStringBuilderCall(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -319,9 +340,10 @@ func (s *requestTaintScope) isStringBuilderCall(call *ast.CallExpr) bool {
 	return false
 }
 
-// isReaderConsumer reports whether call drains a reader into bytes via
-// io.ReadAll, io.ReadFull, or ioutil.ReadAll, so reading a request body carries
-// the request taint onto the resulting bytes.
+// isReaderConsumer reports whether call is io.ReadAll, io.ReadFull or ioutil.ReadAll on an unshadowed import; any other call reports false.
+//
+// A true result lets reading a request body carry the request taint onto the resulting bytes.
+// For io.ReadFull that marks the first assignment target, the byte count, while the filled buffer stays untainted.
 func (s *requestTaintScope) isReaderConsumer(call *ast.CallExpr) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -340,10 +362,10 @@ func (s *requestTaintScope) isReaderConsumer(call *ast.CallExpr) bool {
 	return false
 }
 
-// isImportedPackageIdentifier reports whether identifier names one of the given
-// import aliases and still refers to that import rather than to a local
-// declaration. go/parser leaves an import reference unresolved, so a resolved
-// identifier is a shadow: `http := localClient{}` must not read as net/http.
+// isImportedPackageIdentifier reports whether identifier names one of packageAliases and still refers to that import.
+//
+// go/parser leaves an import reference unresolved, so a resolved identifier is a shadow: http := localClient{} must not read as net/http.
+// packageAliases holds the accepted import names; a nil identifier, or one resolved to a local object, reports false.
 func isImportedPackageIdentifier(identifier *ast.Ident, packageAliases map[string]bool) bool {
 	// A resolved identifier is a declared shadow, not the imported package.
 	if identifier == nil || identifier.Obj != nil {
@@ -352,8 +374,10 @@ func isImportedPackageIdentifier(identifier *ast.Ident, packageAliases map[strin
 	return packageAliases[identifier.Name]
 }
 
-// flattenChain reduces a selector/call/index chain to its root identifier and
-// ordered member names. Keeping the identifier preserves lexical binding data.
+// flattenChain reduces a selector, call or index chain to its root identifier and ordered member names, keeping lexical binding data.
+//
+// It returns the root of expr and its member names from the root outward, so r.URL.Query() yields r with URL then Query.
+// A chain with no identifier root gives a nil root but still returns any selector names above it, and a bare identifier gives a nil member slice.
 func flattenChain(expr ast.Expr) (*ast.Ident, []string) {
 	switch e := expr.(type) {
 	case *ast.Ident:
@@ -376,8 +400,8 @@ func flattenChain(expr ast.Expr) (*ast.Ident, []string) {
 	}
 }
 
-// conversionArg returns the inner expression of a string(x) or []byte(x)
-// conversion so taint propagates across the common byte/string round-trips.
+// conversionArg returns the inner expression of a string(x) or byte-slice conversion, so taint survives byte and string round-trips.
+// call needs exactly one argument and the identifier string or a byte slice or array type as its function; otherwise it returns nil and false.
 func conversionArg(call *ast.CallExpr) (ast.Expr, bool) {
 	if len(call.Args) != 1 {
 		return nil, false
@@ -395,8 +419,10 @@ func conversionArg(call *ast.CallExpr) (ast.Expr, bool) {
 	return nil, false
 }
 
-// identNames collects every identifier name appearing in expr, used to check
-// whether a later sanitiser call references the same value.
+// identNames collects every identifier name in expr, so a later sanitiser call can be matched to the same value.
+//
+// It returns a non-nil set of those names, excluding the blank identifier, and an empty set when expr has none.
+// Package and member names count too, so filepath.Join(dir, name) gives filepath, Join, dir and name.
 func identNames(expr ast.Expr) map[string]bool {
 	names := map[string]bool{}
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -408,12 +434,12 @@ func identNames(expr ast.Expr) map[string]bool {
 	return names
 }
 
-// sanitizerValueNames returns the identifiers in arg that a same-function
-// sanitizer must reference to count as evidence, excluding the bare *http.Request
-// parameter name. A validator that merely touches the request receiver (an auth or
-// CSRF check such as validate(r)) does not prove the specific URL/path value at the
-// sink was constrained, so dropping the receiver name avoids suppressing a real
-// finding because of unrelated request handling.
+// sanitizerValueNames returns the identifiers in arg that a sanitizer call must reference to count as evidence for this sink.
+//
+// The *http.Request parameter names are removed, so an auth or CSRF check such as validate(r) cannot suppress a real finding.
+// Such a check does not prove that the specific URL or path value at the sink was constrained.
+//
+// The result is empty when arg names nothing but the request, and bodyHasSanitizingCall then finds no sanitizer evidence.
 func (s *requestTaintScope) sanitizerValueNames(arg ast.Expr) map[string]bool {
 	names := identNames(arg)
 	for requestName := range s.requestNames {
@@ -422,9 +448,13 @@ func (s *requestTaintScope) sanitizerValueNames(arg ast.Expr) map[string]bool {
 	return names
 }
 
-// bodyHasSanitizingCall reports whether the function body contains a call whose
-// name matches one of words and that references one of the value identifiers,
-// treating a recognised validator/cleaner as same-function sanitizer evidence.
+// bodyHasSanitizingCall reports whether body contains a call whose name matches one of words and that references one of valueNames.
+//
+// A match counts as sanitizer evidence, which lets a recognised validator or cleaner of the sink's value suppress the finding.
+// The walk also enters nested function literals, so a matching call inside a closure that never runs still counts.
+//
+// An empty valueNames reports false at once, and when beforePos is valid only calls positioned before it count, so a later cleaner is ignored.
+// With non-empty valueNames and words, a call name in body that shrinks in bytes when lowercased can make callNameMatchesAny panic.
 func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, words []string, beforePos token.Pos) bool {
 	if len(valueNames) == 0 {
 		return false
@@ -438,9 +468,8 @@ func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, word
 		if !ok || !callNameMatchesAny(call, words) {
 			return true
 		}
-		// A validator/cleaner only cleanses the value if it runs before the sink;
-		// a call positioned at or after beforePos is evidence for a later use, not
-		// for the sink under inspection.
+		// A validator or cleaner only cleanses the value if it runs before the sink; a call at or after beforePos does not count for this sink.
+		// Before means earlier in the source, so a validator in a branch that never reaches the sink still counts.
 		if beforePos.IsValid() && call.Pos() >= beforePos {
 			return true
 		}
@@ -453,9 +482,11 @@ func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, word
 	return found
 }
 
-// argHasInlineSanitizer reports whether the request-controlled value inside arg
-// is wrapped directly by a sanitiser-named call, covering the inline
-// sanitize(r.FormValue(...)) shape that carries no intermediate variable.
+// argHasInlineSanitizer reports whether any sanitiser-named call inside arg wraps request-controlled input, as in sanitize(r.FormValue(...)).
+//
+// This covers the inline shape that carries no intermediate variable; one wrapped input is enough, even beside an unwrapped request value.
+// A call in arg counts when its name matches one of words and exprHasRequest finds request-controlled input inside it.
+// exprHasRequest gets token.NoPos, an invalid sinkPos, so a tainted local counts without its ordering checks.
 func (s *requestTaintScope) argHasInlineSanitizer(arg ast.Expr, words []string) bool {
 	found := false
 	ast.Inspect(arg, func(node ast.Node) bool {
@@ -475,11 +506,13 @@ func (s *requestTaintScope) argHasInlineSanitizer(arg ast.Expr, words []string) 
 	return found
 }
 
-// callNameMatchesAny reports whether any camelCase/snake_case token of the call's
-// function name begins with one of the sanitizer word stems. Matching the stems at
-// token boundaries (rather than as a raw substring) keeps stems like "sanit" →
-// "sanitize" and "islocal" → "IsLocal" while refusing to read "safe" out of
-// "unsafe" or "base" out of "database".
+// callNameMatchesAny reports whether any camelCase or snake_case token of call's function name starts with a sanitizer stem in words.
+//
+// Token-boundary matching lets sanit match sanitize and islocal match IsLocal, but never reads safe out of unsafe or base out of database.
+// Each stem in words is compared unchanged against the lowercased name, so a stem must itself be lowercase to match.
+//
+// A call for which callName finds no name reports false.
+// A name that shrinks in bytes when lowercased, such as one with a Kelvin sign, can panic at a later token offset when words is non-empty.
 func callNameMatchesAny(call *ast.CallExpr, words []string) bool {
 	name := callName(call)
 	if name == "" {
@@ -496,10 +529,10 @@ func callNameMatchesAny(call *ast.CallExpr, words []string) bool {
 	return false
 }
 
-// identifierTokenStarts returns the byte offsets at which a new token begins in an
-// identifier: the start of the name, the character after a separator (_, -, .),
-// and each lower/digit → upper camelCase transition. Sanitizer stems are tested
-// only at these offsets so they anchor to word boundaries.
+// identifierTokenStarts returns the byte offsets where a new token begins in name, so sanitizer stems anchor to word boundaries.
+//
+// Tokens start at the name's first character, after an underscore, hyphen or dot, and at each lower-or-digit to upper camelCase step.
+// The result is nil for an empty name or one made only of separators.
 func identifierTokenStarts(name string) []int {
 	var starts []int
 	prevSep := true
