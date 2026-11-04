@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the docs.config-field-comment rule across path scoping
-// and field shapes (exported, unexported, embedded, no exported fields).
+//
+// This file exercises the docs.config-field-comment rule across path scoping and field shapes (exported, unexported, embedded, no exported fields).
+// Users opt files in with includePaths in the rule's options; a failure here means analyse would flag or skip the wrong config struct fields.
 package rule
 
 import (
@@ -51,11 +52,10 @@ type Config struct {
 	}
 }
 
-// TestConfigFieldCommentRuleInlineCommentPasses confirms a same-line trailing
-// comment counts as field documentation. Go's AST attaches `// inline` after a
-// field declaration to field.Comment rather than field.Doc, and the rule used
-// to only check field.Doc - false-flagging every project that prefers trailing
-// inline docs in its config structs.
+// TestConfigFieldCommentRuleInlineCommentPasses confirms a same-line trailing comment counts as field documentation.
+//
+// Go's AST attaches a trailing comment to field.Comment rather than field.Doc.
+// Checking both keeps a field documented with a trailing comment from producing a false finding.
 func TestConfigFieldCommentRuleInlineCommentPasses(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config
 
@@ -195,10 +195,12 @@ type Config struct {
 }
 `)
 	defaults := Defaults()
+	// With includePaths unset, docs.config-field-comment must stay silent even for an undocumented field inside internal/config.
 	if findings := defaults.Analyze([]parser.Unit{unit}, Context{}); containsRuleID(findings, "docs.config-field-comment") {
 		t.Fatalf("default findings = %#v, want docs.config-field-comment quiet without includePaths", findings)
 	}
 
+	// Passing includePaths in the rule's options is the user's opt-in; with it set, the same undocumented Config.Name must be reported.
 	registry, err := DefaultsConfigured(Config{
 		Options: map[string]map[string]any{
 			"docs.config-field-comment": {

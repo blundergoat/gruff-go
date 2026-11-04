@@ -1,10 +1,13 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the identifier-quality and empty-test rules.
+//
+// This file exercises the naming.identifier-quality and empty-test rules against inline fixture sources.
+// A failure here means users would see placeholder or empty-test findings on the wrong code, or miss them on the right code.
 package rule
 
 import "testing"
 
-// TestIdentifierQualityFlagsPlaceholders verifies short-variable declarations matching the placeholder list are flagged.
+// TestIdentifierQualityFlagsPlaceholders verifies short-variable declarations matching the default placeholder list are flagged.
+// foo and tmp must fire while user must not; a failure means placeholder findings land on real names or miss throwaway ones.
 func TestIdentifierQualityFlagsPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -37,7 +40,8 @@ func load() int    { return 3 }
 	}
 }
 
-// TestIdentifierQualityAllowsRemovedDefaultPlaceholders confirms data, info, and qux are no longer default placeholders.
+// TestIdentifierQualityAllowsRemovedDefaultPlaceholders confirms data, info, and qux are not default placeholders.
+// A failure means data, info or qux draws an unwanted finding under the default placeholder list.
 func TestIdentifierQualityAllowsRemovedDefaultPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -60,7 +64,8 @@ func load() int    { return 3 }
 	}
 }
 
-// TestIdentifierQualityIgnoresTestFiles ensures test files are skipped to avoid noisy fixture identifiers.
+// TestIdentifierQualityIgnoresTestFiles runs the rule on a file_test.go fixture and expects no findings.
+// Its only local is data, which is not a default placeholder, so the test passes whether or not test files are skipped.
 func TestIdentifierQualityIgnoresTestFiles(t *testing.T) {
 	unit := parseOne(t, "pkg/file_test.go", `package pkg
 
@@ -86,6 +91,7 @@ func TestSomething(t *testing.T) {
 }
 
 // TestIdentifierQualityHonoursConfiguredPlaceholders verifies user-supplied placeholder lists replace the defaults.
+// A failure means configured names are not flagged, or default names such as tmp still fire alongside them.
 func TestIdentifierQualityHonoursConfiguredPlaceholders(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -104,7 +110,7 @@ func compute() int { return 1 }
 func lookup() int  { return 2 }
 func load() int    { return 3 }
 `)
-	// Override default list - should flag the configured names but NOT `tmp`.
+	// A configured list replaces the defaults, so tmp, a default placeholder, must stop firing.
 	rule := IdentifierQualityRule{PlaceholderNames: []string{"data", "info", "qux"}}
 	findings := rule.AnalyzeUnit(unit, Context{})
 	names := map[string]bool{}
@@ -120,6 +126,7 @@ func load() int    { return 3 }
 }
 
 // TestIdentifierQualityIsDefaultEnabled asserts the rule ships enabled by default.
+// A failure means a plain gruff-go analyse run would no longer report placeholder names.
 func TestIdentifierQualityIsDefaultEnabled(t *testing.T) {
 	if !(IdentifierQualityRule{}).Definition().DefaultEnabled {
 		t.Error("naming.identifier-quality must be default-enabled")
@@ -127,6 +134,7 @@ func TestIdentifierQualityIsDefaultEnabled(t *testing.T) {
 }
 
 // TestEmptyTestRuleFlagsEmptyBody checks the empty-test rule emits a single finding for an empty test body.
+// TestPopulated must stay silent; a failure means users see the finding on real tests or miss it on empty ones.
 func TestEmptyTestRuleFlagsEmptyBody(t *testing.T) {
 	unit := parseOne(t, "pkg/sample_test.go", `package pkg
 
@@ -148,6 +156,7 @@ func TestPopulated(t *testing.T) {
 }
 
 // TestEmptyTestRuleIgnoresNonTestFiles confirms non-test files do not trigger empty-test findings.
+// The fixture declares TestEmpty in sample.go, so a failure means production functions named Test-something get flagged.
 func TestEmptyTestRuleIgnoresNonTestFiles(t *testing.T) {
 	unit := parseOne(t, "pkg/sample.go", `package pkg
 
@@ -159,7 +168,8 @@ func TestEmpty() {
 	}
 }
 
-// TestTestQualityRulesDefaultEnabled asserts all test-quality rules ship enabled by default.
+// TestTestQualityRulesDefaultEnabled asserts the empty-test and identifier-quality rules both ship enabled by default.
+// A failure names the rule ID that a plain gruff-go analyse run would silently skip.
 func TestTestQualityRulesDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		EmptyTestRule{}.Definition(),

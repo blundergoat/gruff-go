@@ -1,6 +1,6 @@
-// Package finding tests cover the FailThreshold gate vocabulary, parser, and
-// default helper. They guard the contract M02 wires into the CLI consumers
-// and M03 wires into the dashboard.
+// Package finding tests cover the FailThreshold gate behind --fail-on: its four-value vocabulary, its parser and the per-command defaults.
+//
+// The CLI commands and the dashboard read these gates; a failure means a run could gate on the wrong severity or accept an unlisted value.
 package finding
 
 import (
@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// TestParseFailThresholdAcceptsCanonicalValues asserts every canonical value
-// round-trips. Locks the four-value vocabulary the wording brainstorm settled.
+// TestParseFailThresholdAcceptsCanonicalValues checks that advisory, warning, error and none each parse to their FailThreshold constant.
+// A failure means a documented --fail-on value is rejected or parsed as the wrong threshold.
 func TestParseFailThresholdAcceptsCanonicalValues(t *testing.T) {
 	cases := []struct {
 		input string
@@ -32,9 +32,8 @@ func TestParseFailThresholdAcceptsCanonicalValues(t *testing.T) {
 	}
 }
 
-// TestParseFailThresholdRejectsLegacyAndJunk asserts no aliasing of legacy
-// severity names or rejected off-switch names. Per no-legacy-compat: a user
-// who copies an old "medium" config in must see an error, not a silent map.
+// TestParseFailThresholdRejectsLegacyAndJunk checks that legacy severity names, rejected off-switch names, wrong casing and typos fail to parse.
+// Per no-legacy-compat, a user who copies an old "medium" config in must see an error listing the four accepted values, not a silent map.
 func TestParseFailThresholdRejectsLegacyAndJunk(t *testing.T) {
 	rejected := []string{
 		// Pre-ADR-009 severity names (5-bucket model).
@@ -53,6 +52,7 @@ func TestParseFailThresholdRejectsLegacyAndJunk(t *testing.T) {
 			continue
 		}
 		msg := err.Error()
+		// The error is what the user reads after a bad value, so it must name every value they can use instead.
 		for _, want := range []string{"advisory", "warning", "error", "none"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("ParseFailThreshold(%q) error %q missing accepted value %q",
@@ -62,10 +62,10 @@ func TestParseFailThresholdRejectsLegacyAndJunk(t *testing.T) {
 	}
 }
 
-// TestFailThresholdIsTriggeredBy locks the four trigger semantics: None never,
-// Advisory always (for any valid Severity), Warning at warning+, Error at
-// error only. The 12-case matrix exhaustively covers every (threshold,
-// severity) pair so any future Severity addition will fail noisily.
+// TestFailThresholdIsTriggeredBy locks which finding severities trigger each --fail-on threshold.
+//
+// None never triggers, advisory triggers on every valid severity, warning on warning or error, and error on error only.
+// The table covers every current pair; add rows for a new Severity, because the table cannot detect an omission.
 func TestFailThresholdIsTriggeredBy(t *testing.T) {
 	cases := []struct {
 		threshold FailThreshold
@@ -98,9 +98,8 @@ func TestFailThresholdIsTriggeredBy(t *testing.T) {
 	}
 }
 
-// TestFailThresholdIsTriggeredByRejectsInvalidSeverity asserts that an invalid
-// Severity value never triggers regardless of threshold. Defensive against a
-// future caller passing an empty or unknown Severity by mistake.
+// TestFailThresholdIsTriggeredByRejectsInvalidSeverity asserts that an invalid Severity, such as legacy "medium", never triggers a threshold.
+// Defensive against a future caller passing an empty or unknown Severity by mistake.
 func TestFailThresholdIsTriggeredByRejectsInvalidSeverity(t *testing.T) {
 	invalid := Severity("medium") // legacy 5-bucket name, post-ADR-009 invalid
 	for _, threshold := range []FailThreshold{
@@ -113,10 +112,10 @@ func TestFailThresholdIsTriggeredByRejectsInvalidSeverity(t *testing.T) {
 	}
 }
 
-// TestDefaultFailThresholdFor locks the user-philosophy defaults:
-// analyse/summary fail on any finding (gating commands), report/dashboard
-// never fail (artifact generators). Unknown command names fall back to
-// Advisory - the conservative gating choice.
+// TestDefaultFailThresholdFor locks the default fail threshold each command starts from.
+//
+// analyse defaults to advisory and fails on any finding; summary, report and dashboard default to none and never fail on findings.
+// An unknown or empty command name falls back to advisory, the conservative gating choice.
 func TestDefaultFailThresholdFor(t *testing.T) {
 	cases := []struct {
 		cmd  string
@@ -138,8 +137,7 @@ func TestDefaultFailThresholdFor(t *testing.T) {
 	}
 }
 
-// TestFailThresholdValid asserts Valid is consistent with the parser. Catches
-// drift between ParseFailThreshold's rejection set and Valid's acceptance set.
+// TestFailThresholdValid checks that Valid accepts the four canonical thresholds and rejects empty, legacy, off-switch and wrongly cased values.
 func TestFailThresholdValid(t *testing.T) {
 	valid := []FailThreshold{
 		FailThresholdAdvisory, FailThresholdWarning,

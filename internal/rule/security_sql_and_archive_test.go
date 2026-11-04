@@ -1,9 +1,14 @@
-// Package rule tests the archive security rule.
+// Package rule tests the archive path traversal rule against inline extraction code.
+//
+// Each case parses one archive.go source and checks how many archive findings the rule reports.
 package rule
 
 import "testing"
 
-// TestArchivePathTraversalRule covers archive entry joins and obvious containment suppressions.
+// TestArchivePathTraversalRule checks that joining an archive entry name onto a destination path is flagged as a zip-slip risk.
+//
+// A join passed through Clean and a prefix check stays quiet, but that check does not cover a separately named join in the same function.
+// Files without an archive import, fixed names and entry.Name() calls stay quiet.
 func TestArchivePathTraversalRule(t *testing.T) {
 	tests := []struct {
 		name string

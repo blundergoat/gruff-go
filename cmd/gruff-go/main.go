@@ -6,10 +6,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/cli"
 )
 
-// main keeps the process entrypoint a one-line delegation to cli.Main so the
-// CLI can be driven directly from tests (passing fake args/stdout/stderr)
-// instead of having to spawn a subprocess; everything interesting lives in the
-// cli package.
+// main is the process entrypoint for every gruff-go subcommand, such as analyse, hook, baseline and dashboard.
+//
+// It passes the arguments after the program name to cli.Main and exits with the code it returns, which the shell or CI job then sees.
+// Keeping this a one-line delegation lets tests drive cli.Main directly with fake args, stdout and stderr instead of spawning a subprocess.
 func main() {
 	os.Exit(cli.Main(os.Args[1:], os.Stdout, os.Stderr))
 }

@@ -1,9 +1,14 @@
 // Package rule tests parser-only cognitive complexity.
+//
+// This file feeds CognitiveComplexityRule one deeply nested function and checks that a user who sets a low limit sees one finding on it.
+// A failure here means an analyse run would miss or misreport the complexity finding for nested if, for and switch code.
 package rule
 
 import "testing"
 
 // TestCognitiveComplexityRule verifies thresholding and metadata for nested decisions.
+//
+// With MaxComplexity at 5, the nested if, for, switch and if inside Complex must give exactly one finding, on Complex.
 func TestCognitiveComplexityRule(t *testing.T) {
 	unit := parseOne(t, "complex.go", `// Package sample is a test package.
 package sample

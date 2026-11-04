@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// TestValidateContract pins every accepted edge and rejected path form in the
-// repository-relative path-pattern grammar.
+// TestValidateContract checks representative accepted patterns and rejected forms in the repository-relative path-pattern grammar.
+// A failure means a valid pattern was rejected, an invalid one was accepted, or an error lost the phrase that tells the user what to fix.
 func TestValidateContract(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -44,8 +44,8 @@ func TestValidateContract(t *testing.T) {
 	}
 }
 
-// TestMatchesContract pins segment boundaries, normalisation, exact matching,
-// and the two equivalent recursive-directory spellings.
+// TestMatchesContract pins segment boundaries, normalisation, exact matching, and the two equivalent recursive-directory spellings.
+// A failure means a file would be matched or missed against what its pattern says.
 func TestMatchesContract(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -119,8 +119,8 @@ func TestFirstMatchContract(t *testing.T) {
 	}
 }
 
-// FuzzPathfilterNoPanic sends arbitrary patterns and paths through every public
-// entry point; callers validate first, but invalid input must remain safe.
+// FuzzPathfilterNoPanic sends arbitrary patterns and paths through every public entry point.
+// Callers are not guaranteed to validate first, so malformed patterns must stay safe.
 func FuzzPathfilterNoPanic(f *testing.F) {
 	f.Add("ignored/", "ignored/main.go")
 	f.Add("[", "./nested/file.go")
@@ -144,6 +144,7 @@ func FuzzFirstMatchAgreement(f *testing.F) {
 	f.Add("pkg/*.go", "./pkg/main.go", "pkg/main.go")
 	f.Fuzz(func(t *testing.T, first, second, rel string) {
 		patterns := []string{first, second, first}
+		// If any candidate is invalid, the whole case is skipped; FuzzPathfilterNoPanic checks malformed input for panics.
 		for _, pattern := range patterns {
 			if Validate(pattern) != nil {
 				return

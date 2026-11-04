@@ -1,9 +1,13 @@
 // Package rule tests additional parser-only security hardening rules.
+//
+// These fixtures pin when an http.Server with no timeout, or a too-permissive file mode, becomes a finding in gruff-go analyse output.
 package rule
 
 import "testing"
 
-// TestHTTPServerNoTimeoutRule covers server literals and direct helpers.
+// TestHTTPServerNoTimeoutRule checks the finding a user sees when an http.Server literal or http.ListenAndServe call has no timeout.
+//
+// A server with ReadHeaderTimeout set stays quiet, and _test.go and generated files are skipped.
 func TestHTTPServerNoTimeoutRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -95,7 +99,10 @@ func server() http.Server {
 	}
 }
 
-// TestPermissiveFileModeRule covers world-writable modes and safe conservative modes.
+// TestPermissiveFileModeRule checks which os.OpenFile, os.MkdirAll and os.Chmod modes the user sees reported as too permissive.
+//
+// World-writable modes, os.ModePerm and 0755 on a created file fire; 0600 files, 0755 directories and 0644 chmods stay quiet.
+// OpenFile is judged only when its flags include O_CREATE or cannot be read, and _test.go files are skipped.
 func TestPermissiveFileModeRule(t *testing.T) {
 	tests := []struct {
 		name string

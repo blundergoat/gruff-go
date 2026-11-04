@@ -1,4 +1,5 @@
 // Package analysis tests what users see when they select one Go file for scanning.
+//
 // Sibling package files may explain a selected file without adding their findings.
 // These tests keep both the extra context and the selected-file boundary visible.
 package analysis
@@ -10,9 +11,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestAnalyzeExplicitFileUsesSiblingPackageContextForDeadCode proves an
-// explicit-file scan still gives project rules enough same-package context to
-// avoid false positives for declarations used from sibling files.
+// TestAnalyzeExplicitFileUsesSiblingPackageContextForDeadCode proves an explicit-file scan gives project rules context from sibling files.
+// A failure means gruff-go analyse decl.go falsely flags helper as dead code because its only caller lives in caller.go.
 func TestAnalyzeExplicitFileUsesSiblingPackageContextForDeadCode(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "decl.go", "package svc\n\nfunc helper() string {\n\treturn \"ok\"\n}\n")
@@ -32,8 +32,8 @@ func TestAnalyzeExplicitFileUsesSiblingPackageContextForDeadCode(t *testing.T) {
 	}
 }
 
-// TestAnalyzeExplicitFileUsesSiblingPackageCommentContext proves package-level
-// doc rules can see comments carried by a sibling package file.
+// TestAnalyzeExplicitFileUsesSiblingPackageCommentContext proves package-level doc rules can see comments carried by a sibling package file.
+// A failure means scanning impl.go alone reports docs.package-comment even though doc.go already documents the package.
 func TestAnalyzeExplicitFileUsesSiblingPackageCommentContext(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "doc.go", "// Package svc explains the package.\npackage svc\n")
@@ -53,10 +53,8 @@ func TestAnalyzeExplicitFileUsesSiblingPackageCommentContext(t *testing.T) {
 	}
 }
 
-// TestAnalyzeExplicitFileSurfacesSiblingParseFailure proves a sibling pulled in
-// only for package context still reports its parse failure. Otherwise a project
-// rule can lose context and false-positive on the scanned file with no
-// diagnostic explaining why.
+// TestAnalyzeExplicitFileSurfacesSiblingParseFailure proves a sibling pulled in only for package context still reports its parse failure.
+// Otherwise a project rule can lose context and false-positive on the scanned file with no diagnostic explaining why.
 func TestAnalyzeExplicitFileSurfacesSiblingParseFailure(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "caller.go", "package svc\n\nfunc Run() string {\n\treturn helper()\n}\n")
@@ -82,8 +80,8 @@ func TestAnalyzeExplicitFileSurfacesSiblingParseFailure(t *testing.T) {
 	}
 }
 
-// TestAnalyzeExplicitFileHidesContextOnlyFindings proves sibling package files
-// are context for project rules, not additional report targets.
+// TestAnalyzeExplicitFileHidesContextOnlyFindings proves sibling package files are context for project rules, not additional report targets.
+// A failure means gruff-go analyse impl.go reports findings, such as the exec.Command call, from sibling.go, a file the user never named.
 func TestAnalyzeExplicitFileHidesContextOnlyFindings(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "impl.go", "// Package svc explains the package.\npackage svc\n\nfunc Run() {}\n")
@@ -105,10 +103,8 @@ func TestAnalyzeExplicitFileHidesContextOnlyFindings(t *testing.T) {
 	}
 }
 
-// TestAnalyzeExplicitFileStillReportsMissingPackageComment proves a genuine
-// package-level violation is reported (re-anchored to the requested file) even
-// when the lexicographically-first file in the package is a context-only
-// sibling, so the explicit-file context feature does not hide it.
+// TestAnalyzeExplicitFileStillReportsMissingPackageComment proves a missing package comment is still reported, anchored to the requested file.
+// This holds even when the alphabetically first package file, aaa.go here, is a context-only sibling, so the context feature does not hide it.
 func TestAnalyzeExplicitFileStillReportsMissingPackageComment(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "aaa.go", "package svc\n\nfunc Helper() {}\n")
@@ -129,6 +125,7 @@ func TestAnalyzeExplicitFileStillReportsMissingPackageComment(t *testing.T) {
 			continue
 		}
 		found = true
+		// Anchoring to aaa.go would put the finding on a file the user did not name, where it would be hidden as context-only.
 		if item.File != "zzz.go" {
 			t.Fatalf("package-comment finding should anchor to the requested file zzz.go, got %q", item.File)
 		}

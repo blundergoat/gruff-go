@@ -10,10 +10,11 @@ import (
 )
 
 // lowerAlphanumerics is the keyspace the generator fixtures draw from.
-// It is joined from two halves so gruff-go's own entropy rule never reads one 36-character literal as a possible secret.
+// Sharing this alphabet lets the tests compare warnings across indexed, appended and concatenated token builders.
 const lowerAlphanumerics = "abcdefghijklmnopqr" + "stuvwxyz0123456789"
 
-// TestInsecureRandomSecretRule covers math/rand in secret contexts and safe random lookalikes.
+// TestInsecureRandomSecretRule checks that math/rand feeding a token, nonce or session key gets one finding.
+// A production token in a test file still warns, while sampling and crypto/rand stay quiet; a failure means the developer gets wrong advice.
 func TestInsecureRandomSecretRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -146,8 +147,8 @@ func TestProductionTokenFixture(t *testing.T) {
 	}
 }
 
-// TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration pins the narrow boundary between choosing an existing key and generating key
-// material.
+// TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration checks that picking an existing key with rand.Intn(len(keys)) stays quiet.
+// Alphabet token builders, key-named values, and stored, offset, mismatched or non-Intn indexes still get one finding.
 func TestInsecureRandomSecretRuleDistinguishesSelectionFromGeneration(t *testing.T) {
 	tests := []struct {
 		name string
@@ -440,7 +441,8 @@ func generateToken(size int) string {
 	}
 }
 
-// TestWeakCryptoRule covers weak digest contexts, obsolete ciphers, and small RSA keys.
+// TestWeakCryptoRule checks that MD5 or SHA-1 on passwords and tokens, DES, RC4 and 1024-bit RSA keys each get one weak-crypto finding.
+// Plain checksums and 2048-bit RSA keys stay quiet, so a failure means gruff-go analyse gives the wrong security advice.
 func TestWeakCryptoRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -573,7 +575,8 @@ func buildKey() {
 	}
 }
 
-// TestWeakCryptoRulePreservesKeyContext keeps key-only weak-digest derivation visible while a neutral checksum remains outside the contextual rule.
+// TestWeakCryptoRulePreservesKeyContext checks that MD5 or SHA-1 in a function named for a key, like deriveKey or keyDigest, gets one finding.
+// A neutral checksum function hashing the same input stays outside the contextual rule and gets none.
 func TestWeakCryptoRulePreservesKeyContext(t *testing.T) {
 	tests := []struct {
 		name string
@@ -631,7 +634,8 @@ func checksum(input []byte) [16]byte {
 	}
 }
 
-// TestWeakCryptoBucketProofRejectsEscapingValues keeps aliases and unknown digest consumers reportable.
+// TestWeakCryptoBucketProofRejectsEscapingValues checks that a one-byte MD5 bucket index still gets one finding when its proof breaks.
+// Secret aliases, rebound or borrowed inputs, unknown byte consumers and a shadowed uint8 each break the storage-only proof.
 func TestWeakCryptoBucketProofRejectsEscapingValues(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -859,7 +863,8 @@ func BucketKey(itemID string) string {
 	}
 }
 
-// TestWeakCryptoBucketInputLengthObservations preserves Vault's error check without permitting a shadowed mutator.
+// TestWeakCryptoBucketInputLengthObservations checks that Vault's len(input) check after Write keeps a bucket digest quiet.
+// A len shadowed globally or locally to mutate the input, or an input rebound to a secret, brings back one finding.
 func TestWeakCryptoBucketInputLengthObservations(t *testing.T) {
 	tests := []struct {
 		name        string

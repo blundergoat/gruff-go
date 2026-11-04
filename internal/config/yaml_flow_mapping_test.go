@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// A flow mapping is valid YAML that four sibling ports read and this parser deliberately does not.
-// The refusal has to say so: before M44 it surfaced as `json: cannot unmarshal string into Go struct
-// field Config.rules of type map[string]config.RuleConfig`, which names an internal type rather than
-// the user's file.
+// TestFlowMappingRefusalNamesTheShapeAndTheBlockForm checks the refusal a user gets for a flow mapping such as rules: {} in the config file.
+//
+// Flow mappings are valid YAML that four sibling ports read and this parser deliberately does not, so the error must say so.
+// It must locate the key or list item and its line, name the flow mapping shape and point at the indented block form instead.
 func TestFlowMappingRefusalNamesTheShapeAndTheBlockForm(t *testing.T) {
 	for _, testCase := range []struct {
 		name string

@@ -1,5 +1,7 @@
-// Package config tests duplicate-key and sanitized-error behavior in the
-// supported YAML subset.
+// Package config tests duplicate-key and sanitized-error behavior in the supported YAML subset.
+//
+// Duplicate-key errors name the key and both 1-based line numbers, structural errors name the line, and neither quotes the value or raw line.
+// These checks keep a secret typed into the config file out of terminal output and CI logs for the error paths covered here.
 package config
 
 import (
@@ -7,8 +9,8 @@ import (
 	"testing"
 )
 
-// TestParseYAMLRejectsDuplicateKeysByMappingScope covers root, nested, and
-// deeply nested mappings with original 1-based source line evidence.
+// TestParseYAMLRejectsDuplicateKeysByMappingScope covers root, nested and deeply nested mappings with original 1-based source line evidence.
+// Line numbers count blank and comment lines, so the reported line matches what the user sees in an editor.
 func TestParseYAMLRejectsDuplicateKeysByMappingScope(t *testing.T) {
 	tests := []struct {
 		name string
@@ -54,8 +56,9 @@ func TestParseYAMLAllowsSameKeyInSeparateScopes(t *testing.T) {
 	}
 }
 
-// TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine uses a runtime-built,
-// secret-shaped value so the regression fixture cannot self-flag in dogfood.
+// TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine checks a duplicate-key error names the key and lines but not the value or raw line.
+//
+// The secret-shaped value is built at runtime so the fixture cannot self-flag when gruff-go scans its own repository.
 func TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine(t *testing.T) {
 	hiddenValue := yamlSensitiveFixtureValue()
 	duplicateLine := "    enabled: " + hiddenValue
@@ -86,8 +89,8 @@ func TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine(t *testing.T) {
 	}
 }
 
-// TestParseYAMLStructuralErrorsDoNotEchoSource covers every structural error
-// path that previously interpolated normalized config text.
+// TestParseYAMLStructuralErrorsDoNotEchoSource checks that structural parse errors report a line number without leaking config values.
+// Each case must report its line number without the secret-shaped value or the raw source line.
 func TestParseYAMLStructuralErrorsDoNotEchoSource(t *testing.T) {
 	hiddenValue := yamlSensitiveFixtureValue()
 	tests := []struct {
@@ -141,6 +144,7 @@ func TestParseYAMLStructuralErrorsDoNotEchoSource(t *testing.T) {
 			if strings.Contains(message, hiddenValue) {
 				t.Fatal("structural YAML error contains the secret-shaped value")
 			}
+			// Trimmed so a message quoting the line without its indentation still counts as a leak.
 			if strings.Contains(message, strings.TrimSpace(tt.rawLine)) {
 				t.Fatal("structural YAML error contains the raw source line")
 			}

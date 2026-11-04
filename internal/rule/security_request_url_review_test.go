@@ -1,4 +1,7 @@
-// Package rule pins request-URL regressions reproduced from PR review feedback.
+// Package rule pins request-URL and open-redirect regressions around destination checks and client bindings.
+//
+// The cases cover SSRF and open-redirect findings on handler fixtures, plus assignment-root attribution for guard-invalidating writes.
+// They pin both directions: shapes that must still report and safe shapes that must stay quiet.
 package rule
 
 import (
@@ -83,6 +86,7 @@ func TestRequestURLReviewRegressions(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			unit := parseOne(t, "handler.go", requestURLConstraintSource("fetch", testCase.body))
 			findings := (RequestControlledURLRule{}).AnalyzeUnit(unit, Context{})
+			// Each case must keep one SSRF finding: the parsing, checks or sanitizing in its body leave the URL that reaches http.Get request-controlled.
 			if len(findings) != 1 {
 				t.Fatalf("findings = %#v, want one SSRF finding", findings)
 			}
@@ -357,11 +361,10 @@ func fetch(r *http.Request) {
 	}
 }
 
-// TestAssignedRootNameFindsTheWrittenValue pins which identifier a guard-
-// invalidating write is attributed to. The discriminating case is the index
-// expression: `cache[target] = value` writes cache and leaves target's guard
-// evidence intact, so rooting at the subscript instead would invalidate guards
-// that nothing overwrote.
+// TestAssignedRootNameFindsTheWrittenValue pins which identifier a guard-invalidating write is attributed to.
+//
+// The index expression is the discriminating case: assigning into cache at index target writes cache and leaves the guard evidence on target intact.
+// Rooting at the subscript instead would invalidate guards that nothing overwrote, so gruff-go would report URLs the user had validated.
 func TestAssignedRootNameFindsTheWrittenValue(t *testing.T) {
 	tests := []struct {
 		target string
@@ -428,8 +431,8 @@ func TestOpenRedirectConstraintDominance(t *testing.T) {
 	})
 }
 
-// TestOpenRedirectReviewRegressions rejects incomplete slash normalization and
-// requires a redirect status before treating a Location header as a browser sink.
+// TestOpenRedirectReviewRegressions rejects incomplete slash normalization and stale prefix guards in open-redirect handlers.
+// A Location header counts as a browser sink only when the same writer also sends a redirect status or a status the rule cannot resolve.
 func TestOpenRedirectReviewRegressions(t *testing.T) {
 	t.Run("redirect status on a shadowed writer does not activate Location", func(t *testing.T) {
 		unit := parseOne(t, "handler.go", `package handler
@@ -555,14 +558,14 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// TestOpenRedirectLocationStatusResolution pins which response statuses turn a
-// Location header into a browser sink: resolvable non-redirect codes suppress
-// the finding, while a status this parser-only rule cannot read keeps it.
+// TestOpenRedirectLocationStatusResolution pins which response statuses turn a Location header into a browser sink.
+//
+// Resolvable non-redirect codes suppress the finding, while a status this parser-only rule cannot read keeps it.
 func TestOpenRedirectLocationStatusResolution(t *testing.T) {
 	t.Run("Location header with an unresolved status stays a redirect candidate", func(t *testing.T) {
-		// The status is chosen at runtime, which this parser-only rule cannot
-		// read. Requiring a statically known redirect hid this handler entirely,
-		// so an unresolved status keeps the destination in the user's report.
+		// The status is chosen at runtime, which this parser-only rule cannot read.
+		//
+		// An unresolved status may still redirect, so the request-controlled Location stays an open-redirect candidate in the user's report.
 		unit := parseOne(t, "handler.go", `package handler
 
 import "net/http"

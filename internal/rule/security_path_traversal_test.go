@@ -1,12 +1,14 @@
 // Package rule tests the path-traversal evidence displayed in scan reports.
-// Its fixtures model user-controlled paths, normalization, and containment so
-// terminal, JSON, and dashboard results agree on which file access is safe.
+//
+// The fixtures pin findings for request-controlled paths, normalization and name-based containment evidence.
 package rule
 
 import "testing"
 
-// TestPathTraversalFileAccessRule covers request-controlled file paths and the
-// containment carve-outs that should not fire.
+// TestPathTraversalFileAccessRule checks the finding a user sees when a request value reaches os.Open, os.ReadFile or http.ServeFile.
+//
+// filepath.Clean alone, url.Parse, an unsafe-named helper and a containment check placed after the sink all still fire.
+// filepath.Base, a fixed literal, a safe-named helper and a containment check before the sink are the carve-outs that stay quiet.
 func TestPathTraversalFileAccessRule(t *testing.T) {
 	tests := []struct {
 		name string

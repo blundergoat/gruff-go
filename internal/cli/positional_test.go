@@ -1,6 +1,9 @@
 // Package cli tests the command-line behavior exposed by gruff-go.
-// These tests pin what happens to positional arguments on commands that do not consume them, so a
-// named scan target can never be accepted and then silently dropped.
+//
+// These tests check that list-rules, dashboard, completion and migrate-config reject surplus positional arguments with exit 2.
+// A target the user names on those commands is never accepted and then silently ignored.
+//
+// They also check results, config discovery and project-relative paths when a scan is launched from the project, a sibling or a subdirectory.
 package cli
 
 import (
@@ -11,7 +14,7 @@ import (
 	"testing"
 )
 
-// TestCommandsRejectUnusedPositionalArguments verifies commands that take no operands fail loudly.
+// TestCommandsRejectUnusedPositionalArguments verifies surplus operands cause exit 2 with an explanation on stderr and no stdout.
 // The fixture path is real: rejection must come from the argument contract, not from a missing file.
 func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 	projectRoot := t.TempDir()
@@ -70,7 +73,7 @@ func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 }
 
 // TestCommandsStillAcceptTheirSupportedForms verifies the guards reject only surplus operands.
-// The dashboard is absent by necessity: its accepted form binds a listener and never returns.
+// The dashboard is absent: its accepted form binds a listener and keeps serving until a signal shuts it down.
 func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "old.yaml", "schemaVersion: gruff-go.config.v0.1\n")
@@ -100,7 +103,7 @@ func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 }
 
 // TestCompletionDefaultShellMatchesExplicitBash verifies the operand guard left the default intact.
-// A guard written as NArg() > 0 instead of > 1 would silently break the bare-completion form.
+// A guard written as NArg() > 0 instead of > 1 would reject explicit bash, and this comparison would then fail.
 func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -117,11 +120,10 @@ func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 	}
 }
 
-// TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject pins the envelope against the one path that used to
-// suppress it. A baseline the run cannot read produces a run-invalidating diagnostic naming that file; launched from
-// a sibling directory the file sits outside the project, so it has no project-relative form. Publishing the report
-// without the optional key is what the other four ports do, and §5 of the decided contract requires a refusal after
-// argument parsing to publish the envelope rather than exit with an empty stdout.
+// TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject checks a refused run still publishes its JSON envelope.
+//
+// Launched from a sibling, an unreadable baseline outside the project gives one baseline diagnostic with no file key, and the run exits 2.
+// Section 5 of the decided contract requires a refusal after argument parsing to publish the envelope; the other four ports omit the key too.
 func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")
@@ -163,11 +165,10 @@ func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) 
 	}
 }
 
-// TestLaunchDirectoryDoesNotChangeTheResult verifies analyse, summary and report JSON, and a generated baseline, come
-// out the same whether the project is named from inside it, from a sibling directory (`../project`), or from one of
-// its own subdirectories (`..`). Before the root came from the target, summary and report exited 2 with nothing on
-// stdout from a sibling; before operands were read from the launch directory, `..` from a subdirectory scanned the
-// directory above the project, here holding stray.go, and every command crashed on it.
+// TestLaunchDirectoryDoesNotChangeTheResult compares stable report fields and baseline occurrences across three launch directories.
+//
+// The launches are the project, a sibling naming ../project and a subdirectory naming ..; analyse, summary and report must match on each.
+// Baseline occurrences must match and never name a host path, so the stray.go above the project must stay outside every scan.
 func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")
@@ -230,15 +231,16 @@ func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
 	inside := baselineOf(project, ".", "inside.json")
 	for directory, target := range launches {
 		outside := baselineOf(directory, target, "outside.json")
+		// A baseline that names the temp root has leaked a host path, so it would not match when generated on another machine.
 		if outside != inside || strings.Contains(outside, root) {
 			t.Fatalf("baseline from %s differs by launch directory:\noutside %s\ninside  %s", target, outside, inside)
 		}
 	}
 }
 
-// TestProjectConfigIsReadFromTheProjectRoot verifies the project's .gruff-go.yaml applies whichever directory the scan
-// is launched from. It was looked up in the launch directory, so a scan of /srv/checkout from elsewhere, the shape CI
-// uses, silently ran without the project's rules, gates and sensitive exclusions.
+// TestProjectConfigIsReadFromTheProjectRoot verifies .gruff-go.yaml applies to scans launched from the project, a sibling or its subdirectory.
+//
+// A CI scan of /srv/checkout from elsewhere must get the project's rules, gates and sensitive exclusions instead of silently running without them.
 func TestProjectConfigIsReadFromTheProjectRoot(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")
@@ -273,9 +275,10 @@ func TestProjectConfigIsReadFromTheProjectRoot(t *testing.T) {
 	}
 }
 
-// TestBaselinePathsAreReadFromTheLaunchDirectory verifies --generate-baseline and --baseline mean the path typed from
-// two levels inside the project. The write already landed there; the read joined the path to the project root, missed
-// the file, and published the joined host path in the diagnostic.
+// TestBaselinePathsAreReadFromTheLaunchDirectory verifies --generate-baseline and --baseline resolve paths from the launch directory.
+//
+// From two levels inside the project, the read must find the file the write put at the typed path, not join it to the project root and miss it.
+// The last check confirms a missing baseline's diagnostic does not publish the joined host path.
 func TestBaselinePathsAreReadFromTheLaunchDirectory(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")
@@ -307,14 +310,16 @@ func TestBaselinePathsAreReadFromTheLaunchDirectory(t *testing.T) {
 	}
 
 	_, stdout, _ = captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--format", "json", "--baseline", "../../missing.json", "../.."})
+	// A missing baseline still yields a diagnostic, and it must never name the host path under the temp root.
 	if strings.Contains(string(stdout), root) {
 		t.Fatalf("a missing baseline's diagnostic names the host path: %s", stdout)
 	}
 }
 
-// TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling
-// directory still publishes its report. The operand `../project` names the project itself, so the report lists it as
-// `.`, and a baseline kept outside the project is applied and simply has no project-relative path to publish.
+// TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling directory still publishes its report.
+//
+// The operand ../project names the project itself, so the report lists its one input as a single dot.
+// A baseline kept outside the project is applied and simply has no project-relative path to publish.
 func TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")

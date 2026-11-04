@@ -1,4 +1,7 @@
-// Package cli tests that a `-` flag value does not strand the global flags after it.
+// Package cli tests that a dash patch value on --diff or --since does not strand the global flags after it.
+//
+// Reached when a user pipes a patch, as in git diff | gruff-go analyse --diff - --quiet . with a global flag after the dash.
+// A failure here means a flag such as --quiet is rejected as undefined, the run exits 2, or the flag is silently ignored.
 package cli
 
 import (
@@ -71,9 +74,10 @@ func TestNormalizeGlobalStdinFlagValues(t *testing.T) {
 	}
 }
 
-// TestGlobalFlagsSurviveStdinPatchValue runs the real entrypoint: a global flag
-// placed after `--diff -` or `--since -` must still take effect instead of
-// reaching the analyse FlagSet, which would reject it as an undefined flag.
+// TestGlobalFlagsSurviveStdinPatchValue runs the real entrypoint with each global flag placed after --diff - or --since -.
+//
+// Global parsing must consume each flag instead of passing it to the analyse FlagSet, which would reject it as an undefined flag.
+// The test checks acceptance only: the run must not exit 2 or write anything to stderr.
 func TestGlobalFlagsSurviveStdinPatchValue(t *testing.T) {
 	globalFlags := []string{"--quiet", "-q", "--silent", "-v", "--verbose", "--no-ansi", "--no-interaction"}
 	for _, patchFlag := range []string{"--diff", "--since"} {
@@ -81,6 +85,7 @@ func TestGlobalFlagsSurviveStdinPatchValue(t *testing.T) {
 			t.Run(patchFlag+" "+globalFlag, func(t *testing.T) {
 				withEmptyStdin(t)
 				exitCode, _, stderr := captureCLIResult([]string{"analyse", patchFlag, "-", globalFlag, "."})
+				// Exit 2 means the piped-patch run was refused; the stderr shown with it says whether a global flag reached analyse as undefined.
 				if exitCode == 2 {
 					t.Fatalf("exit = 2 for %s after %s -, stderr = %q", globalFlag, patchFlag, stderr)
 				}

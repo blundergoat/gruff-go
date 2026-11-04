@@ -1,8 +1,6 @@
 // Package analysis tests that the composite denominator is derived from the rule registry.
 //
-// Routed from M06's fresh-context review of the composite-denominator candidate on 2026-09-05:
-// a hand-written pillar list silently changes every score when a rule introduces a pillar nobody
-// added to it, and no test would notice.
+// A hand-written pillar list could miss a pillar a new rule introduces and change the composite score; these tests catch that.
 package analysis
 
 import (
@@ -12,15 +10,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestRuleBackedPillarsCoversEveryRegisteredPillar fails when a registered rule can emit a pillar
-// the composite denominator does not count.
+// TestRuleBackedPillarsCoversEveryRegisteredPillar fails when a registered rule can emit a pillar the composite denominator does not count.
 //
-// Both halves of a rule's declaration are checked. A secondary pillar is still a pillar the rule
-// emits findings under, so a pillar reachable only that way would divide the composite by a
-// denominator that never counted it.
+// Primary and secondary pillars must both appear in the catalogue-derived set, so the denominator counts them before any finding exists.
 func TestRuleBackedPillarsCoversEveryRegisteredPillar(t *testing.T) {
 	registry := rule.Defaults()
 	definitions := registry.Definitions()
+	// An empty registry would let the pillar coverage check pass without checking a single rule.
 	if len(definitions) == 0 {
 		t.Fatal("registry published no definitions")
 	}
@@ -45,9 +41,10 @@ func TestRuleBackedPillarsCoversEveryRegisteredPillar(t *testing.T) {
 // TestRuleBackedPillarsIsDerivedNotHandWritten fails if the set stops tracking the registry.
 //
 // Adding a rule under a new pillar must widen the denominator on its own. A hand-written list
-// would return the same set for both registries below and pass every other test in this package.
+// would return the same set for both registries, so these assertions check that a new pillar widens it.
 func TestRuleBackedPillarsIsDerivedNotHandWritten(t *testing.T) {
 	base := []rule.Definition{{ID: "a.one", Pillar: finding.PillarDesign}}
+	// A rule under a new pillar must enter the scoring denominator even before it produces a finding.
 	widened := append(append([]rule.Definition{}, base...), rule.Definition{ID: "b.one", Pillar: finding.PillarSecurity})
 
 	if got := len(ruleBackedPillars(base)); got != 1 {

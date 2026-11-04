@@ -1,6 +1,7 @@
 // Package report tests cover the human-readable sensitive-exclusion total.
-// The line follows the family shape reference in gruff-rs/src/render/text.rs
-// (search: `Suppressed findings:`), lowercased to gruff-go's text house style.
+//
+// The line follows the family shape in gruff-rs/src/render/text.rs (search: Suppressed findings:), lowercased to gruff-go's text house style.
+// These tests pin that line: zero-count entries stay listed, inline rows name their file, and a report with no suppression rows omits it.
 package report
 
 import (
@@ -12,9 +13,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestTextReportsSuppressionTotalAndEveryEntry verifies the total plus one clause
-// per configured entry, including an entry that suppressed nothing, so no
-// accepted suppression is invisible on the human surface.
+// TestTextReportsSuppressionTotalAndEveryEntry checks the text report prints the suppression total and one clause per configured entry.
+// An entry that suppressed nothing still gets a 0 clause, so every accepted exclusion stays visible in text output.
 func TestTextReportsSuppressionTotalAndEveryEntry(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -39,9 +39,8 @@ func TestTextReportsSuppressionTotalAndEveryEntry(t *testing.T) {
 	}
 }
 
-// TestTextOmitsSuppressionLineWithoutExclusions verifies a project that
-// configured no exclusions renders byte-identical output to before the section
-// existed.
+// TestTextOmitsSuppressionLineWithoutExclusions checks that a report with no suppression rows omits the suppressed-findings line.
+// A failure means a report with an empty suppression audit printed a suppression line anyway.
 func TestTextOmitsSuppressionLineWithoutExclusions(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -61,8 +60,8 @@ func TestTextOmitsSuppressionLineWithoutExclusions(t *testing.T) {
 	}
 }
 
-// TestTextNamesInlineRowsByTheirFile verifies an inline row reads `inline[file] rule: n (reason)` beside the
-// built-in rows, so the human surface counts another tool's suppression comments (FAMILY-CONTRACT.md section 13c).
+// TestTextNamesInlineRowsByTheirFile checks an inline row is labelled inline with its file name, then rule ID, count and reason.
+// The clause audits another tool's suppression comment with its file, rule ID, count and reason, as FAMILY-CONTRACT.md section 13c requires.
 func TestTextNamesInlineRowsByTheirFile(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root: "/repo", Inputs: []string{"."}, Format: "text", FailOn: finding.FailThresholdWarning, Scanned: []string{"main.go"},

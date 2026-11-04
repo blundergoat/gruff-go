@@ -1,7 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file tests the M30 sensitive-data expansion detectors (entropy, PII, PHI):
-// that they fire on real-looking values, stay quiet on placeholders and the
-// shapes they must defer on, and never leak a raw value into a preview.
+//
+// This file tests the PII and PHI sensitive-data detectors and the documented-sample controls on config and text files.
+// The tests check positive matches, the email, phone, card and SSN false-positive guards, documented samples, and redacted previews.
 package rule
 
 import (
@@ -13,15 +13,14 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// randomSecretToken is a 41-char base64url string with no provider prefix - a
-// stand-in for a rotated or vendor-less credential. Its mixed alphabet pushes
-// Shannon entropy well above the 4.5 bits/char default, so the entropy tests key
-// on the detector's logic rather than on a borderline score.
+// randomSecretToken is a 41-char base64url string with no provider prefix, a stand-in for a rotated or vendor-less credential.
+//
+// No test in this file uses it; its mixed alphabet gives it high Shannon entropy.
 const randomSecretToken = "Zx9KqW2mB7vN4pL8dT3rYcF1gHjS0aQwE4tU7iO5n"
 
-// sensitiveTextUnit builds a text-file unit from a source body. The expansion
-// detectors are line scanners over unit.Source, so a text unit (no Go parse
-// needed) is the most direct fixture and matches the style of sensitive_test.go.
+// sensitiveTextUnit builds a text-file unit at path whose source is body, so a test can run a line-scanning detector with no Go parse.
+//
+// It returns a parser.Unit typed as a text file, matching the fixture style of sensitive_test.go.
 func sensitiveTextUnit(path, body string) parser.Unit {
 	return parser.Unit{
 		File:   source.File{Path: path, Type: source.FileTypeText},
@@ -29,9 +28,9 @@ func sensitiveTextUnit(path, body string) parser.Unit {
 	}
 }
 
-// assertNoRawLeak fails when any finding's preview metadata contains the raw
-// value. Every M30 detector must emit only a redacted preview, so the positive
-// tests run this after asserting a hit.
+// assertNoRawLeak fails the test when any of findings has a preview in its metadata that contains raw, the unredacted fixture value.
+//
+// Each PII and PHI detector must emit only a redacted preview, so positive tests call this after a hit; a finding with no preview passes.
 func assertNoRawLeak(t *testing.T, findings []finding.Finding, raw string) {
 	t.Helper()
 	for _, f := range findings {
@@ -95,9 +94,9 @@ func TestPIIPatternFlagsRealValues(t *testing.T) {
 	}
 }
 
-// TestPIIPatternSkipsPlaceholdersAndBareNumbers verifies the FP guards: example
-// domains, generic local-parts, a bare phone-length digit run without phone
-// punctuation, and a Luhn-invalid card-shaped number all stay quiet.
+// TestPIIPatternSkipsPlaceholdersAndBareNumbers verifies the PII false-positive guards stay quiet.
+//
+// It covers example domains, generic local-parts, a phone-length digit run with no phone punctuation, and a Luhn-invalid card number.
 func TestPIIPatternSkipsPlaceholdersAndBareNumbers(t *testing.T) {
 	cases := map[string]string{
 		"example domain": "e = \"you@example.com\"\n",
@@ -137,9 +136,9 @@ func TestPHIPatternFlagsHealthIdentifiers(t *testing.T) {
 	}
 }
 
-// TestPHIPatternSkipsInvalidAndPlaceholderSSNs verifies the SSN FP guards:
-// unissuable number spaces (000/666/9xx areas, 00 group, 0000 serial) and a
-// well-known placeholder SSN are not flagged.
+// TestPHIPatternSkipsInvalidAndPlaceholderSSNs verifies the SSN false-positive guards stay quiet.
+//
+// It covers unissuable number spaces (000, 666 and 9xx areas, a 00 group, a 0000 serial) and the well-known placeholder 123-45-6789.
 func TestPHIPatternSkipsInvalidAndPlaceholderSSNs(t *testing.T) {
 	for _, ssn := range []string{"000-12-3456", "666-12-3456", "900-12-3456", "536-00-4399", "536-90-0000", "123-45-6789"} {
 		t.Run(ssn, func(t *testing.T) {
@@ -150,9 +149,9 @@ func TestPHIPatternSkipsInvalidAndPlaceholderSSNs(t *testing.T) {
 	}
 }
 
-// TestPHIOwnsSSNNotPII documents the PII/PHI precedence: a Social Security number
-// is reported by the PHI rule only, never the PII rule, so an SSN is not counted
-// twice when both rules are enabled.
+// TestPHIOwnsSSNNotPII pins the PII/PHI precedence: a Social Security number is reported by the PHI rule only, never the PII rule.
+//
+// With both rules enabled, a scan counts the SSN once.
 func TestPHIOwnsSSNNotPII(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "s = \"536-90-4399\"\n")
 	if got := (PIIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {

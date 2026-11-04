@@ -1,5 +1,7 @@
-// Package parser tests exercise unit construction and diagnostic reporting.
-// They write temp files and run Parse to confirm AST and function metadata.
+// Package parser tests exercise how gruff-go turns source files into analysis units and parse diagnostics.
+//
+// Most tests write temp files and run Parse or ParseWithBudget on them.
+// Each test checks the AST, line count, function names, or the diagnostics reported for broken or oversized Go files.
 package parser
 
 import (
@@ -14,6 +16,7 @@ import (
 )
 
 // TestParseBuildsUnitsAndFunctionMetadata verifies AST and function info on a healthy file.
+// A clean four-line main.go must give one unit with an AST, LineCount 4, one function named main, and no diagnostics.
 func TestParseBuildsUnitsAndFunctionMetadata(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.go")
@@ -39,9 +42,10 @@ func TestParseBuildsUnitsAndFunctionMetadata(t *testing.T) {
 	}
 }
 
-// TestFuncDeclSymbolRendersTheBaseTypeForEveryReceiverShape pins the one symbol renderer every surface shares: a
-// generic receiver drops its type arguments and pointer marker exactly as a plain one does, so `*Stack[T]` and
-// `Pair[K, V]` render as `Stack.Method` and `Pair.Method`, and function metadata carries the same names.
+// TestFuncDeclSymbolRendersTheBaseTypeForEveryReceiverShape checks how FuncDeclSymbol names functions and methods for every receiver shape.
+//
+// Generic receivers drop pointers and type arguments like plain ones, so FuncDeclSymbol and Parse metadata name them Stack.Method or Pair.Method.
+// A parenthesised receiver renders its base type, and a selector receiver such as pkg.Foreign renders as receiver.OnSelector.
 func TestFuncDeclSymbolRendersTheBaseTypeForEveryReceiverShape(t *testing.T) {
 	src := `package sample
 
@@ -85,6 +89,7 @@ func (s pkg.Foreign) OnSelector() {}
 		}
 	}
 
+	// Parse must store the same rendered name in function metadata, not the raw receiver text.
 	root := t.TempDir()
 	path := filepath.Join(root, "stack.go")
 	if err := os.WriteFile(path, []byte("package sample\n\nfunc (s *Stack[T]) Push(item T) {\n}\n"), 0o644); err != nil {
@@ -100,6 +105,7 @@ func (s pkg.Foreign) OnSelector() {}
 }
 
 // TestParseReportsParseDiagnostics confirms broken source produces diagnostics not units.
+// A syntax error must yield no unit and a diagnostic with the file path and a nonzero line, so the user can find what failed to parse.
 func TestParseReportsParseDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "broken.go")
@@ -119,7 +125,10 @@ func TestParseReportsParseDiagnostics(t *testing.T) {
 	}
 }
 
-// TestParseWithBudgetDegradesOnlyGoFiles covers independent line/byte bounds and the non-code sentinel.
+// TestParseWithBudgetDegradesOnlyGoFiles covers independent line and byte bounds for the bounded deep scan.
+//
+// Each case trips one limit alone: main.go keeps its raw source but loses its AST, and gets one non-fatal bounded-deep-scan diagnostic.
+// The text file notes.md is still returned as a unit and draws no diagnostic.
 func TestParseWithBudgetDegradesOnlyGoFiles(t *testing.T) {
 	root := t.TempDir()
 	goPath := filepath.Join(root, "main.go")

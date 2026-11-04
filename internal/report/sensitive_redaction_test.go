@@ -15,9 +15,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestSensitiveRedactionAcrossFormats protects the redaction contract: raw
-// secret values must not appear in any output format, even when a rule emits a
-// "preview" in its metadata.
+// TestSensitiveRedactionAcrossFormats protects the redaction contract: no output format may show a raw secret, even when metadata carries a preview.
+// It renders text, json, summary-json, sarif, github, html and markdown; a failure names the format and the leaked fragment.
 func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	rawSecret := "AKIAIOSFODNN7EXAMPLE"
 	rawPassword := "supersecretQ7UX"
@@ -99,6 +98,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		{"markdown", func(buf *bytes.Buffer) error { return WriteMarkdown(buf, report) }},
 	}
 
+	// Prefixes and suffixes count as leaks too: a renderer that shows the first or last characters of a key still exposes it.
 	leaks := []string{
 		rawSecret, rawSecret[4:10], rawSecret[len(rawSecret)-4:],
 		rawPassword, rawPassword[:6], rawPassword[len(rawPassword)-4:],
@@ -123,6 +123,10 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	}
 }
 
+// TestSensitiveRedactionAcrossRealArtifacts runs a real analysis on secrets.env and checks the raw token reaches no artifact the user keeps.
+//
+// That covers the finding JSON, the baseline file, every report format and the dashboard-html page.
+// It also requires exactly one sensitive-data.secret-pattern finding, and a baseline that counts it, stores no occurrence and keeps it visible.
 func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 	rawSecret := "abcdefghijklmnopqrstuvwxyz123456"
 	root := t.TempDir()
@@ -141,8 +145,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("analysis run: %v", err)
 	}
-	// One finding since precision-floor M19 retired sensitive-data.high-entropy-string in gruff-go:
-	// the secret-pattern rule's. It must redact, which is what this test is really about.
+	// Requiring the finding keeps the leak checks below meaningful: if analysis stopped detecting the token, empty output would pass them.
 	if len(reportData.Findings) != 1 {
 		t.Fatalf("findings = %#v, want the secret-pattern finding", reportData.Findings)
 	}
@@ -201,6 +204,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		}
 		artifacts[format.name] = buf.String()
 	}
+	// The dashboard-html artifact is the html report plus injected scan metadata such as the project root and command, so it is checked too.
 	artifacts["dashboard-html"] = InjectScanMetadata(artifacts["html"], ScanMetadata{
 		ExitCode:    reportData.Summary.ExitCode,
 		DurationMs:  12,

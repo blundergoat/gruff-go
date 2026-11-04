@@ -1,12 +1,16 @@
 // Package rule tests scoped receiver handling for test-quality rules.
+//
+// These tests pin which functions the empty-test rule treats as real go test entrypoints.
+// They check that helpers, empty tests and tests that do work through their testing handle are told apart.
 package rule
 
 import (
 	"testing"
 )
 
-// TestQualityRulesRequireRunnableSignatures confirms Test-prefixed helpers that
-// do not match go test entrypoint signatures are ignored.
+// TestQualityRulesRequireRunnableSignatures confirms Test-prefixed helpers that do not match go test entrypoint signatures are ignored.
+//
+// It expects exactly one finding, on TestRealEmpty, from two helpers, one empty test and one test that only logs.
 func TestQualityRulesRequireRunnableSignatures(t *testing.T) {
 	unit := parseOne(t, "pkg/sample_test.go", `package pkg
 
@@ -27,13 +31,15 @@ func TestNoAssertion(t *testing.T) {
 }
 `)
 	emptyFindings := (EmptyTestRule{}).AnalyzeUnit(unit, Context{})
+	// TestNoAssertion logs through t, so it is not empty, and the two helpers are not entrypoints; only TestRealEmpty may be reported.
 	if len(emptyFindings) != 1 || emptyFindings[0].Symbol != "TestRealEmpty" {
 		t.Fatalf("empty findings = %#v, want TestRealEmpty only", emptyFindings)
 	}
 }
 
-// TestQualityRulesRecognizeDotImportedTestingHandles covers *T receivers from a
-// dot-imported standard testing package.
+// TestQualityRulesRecognizeDotImportedTestingHandles covers *T receivers from a dot-imported standard testing package.
+//
+// It expects exactly one finding, on TestDotEmpty, from three tests that take t *T: one fails, one is empty and one skips.
 func TestQualityRulesRecognizeDotImportedTestingHandles(t *testing.T) {
 	unit := parseOne(t, "pkg/sample_test.go", `package pkg
 
@@ -50,13 +56,16 @@ func TestDotSkip(t *T) {
 	t.Skip("later")
 }
 `)
+	// TestDotFatal and TestDotSkip do work through t, so only the body-less TestDotEmpty may be reported.
 	if got := (EmptyTestRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 || got[0].Symbol != "TestDotEmpty" {
 		t.Fatalf("empty findings = %#v, want TestDotEmpty only", got)
 	}
 }
 
-// TestEmptyTestParallelOnly binds scheduling-only bodies to the real testing handle.
-// Other receivers, nested scopes and additional work must retain their ordinary classification.
+// TestEmptyTestParallelOnly checks that a test whose body only calls Parallel on its own testing handle counts as empty.
+//
+// Renamed receivers and aliased or dot imports still count; a foreign receiver, a shadowed t in a closure, or any extra work does not.
+// Each case builds one TestEntry function and expects either one empty-test finding or none.
 func TestEmptyTestParallelOnly(t *testing.T) {
 	cases := []struct {
 		name    string

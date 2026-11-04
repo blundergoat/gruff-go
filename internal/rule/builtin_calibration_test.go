@@ -1,18 +1,18 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file holds calibration tests for the builtin pack: false-positive
-// guards added after spot-checking the rubric on a real Go codebase.
+//
+// This file holds calibration tests for FunctionLengthRule: comment-heavy code, test case tables, nolint anchors and long executable code.
+// Failures can expose false positives, missed findings, wrong symbols or source lines, or missing table-discount metadata.
 package rule
 
 import (
 	"testing"
 )
 
-// TestFunctionLengthCountsCodeLinesOnly verifies the rule's length measurement
-// strips blank lines and comment-only lines so heavily documented functions
-// aren't flagged for documentation density alone.
+// TestFunctionLengthCountsCodeLinesOnly checks FunctionLengthRule counts only code lines, skipping blank and comment-only lines.
+// A failure means a short, well-documented function gets a function-length finding for its comments alone.
 func TestFunctionLengthCountsCodeLinesOnly(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 5}
-	// docHeavy spans 21 raw lines but only 4 code lines - should not fire.
+	// docHeavy spans 10 lines from func to closing brace; without its blank and comment lines it stays within MaxLines 5, so it must not fire.
 	unit := parseOne(t, "doc_heavy.go", `// Package sample is a test package.
 package sample
 
@@ -39,9 +39,10 @@ func docHeavy() int {
 	}
 }
 
-// TestFunctionLengthLeavesNolintToTheInlineFilter confirms the rule reports a generic method `Stack.Wired` on its
-// `func` line even under `//nolint:funlen`, so analysis.ApplyInlineSuppressions can suppress it there and count it
-// (FAMILY-CONTRACT.md section 13c); the filter's own tests cover which comments suppress it.
+// TestFunctionLengthLeavesNolintToTheInlineFilter checks the rule itself ignores a nolint:funlen comment.
+//
+// It must report generic method Stack.Wired at its func line 5, where analysis.ApplyInlineSuppressions suppresses and counts it.
+// See FAMILY-CONTRACT.md section 13c; the filter's own tests cover which comments suppress a finding.
 func TestFunctionLengthLeavesNolintToTheInlineFilter(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 3}
 	body := `
@@ -86,9 +87,8 @@ func wired() {
 	}
 }
 
-// TestFunctionLengthDiscountsTableDrivenTestFixtures verifies large case
-// matrices in table-driven tests are treated as fixture data instead of
-// executable test logic.
+// TestFunctionLengthDiscountsTableDrivenTestFixtures checks the rows of a table-driven test's case slice count as fixture data, not test logic.
+// A failure means a short test with a long case table gets a function-length finding.
 func TestFunctionLengthDiscountsTableDrivenTestFixtures(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 8}
 	unit := parseOne(t, "table_test.go", `package sample
@@ -150,6 +150,7 @@ func TestLongLogic(t *testing.T) {
 	if len(got) != 1 || got[0].Symbol != "TestLongLogic" {
 		t.Fatalf("long executable test logic should still fire, got %#v", got)
 	}
+	// A finding on an adjusted test carries tableFixtureLines metadata, so the user can see the case rows were already discounted.
 	if got[0].Metadata["tableFixtureLines"] == nil {
 		t.Fatalf("expected table fixture metadata on adjusted finding, got %#v", got[0].Metadata)
 	}

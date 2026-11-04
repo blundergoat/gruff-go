@@ -1,9 +1,14 @@
 // Package rule tests parser-only HTTP security rules.
+//
+// These fixtures pin when an http.Client with no Timeout, or a request body read with no size limit, becomes a finding in gruff-go analyse output.
 package rule
 
 import "testing"
 
-// TestHTTPClientNoTimeoutRule covers client literals with and without Timeout.
+// TestHTTPClientNoTimeoutRule checks the finding a user sees when an http.Client literal has no Timeout, even if it sets a Transport.
+//
+// A client with Timeout set and any _test.go file stay quiet.
+// Only the literal's fields are inspected; request-context deadlines and Transport timeouts are outside these fixtures.
 func TestHTTPClientNoTimeoutRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -81,7 +86,10 @@ func sample() http.Client {
 	}
 }
 
-// TestRequestBodyWithoutLimitRule covers unbounded request-body reads and obvious limiters.
+// TestRequestBodyWithoutLimitRule checks the finding a user sees when code reads r.Body with io.ReadAll and no size limit.
+//
+// MaxBytesReader or LimitReader clears it; plain io.Reader values, _test.go files, RoundTrip transports and *testing.T helpers stay quiet.
+// A handler method merely named RoundTrip, or a parameter named t of a non-testing type, still reports.
 func TestRequestBodyWithoutLimitRule(t *testing.T) {
 	tests := []struct {
 		name string

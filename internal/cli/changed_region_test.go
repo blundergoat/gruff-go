@@ -1,5 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file pins analyse's native changed-region hook surface.
+//
+// This file pins analyse and hook refusals of unusable --changed-ranges values, plus analyse's --changed-scope symbol filtering.
+// It also pins how --no-baseline and a discovered gruff-baseline.json change the finding list a user sees.
 package cli
 
 import (
@@ -11,9 +13,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/analysis"
 )
 
-// TestAnalyseNoBaselineOverridesBaseline confirms --no-baseline is accepted and
-// takes precedence over a supplied --baseline path without changing the rest of
-// the scan.
+// TestAnalyseNoBaselineOverridesBaseline confirms --no-baseline is accepted and wins over a --baseline path on the same command line.
+//
+// The report must show no applied baseline and exactly one unsuppressed finding.
 func TestAnalyseNoBaselineOverridesBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -33,11 +35,12 @@ func TestAnalyseNoBaselineOverridesBaseline(t *testing.T) {
 	}
 }
 
-// TestAnalyseRefusesChangedRangesItCannotScope pins that a range the run cannot
-// scope to ends the run rather than widening it to the whole tree. An empty
-// value is malformed for the same reason a garbled one is: the caller asked for
-// a scoped run and named nothing.
+// TestAnalyseRefusesChangedRangesItCannotScope pins that analyse exits 2, not a whole-tree scan, on a --changed-ranges value it cannot use.
+//
+// An empty value is malformed for the same reason a garbled one is: the caller asked for a scoped run and named nothing.
+// Stdout must still hold a readable JSON envelope with exactly one changed-region diagnostic and no findings.
 func TestAnalyseRefusesChangedRangesItCannotScope(t *testing.T) {
+	// =abc is a garbled range and the empty string names nothing; both must be refused the same way.
 	for _, ranges := range []string{"=abc", ""} {
 		root := t.TempDir()
 		writeFile(t, root, "complex.go", complexFixture())
@@ -61,11 +64,10 @@ func TestAnalyseRefusesChangedRangesItCannotScope(t *testing.T) {
 	}
 }
 
-// TestHookRefusesChangedRangesItCannotScope pins the hook half of the same
-// contract analyse holds: a value the run cannot scope to ends the run rather
-// than widening it. An empty value is malformed for the same reason a garbled
-// one is, and reading it as "no filter" would hand an agent a whole-tree
-// finding list attributed to the edit it just made.
+// TestHookRefusesChangedRangesItCannotScope pins the hook half of the analyse contract: a --changed-ranges value it cannot scope to exits 2.
+//
+// An empty value is malformed for the same reason a garbled one is, and the run must not widen to the whole tree.
+// Reading it as no filter would hand an agent a whole-tree finding list attributed to the edit it just made.
 func TestHookRefusesChangedRangesItCannotScope(t *testing.T) {
 	for _, ranges := range []string{"=abc", ""} {
 		root := t.TempDir()
@@ -85,15 +87,17 @@ func TestHookRefusesChangedRangesItCannotScope(t *testing.T) {
 	}
 }
 
-// TestAnalyseChangedRangesNoBaselineSuppressedMath pins the agent-hook
-// invocation: --no-baseline is accepted, symbol scope keeps only the changed
-// function's finding, and suppressedCount balances against the full-file count.
+// TestAnalyseChangedRangesNoBaselineSuppressedMath pins the agent-hook invocation, where --no-baseline is accepted.
+//
+// Symbol scope must leave a nonempty list shorter than the full scan's, and summary.suppressedFindings must account for the difference.
+// The diff caveat must also warn the user that the report is changed-region scoped.
 func TestAnalyseChangedRangesNoBaselineSuppressedMath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "two.go", doubleComplexFixture())
 	t.Chdir(root)
 
 	full := runAnalyseReport(t, "analyse", "--format", "json", "--fail-on", "none", "two.go")
+	// Line 5 of doubleComplexFixture is the func RiskyOne line, so symbol scope targets RiskyOne; the checks below compare counts only.
 	scoped := runAnalyseReport(t, "analyse", "--format", "json", "--fail-on", "none", "--no-baseline", "--changed-ranges", "5-5", "--changed-scope", "symbol", "two.go")
 
 	if len(full.Findings) < 2 {
@@ -113,9 +117,10 @@ func TestAnalyseChangedRangesNoBaselineSuppressedMath(t *testing.T) {
 	}
 }
 
-// doubleComplexFixture returns one file with two separately over-complex
-// exported functions so changed-region tests can prove one is kept and one is
-// suppressed.
+// doubleComplexFixture returns one Go file with two separately over-complex exported functions, RiskyOne and RiskyTwo.
+//
+// Changed-region tests use it to check that narrowing to one function suppresses some findings, by comparing finding counts.
+// The func RiskyOne line is line 5, which TestAnalyseChangedRangesNoBaselineSuppressedMath targets with --changed-ranges 5-5.
 func doubleComplexFixture() string {
 	return `// Package sample is a test package.
 package sample

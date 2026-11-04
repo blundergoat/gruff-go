@@ -1,4 +1,7 @@
 // Package rule tests the project-level dead-code.unused-private-function rule.
+//
+// The analysis tests parse inline Go fixtures into units and run AnalyzeProject over them, so calls in sibling files count.
+// A failure means the rule mishandles references or exclusions, such as reporting an exported function, or its default metadata has changed.
 package rule
 
 import (
@@ -8,8 +11,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestUnusedPrivateFunctionFlagsAbandonedHelper is the rule's happy path:
-// a private function nobody calls, in a single-file package.
+// TestUnusedPrivateFunctionFlagsAbandonedHelper is the rule's happy path: a private function nobody calls, in a single-file package.
+//
+// It expects exactly one finding, on abandoned; helper stays quiet because Used calls it.
 func TestUnusedPrivateFunctionFlagsAbandonedHelper(t *testing.T) {
 	unit := parseOne(t, "pkg/foo/foo.go", `package foo
 
@@ -30,9 +34,9 @@ func abandoned() {}
 	}
 }
 
-// TestUnusedPrivateFunctionResolvesAcrossFiles confirms references in a
-// sibling file inside the same package suppress the finding. This is the
-// case the rule exists to handle that a unit-scoped rule could not.
+// TestUnusedPrivateFunctionResolvesAcrossFiles confirms a call in a sibling file of the same package suppresses the finding.
+//
+// This is the case the rule exists to handle that a unit-scoped rule could not.
 func TestUnusedPrivateFunctionResolvesAcrossFiles(t *testing.T) {
 	declUnit := parseOne(t, "pkg/foo/a.go", `package foo
 
@@ -62,9 +66,9 @@ func Exported() {}
 	}
 }
 
-// TestUnusedPrivateFunctionIgnoresMethods confirms methods (functions with
-// receivers) are out of scope. Method reachability needs interface and
-// embedding analysis that parser-only inspection cannot do safely.
+// TestUnusedPrivateFunctionIgnoresMethods confirms methods, functions with receivers, are out of scope.
+//
+// Method reachability needs interface and embedding analysis that parser-only inspection cannot do safely.
 func TestUnusedPrivateFunctionIgnoresMethods(t *testing.T) {
 	unit := parseOne(t, "pkg/foo/foo.go", `package foo
 
@@ -93,9 +97,9 @@ func main() {}
 	}
 }
 
-// TestUnusedPrivateFunctionSkipsReflectivePackages verifies the rule steps
-// aside when reflection is in play, because runtime dispatch by name
-// would otherwise produce systemic false positives.
+// TestUnusedPrivateFunctionSkipsReflectivePackages verifies the rule steps aside when a package imports reflect.
+//
+// Runtime dispatch by name would otherwise produce systemic false positives.
 func TestUnusedPrivateFunctionSkipsReflectivePackages(t *testing.T) {
 	unit := parseOne(t, "pkg/foo/foo.go", `package foo
 
@@ -111,9 +115,9 @@ func dispatched() {}
 	}
 }
 
-// TestUnusedPrivateFunctionSeparatesExternalTestPackage proves the external
-// `_test` package is treated as its own group: a private helper in a
-// `foo_test` file does not satisfy a `foo` package's private declaration
+// TestUnusedPrivateFunctionSeparatesExternalTestPackage proves the external _test package is treated as its own group.
+//
+// A private helper in a foo_test file does not satisfy a foo package's private declaration,
 // because the two cannot reference each other across the visibility boundary.
 func TestUnusedPrivateFunctionSeparatesExternalTestPackage(t *testing.T) {
 	mainUnit := parseOne(t, "pkg/foo/foo.go", `package foo
@@ -131,16 +135,16 @@ func TestPlaceholder(t *testing.T) {
 func helper() {}
 `)
 	findings := UnusedPrivateFunctionRule{}.AnalyzeProject([]parser.Unit{mainUnit, testUnit}, Context{})
-	// `foo.helper` is referenced nowhere in `foo`; the external `foo_test`
-	// cannot satisfy it. Both helpers are flagged independently because
-	// neither package has any other reference to its `helper`.
+	// foo.helper is referenced nowhere in foo, and the external foo_test cannot satisfy it.
+	// Both helpers are flagged independently because neither package has any other reference to its helper.
 	if len(findings) != 2 {
 		t.Fatalf("findings = %#v, want one finding per package", findings)
 	}
 }
 
-// TestUnusedPrivateFunctionIsDefaultEnabled asserts the rule ships enabled
-// with parser capability and low severity (cleanup signal, not a CI gate).
+// TestUnusedPrivateFunctionIsDefaultEnabled asserts the rule ships enabled, with parser capability and advisory severity.
+//
+// A failure means the rule's default enablement, parser capability or advisory severity has changed.
 func TestUnusedPrivateFunctionIsDefaultEnabled(t *testing.T) {
 	def := UnusedPrivateFunctionRule{}.Definition()
 	if !def.DefaultEnabled {

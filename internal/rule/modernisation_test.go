@@ -1,9 +1,13 @@
 // Package rule tests parser-only modernisation rules.
+//
+// The test parses a Go fixture that imports io/ioutil under an alias; failed rule checks print the findings or the first finding's metadata.
 package rule
 
 import "testing"
 
-// TestIoutilDeprecatedRule covers deprecated ioutil selectors and modern replacements.
+// TestIoutilDeprecatedRule checks that IoutilDeprecatedRule flags aliased ReadFile, TempFile and Discard selectors from io/ioutil.
+//
+// It expects three findings and a first finding whose replacement metadata is not the empty string; an absent replacement key also passes.
 func TestIoutilDeprecatedRule(t *testing.T) {
 	unit := parseOne(t, "modern.go", `// Package sample is a test package.
 package sample

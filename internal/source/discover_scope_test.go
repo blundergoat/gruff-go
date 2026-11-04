@@ -1,10 +1,13 @@
 // Package source tests the discovery-scope additions for dependency and workflow rules.
+//
+// These tests check module and GitHub file discovery, plus CheckIgnore acceptance of go.mod, workflow and Dependabot paths.
 package source
 
 import "testing"
 
-// TestDiscoverGoModuleFilesAndGitHubMetadata verifies module files and committed
-// GitHub control metadata remain analysable security surfaces.
+// TestDiscoverGoModuleFilesAndGitHubMetadata verifies module files and committed GitHub control metadata remain analysable security surfaces.
+//
+// It checks the exact ordered file list, main.go included, then asks CheckIgnore about the workflow, Dependabot and go.mod paths.
 func TestDiscoverGoModuleFilesAndGitHubMetadata(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.25.0\n")
@@ -20,6 +23,7 @@ func TestDiscoverGoModuleFilesAndGitHubMetadata(t *testing.T) {
 
 	got := paths(result.Files)
 	want := []string{".github/dependabot.yml", ".github/workflows/ci.yml", "go.mod", "go.sum", "main.go"}
+	// The dot-prefixed .github files must be listed; dropping them would hide workflow and Dependabot files from the scan.
 	if !equal(got, want) {
 		t.Fatalf("files = %#v, want %#v", got, want)
 	}
