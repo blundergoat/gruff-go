@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the naming.receiver-consistency rule.
+//
+// This file implements the naming.receiver-consistency rule, which is off by default and compares methods across the whole project.
+// It flags a method whose receiver name or pointer/value form differs from the most common choice for its type in the same directory.
 package rule
 
 import (
@@ -31,14 +33,17 @@ type receiverGroup struct {
 }
 
 // ReceiverConsistencyRule flags inconsistent method receiver names or forms.
+//
+// An empty AllowMixed exempts no type, and an empty InspectGroup checks both receiver names and pointer/value forms.
 type ReceiverConsistencyRule struct {
 	// AllowMixed lists receiver type names that may deliberately mix pointer and value forms without firing.
 	AllowMixed []string
-	// InspectGroup selects which axis the rule checks: "name", "pointer", or "both".
+	// InspectGroup selects which axis the rule checks: "name", "pointer", or "both"; any other value, a typo included, checks both.
 	InspectGroup string
 }
 
 // Definition declares the naming.receiver-consistency rule that flags methods on one type that mix receiver names or pointer/value forms.
+// It returns the definition of an advisory parser rule that is off by default, with allowMixed empty and inspectGroup both as option defaults.
 func (r ReceiverConsistencyRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.receiver-consistency",
@@ -56,6 +61,9 @@ func (r ReceiverConsistencyRule) Definition() Definition {
 }
 
 // AnalyzeProject scans every method across the project for receiver name or form inconsistencies.
+//
+// units are the parsed files whose methods are grouped by package directory and receiver type, then checked per InspectGroup and AllowMixed.
+// It returns the mismatch findings sorted by CompareFindings, or an empty slice when every group is consistent.
 func (r ReceiverConsistencyRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	groups := collectReceiverGroups(units)
 	inspectName, inspectPointer := receiverInspectModes(r.InspectGroup)
@@ -65,9 +73,13 @@ func (r ReceiverConsistencyRule) AnalyzeProject(units []parser.Unit, _ Context) 
 	return findings
 }
 
-// collectReceiverGroups buckets methods across units by their receiver type,
-// scoped per package directory so two unrelated types named e.g. "Service" in
-// different packages do not pollute each other's dominant receiver tally.
+// collectReceiverGroups buckets methods across units by receiver type, scoped per package directory.
+//
+// Two unrelated types named Service in different directories therefore never pollute each other's dominant receiver tally.
+// No test-file or generated-file filter is applied here, so every such unit passed in counts toward the tally.
+//
+// It returns a map keyed by receiverGroupKey whose groups tally named receivers and forms; units without an AST or file set are skipped.
+// Methods whose receiver type cannot be resolved are dropped, and the map is empty but non-nil when no methods remain.
 func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 	groups := map[string]*receiverGroup{}
 	for _, unit := range units {
@@ -90,6 +102,7 @@ func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 				groups[key] = group
 			}
 			group.methods = append(group.methods, method)
+			// An unnamed receiver, as in func (T) M(), skips the name tally and is never flagged for its name, only for its form.
 			if method.name != "" {
 				group.names[method.name]++
 			}
@@ -99,14 +112,18 @@ func collectReceiverGroups(units []parser.Unit) map[string]*receiverGroup {
 	return groups
 }
 
-// receiverGroupKey produces the per-package, per-type bucket key. Package dir
-// is preserved so the joined key cannot collide across directories whose names
-// happen to differ only by a literal "\x00".
+// receiverGroupKey produces the per-package, per-type bucket key.
+//
+// packageDir is the method file's directory and typeName the receiver's base type name; it returns packageDir, a NUL byte, then typeName.
+// Neither a path nor a Go identifier can hold a NUL byte, so two different directory and type pairs never join to the same key.
 func receiverGroupKey(packageDir, typeName string) string {
 	return packageDir + "\x00" + typeName
 }
 
 // receiverConsistencyFindings emits findings for every receiver group whose conventions diverge.
+//
+// groups holds the receiver groups; inspectName and inspectPointer pick the checked axes, and allowMixed names types exempt from form checks.
+// It returns every group's findings unsorted, in map iteration order, or an empty slice when no group diverges.
 func receiverConsistencyFindings(groups map[string]*receiverGroup, inspectName bool, inspectPointer bool, allowMixed map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, group := range groups {
@@ -120,7 +137,13 @@ func receiverConsistencyFindings(groups map[string]*receiverGroup, inspectName b
 }
 
 // receiverGroupFindings reports each method in a group whose receiver name or form does not match the dominant choice.
+//
+// typeName is the receiver type looked up in allowMixed to exempt form checks; group holds the methods and their name and form tallies.
+// inspectName and inspectPointer enable the name and form checks, and the result is nil when neither axis is mixed.
+//
+// allowMixed is keyed by the bare type name, so listing Service exempts every Service type in every directory.
 func receiverGroupFindings(typeName string, group *receiverGroup, inspectName bool, inspectPointer bool, allowMixed map[string]bool) []finding.Finding {
+	// On a tie the lexically smaller value wins, so between one r and one s receiver the s method is flagged, and pointer beats value.
 	dominantName := dominantReceiverValue(group.names)
 	dominantForm := dominantReceiverValue(group.forms)
 	nameMixed := inspectName && len(group.names) > 1 && dominantName != ""
@@ -140,6 +163,9 @@ func receiverGroupFindings(typeName string, group *receiverGroup, inspectName bo
 }
 
 // receiverMethodFromFunc extracts the receiver name, type, and pointer form from a FuncDecl.
+//
+// unit supplies the file path whose directory scopes the method, and fn must declare a receiver, since its first field is read unchecked.
+// It returns the method record and true, or a zero record and false when the receiver type is not a plain, pointer or generic named type.
 func receiverMethodFromFunc(unit parser.Unit, fn *ast.FuncDecl) (receiverMethod, bool) {
 	field := fn.Recv.List[0]
 	typeName, pointer := receiverType(field.Type)
@@ -165,6 +191,9 @@ func receiverMethodFromFunc(unit parser.Unit, fn *ast.FuncDecl) (receiverMethod,
 }
 
 // receiverType resolves a receiver expression to its underlying type name and pointer flag.
+//
+// expr is a receiver field's type; it returns the base type name, type arguments stripped, and true only when a star wraps it.
+// Any other form gives an empty name and false, or an empty name and true under a star.
 func receiverType(expr ast.Expr) (string, bool) {
 	switch item := expr.(type) {
 	case *ast.Ident:
@@ -181,6 +210,7 @@ func receiverType(expr ast.Expr) (string, bool) {
 }
 
 // dominantReceiverValue picks the most common value in counts, breaking ties alphabetically.
+// It returns the value with the highest count, the lexically smallest on a tie, or an empty string when counts is empty.
 func dominantReceiverValue(counts map[string]int) string {
 	type candidate struct {
 		value string
@@ -196,8 +226,9 @@ func dominantReceiverValue(counts map[string]int) string {
 }
 
 // receiverInspectModes maps the InspectGroup option to (inspectName, inspectPointer) flags.
-func receiverInspectModes(input string) (bool, bool) {
-	switch strings.ToLower(strings.TrimSpace(input)) {
+// inspectGroup is trimmed and lowercased; it returns inspectName alone for name, inspectPointer alone for pointer, and both otherwise.
+func receiverInspectModes(inspectGroup string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(inspectGroup)) {
 	case "name":
 		return true, false
 	case "pointer":
@@ -208,6 +239,12 @@ func receiverInspectModes(input string) (bool, bool) {
 }
 
 // makeReceiverFinding constructs a Finding describing a receiver name or form mismatch.
+//
+// method places the finding at its function name; dominantName and dominantForm are the group's most frequent values, ties broken lexically.
+// nameMismatch and formMismatch pick the reason, name or form when only one is set, and a generic convention message otherwise.
+//
+// It returns the finding with the method's file, position and function symbol, plus type, receiver name, form and reason metadata.
+// Non-empty dominantName and dominantForm values are added to that metadata too.
 func makeReceiverFinding(method receiverMethod, dominantName string, dominantForm string, nameMismatch bool, formMismatch bool) finding.Finding {
 	position := method.unit.FileSet.Position(method.function.Name.Pos())
 	reason := "receiver differs from dominant convention"

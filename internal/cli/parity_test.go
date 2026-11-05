@@ -1,5 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file covers shared flag parity across commands.
+//
+// This file covers shared flag parity across commands: --version, --quiet, --no-ansi, --ansi, help, list, completion, summary and report.
+// A failure means a command line that users and scripts rely on changed its output or exit code.
 package cli
 
 import (
@@ -63,7 +65,8 @@ func TestAnsiForcesEscapes(t *testing.T) {
 	}
 }
 
-// TestHelpForCommandShowsUsage verifies help renders usage for each known subcommand.
+// TestHelpForCommandShowsUsage verifies gruff-go help <command> exits 0 and names the command for each subcommand the test lists.
+// For init it also checks that the usage shows --reset nested inside --force.
 func TestHelpForCommandShowsUsage(t *testing.T) {
 	for _, cmd := range []string{"analyse", "baseline", "completion", "init", "list-rules", "summary", "report", "dashboard"} {
 		var out, errBuf bytes.Buffer
@@ -104,7 +107,7 @@ func TestListAliasMatchesUsage(t *testing.T) {
 	}
 }
 
-// TestGlobalCompatibilityAliases verifies cross-gruff global aliases are accepted.
+// TestGlobalCompatibilityAliases verifies the cross-gruff global aliases --silent and -v are accepted and --silent suppresses normal output.
 func TestGlobalCompatibilityAliases(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	if code := Main([]string{"--silent", "-v", "list"}, &out, &errBuf); code != 0 {
@@ -115,7 +118,7 @@ func TestGlobalCompatibilityAliases(t *testing.T) {
 	}
 }
 
-// TestCompletionCommand emits a shell completion script.
+// TestCompletionCommand verifies gruff-go completion with no shell argument exits 0 and prints the bash complete registration line.
 func TestCompletionCommand(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	if code := Main([]string{"completion"}, &out, &errBuf); code != 0 {
@@ -126,7 +129,8 @@ func TestCompletionCommand(t *testing.T) {
 	}
 }
 
-// TestSummaryCommandText verifies the summary text output contains expected fragments.
+// TestSummaryCommandText verifies gruff-go summary on a one-file project exits 0 and prints the core lines of the text digest.
+// It checks the version header, the scanned path, the file counts, the scan time, and the Composite and Findings lines.
 func TestSummaryCommandText(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -150,8 +154,8 @@ func TestSummaryCommandText(t *testing.T) {
 	}
 }
 
-// TestSummaryCommandShowsGitignoredCount gives new users a quick explanation
-// for skipped files without changing machine-readable summary JSON.
+// TestSummaryCommandShowsGitignoredCount verifies the text summary prints "ignored by .gitignore: 1" when one file matches .gitignore.
+// The count explains skipped files to a new user without changing machine-readable summary JSON; this test checks the text side only.
 func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n")
@@ -168,16 +172,23 @@ func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
 	}
 }
 
-// TestSummaryCommandSuggestsGeneratedBaseline checks the text-only fresh-start
-// hint appears when a first summary finds existing debt.
+// TestSummaryCommandSuggestsGeneratedBaseline checks the text-only fresh-start hint a first summary prints for existing debt.
+//
+// That summary exits 0 because the family CLI contract reserves exit 1 for a gate somebody asked for; with --fail-on advisory it exits 1.
+// Both suggested commands quote the spaced file path so the user can paste them as printed.
 func TestSummaryCommandSuggestsGeneratedBaseline(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex path.go", complexFixture())
 	t.Chdir(root)
 
+	var gatedOut, gatedErr bytes.Buffer
+	if code := Main([]string{"summary", "--fail-on", "advisory", "complex path.go"}, &gatedOut, &gatedErr); code != 1 {
+		t.Fatalf("summary --fail-on advisory exit = %d, want 1; stderr = %s", code, gatedErr.String())
+	}
+
 	var out, errBuf bytes.Buffer
-	if code := Main([]string{"summary", "complex path.go"}, &out, &errBuf); code != 1 {
-		t.Fatalf("summary exit = %d, stderr = %s", code, errBuf.String())
+	if code := Main([]string{"summary", "complex path.go"}, &out, &errBuf); code != 0 {
+		t.Fatalf("summary exit = %d, want 0 when no gate was asked for; stderr = %s", code, errBuf.String())
 	}
 	for _, fragment := range []string{
 		"fresh start: gruff-go analyse --generate-baseline gruff-baseline.json \"complex path.go\"",
@@ -220,7 +231,7 @@ func TestSummaryRejectsBadFormat(t *testing.T) {
 	}
 }
 
-// TestReportCommandHTMLToFile verifies report --output writes HTML to disk.
+// TestReportCommandHTMLToFile verifies report --format html --output writes an HTML document to that file and leaves stdout empty.
 func TestReportCommandHTMLToFile(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
@@ -256,10 +267,57 @@ func TestReportRejectsBadFormat(t *testing.T) {
 }
 
 // readFileToString reads path and returns its contents as a string.
+// When os.ReadFile fails, for example because path does not exist, it returns an empty string and that error unchanged.
 func readFileToString(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// TestCommandCatalogueReachesEverySurface checks each help.go catalogue entry reaches completion and the help views its metadata enables.
+//
+// A described entry must appear on the usage screen, and an entry with a flag list must open its own help screen.
+// Commands missing from the catalogue are outside this check.
+func TestCommandCatalogueReachesEverySurface(t *testing.T) {
+	var usage, usageErr bytes.Buffer
+	if code := Main([]string{"help"}, &usage, &usageErr); code != 0 {
+		t.Fatalf("help exit = %d, stderr = %s", code, usageErr.String())
+	}
+	var completion, completionErr bytes.Buffer
+	if code := Main([]string{"completion", "bash"}, &completion, &completionErr); code != 0 {
+		t.Fatalf("completion exit = %d, stderr = %s", code, completionErr.String())
+	}
+
+	for _, entry := range commandCatalogue {
+		// Every name is completable, aliases included, because a user may type either spelling.
+		if !strings.Contains(completion.String(), entry.name) {
+			t.Errorf("completion script omits %q", entry.name)
+		}
+		// A described command is one the usage screen lists; an alias deliberately carries no description.
+		if entry.description != "" && !strings.Contains(usage.String(), entry.description) {
+			t.Errorf("usage screen omits %q", entry.name)
+		}
+		// A command with a flag list has a per-command help screen the dispatch can reach.
+		if entry.usage != "" {
+			var out, errBuf bytes.Buffer
+			if code := Main([]string{"help", entry.name}, &out, &errBuf); code != 0 {
+				t.Errorf("help %s exit = %d, stderr = %s", entry.name, code, errBuf.String())
+			}
+		}
+	}
+}
+
+// TestHookDescriptionNamesTheContractItEmits verifies the usage screen's hook line names the contract version the
+// hook actually advertises, which is the drift that left gruff.hook.v1 in the command listing after v2 shipped.
+func TestHookDescriptionNamesTheContractItEmits(t *testing.T) {
+	for _, entry := range commandCatalogue {
+		if entry.name != "hook" {
+			continue
+		}
+		if !strings.Contains(entry.description, hookContractVersion) {
+			t.Errorf("hook description = %q, want the emitted contract %q", entry.description, hookContractVersion)
+		}
+	}
 }

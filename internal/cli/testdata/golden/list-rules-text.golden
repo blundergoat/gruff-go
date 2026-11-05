@@ -13,6 +13,8 @@ design.hotspot-file	design	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric
 docs.config-field-comment	documentation	advisory	parser	Config field comment
 docs.exported-symbol-comment	documentation	advisory	parser	Exported symbol comment
+docs.missing-param-doc	documentation	advisory	parser	Missing parameter doc
+docs.missing-return-doc	documentation	advisory	parser	Missing return doc
 docs.package-comment	documentation	advisory	parser	Package comment
 docs.suppression-without-rationale	documentation	advisory	parser	Suppression without rationale
 maintainability.context-todo-production	maintainability	advisory	parser	Context TODO in production
@@ -27,7 +29,6 @@ naming.contextual-generic	naming	advisory	parser	Contextual generic name
 naming.get-prefix	modernisation	advisory	parser	Get prefix
 naming.identifier-quality	naming	advisory	parser	Identifier quality
 naming.misspelling	naming	advisory	parser	Misspelled identifier or comment
-naming.negated-boolean	naming	advisory	parser	Negated boolean
 naming.package-stutter	naming	advisory	parser	Package stutter
 naming.package-underscore	naming	advisory	parser	Package name contains underscore
 naming.receiver-consistency	naming	advisory	parser	Receiver consistency
@@ -45,39 +46,35 @@ security.path-traversal-file-access	security	advisory	parser	Path traversal in f
 security.permissive-file-mode	security	advisory	parser	Permissive file mode
 security.request-body-without-limit	security	advisory	parser	Request body read without limit
 security.request-controlled-url	security	advisory	parser	Request-controlled request URL
-security.sensitive-data-logging	security	advisory	parser	Sensitive data in logging
 security.shell-command	security	warning	parser	Shell command execution
-security.sql-string-query	security	advisory	parser	SQL string query construction
 security.template-injection-xss	security	advisory	parser	Template injection / reflected XSS
 security.tls-insecure-config	security	warning	parser	TLS insecure config
 security.unsafe-deserialization	security	advisory	parser	Unsafe deserialization
 security.weak-crypto	security	advisory	parser	Weak crypto primitive
 security.xxe-candidate	security	advisory	parser	XML external entity candidate
-sensitive-data.anthropic-api-key	sensitive-data	error	parser	Anthropic API key literal
-sensitive-data.aws-access-key	sensitive-data	error	parser	AWS access key id
-sensitive-data.connection-string	sensitive-data	error	parser	Connection string with embedded password
-sensitive-data.gcp-service-account	sensitive-data	error	parser	GCP service-account JSON key
-sensitive-data.github-token	sensitive-data	error	parser	GitHub token literal
-sensitive-data.gitlab-token	sensitive-data	error	parser	GitLab token literal
-sensitive-data.google-api-key	sensitive-data	error	parser	Google API key literal
-sensitive-data.high-entropy-string	sensitive-data	warning	parser	High-entropy string
-sensitive-data.jwt-token	sensitive-data	error	parser	JWT token literal
-sensitive-data.npm-token	sensitive-data	error	parser	npm token literal
+sensitive-data.anthropic-api-key	sensitive-data	warning	parser	Anthropic API key literal
+sensitive-data.aws-access-key	sensitive-data	warning	parser	AWS access key id
+sensitive-data.connection-string	sensitive-data	warning	parser	Connection string with embedded password
+sensitive-data.gcp-service-account	sensitive-data	warning	parser	GCP service-account JSON key
+sensitive-data.github-token	sensitive-data	warning	parser	GitHub token literal
+sensitive-data.gitlab-token	sensitive-data	warning	parser	GitLab token literal
+sensitive-data.google-api-key	sensitive-data	warning	parser	Google API key literal
+sensitive-data.jwt-token	sensitive-data	warning	parser	JWT token literal
+sensitive-data.npm-token	sensitive-data	warning	parser	npm token literal
 sensitive-data.phi-pattern	sensitive-data	warning	parser	PHI pattern
 sensitive-data.pii-pattern	sensitive-data	warning	parser	PII pattern
-sensitive-data.private-key	sensitive-data	error	parser	Embedded private key
-sensitive-data.secret-pattern	sensitive-data	error	parser	Secret-like literal
-sensitive-data.slack-token	sensitive-data	error	parser	Slack token literal
-sensitive-data.stripe-key	sensitive-data	error	parser	Stripe live key literal
+sensitive-data.private-key	sensitive-data	warning	parser	Embedded private key
+sensitive-data.secret-pattern	sensitive-data	warning	parser	Secret-like literal
+sensitive-data.slack-token	sensitive-data	warning	parser	Slack token literal
+sensitive-data.stripe-key	sensitive-data	warning	parser	Stripe live key literal
 size.file-length	size	error	parser	File length
 size.function-length	size	warning	parser	Function length
 size.parameter-count	size	advisory	parser	Parameter count
+test-quality.duplicate-test-body	test-quality	advisory	parser	Duplicate test body
 test-quality.empty-test	test-quality	advisory	parser	Empty test
 test-quality.fatal-in-goroutine	test-quality	advisory	parser	Fatal call in goroutine
 test-quality.helper-missing-t-helper	test-quality	advisory	parser	Test helper missing t.Helper
-test-quality.no-failure-path	test-quality	advisory	parser	Test cannot fail
 test-quality.parallel-range-capture	test-quality	advisory	parser	Parallel subtest captures range variable
-test-quality.skipped-test	test-quality	advisory	parser	Skipped test
 test-quality.sleep-in-test	test-quality	advisory	parser	Sleep in test
 test-quality.static-analysis-redundant-test	test-quality	advisory	parser	Static-analysis-redundant test candidate
 test-quality.tempdir-misuse	test-quality	advisory	parser	Test temp dir misuse

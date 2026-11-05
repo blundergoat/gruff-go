@@ -1,6 +1,7 @@
-// Package rule exercises the flag / no-flag boundaries and finding metadata of
-// test-quality.static-analysis-redundant-test: the adversarial precision coverage
-// that backs the opt-in candidate's calibration toward a future default-on decision.
+// Package rule tests the flag and no-flag boundaries and finding metadata of test-quality.static-analysis-redundant-test.
+//
+// The rule flags a test whose reflect or FieldByName check only restates what a same-package declaration already says.
+// These adversarial precision cases back the opt-in candidate's calibration toward a future default-on decision.
 package rule
 
 import (
@@ -12,12 +13,15 @@ import (
 )
 
 // vRun analyses the supplied units with only the rule under test.
+// It returns the findings StaticAnalysisRedundantTestRule reports for units under an empty Context, with no entries when nothing is flagged.
 func vRun(t *testing.T, units ...parser.Unit) []finding.Finding {
 	t.Helper()
 	return StaticAnalysisRedundantTestRule{}.AnalyzeProject(units, Context{})
 }
 
 // vProd is the canonical same-package production declaration used by probes.
+// It returns the parsed unit for pkg/widget/widget.go, which declares the Widget struct with Name and Count fields plus NewWidget and Parse.
+// The metadata subtest relies on type Widget sitting on line 3 of this source.
 func vProd(t *testing.T) parser.Unit {
 	t.Helper()
 	return parseOne(t, "pkg/widget/widget.go", `package widget
@@ -34,21 +38,22 @@ func Parse(in string) (Widget, error) { return Widget{Name: in}, nil }
 }
 
 // vTest parses a widget_test.go body in the same dir/package as vProd.
+// It returns the unit parseOne produces for body at pkg/widget/widget_test.go; a write failure or any parse diagnostic fails the test.
+// body supplies its own package clause, so the unit shares vProd's package only when that clause is package widget.
 func vTest(t *testing.T, body string) parser.Unit {
 	t.Helper()
 	return parseOne(t, "pkg/widget/widget_test.go", body)
 }
 
-// TestVerifyStaticFactAdversarial pins the rule's flag / no-flag boundary: Group A
-// asserts supported reflect and FieldByName shapes are flagged (including aliased,
-// dot-import, benchmark, and testify variants); Group B asserts behaviour checks and
-// unsupported shapes stay silent; the closing subtests verify external/cross-directory
-// package isolation and finding metadata (assertion, staticFact, source proof).
+// TestVerifyStaticFactAdversarial pins the redundant-test rule's flag and no-flag boundary; a failing subtest name says which probe changed.
+//
+// Group A must flag reflect and FieldByName shapes, including aliased, dot-import, benchmark and testify variants.
+// Group B behaviour checks and unsupported shapes stay silent; closing subtests check package isolation and the finding's source-proof metadata.
 func TestVerifyStaticFactAdversarial(t *testing.T) {
 	prod := vProd(t)
 
 	// ---- Group A: MUST FLAG (true positives in supported scope) ----
-	flag := []struct {
+	mustFlag := []struct {
 		name string
 		body string
 		want int
@@ -94,7 +99,7 @@ func TestX(t *testing.T) {
 	if reflect.TypeOf(Widget{}).Kind() != reflect.Struct { require.Fail(t, "x") }
 }`, 1},
 	}
-	for _, tc := range flag {
+	for _, tc := range mustFlag {
 		t.Run("FLAG/"+tc.name, func(t *testing.T) {
 			got := vRun(t, prod, vTest(t, tc.body))
 			if len(got) != tc.want {
@@ -104,7 +109,7 @@ func TestX(t *testing.T) {
 	}
 
 	// ---- Group B: MUST NOT FLAG (FP guards + documented limitations) ----
-	noflag := []struct {
+	mustNotFlag := []struct {
 		name string
 		body string
 		note string
@@ -172,7 +177,7 @@ func TestX(t *testing.T) {
 	if reflect.TypeOf(v).Kind() != reflect.Struct { t.Fatal("not struct") }
 }`, "FP-guard: reflection on runtime value, real error check"},
 	}
-	for _, tc := range noflag {
+	for _, tc := range mustNotFlag {
 		t.Run("NOFLAG/"+tc.name, func(t *testing.T) {
 			got := vRun(t, prod, vTest(t, tc.body))
 			if len(got) != 0 {

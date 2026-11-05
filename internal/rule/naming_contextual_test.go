@@ -1,5 +1,9 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the contextual-generic rule's size-gated detection logic.
+//
+// This file tests naming.contextual-generic, which flags a generic range name such as item once its loop body passes the body-line gate.
+// Accumulators such as out and result need the function-line gate and, by default, at least two of them in one function.
+//
+// The gates count code lines only; test files stay quiet, and generated files are checked only when the run includes ignored files.
 package rule
 
 import "testing"
@@ -20,7 +24,8 @@ func Render(users []string) {
 	}
 }
 
-// TestContextualGenericFlagsLongGenericRange checks the rule emits a finding when the body crosses the line gate.
+// TestContextualGenericFlagsLongGenericRange checks that a six-line loop body over a five-line gate flags item.
+// The finding's range metadata must name users, the collection the loop variable could be named after.
 func TestContextualGenericFlagsLongGenericRange(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -69,6 +74,7 @@ func Render(records []string) {
 }
 
 // TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass exercises both the function-length and require-multiple gates.
+// By default only Build, with two accumulators, reports; with RequireMultiple false, the lone out in Single reports as well.
 func TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -108,7 +114,92 @@ func Single(users []string) []string {
 	}
 }
 
+// TestContextualGenericCountsCodeLinesInLoopBody checks that the loop-body gate counts code lines only.
+//
+// Comments and blank lines in the body are free, and a body one code line over the gate still reports with bodyLines 6 in its metadata.
+// The rule comes from FAMILY-CONTRACT section 12; search for "Code lines in every line count".
+func TestContextualGenericCountsCodeLinesInLoopBody(t *testing.T) {
+	padded := parseOne(t, "pkg/file.go", `package pkg
+
+func Render(users []string) {
+	for _, item := range users {
+		// Each user prints on its own line.
+		println(item)
+
+		println(item)
+		// The second pass repeats the first.
+		println(item)
+
+		println(item)
+		/* The last call closes the group. */
+		println(item)
+	}
+}
+`)
+	if got := (ContextualGenericRule{MinBodyLines: 5}).AnalyzeUnit(padded, Context{}); len(got) != 0 {
+		t.Fatalf("five code lines with padding stay at the gate, got %#v", got)
+	}
+
+	over := parseOne(t, "pkg/file.go", `package pkg
+
+func Render(users []string) {
+	for _, item := range users {
+		// Each user prints on its own line.
+		println(item)
+
+		println(item)
+		println(item)
+		println(item)
+		println(item)
+		println(item)
+	}
+}
+`)
+	findings := (ContextualGenericRule{MinBodyLines: 5}).AnalyzeUnit(over, Context{})
+	if len(findings) != 1 || findings[0].Metadata["bodyLines"] != 6 {
+		t.Fatalf("findings = %#v, want one finding on a six-code-line body", findings)
+	}
+}
+
+// TestContextualGenericCountsCodeLinesInFunction checks the function gate counts code lines only: the doc comment,
+// body comments and blank lines are free, and a function one code line over the gate still reports.
+func TestContextualGenericCountsCodeLinesInFunction(t *testing.T) {
+	padded := parseOne(t, "pkg/file.go", `package pkg
+
+// Build returns every user twice, once per list.
+func Build(users []string) []string {
+	// The first list keeps the input order.
+	out := []string{}
+
+	// The second list repeats it.
+	result := []string{}
+	return append(out, result...)
+}
+`)
+	if got := (ContextualGenericRule{MinFunctionLines: 5}).AnalyzeUnit(padded, Context{}); len(got) != 0 {
+		t.Fatalf("five code lines with padding stay at the gate, got %#v", got)
+	}
+
+	over := parseOne(t, "pkg/file.go", `package pkg
+
+// Build returns every user twice, once per list.
+func Build(users []string) []string {
+	// The first list keeps the input order.
+	out := []string{}
+	result := []string{}
+	result = append(result, users...)
+	return append(out, result...)
+}
+`)
+	findings := (ContextualGenericRule{MinFunctionLines: 5}).AnalyzeUnit(over, Context{})
+	got := findingSymbols(findings)
+	if len(got) != 2 || !got["out"] || !got["result"] || findings[0].Metadata["functionLines"] != 6 {
+		t.Fatalf("findings = %#v, want out and result on a six-code-line function", findings)
+	}
+}
+
 // TestContextualGenericSkipsTestAndGeneratedFiles ensures the rule ignores test and machine-generated files.
+// A generated file is still analysed when the run includes ignored files, so it must then report its one finding.
 func TestContextualGenericSkipsTestAndGeneratedFiles(t *testing.T) {
 	testUnit := parseOne(t, "pkg/file_test.go", `package pkg
 

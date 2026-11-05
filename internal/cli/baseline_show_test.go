@@ -1,5 +1,7 @@
-// Package cli baseline-show tests cover the M24 three-state classification
-// surface (new / unchanged / resolved) end to end through the analyse command.
+// Package cli baseline-show tests cover the three-state classification of analyse --baseline end to end.
+//
+// Each run sees new, unchanged and resolved findings, with and without --baseline-show, in the JSON report's baseline block.
+// A failure means a count, a detail array or a legacy count no longer matches the seeded baseline.
 package cli
 
 import (
@@ -7,15 +9,21 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
-	"github.com/blundergoat/gruff-go/internal/analysis"
+	"github.com/blundergoat/gruff-go/internal/baseline"
 )
 
-// seedResolvableBaseline baselines complex.go, then injects a bogus entry that
-// no current finding can match (so it classifies as resolved) and adds an
-// un-baselined extra.go (so its findings classify as new). It returns the number
-// of genuinely baselined findings, which is the expected unchanged count.
+// seedResolvableBaseline builds a baseline whose next analyse run shows all three states: new, unchanged and resolved.
+//
+// It baselines complex.go, then adds an entry for deleted.go that no current finding can match, so it classifies as resolved.
+// It also writes an un-baselined extra.go, so that file's findings classify as new.
+//
+// root must be the test's current directory and already hold complex.go; base.json is rewritten and extra.go is created under root.
+// It returns the number of genuinely baselined findings, which is the expected unchanged count.
+// It fails the test instead of returning zero when the baseline captured no findings.
 func seedResolvableBaseline(t *testing.T, root string) int {
 	t.Helper()
 	var baseOut, baseErr bytes.Buffer
@@ -26,24 +34,22 @@ func seedResolvableBaseline(t *testing.T, root string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	type entry struct {
-		RuleID      string `json:"ruleId"`
-		File        string `json:"file"`
-		Fingerprint string `json:"fingerprint"`
-	}
-	var file struct {
-		SchemaVersion string  `json:"schemaVersion"`
-		Findings      []entry `json:"findings"`
-	}
-	if err := json.Unmarshal(raw, &file); err != nil {
+	file, err := baseline.Parse(raw)
+	if err != nil {
 		t.Fatal(err)
 	}
-	baselined := len(file.Findings)
+	baselined := 0
+	for _, occurrence := range file.Occurrences {
+		baselined += occurrence.Count
+	}
 	if baselined == 0 {
 		t.Fatal("baseline captured no findings; fixture cannot prove unchanged state")
 	}
-	file.Findings = append(file.Findings, entry{RuleID: "size.file-length", File: "deleted.go", Fingerprint: "deadbeefdeadbeef"})
-	patched, err := json.Marshal(file)
+	// A reviewed identity for a file that no longer exists is what resolves.
+	// It is inserted in identity order so the file stays valid.
+	file.Occurrences = append(file.Occurrences, baseline.Occurrence{Identity: "deadbeefdeadbeef", Count: 1, RuleID: "size.file-length", Path: "deleted.go"})
+	slices.SortFunc(file.Occurrences, func(left, right baseline.Occurrence) int { return strings.Compare(left.Identity, right.Identity) })
+	patched, err := baseline.Marshal(file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,22 +61,23 @@ func seedResolvableBaseline(t *testing.T, root string) int {
 }
 
 // runAnalyseReport runs analyse with the given args and decodes the JSON report.
-func runAnalyseReport(t *testing.T, args ...string) analysis.Report {
+// It returns the decoded report only after a zero exit; a non-zero exit or output that does not decode as JSON fails the test.
+func runAnalyseReport(t *testing.T, args ...string) machineAnalysisReport {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	if code := Main(args, &out, &errOut); code != 0 {
 		t.Fatalf("analyse %v exit = %d, stderr = %s", args, code, errOut.String())
 	}
-	var report analysis.Report
+	var report machineAnalysisReport
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("unmarshal %v: %v\n%s", args, err, out.String())
 	}
 	return report
 }
 
-// TestAnalyseBaselineThreeStateShowCounts checks that --baseline-show surfaces
-// the new / unchanged / resolved counts and detail arrays, with the resolved
-// entry naming the fixed file and the legacy counts staying in lockstep.
+// TestAnalyseBaselineThreeStateShowCounts checks that --baseline-show reports the new, unchanged and resolved counts and detail arrays.
+//
+// The resolved entry must name deleted.go, and the legacy suppressed and stale counts must equal the unchanged and resolved counts.
 func TestAnalyseBaselineThreeStateShowCounts(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())
@@ -78,6 +85,7 @@ func TestAnalyseBaselineThreeStateShowCounts(t *testing.T) {
 	baselined := seedResolvableBaseline(t, root)
 
 	b := runAnalyseReport(t, "analyse", "--baseline", "base.json", "--baseline-show", "--format", "json", "--fail-on", "none", ".").Baseline
+	// extra.go supplies at least one new finding, and the seeded deleted.go entry is the only resolved one.
 	if b.NewFindings < 1 || b.UnchangedFindings != baselined || b.ResolvedFindings != 1 {
 		t.Fatalf("counts new/unchanged/resolved = %d/%d/%d, want >=1/%d/1", b.NewFindings, b.UnchangedFindings, b.ResolvedFindings, baselined)
 	}
@@ -92,9 +100,9 @@ func TestAnalyseBaselineThreeStateShowCounts(t *testing.T) {
 	}
 }
 
-// TestAnalyseBaselineNoShowOmitsArrays checks that without --baseline-show the
-// counts are still emitted but the unchanged/resolved detail arrays are omitted,
-// so default JSON output stays compact.
+// TestAnalyseBaselineNoShowOmitsArrays checks that without --baseline-show the counts remain populated and both decoded detail slices are empty.
+//
+// The length checks cannot tell omitted keys, null and empty arrays apart, so they do not prove the default JSON output leaves the arrays out.
 func TestAnalyseBaselineNoShowOmitsArrays(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "complex.go", complexFixture())

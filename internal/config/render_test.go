@@ -1,8 +1,7 @@
-// Package config tests cover the default-config renderer.
-// These checks lock in the round-trip: the YAML body Render emits must parse
-// back into the same enablement, severity, and threshold values that
-// rule.Defaults() exposes, so `gruff-go init` and the interactive bootstrap
-// produce a file that does not silently drift from the live registry.
+// Package config tests cover the default-config renderer behind gruff-go init.
+//
+// Render must emit a YAML body that Parse reads back into the same enablement, severity and threshold values that rule.Defaults() exposes.
+// That keeps the file gruff-go init and the interactive bootstrap write from silently drifting from the live registry.
 package config
 
 import (
@@ -11,9 +10,10 @@ import (
 	"testing"
 )
 
-// TestRenderRoundTripsThroughParse verifies that every rule's defaults survive
-// a Render -> Parse cycle, so the rendered file is exactly equivalent to the
-// registry's built-in policy on first load.
+// TestRenderRoundTripsThroughParse verifies that every rule's enablement, severity and thresholds survive a Render -> Parse cycle.
+//
+// Rule-value mismatches mean a fresh gruff-go init file would load with different enablement, severity or thresholds.
+// It also requires the schemaVersion line and the analyse --generate-baseline fresh-start hint.
 func TestRenderRoundTripsThroughParse(t *testing.T) {
 	definitions := defaultDefinitions()
 	rendered := Render(definitions, RenderOptions{})
@@ -47,10 +47,10 @@ func TestRenderRoundTripsThroughParse(t *testing.T) {
 	}
 }
 
-// TestRenderEmitsCanonicalSeverityNames asserts the rendered severity matches
-// the canonical 3-bucket vocabulary verbatim (advisory/warning/error) per
-// ADR-009. The old gruff-family alias layer (notice/warn) was removed; the
-// internal name now equals the rendered name.
+// TestRenderEmitsCanonicalSeverityNames asserts the rendered file uses the ADR-009 severity names advisory, warning and error verbatim.
+//
+// There is no notice/warn alias layer, so the internal severity name equals the rendered name.
+// A legacy name such as low, critical, info or notice on a severity line fails the test.
 func TestRenderEmitsCanonicalSeverityNames(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
 	for _, name := range []string{"advisory", "warning", "error"} {
@@ -65,9 +65,8 @@ func TestRenderEmitsCanonicalSeverityNames(t *testing.T) {
 	}
 }
 
-// TestRenderPreservesEveryDefaultEnabledRule asserts the rendered file does
-// not silently drop a rule. Counting is the cheap check; the parse round-trip
-// above proves field-level fidelity.
+// TestRenderPreservesEveryDefaultEnabledRule asserts the rendered file holds a rule block for every definition defaultDefinitions returns.
+// Looking for each rule's block header is the cheap check; TestRenderRoundTripsThroughParse proves field-level fidelity.
 func TestRenderPreservesEveryDefaultEnabledRule(t *testing.T) {
 	definitions := defaultDefinitions()
 	body := string(Render(definitions, RenderOptions{}))
@@ -78,32 +77,29 @@ func TestRenderPreservesEveryDefaultEnabledRule(t *testing.T) {
 	}
 }
 
-// TestRenderPreservesExistingScaffoldTuning verifies that paths.ignore,
-// allowlists.acceptedAbbreviations, and allowlists.secretPreviews survive
-// a regenerate when supplied via RenderOptions.Existing. This is the core
-// safeguard that turns `gruff-go init --force` into a merge rather than a
-// clobber of project-wide tuning.
+// TestRenderPreservesExistingScaffoldTuning verifies that paths.ignore and allowlists.acceptedAbbreviations survive a regenerate.
+//
+// This is the safeguard that makes gruff-go init --force merge project-wide tuning from RenderOptions.Existing rather than clobber it.
 func TestRenderPreservesExistingScaffoldTuning(t *testing.T) {
 	definitions := defaultDefinitions()
 	existing := &Config{
 		IgnorePaths:           []string{".claude/**", "internal/rule/sensitive_test.go"},
 		AcceptedAbbreviations: []string{"ID", "HTTP"},
-		SensitiveData:         SensitiveDataConfig{PreviewAllowlist: []string{"testdata/**"}},
 	}
 	body := string(Render(definitions, RenderOptions{Existing: existing}))
-	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "- HTTP", "testdata/**"} {
+	for _, want := range []string{".claude/**", "internal/rule/sensitive_test.go", "- ID", "- HTTP"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered body missing preserved value %q:\n%s", want, body)
 		}
 	}
+	// An empty ignore list here means Render dropped the user's paths.ignore, so init --force would wipe their tuning.
 	if strings.Contains(body, "ignore: []") {
 		t.Fatalf("paths.ignore should not be empty when preserved values were supplied:\n%s", body)
 	}
 }
 
-// TestInitAcceptedAbbreviationsFamilySeed pins the fresh-init output to the
-// ratified 16-word family list while leaving existing-config preservation to
-// TestRenderPreservesExistingScaffoldTuning.
+// TestInitAcceptedAbbreviationsFamilySeed pins a fresh gruff-go init file to the ratified 16-word family abbreviation list.
+// Preserving an existing config's list is left to TestRenderPreservesExistingScaffoldTuning.
 func TestInitAcceptedAbbreviationsFamilySeed(t *testing.T) {
 	definitions := defaultDefinitions()
 	configBody := Render(definitions, RenderOptions{})
@@ -117,29 +113,41 @@ func TestInitAcceptedAbbreviationsFamilySeed(t *testing.T) {
 	}
 }
 
-// TestRenderExplainsDenyByDefaultSecretPreviews keeps generated configuration
-// from implying that allowlisted paths may reveal matched credential bytes.
-func TestRenderExplainsDenyByDefaultSecretPreviews(t *testing.T) {
+// TestRenderOmitsTheRemovedSecretPreviewsKey keeps the generator from writing a key the loader now refuses.
+//
+// Section 5 made category markers unconditional, so a generated file offering to configure them would produce a
+// configuration that fails to load on the very port that wrote it.
+func TestRenderOmitsTheRemovedSecretPreviewsKey(t *testing.T) {
+	definitions := defaultDefinitions()
+	body := string(Render(definitions, RenderOptions{}))
+	if strings.Contains(body, "secretPreviews") {
+		t.Fatalf("rendered config still offers the removed secretPreviews key:\n%s", body)
+	}
+	if strings.Contains(body, "unconditional") == false {
+		t.Fatalf("rendered config does not explain that markers are unconditional:\n%s", body)
+	}
+	// A failure here means gruff-go init writes a file that the same binary then refuses to load.
+	if _, err := Parse([]byte(body), definitions); err != nil {
+		t.Fatalf("generated config does not load on the port that wrote it: %v", err)
+	}
+}
+
+// TestRenderWritesBothSeverityKeys pins the split the family contract ratified: failOn gates, minimumSeverity displays.
+func TestRenderWritesBothSeverityKeys(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
-	for _, want := range []string{
-		"fixed category/scheme markers only",
-		"Empty/nonmatching paths stay [redacted]",
-		"never suppresses sensitive-data findings",
-		"secretPreviews: []",
-	} {
+	for _, want := range []string{"failOn:", "  analyse: advisory", "minimumSeverity: advisory", "failOn above is what gates a build"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("rendered config missing secret-preview guidance %q", want)
+			t.Fatalf("rendered config missing %q:\n%s", want, body)
 		}
 	}
 }
 
-// TestRenderPreservesPerRuleOverrides confirms that per-rule severity,
-// threshold, and options overrides from an existing config carry into the
-// regenerated output. Rules without overrides still emit registry defaults.
+// TestRenderPreservesPerRuleOverrides confirms a regenerated config keeps an existing config's per-rule threshold, disable and options overrides.
+// The fixture also sets a severity override without asserting it; rules without overrides still render registry defaults.
 func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 	definitions := defaultDefinitions()
 	customThreshold := 4.0
-	enabled := false
+	acronymCaseEnabled := false
 	existing := &Config{
 		Rules: map[string]RuleConfig{
 			"complexity.nesting-depth": {
@@ -154,7 +162,7 @@ func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 				},
 			},
 			"naming.acronym-case": {
-				Enabled: &enabled,
+				Enabled: &acronymCaseEnabled,
 			},
 		},
 	}
@@ -170,18 +178,19 @@ func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 	if got := options.Enabled["naming.acronym-case"]; got {
 		t.Fatalf("naming.acronym-case enabled = true, want false (preserved disable)")
 	}
-	rubricOpts := options.Options["docs.comment-rubric"]
-	if rubricOpts["requirePackageSummary"] != true {
-		t.Fatalf("docs.comment-rubric.requirePackageSummary = %v, want true (preserved)", rubricOpts["requirePackageSummary"])
+	rubricOptions := options.Options["docs.comment-rubric"]
+	if rubricOptions["requirePackageSummary"] != true {
+		t.Fatalf("docs.comment-rubric.requirePackageSummary = %v, want true (preserved)", rubricOptions["requirePackageSummary"])
 	}
-	if rubricOpts["minWordsBeyondSymbol"] == nil {
-		t.Fatalf("docs.comment-rubric.minWordsBeyondSymbol missing from preserved options: %#v", rubricOpts)
+	if rubricOptions["minWordsBeyondSymbol"] == nil {
+		t.Fatalf("docs.comment-rubric.minWordsBeyondSymbol missing from preserved options: %#v", rubricOptions)
 	}
 }
 
-// TestRenderEmitsSingleThresholdAsScalar checks the singular `threshold:` form
-// when a rule has exactly one knob, matching the convention used in the
-// dogfood .gruff-go.yaml and in adopters' configs.
+// TestRenderEmitsSingleThresholdAsScalar checks the singular threshold: form for a rule with exactly one knob, such as size.file-length.
+//
+// A rule with several knobs, such as design.hotspot-file, keeps the plural thresholds: map.
+// The singular form matches the convention used in the dogfood .gruff-go.yaml and in adopters' configs.
 func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
 	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: error\n    threshold: 1000\n") {

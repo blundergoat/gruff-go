@@ -1,7 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file locks in P1 of the cross-port rubric (ADR-017 item 1): identifier
-// tokenization must preserve digit runs rather than fold or strip them, so a
-// real name like sha256 is never mistaken for a placeholder.
+//
+// This file locks in P1 of the cross-port rubric (ADR-017 item 1): identifier tokenization must keep digit runs, never fold or strip them.
+// Names such as sha256 must rejoin unchanged and keep a standalone digit token.
 package rule
 
 import (
@@ -10,13 +10,10 @@ import (
 	"unicode"
 )
 
-// TestSplitIdentifierTokensPreservesDigits guards the P1 invariant: every digit
-// in an identifier survives tokenization as its own token and is never merged
-// into a stem. It asserts two properties rather than an exact split so the test
-// tracks the invariant, not the boundary heuristics: the tokens rejoin to the
-// original name (nothing dropped), and at least one token is a standalone digit
-// run. The inputs are the rubric's canonical domain identifiers - flagging any of
-// these as a numbered placeholder is exactly what P1 forbids.
+// TestSplitIdentifierTokensPreservesDigits checks that each listed name rejoins unchanged and yields at least one token made only of digits.
+//
+// It does not pin the exact split, so boundary heuristics can change; the names are canonical identifiers P1 forbids flagging as placeholders.
+// A failure means splitIdentifierTokens dropped characters or left no digit run as a token of its own.
 func TestSplitIdentifierTokensPreservesDigits(t *testing.T) {
 	for _, name := range []string{"sha256", "parseHTTP2Header", "step0", "v2", "adr020", "base64", "utf8"} {
 		tokens := splitIdentifierTokens(name)
@@ -29,8 +26,8 @@ func TestSplitIdentifierTokensPreservesDigits(t *testing.T) {
 	}
 }
 
-// hasStandaloneDigitToken reports whether any token is a non-empty run of only
-// digits - the signal that the tokenizer kept a digit run as its own token.
+// hasStandaloneDigitToken reports whether any token is a non-empty run of only digits, the sign the tokenizer kept a digit run as its own token.
+// The tokens slice is tokenizer output; the result is false for nil or empty tokens, or when no non-empty entry consists only of digits.
 func hasStandaloneDigitToken(tokens []string) bool {
 	for _, token := range tokens {
 		if token == "" {

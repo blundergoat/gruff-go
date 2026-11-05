@@ -1,5 +1,7 @@
 // Package report renders gruff-go analysis results into output formats.
+//
 // Plain-text output favours deterministic sections and one-line findings for terminal review.
+// WriteText lays out an analyse report in a fixed order: header, diagnostics, findings, suppressions, baseline lines and the exit code line.
 package report
 
 import (
@@ -13,6 +15,9 @@ import (
 )
 
 // WriteText renders the complete report in the human-readable CLI format.
+//
+// writer receives each section of report in order: header, diagnostics, findings, suppressions, baseline lines, and the exit code line.
+// It stops at the first write that fails and returns that error, leaving partial output; it returns nil once the exit line is written.
 func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextHeader(writer, report); err != nil {
 		return err
@@ -23,6 +28,12 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 	if err := writeTextFindings(writer, report.Findings); err != nil {
 		return err
 	}
+	if err := writeTextSuppressions(writer, report.Suppressions); err != nil {
+		return err
+	}
+	if err := writeTextAppliedBaseline(writer, report.Baseline); err != nil {
+		return err
+	}
 	if err := writeTextBaselineStatus(writer, report.Baseline); err != nil {
 		return err
 	}
@@ -30,9 +41,63 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 	return err
 }
 
-// writeTextBaselineStatus appends the three-state baseline summary, and the
-// unchanged/resolved detail lists, only when --baseline-show set Show. Without
-// the flag this emits nothing, so default output stays byte-identical (ADR-012).
+// writeTextSuppressions writes the family suppression total with one clause per suppression row, so no accepted suppression is invisible.
+//
+// Both text surfaces that apply the exclusions, analyse here and summary in WriteSummaryText, share this writer, so the audit reads the same.
+// A run with no sensitiveExclusions, built-in or inline suppression rows writes nothing, leaving default output unchanged.
+//
+// writer receives the suppressed findings line; summaries holds one row per suppression, including entries that suppressed nothing.
+// Each row adds its Suppressed count to the total and one clause to the line.
+// Built-in rows are labelled by class and first path, inline rows by the commenting file, and every other row by its sensitiveExclusions index.
+//
+// It returns nil without writing when summaries is empty; otherwise it returns the writer's error if the write fails.
+func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSummary) error {
+	if len(summaries) == 0 {
+		return nil
+	}
+	total := 0
+	clauses := make([]string, 0, len(summaries))
+	for _, summary := range summaries {
+		total += summary.Suppressed
+		// A built-in row names the file it skipped, because it has no configured entry to point at.
+		if summary.Source == analysis.SuppressionSourceBuiltIn && len(summary.Paths) > 0 {
+			label := "builtInLockfile"
+			// The reason tells a test-path skip from a lockfile skip, so the label names the class the user is reading.
+			if analysis.IsBuiltInTestPathReason(summary.Reason) {
+				label = "builtInTestPath"
+			}
+			clauses = append(clauses, fmt.Sprintf("%s[%s] %s: %d (%s)", label, summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			continue
+		}
+		// An inline row names the file whose comment suppressed the findings, as `inline[main.go] security.shell-command: 1`.
+		if summary.Source == analysis.SuppressionSourceInline && len(summary.Paths) > 0 {
+			clauses = append(clauses, fmt.Sprintf("inline[%s] %s: %d (%s)", summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, summary.Reason))
+	}
+	_, err := fmt.Fprintf(writer, "suppressed findings: %d via %s\n", total, strings.Join(clauses, "; "))
+	return err
+}
+
+// writeTextAppliedBaseline names an applied baseline and its source label, so a run that hid accepted findings never reads as a clean scan.
+//
+// A typical line is `baseline: default gruff-baseline.json; suppressed 2 findings` (ADR-006).
+// writer receives the one baseline line, and summary supplies its Source, Path and SuppressedFindings count.
+// When summary.Applied is false it writes nothing and returns nil; otherwise it returns the error from the write, nil when it succeeds.
+func writeTextAppliedBaseline(writer io.Writer, summary analysis.BaselineSummary) error {
+	if !summary.Applied {
+		return nil
+	}
+	_, err := fmt.Fprintf(writer, "baseline: %s %s; suppressed %d findings\n", summary.Source, summary.Path, summary.SuppressedFindings)
+	return err
+}
+
+// writeTextBaselineStatus appends the three-state baseline summary and the unchanged and resolved lists, only when --baseline-show set Show.
+//
+// Without the flag this emits nothing, so default output stays byte-identical (ADR-012).
+// writer receives the counts line, then one unchanged line per finding in summary.Unchanged and one resolved line per entry in summary.Resolved.
+// It returns nil without writing when summary has Show false, and the error of the first write that fails, if any.
 func writeTextBaselineStatus(writer io.Writer, summary analysis.BaselineSummary) error {
 	if !summary.Show {
 		return nil
@@ -58,8 +123,13 @@ func writeTextBaselineStatus(writer io.Writer, summary analysis.BaselineSummary)
 	return nil
 }
 
-// writeTextHeader emits the leading metadata block: masthead, the canonical
-// composite/findings score block, schema, file counts, score coverage, and scope.
+// writeTextHeader emits the leading metadata block of an analyse text report.
+//
+// It holds the masthead, the canonical composite and findings score block, schema, file counts, score coverage, and scope.
+// writer receives the lines; report supplies the tool name and version, the score blocks, schema, file counts and skipped paths.
+//
+// Lines for gitignored skips, a display filter, a score caveat and the complexity scope appear only when report carries them.
+// It returns the first error from a write or from writeCompositeBlock, stopping there; nil means the whole header was written.
 func writeTextHeader(writer io.Writer, report analysis.Report) error {
 	if _, err := fmt.Fprintf(writer, "%s %s analyse\n", report.Tool.Name, report.Tool.Version); err != nil {
 		return err
@@ -104,6 +174,9 @@ func writeTextHeader(writer io.Writer, report analysis.Report) error {
 }
 
 // writeTextDiagnostics emits a one-line entry per diagnostic when any exist.
+//
+// writer receives a diagnostics heading and one indented line per entry in diagnostics, giving its label, file, line when known, and message.
+// It returns nil without writing when diagnostics is empty, and otherwise the error of the first write that fails, or nil.
 func writeTextDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) error {
 	if len(diagnostics) == 0 {
 		return nil
@@ -116,7 +189,7 @@ func writeTextDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) e
 		if diagnostic.Location != nil && diagnostic.Location.Line > 0 {
 			location = fmt.Sprintf(":%d", diagnostic.Location.Line)
 		}
-		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s\n", diagnostic.Stage, diagnostic.File, location, diagnostic.Message); err != nil {
+		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s\n", diagnosticLabel(diagnostic), diagnostic.File, location, diagnostic.Message); err != nil {
 			return err
 		}
 	}
@@ -124,6 +197,9 @@ func writeTextDiagnostics(writer io.Writer, diagnostics []analysis.Diagnostic) e
 }
 
 // writeTextFindings emits one line per finding in the order produced by the analyser.
+//
+// writer receives a findings heading and one dash line per entry in findings, giving severity, file, line when known, rule ID and message.
+// An empty findings slice writes findings: none instead; the error of the first write that fails is returned, otherwise nil.
 func writeTextFindings(writer io.Writer, findings []finding.Finding) error {
 	if len(findings) == 0 {
 		_, err := fmt.Fprintln(writer, "findings: none")
@@ -137,25 +213,31 @@ func writeTextFindings(writer io.Writer, findings []finding.Finding) error {
 		if item.Location != nil && item.Location.Line > 0 {
 			location = fmt.Sprintf(":%d", item.Location.Line)
 		}
-		if _, err := fmt.Fprintf(writer, "  [%s] %s%s %s: %s\n", item.Severity, item.File, location, item.RuleID, item.Message); err != nil {
+		// FAMILY-CONTRACT section 1 fixes this dash line for every port: dash, severity in brackets, file:line, rule ID, dash, message.
+		// The shared shape lets a reader compare findings across gruff ports.
+		if _, err := fmt.Fprintf(writer, "- [%s] %s%s %s - %s\n", item.Severity, item.File, location, item.RuleID, item.Message); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// countGitignored returns the number of skipped paths whose reason is "gitignored".
+// countGitignored returns the number of skipped paths whose reason is "gitignored", for the header's ignored by .gitignore line.
+// skipped is the report's skipped-path list; a result of 0 means .gitignore hid nothing and the header leaves that line out.
 func countGitignored(skipped []analysis.SkippedPath) int {
-	n := 0
+	gitignoredCount := 0
 	for _, item := range skipped {
 		if item.Reason == "gitignored" {
-			n++
+			gitignoredCount++
 		}
 	}
-	return n
+	return gitignoredCount
 }
 
 // WriteRuleText writes one line per registered rule with id, pillar, severity, capability, and title.
+//
+// writer receives one tab-separated line per entry in definitions, in the order given; empty definitions write a No rules registered line.
+// It stops at the first write that fails and returns that error, and returns nil once every line is written.
 func WriteRuleText(writer io.Writer, definitions []rule.Definition) error {
 	if len(definitions) == 0 {
 		_, err := fmt.Fprintln(writer, "No rules registered.")

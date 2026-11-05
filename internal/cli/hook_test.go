@@ -1,6 +1,7 @@
-// Package cli tests hook responses returned to coding-agent users.
-// Fixtures cover argument validation, diff scoping, and machine-readable output.
-// They protect the feedback loop shown after an agent edits a file.
+// Package cli tests the gruff-go hook command that coding agents run after editing a file.
+//
+// Fixtures cover capability negotiation, changed-region and diff scoping, baselines, ignored paths, config errors and gruff.hook.v2 JSON fields.
+// A failure here means an agent would get wrong, missing or resurfaced findings in its feedback loop after an edit.
 package cli
 
 import (
@@ -17,7 +18,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestHookCapabilitiesAdvertiseContract pins the §4 negotiation payload.
+// TestHookCapabilitiesAdvertiseContract pins the §4 negotiation payload from both gruff-go --capabilities and gruff-go hook --capabilities.
+// A failure means an agent would trust a contract version, flag spelling or feature this port does not honour.
 func TestHookCapabilitiesAdvertiseContract(t *testing.T) {
 	for _, args := range [][]string{
 		{"--capabilities"},
@@ -33,19 +35,43 @@ func TestHookCapabilitiesAdvertiseContract(t *testing.T) {
 				t.Fatalf("capabilities json: %v\n%s", err, out.String())
 			}
 			if got.ContractVersion != hookContractVersion || !got.Supports.NewOnly || !got.Supports.ScopeField {
-				t.Fatalf("capabilities = %#v, want gruff.hook.v1 with newOnly/scope support", got)
+				t.Fatalf("capabilities = %#v, want gruff.hook.v2 with newOnly/scope support", got)
+			}
+			// v2 adds four advertisements, and each must be true of this port rather than merely present.
+			if !got.Supports.BaselineV3 || !got.Supports.ConfidenceGate || !got.Supports.DeepScanBudget || !got.Supports.Diagnostics {
+				t.Fatalf("capabilities = %#v, want the four gruff.hook.v2 additions advertised", got)
 			}
 			if got.Flags.ChangedRanges != "--changed-ranges" || got.Flags.Diff != "--diff" || got.Flags.Baseline != "--baseline" {
 				t.Fatalf("flags = %#v", got.Flags)
 			}
-			if got.FlagOrder != "flags-before-path" {
-				t.Fatalf("flagOrder = %q, want flags-before-path for Go flag parser", got.FlagOrder)
+			// TestPathCommandsAcceptFlagsAfterPaths compares exit code and stdout with flags before and after the path for each listed command.
+			// FlagOrder must advertise any, so an agent knows it may place flags before or after a scan path.
+			if got.FlagOrder != "any" {
+				t.Fatalf("flagOrder = %q, want any; flag_order_test.go proves flags after the path behave identically", got.FlagOrder)
 			}
 		})
 	}
 }
 
-// TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual covers B1 and B2.
+// TestHookPublishesBoundedDeepScanDiagnostic keeps the degradation visible without a fatal exit.
+// It runs gruff-go hook --deep-scan-budget 1:1 and wants exit 0 with exactly one bounded-deep-scan diagnostic whose InvalidatesRun is false.
+func TestHookPublishesBoundedDeepScanDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\nfunc main() {}\n")
+	t.Chdir(root)
+	payload, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--deep-scan-budget", "1:1", "main.go")
+	if code != 0 {
+		t.Fatalf("hook exit = %d, want 0", code)
+	}
+	if len(payload.Diagnostics) != 1 || payload.Diagnostics[0].Type != "bounded-deep-scan" || payload.Diagnostics[0].InvalidatesRun == nil || *payload.Diagnostics[0].InvalidatesRun {
+		t.Fatalf("diagnostics = %#v, want one non-fatal bounded-deep-scan", payload.Diagnostics)
+	}
+}
+
+// TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual covers B1 and B2 on the 1010-line fixture.
+//
+// A full run reports size.file-length at file scope; --changed-ranges 501-501 drops it and counts the drop in suppressed.count.
+// --changed-ranges 5-5 keeps security.shell-command at line scope on line 5, where the fixture's exec.Command call sits.
 func TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "long.go", hookLongFixture(1010))
@@ -81,7 +107,10 @@ func TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual(t *testing.T) {
 	}
 }
 
-// TestHookFindingFieldsMetadataEnumsAndAdvisoryExit covers B4, B5, B6, and B10.
+// TestHookFindingFieldsMetadataEnumsAndAdvisoryExit covers B4, B5, B6, and B10 on the 1010-line fixture.
+//
+// The hook must exit 0 despite findings, and every finding needs remediation text, a stable identity and a valid severity and scope.
+// size.file-length must also report measured 1010 above threshold 1000, in lines.
 func TestHookFindingFieldsMetadataEnumsAndAdvisoryExit(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "long.go", hookLongFixture(1010))
@@ -98,8 +127,9 @@ func TestHookFindingFieldsMetadataEnumsAndAdvisoryExit(t *testing.T) {
 		if item.Remediation == "" {
 			t.Fatalf("%s remediation is empty", item.RuleID)
 		}
-		if item.StableIdentity == "" {
-			t.Fatalf("%s stableIdentity is empty", item.RuleID)
+		// This fixture holds no sensitive or otherwise unidentifiable finding, so every finding here must carry the ratified identity.
+		if item.StableIdentity == nil || *item.StableIdentity == "" {
+			t.Fatalf("%s stableIdentity is missing", item.RuleID)
 		}
 		if !validHookSeverity(item.Severity) || !validHookScope(item.Scope) {
 			t.Fatalf("finding has invalid enums: %#v", item)
@@ -113,6 +143,9 @@ func TestHookFindingFieldsMetadataEnumsAndAdvisoryExit(t *testing.T) {
 }
 
 // TestHookStableIdentityAndBaselineNewOnly covers B3 for baseline new-only.
+//
+// A growing long file must keep its size.file-length stableIdentity while its fingerprint changes, so its baselined finding stays hidden.
+// A file that newly crosses the 1000-line threshold after its baseline was written must still be reported.
 func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -123,8 +156,8 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "long.go")
 	grownSize := requireHookFinding(t, grown, "size.file-length")
-	if firstSize.StableIdentity != grownSize.StableIdentity {
-		t.Fatalf("stableIdentity changed with measured value: %q != %q", firstSize.StableIdentity, grownSize.StableIdentity)
+	if hookIdentityOf(t, firstSize) != hookIdentityOf(t, grownSize) {
+		t.Fatalf("stableIdentity changed with measured value: %q != %q", hookIdentityOf(t, firstSize), hookIdentityOf(t, grownSize))
 	}
 	if firstSize.Fingerprint == grownSize.Fingerprint {
 		t.Fatalf("fingerprint should remain allowed to move when message/count changes")
@@ -134,10 +167,11 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 	if code := Main([]string{"baseline", "--no-config", "--out", "baseline.json", "long.go"}, &baselineOut, &baselineErr); code != 0 {
 		t.Fatalf("baseline exit = %d, stderr = %s", code, baselineErr.String())
 	}
+	// The measured length never enters the identity, so a file that grew stays hidden behind its reviewed entry.
 	writeFile(t, root, "long.go", hookLongFixture(1012))
 	baselined, _ := runHookReport(t, "hook", "--format", "json", "--no-config", "--baseline", "baseline.json", "long.go")
 	if findHookFinding(baselined, "size.file-length") != nil {
-		t.Fatalf("baseline new-only re-surfaced grown file-length finding: %#v", baselined.Findings)
+		t.Fatalf("baseline new-only re-surfaced a grown file-length finding: %#v", baselined.Findings)
 	}
 
 	writeFile(t, root, "short.go", hookLongFixture(1000))
@@ -153,6 +187,9 @@ func TestHookStableIdentityAndBaselineNewOnly(t *testing.T) {
 }
 
 // TestHookDiffNewOnlyUsesStableIdentity covers B3 for git diff new-only.
+//
+// Under hook --diff HEAD, a committed long file that grows must not resurface its size.file-length finding.
+// A committed 1000-line file that grows to 1001 lines newly crosses the threshold, so its finding must be returned.
 func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -163,13 +200,14 @@ func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 	writeFile(t, root, "long.go", hookLongFixture(1010))
 	hookRunGit(t, root, "add", "long.go")
 	hookRunGit(t, root, "commit", "-q", "-m", "long baseline")
+	// A grown file states a new length in its message, and the length never enters the identity, so it stays hidden.
 	writeFile(t, root, "long.go", hookLongFixture(1011))
 	grown, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "HEAD", "long.go")
 	if code != 0 {
 		t.Fatalf("grown diff hook exit = %d", code)
 	}
 	if findHookFinding(grown, "size.file-length") != nil {
-		t.Fatalf("diff new-only re-surfaced existing file-length finding: %#v", grown.Findings)
+		t.Fatalf("diff new-only re-surfaced an existing file-length finding: %#v", grown.Findings)
 	}
 
 	writeFile(t, root, "short.go", hookLongFixture(1000))
@@ -186,6 +224,9 @@ func TestHookDiffNewOnlyUsesStableIdentity(t *testing.T) {
 }
 
 // TestHookReportsIgnoredPathsAndConfigErrors covers B7 and B8.
+//
+// A path matched by paths.ignore in .gruff-go.yaml is listed under ignored paths with source config and the matching pattern.
+// An unknown schemaVersion makes the hook exit 2 while still printing JSON with schemaOk false and a gruff-go init --force remediation.
 func TestHookReportsIgnoredPathsAndConfigErrors(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - \"ignored/**\"\n")
@@ -206,20 +247,23 @@ func TestHookReportsIgnoredPathsAndConfigErrors(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("invalid config exit = %d, want 2", code)
 	}
-	if invalid.Config.SchemaOK || invalid.Config.Error == nil || !strings.Contains(*invalid.Config.Error, "gruff-go init --force") {
+	if invalid.Config.SchemaOK || invalid.Config.Error == nil || !strings.Contains(invalid.Config.Error.Message, "gruff-go init --force") {
 		t.Fatalf("config state = %#v, want schemaOk false with remediation", invalid.Config)
 	}
 }
 
-// runHookReport executes the CLI and decodes gruff.hook.v1 JSON.
+// runHookReport executes the CLI and decodes gruff.hook.v2 JSON.
+//
+// args is the full argument list passed to Main unchanged.
+// It returns the decoded report and Main's exit code, and fails the test when stdout is empty or does not decode; stderr is discarded.
 func runHookReport(t *testing.T, args ...string) (hookReport, int) {
 	t.Helper()
 	payload, code, _ := runHookReportWithStderr(t, args...)
 	return payload, code
 }
 
-// runHookReportWithStderr executes hook mode and returns decoded JSON plus
-// stderr for tests that assert diagnostic surfaces.
+// runHookReportWithStderr executes hook mode and returns decoded JSON plus stderr for tests that assert diagnostic surfaces.
+// args go to Main unchanged, and Main's exit code is the second result; the test fails when stdout is empty or does not decode into a hookReport.
 func runHookReportWithStderr(t *testing.T, args ...string) (hookReport, int, string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
@@ -234,7 +278,24 @@ func runHookReportWithStderr(t *testing.T, args ...string) (hookReport, int, str
 	return payload, code, errOut.String()
 }
 
+// hookIdentityOf reads the ratified identity a fixture finding must carry, failing the test when it carries none.
+//
+// These fixtures contain no sensitive or otherwise unidentifiable findings, so a nil identity here is a defect rather than a case to tolerate.
+//
+// item is the decoded finding, and t fails the test when item carries a nil identity.
+// It returns the stableIdentity value unchanged, which may be an empty string because only a nil identity fails the test.
+func hookIdentityOf(t *testing.T, item hookFinding) string {
+	t.Helper()
+
+	if item.StableIdentity == nil {
+		t.Fatalf("%s carries no stableIdentity", item.RuleID)
+	}
+
+	return *item.StableIdentity
+}
+
 // requireHookFinding returns a named finding or fails the test.
+// payload is the decoded hook report and ruleID the rule whose first finding is returned by value, as findHookFinding locates it.
 func requireHookFinding(t *testing.T, payload hookReport, ruleID string) hookFinding {
 	t.Helper()
 	item := findHookFinding(payload, ruleID)
@@ -245,6 +306,7 @@ func requireHookFinding(t *testing.T, payload hookReport, ruleID string) hookFin
 }
 
 // findHookFinding returns the first finding for a rule ID.
+// payload is the decoded hook report, searched in order, and ruleID the exact rule ID to match; the result is nil when no finding matches.
 func findHookFinding(payload hookReport, ruleID string) *hookFinding {
 	for index := range payload.Findings {
 		if payload.Findings[index].RuleID == ruleID {
@@ -255,6 +317,7 @@ func findHookFinding(payload hookReport, ruleID string) *hookFinding {
 }
 
 // validHookSeverity checks the closed severity enum.
+// It reports true only for finding.SeverityAdvisory, SeverityWarning and SeverityError, and false for any other severity value.
 func validHookSeverity(severity finding.Severity) bool {
 	switch severity {
 	case finding.SeverityAdvisory, finding.SeverityWarning, finding.SeverityError:
@@ -265,6 +328,7 @@ func validHookSeverity(severity finding.Severity) bool {
 }
 
 // validHookScope checks the closed scope enum.
+// It reports true only for line, symbol, file and project, and false for any other scope string, including empty.
 func validHookScope(scope string) bool {
 	switch scope {
 	case "line", "symbol", "file", "project":
@@ -274,10 +338,14 @@ func validHookScope(scope string) bool {
 	}
 }
 
-// hookLongFixture builds a file with both line-scope and file-scope findings.
+// hookLongFixture builds Go source with a line-scope shell-command finding and a chosen substantive line count.
+//
+// Above 1000 substantive lines, the default size.file-length threshold, it also draws a file-scope finding; at 1000 or fewer it does not.
+// lines is the substantive line count wanted; filler starts at line 6, so a value below 6 yields only the five substantive header lines.
+// It returns Go source for package sample, opening with a doc comment and a Risky function whose exec.Command call sits on line 5.
 func hookLongFixture(lines int) string {
-	// Emits exactly `lines` substantive lines: file-length counts non-blank, non-comment lines,
-	// so the filler must be code and the doc comment on top rides for free.
+	// The fixture emits at least five substantive lines; code filler raises the count to the lines argument when it exceeds five.
+	// file-length counts non-blank, non-comment lines, so the filler must be code and the doc comment on top does not count.
 	var builder strings.Builder
 	builder.WriteString("// Package sample is a test package.\n")
 	builder.WriteString("package sample\n")
@@ -292,6 +360,7 @@ func hookLongFixture(lines int) string {
 }
 
 // hookRunGit runs git commands for diff new-only tests.
+// root is the working directory for git and args its arguments; a failing command fails the test with git's combined output.
 func hookRunGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	command := exec.Command("git", args...)
@@ -301,8 +370,9 @@ func hookRunGit(t *testing.T, root string, args ...string) {
 	}
 }
 
-// TestHookFixtureLineCount verifies generated source keeps the requested substantive length: the
-// fixture emits exactly N substantive lines plus one free doc-comment line on top.
+// TestHookFixtureLineCount checks that hookLongFixture(1010) writes 1011 lines: 1010 substantive lines plus the doc comment on top.
+//
+// t fails the test when that physical line total changes, which can shift the line numbers and lengths other hook tests expect.
 func TestHookFixtureLineCount(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "long.go", hookLongFixture(1010))
@@ -315,9 +385,8 @@ func TestHookFixtureLineCount(t *testing.T) {
 	}
 }
 
-// TestHookMetadataDirection pins B5 `direction`: ceiling rules report "above" and
-// the floor rule (comment-rubric package summary) reports "below". A wrong
-// direction inverts the remediation signal for any metadata consumer.
+// TestHookMetadataDirection pins B5 direction: ceiling rules report above and the floor rule, the comment-rubric package summary, reports below.
+// A wrong direction inverts the remediation signal for any metadata consumer.
 func TestHookMetadataDirection(t *testing.T) {
 	above := hookMetadata("size.file-length", map[string]any{"lines": 1010, "threshold": 1000})
 	if above["direction"] != "above" || above["measured"] != 1010 || above["threshold"] != 1000 || above["unit"] != "lines" {
@@ -329,11 +398,19 @@ func TestHookMetadataDirection(t *testing.T) {
 	}
 }
 
-// TestHookScopeAndDirectionRuleIDsExist guards the hook layer's hardcoded rule-ID
-// tables against registry drift: a renamed or removed rule must not silently
-// leave hookScope / hookThresholdDirection pointing at a dead ID.
+// TestHookMetadataKeepsLimitBand pins that the hook's measurement object keeps a size
+// or complexity finding's band, so an agent can tell a lower-band notice from a finding.
+func TestHookMetadataKeepsLimitBand(t *testing.T) {
+	notice := hookMetadata("size.function-length", map[string]any{"lines": 94, "threshold": 80, "limitBand": "lower"})
+	if notice["limitBand"] != "lower" || notice["measured"] != 94 {
+		t.Fatalf("banded metadata = %#v, want measured 94 with limitBand lower", notice)
+	}
+}
+
+// TestHookScopeAndDirectionRuleIDsExist guards the hook layer's hardcoded rule-ID tables against registry drift.
+// A renamed or removed rule must not silently leave hookScope or hookThresholdDirection pointing at a dead ID.
 func TestHookScopeAndDirectionRuleIDsExist(t *testing.T) {
-	registry, _, _, err := configuredRegistry("", true)
+	registry, _, _, err := configuredRegistry("", true, nil)
 	if err != nil {
 		t.Fatalf("configuredRegistry: %v", err)
 	}
@@ -353,10 +430,8 @@ func TestHookScopeAndDirectionRuleIDsExist(t *testing.T) {
 	}
 }
 
-// TestHookDiffUnstagedBaseIsIndexNotHead verifies `--diff unstaged` measures
-// new-only against the index (the working tree's true base), not HEAD: an
-// unstaged edit that newly crosses a file-level threshold surfaces, while a
-// crossing already staged into the index does not resurface.
+// TestHookDiffUnstagedBaseIsIndexNotHead verifies --diff unstaged measures new-only against the index, the working tree's true base, not HEAD.
+// An unstaged edit that newly crosses a file-level threshold surfaces, while a crossing already staged into the index does not resurface.
 func TestHookDiffUnstagedBaseIsIndexNotHead(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -378,9 +453,8 @@ func TestHookDiffUnstagedBaseIsIndexNotHead(t *testing.T) {
 		t.Fatalf("unstaged edit that newly crossed file-length did not surface: %#v", surfaced.Findings)
 	}
 
-	// Stage that crossing, then edit further unstaged. The crossing now lives in
-	// the index, so an unstaged-scoped run must NOT resurface it (a HEAD base would,
-	// since HEAD is still the short version).
+	// Stage that crossing, then edit further unstaged: the crossing now lives in the index, so an unstaged-scoped run must not resurface it.
+	// A HEAD base would resurface it, since HEAD is still the short version.
 	hookRunGit(t, root, "add", "f.go")
 	writeFile(t, root, "f.go", hookLongFixture(1011))
 	staged, code := runHookReport(t, "hook", "--format", "json", "--no-config", "--diff", "unstaged", "f.go")
@@ -392,9 +466,8 @@ func TestHookDiffUnstagedBaseIsIndexNotHead(t *testing.T) {
 	}
 }
 
-// TestHookDiffNoHeadDegradesToJSON proves empty git repositories still emit the
-// hook JSON contract with an actionable stderr diagnostic instead of failing
-// before the agent can consume findings.
+// TestHookDiffNoHeadDegradesToJSON proves a git repository with no commits still gets hook JSON and exit 0 under --diff HEAD.
+// stderr must explain that the run went without diff or new-only filtering, so the agent consumes findings instead of the hook failing first.
 func TestHookDiffNoHeadDegradesToJSON(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)

@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.26.9'
           cache: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -35,3 +35,7 @@ jobs:
 
       - name: Preflight checks
         run: NO_COLOR=1 scripts/preflight-checks.sh
+
+      - name: Check version references
+        # Fails when a source-owned version literal in docs, goldens or metadata disagrees with the version cli.go builds.
+        run: bash scripts/bump-version.sh --check-references --root . --source-version "$(sed -n 's/^const toolVersion = "\(.*\)"$/\1/p' internal/cli/cli.go)"

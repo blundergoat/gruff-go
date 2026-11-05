@@ -1,5 +1,6 @@
 // Package finding tests assert fingerprint stability and identity coverage.
-// They guard the JSON payload shape and hash contract used by baselines.
+//
+// They guard the JSON finding shape and the fingerprint and stableIdentity hashes it carries; a failure means JSON readers see a change.
 package finding
 
 import (
@@ -8,6 +9,7 @@ import (
 )
 
 // TestFingerprintIsStableAndIdentityBased asserts identity-only fields drive the hash.
+// A failure means WithFingerprint and ComputeFingerprint disagree, or moving a finding to another line kept the same fingerprint.
 func TestFingerprintIsStableAndIdentityBased(t *testing.T) {
 	finding := Finding{
 		RuleID:     "size.file-length",
@@ -34,6 +36,7 @@ func TestFingerprintIsStableAndIdentityBased(t *testing.T) {
 }
 
 // TestStableIdentityIsLineInsensitive asserts the diff identity survives line shifts.
+// It also checks the fingerprint does change, the identity is 16 characters, and a symbol-less finding is told apart by its message.
 func TestStableIdentityIsLineInsensitive(t *testing.T) {
 	base := Finding{
 		RuleID:     "docs.missing-public-doc",
@@ -59,6 +62,7 @@ func TestStableIdentityIsLineInsensitive(t *testing.T) {
 		t.Fatalf("stable identity len = %d, want 16", len(base.StableIdentity))
 	}
 
+	// Without a symbol the identity falls back to the message, so two different messages must hash apart.
 	withoutSymbol := base
 	withoutSymbol.Symbol = ""
 	withoutSymbol.StableIdentity = ""
@@ -69,7 +73,10 @@ func TestStableIdentityIsLineInsensitive(t *testing.T) {
 	}
 }
 
-// TestFindingJSONShape asserts findings emit the canonical flat shape plus legacy location.
+// TestFindingJSONShape asserts findings emit the strict canonical v3 shape.
+//
+// It checks the flat file, line, endLine and column fields and rejects a nested location object.
+// It also pins the default tier, both identity fields, an empty secondaryPillars list and scanner-pinpointed locationPrecision.
 func TestFindingJSONShape(t *testing.T) {
 	item := Finding{
 		RuleID:     "complexity.cyclomatic",
@@ -94,9 +101,8 @@ func TestFindingJSONShape(t *testing.T) {
 	if payload["file"] != item.File || payload["line"] != float64(42) || payload["endLine"] != float64(78) || payload["column"] != float64(3) {
 		t.Fatalf("flat location fields = %#v", payload)
 	}
-	location, ok := payload["location"].(map[string]any)
-	if !ok || location["line"] != float64(42) || location["endLine"] != float64(78) || location["column"] != float64(3) {
-		t.Fatalf("legacy location = %#v", payload["location"])
+	if _, ok := payload["location"]; ok {
+		t.Fatalf("legacy location alias returned: %#v", payload["location"])
 	}
 	if payload["tier"] != DefaultTier || payload["stableIdentity"] != item.StableIdentity || payload["fingerprint"] != item.Fingerprint {
 		t.Fatalf("identity fields = %#v", payload)
@@ -106,7 +112,7 @@ func TestFindingJSONShape(t *testing.T) {
 		t.Fatalf("secondaryPillars = %#v, want []", payload["secondaryPillars"])
 	}
 	metadata, ok := payload["metadata"].(map[string]any)
-	if !ok || len(metadata) != 0 {
-		t.Fatalf("metadata = %#v, want {}", payload["metadata"])
+	if !ok || metadata["locationPrecision"] != "scanner-pinpointed" {
+		t.Fatalf("metadata = %#v, want scanner-pinpointed location precision", payload["metadata"])
 	}
 }

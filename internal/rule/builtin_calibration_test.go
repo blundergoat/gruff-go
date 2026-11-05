@@ -1,19 +1,18 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file holds calibration tests for the builtin pack: false-positive
-// guards added after spot-checking the rubric on a real Go codebase.
+//
+// This file holds calibration tests for FunctionLengthRule: comment-heavy code, test case tables, nolint anchors and long executable code.
+// Failures can expose false positives, missed findings, wrong symbols or source lines, or missing table-discount metadata.
 package rule
 
 import (
-	"go/ast"
 	"testing"
 )
 
-// TestFunctionLengthCountsCodeLinesOnly verifies the rule's length measurement
-// strips blank lines and comment-only lines so heavily documented functions
-// aren't flagged for documentation density alone.
+// TestFunctionLengthCountsCodeLinesOnly checks FunctionLengthRule counts only code lines, skipping blank and comment-only lines.
+// A failure means a short, well-documented function gets a function-length finding for its comments alone.
 func TestFunctionLengthCountsCodeLinesOnly(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 5}
-	// docHeavy spans 21 raw lines but only 4 code lines - should not fire.
+	// docHeavy spans 10 lines from func to closing brace; without its blank and comment lines it stays within MaxLines 5, so it must not fire.
 	unit := parseOne(t, "doc_heavy.go", `// Package sample is a test package.
 package sample
 
@@ -40,15 +39,13 @@ func docHeavy() int {
 	}
 }
 
-// TestFunctionLengthHonoursNolintFunlen ensures a `//nolint:funlen` directly
-// on a function's doc comment suppresses the finding.
-func TestFunctionLengthHonoursNolintFunlen(t *testing.T) {
+// TestFunctionLengthLeavesNolintToTheInlineFilter checks the rule itself ignores a nolint:funlen comment.
+//
+// It must report generic method Stack.Wired at its func line 5, where analysis.ApplyInlineSuppressions suppresses and counts it.
+// See FAMILY-CONTRACT.md section 13c; the filter's own tests cover which comments suppress a finding.
+func TestFunctionLengthLeavesNolintToTheInlineFilter(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 3}
-	unit := parseOne(t, "nolint.go", `// Package sample is a test package.
-package sample
-
-//nolint:funlen // setup needs to stay linear
-func wired() {
+	body := `
 	a := 1
 	b := 2
 	c := 3
@@ -58,33 +55,11 @@ func wired() {
 	_ = c
 	_ = d
 }
-`)
-	if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("nolint:funlen should suppress finding, got %#v", got)
-	}
-}
-
-// TestFunctionLengthNolintAcceptsAllShape confirms `//nolint:all` (golangci-lint's
-// "suppress every linter" form) also suppresses the function-length rule.
-func TestFunctionLengthNolintAcceptsAllShape(t *testing.T) {
-	rule := FunctionLengthRule{MaxLines: 3}
-	unit := parseOne(t, "nolintall.go", `// Package sample is a test package.
-package sample
-
-//nolint:all
-func wired() {
-	a := 1
-	b := 2
-	c := 3
-	d := 4
-	_ = a
-	_ = b
-	_ = c
-	_ = d
-}
-`)
-	if got := rule.AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("nolint:all should suppress finding, got %#v", got)
+`
+	commented := parseOne(t, "generic_nolint.go", "// Package sample is a test package.\npackage sample\n\n//nolint:funlen // setup needs to stay linear\nfunc (s *Stack[T]) Wired() {"+body)
+	got := rule.AnalyzeUnit(commented, Context{})
+	if len(got) != 1 || got[0].Symbol != "Stack.Wired" || got[0].Location.Line != 5 {
+		t.Fatalf("findings = %#v, want one finding on Stack.Wired at its func line 5", got)
 	}
 }
 
@@ -112,9 +87,8 @@ func wired() {
 	}
 }
 
-// TestFunctionLengthDiscountsTableDrivenTestFixtures verifies large case
-// matrices in table-driven tests are treated as fixture data instead of
-// executable test logic.
+// TestFunctionLengthDiscountsTableDrivenTestFixtures checks the rows of a table-driven test's case slice count as fixture data, not test logic.
+// A failure means a short test with a long case table gets a function-length finding.
 func TestFunctionLengthDiscountsTableDrivenTestFixtures(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 8}
 	unit := parseOne(t, "table_test.go", `package sample
@@ -176,91 +150,8 @@ func TestLongLogic(t *testing.T) {
 	if len(got) != 1 || got[0].Symbol != "TestLongLogic" {
 		t.Fatalf("long executable test logic should still fire, got %#v", got)
 	}
+	// A finding on an adjusted test carries tableFixtureLines metadata, so the user can see the case rows were already discounted.
 	if got[0].Metadata["tableFixtureLines"] == nil {
 		t.Fatalf("expected table fixture metadata on adjusted finding, got %#v", got[0].Metadata)
 	}
-}
-
-// TestSkippedTestRuleAcceptsConditionalSkips asserts the skipped-test rule no
-// longer fires on the common integration-test "guard on missing infrastructure"
-// pattern (`if !available { t.Skip(...) }`), but still flags unconditional
-// skips and conditional skips that read like TODO debt.
-func TestSkippedTestRuleAcceptsConditionalSkips(t *testing.T) {
-	unit := parseOne(t, "guard_test.go", `// Package sample is a test package.
-package sample
-
-import "testing"
-
-func resourceAvailable() bool { return false }
-
-func TestUnconditional(t *testing.T) {
-	t.Skip("manual triage required")
-}
-
-func TestConditionalGuard(t *testing.T) {
-	if !resourceAvailable() {
-		t.Skip("integration backend not available")
-	}
-}
-
-func TestConditionalWithTodo(t *testing.T) {
-	if !resourceAvailable() {
-		t.Skip("TODO: re-enable once backend stabilises")
-	}
-}
-
-func TestConditionalFixmeFmt(t *testing.T) {
-	if !resourceAvailable() {
-		t.Skipf("FIXME: flaky under load (issue %d)", 42)
-	}
-}
-
-func TestRangeGuard(t *testing.T) {
-	for _, ok := range []bool{true} {
-		if !ok {
-			t.Skip("disabled row")
-		}
-	}
-}
-`)
-	findings := SkippedTestRule{}.AnalyzeUnit(unit, Context{})
-	gotLines := map[int]bool{}
-	for _, item := range findings {
-		gotLines[item.Location.Line] = true
-	}
-	wantSymbols := []string{"TestUnconditional", "TestConditionalWithTodo", "TestConditionalFixmeFmt"}
-	for _, sym := range wantSymbols {
-		fn := findFuncDecl(unit.AST, sym)
-		if fn == nil {
-			t.Fatalf("test fixture missing %s", sym)
-		}
-		testingPackages := testingPackageNames(unit.AST)
-		testingReceivers := collectFileTestingReceivers(unit.AST, testingPackages)
-		var skipPos int
-		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			if call, ok := node.(*ast.CallExpr); ok && isTestingSkipCall(call, testingReceivers) {
-				skipPos = unit.FileSet.Position(call.Pos()).Line
-				return false
-			}
-			return true
-		})
-		if !gotLines[skipPos] {
-			t.Errorf("expected finding for %s at line %d; got %#v", sym, skipPos, findings)
-		}
-	}
-	if len(findings) != len(wantSymbols) {
-		t.Fatalf("expected %d findings, got %d: %#v", len(wantSymbols), len(findings), findings)
-	}
-}
-
-// findFuncDecl returns the top-level function declaration with the given name,
-// or nil if absent. Used by skip-test fixtures to locate skip-call lines
-// without hard-coding them and rebreaking the test whenever fixtures shift.
-func findFuncDecl(file *ast.File, name string) *ast.FuncDecl {
-	for _, decl := range file.Decls {
-		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == name {
-			return fn
-		}
-	}
-	return nil
 }

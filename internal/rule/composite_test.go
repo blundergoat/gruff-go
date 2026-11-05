@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
+//
 // This file exercises the design composite rule and shared finding builders.
+// The hotspot composite turns several findings in one file, spread over enough pillars, into one file-level design.hotspot-file finding.
 package rule
 
 import (
@@ -10,6 +12,9 @@ import (
 )
 
 // TestDesignHotspotFileRule verifies the hotspot composite groups findings per file.
+//
+// hot.go has three base findings in three pillars and must yield one file-level hotspot; only-size.go has two size findings and yields none.
+// A failure means the composite missed or over-reported a hotspot, or its Location, findings count or sorted pillars metadata changed.
 func TestDesignHotspotFileRule(t *testing.T) {
 	evidence := []finding.Finding{
 		baseFinding("size.function-length", finding.PillarSize, "hot.go", "Hot", 10),
@@ -30,6 +35,7 @@ func TestDesignHotspotFileRule(t *testing.T) {
 	if got.File != "hot.go" || got.Symbol != "" {
 		t.Fatalf("finding = %#v, want file-level hotspot", got)
 	}
+	// A file-level hotspot carries no Location, so its fingerprint stays the same when edits move lines in hot.go.
 	if got.Location != nil {
 		t.Fatalf("location = %#v, want nil for line-stable fingerprint", got.Location)
 	}
@@ -43,6 +49,9 @@ func TestDesignHotspotFileRule(t *testing.T) {
 }
 
 // TestCompositeRulesFireByDefault confirms the hotspot composite participates in the default registry.
+//
+// Hot in hot.go trips the tightened size.function-length limit; one more default finding in another pillar meets the lowered hotspot thresholds.
+// The second registry turns design.hotspot-file off through Config.Enabled, and the composite must then stay silent.
 func TestCompositeRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "hot.go", `// Package sample is a test package.
 package sample
@@ -91,6 +100,12 @@ func Hot(a bool, b bool) {
 }
 
 // baseFinding builds a minimal finding fixture used across composite tests.
+//
+// It returns a warning, high-confidence finding from rule ruleID, with a fingerprint from WithFingerprint.
+// file is the source path the hotspot groups by, and pillar counts toward the distinct pillars a hotspot needs.
+//
+// symbol names the flagged declaration; the fixtures pass an empty symbol for file-level findings.
+// A positive line becomes the Location line; zero or a negative line leaves Location nil, as for a file-level finding.
 func baseFinding(ruleID string, pillar finding.Pillar, file string, symbol string, line int) finding.Finding {
 	item := finding.Finding{
 		RuleID:     ruleID,

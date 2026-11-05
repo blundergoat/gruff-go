@@ -1,3 +1,7 @@
+// Package rule tests how credential detectors turn source text into redacted findings for a developer's scan.
+//
+// This file covers private keys, provider tokens, GCP service-account files, connection strings and their sample or placeholder controls.
+// The private-key cases exercise both text files and Go syntax so parser definitions do not hide embedded key material.
 package rule
 
 import (
@@ -9,11 +13,11 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// Detector fixtures are long enough to exercise realistic provider shapes.
-// Zero-value rules use the deny-by-default full mask; the focused M11 policy
-// matrix separately covers authorized category markers.
+// Detector fixtures are long enough to exercise realistic provider shapes; every value is a fake built for these tests.
+//
+// The tests run zero-value rules and check that no finding's message or preview carries the raw value.
 const (
-	rawAWSKey            = "AKIAIOSFODNN7EXAMPLE"
+	rawAWSKey            = "AKIA" + "Q7R2M8N4P6T9V1X3"
 	rawJWT               = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
 	rawPrivateKey        = "-----BEGIN RSA PRIVATE KEY-----"
 	rawConnectionURL     = "postgres://app:supersecretpassword@db.internal:5432/orders"
@@ -34,6 +38,7 @@ const (
 }`
 )
 
+// TestPrivateKeyRuleDetectsPEMHeader keeps a text-file key header visible without exposing its bytes in a finding.
 func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -69,9 +74,7 @@ func TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks(t *testing.T) {
 // TestPrivateKeyRuleSkipsGoDelimiterManipulation avoids flagging code that
 // strips or re-wraps caller-provided PEM data without embedding key material.
 func TestPrivateKeyRuleSkipsGoDelimiterManipulation(t *testing.T) {
-	unit := parser.Unit{
-		File: source.File{Path: "pem.go", Type: source.FileTypeGo},
-		Source: `package pem
+	unit := parseOne(t, "pem.go", `package pem
 
 import "strings"
 
@@ -79,17 +82,16 @@ func clean(privateKeyPEM string) []byte {
 	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "-----BEGIN PRIVATE KEY-----", "")
 	return []byte("-----BEGIN PRIVATE KEY-----\n" + privateKeyPEM + "\n-----END PRIVATE KEY-----")
 }
-`,
-	}
+`)
 	if got := (PrivateKeyRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
 		t.Fatalf("PEM delimiter manipulation should not flag, got %#v", got)
 	}
 }
 
-// TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall ensures a real PEM key
-// embedded in a normalization call (strings.ReplaceAll) is still flagged rather
-// than mistaken for delimiter manipulation. The key body is built at runtime so
-// the dogfood scan never reads this test file as carrying a credential.
+// TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall ensures a PEM-shaped literal in a strings.ReplaceAll call still gives one finding.
+//
+// The unit has no parsed Go syntax, so this checks the key still reports when only the source text is scanned.
+// The body is built at runtime so the complete fixture never appears in this file's source.
 func TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall(t *testing.T) {
 	body := strings.Repeat("A", 64)
 	unit := parser.Unit{
@@ -101,10 +103,9 @@ func TestPrivateKeyRuleFlagsInlinePEMLiteralInHelperCall(t *testing.T) {
 	}
 }
 
-// TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall ensures a real PEM key
-// written as a multiline raw string inside strings.ReplaceAll is still flagged.
-// The body and the raw-string backtick are assembled at runtime so the dogfood
-// scan never reads this test file as carrying a credential.
+// TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall ensures a PEM-shaped multiline raw string in strings.ReplaceAll gives one finding.
+//
+// The body and the raw-string backtick are assembled at runtime so the complete fixture never appears in this file's source.
 func TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall(t *testing.T) {
 	body := strings.Repeat("A", 64)
 	bt := "`"
@@ -117,6 +118,7 @@ func TestPrivateKeyRuleFlagsMultilinePEMLiteralInHelperCall(t *testing.T) {
 	}
 }
 
+// TestAWSAccessKeyRuleDetectsAndRedacts verifies an AKIA key id gives one finding whose message and preview omit the raw key.
 func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -129,6 +131,43 @@ func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawAWSKey)
 }
 
+// TestAWSAccessKeyRuleDetectsASessionToken pins the ASIA half of the shape.
+//
+// AWS issues temporary session credentials under that prefix over the same fixed body.
+// A temporary credential must get the same finding as a long-term AKIA key.
+func TestAWSAccessKeyRuleDetectsASessionToken(t *testing.T) {
+	sessionToken := "ASIA" + "IOSFODNN7" + "EXAMPLE"
+	unit := parser.Unit{
+		File:   source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + sessionToken + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings for a session token, want 1", len(findings))
+	}
+	assertNoRawSecret(t, findings[0], sessionToken)
+}
+
+// TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked pins FAMILY-CONTRACT.md section 5 for masked keys.
+//
+// A key whose sixteen body characters are all X names no credential and does not report.
+// A real key that merely contains a run of X still reports, because a rule that hid it would hide a live credential.
+func TestAWSAccessKeyRuleReadsAnAllXBodyAsMasked(t *testing.T) {
+	masked := strings.Repeat("X", 16)
+	partlyMasked := "IOSFODNN" + strings.Repeat("X", 8)
+	unit := parser.Unit{
+		File: source.File{Path: "config.env", Type: source.FileTypeText},
+		Source: "aws_access_key_id = " + "AKIA" + masked + "\n" +
+			"aws_session_key_id = " + "ASIA" + masked + "\n" +
+			"aws_partly_masked_id = " + "AKIA" + partlyMasked + "\n",
+	}
+	findings := AWSAccessKeyRule{}.AnalyzeUnit(unit, Context{})
+	if len(findings) != 1 || findings[0].Location == nil || findings[0].Location.Line != 3 {
+		t.Fatalf("got %d findings, want exactly the partly masked key on line 3: %+v", len(findings), findings)
+	}
+}
+
+// TestJWTTokenRuleDetectsAndRedacts verifies a quoted JWT gives one finding whose message and preview omit the raw token.
 func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -141,6 +180,7 @@ func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawJWT)
 }
 
+// TestConnectionStringRuleDetectsAndRedacts verifies a postgres URL with a password gives one finding that never shows the password.
 func TestConnectionStringRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -153,6 +193,7 @@ func TestConnectionStringRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], "supersecretpassword")
 }
 
+// TestGitHubTokenRuleDetectsAndRedacts verifies a ghp_ token gives one finding whose message and preview omit the raw token.
 func TestGitHubTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -165,6 +206,7 @@ func TestGitHubTokenRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawGitHubToken)
 }
 
+// TestSlackTokenRuleDetectsAndRedacts verifies an xoxb- bot token gives one finding whose message and preview omit the raw token.
 func TestSlackTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -177,6 +219,7 @@ func TestSlackTokenRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawSlackToken)
 }
 
+// TestStripeLiveKeyRuleDetectsAndRedacts verifies an sk_live_ key gives one finding whose message and preview omit the raw key.
 func TestStripeLiveKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -189,6 +232,7 @@ func TestStripeLiveKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawStripeKey)
 }
 
+// TestGoogleAPIKeyRuleDetectsAndRedacts verifies an AIza key gives one finding whose message and preview omit the raw key.
 func TestGoogleAPIKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -201,6 +245,7 @@ func TestGoogleAPIKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawGoogleAPIKey)
 }
 
+// TestAnthropicAPIKeyRuleDetectsAndRedacts verifies an sk-ant- key gives one finding whose message and preview omit the raw key.
 func TestAnthropicAPIKeyRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -213,6 +258,7 @@ func TestAnthropicAPIKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawAnthropicAPIKey)
 }
 
+// TestNPMTokenRuleDetectsAndRedacts verifies npm_ and npm_pat_ tokens on two lines give two findings, neither showing its raw token.
 func TestNPMTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -226,6 +272,7 @@ func TestNPMTokenRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[1], rawNPMPatToken)
 }
 
+// TestGitLabTokenRuleDetectsAndRedacts verifies a glpat- token gives one finding whose message and preview omit the raw token.
 func TestGitLabTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -238,8 +285,7 @@ func TestGitLabTokenRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawGitLabToken)
 }
 
-// TestGoogleAPIKeyRuleRejectsShortPrefix asserts the regex's fixed-width
-// suffix requirement prevents a bare AIza prefix from firing as a finding.
+// TestGoogleAPIKeyRuleRejectsShortPrefix asserts AIza followed by a suffix too short for a key (AIzaSyShort) gives no finding.
 func TestGoogleAPIKeyRuleRejectsShortPrefix(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -250,8 +296,7 @@ func TestGoogleAPIKeyRuleRejectsShortPrefix(t *testing.T) {
 	}
 }
 
-// TestSlackTokenRuleRejectsBarePrefix asserts a bare xox[bpar]- with no body
-// is not matched as a token.
+// TestSlackTokenRuleRejectsBarePrefix asserts a bare Slack prefix such as xoxp- with no body is not matched as a token.
 func TestSlackTokenRuleRejectsBarePrefix(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -262,7 +307,7 @@ func TestSlackTokenRuleRejectsBarePrefix(t *testing.T) {
 	}
 }
 
-// TestNPMTokenRuleRejectsBarePrefix asserts a bare npm_ prefix is not matched as a token.
+// TestNPMTokenRuleRejectsBarePrefix asserts npm_ followed by a body too short for a token (npm_short) is not matched.
 func TestNPMTokenRuleRejectsBarePrefix(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -273,7 +318,7 @@ func TestNPMTokenRuleRejectsBarePrefix(t *testing.T) {
 	}
 }
 
-// TestGitLabTokenRuleRejectsShortPrefix asserts a bare glpat- prefix is not matched as a token.
+// TestGitLabTokenRuleRejectsShortPrefix asserts glpat- followed by a body too short for a token (glpat-short) is not matched.
 func TestGitLabTokenRuleRejectsShortPrefix(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -284,10 +329,10 @@ func TestGitLabTokenRuleRejectsShortPrefix(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleDetectsBothMarkers asserts a JSON file containing
-// both the `"type": "service_account"` marker and a PEM private-key header
-// produces exactly one finding, located at the type marker line, with both
-// markers redacted in the preview metadata.
+// TestGCPServiceAccountRuleDetectsBothMarkers asserts a service-account JSON file with both markers gives exactly one finding.
+//
+// The markers are the type service_account line and a PEM private-key header; the finding sits on the type line (2).
+// Both stay redacted: the preview omits the type marker, the secondary preview omits the key body, and secondaryLine is 5.
 func TestGCPServiceAccountRuleDetectsBothMarkers(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "service-account.json", Type: source.FileTypeText},
@@ -325,9 +370,9 @@ func TestGCPServiceAccountRuleIgnoresTypeOnly(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleIgnoresPrivateKeyOnly asserts a PEM private key
-// without the service-account type marker does not trigger a GCP finding.
-// (sensitive-data.private-key will still fire on this input - tested elsewhere.)
+// TestGCPServiceAccountRuleIgnoresPrivateKeyOnly asserts a PEM private key without the service-account type marker gives no GCP finding.
+//
+// The sensitive-data.private-key rule still fires on this input; the PrivateKeyRule tests cover that.
 func TestGCPServiceAccountRuleIgnoresPrivateKeyOnly(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "key.pem", Type: source.FileTypeText},
@@ -358,23 +403,27 @@ func TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleHonorsNoSecAnnotation asserts a #nosec annotation
-// on the type marker line silences the finding, mirroring the suppression
-// contract of the other sensitive-data.* rules.
-func TestGCPServiceAccountRuleHonorsNoSecAnnotation(t *testing.T) {
+// TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter asserts the rule still reports a key whose marker line carries a nosec comment.
+//
+// The inline filter then suppresses and counts it (FAMILY-CONTRACT.md section 13c) instead of the rule dropping it silently.
+func TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter(t *testing.T) {
 	src := `{
-  "type": "service_account", // #nosec G101 -- fixture
+  "type": "service_account", // #nosec -- fixture
   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
 }`
 	unit := parser.Unit{
 		File:   source.File{Path: "fixture.json", Type: source.FileTypeText},
 		Source: src,
 	}
-	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("expected #nosec to suppress finding, got %#v", got)
+	if got := (GCPServiceAccountRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+		t.Fatalf("expected one finding for the inline filter to judge, got %#v", got)
 	}
 }
 
+// TestSensitiveDetectorsAreDefaultEnabled pins which credential rules a default gruff-go analyse run uses.
+//
+// The map lookup that sets wantEnabled names the five rules off by default under ADR-021; the other listed rules stay on.
+// A failure means a DefaultEnabled flag changed, so default scans gain or lose that rule's findings.
 func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		PrivateKeyRule{}.Definition(),
@@ -390,12 +439,21 @@ func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 		GitLabTokenRule{}.Definition(),
 		GCPServiceAccountRule{}.Definition(),
 	} {
-		if !definition.DefaultEnabled {
-			t.Errorf("rule %q must be default-enabled", definition.ID)
+		// Five provider rules are off by default since precision-floor M19 (ADR-021); the rest stay on.
+		wantEnabled := !map[string]bool{
+			"sensitive-data.aws-access-key":      true,
+			"sensitive-data.connection-string":   true,
+			"sensitive-data.gcp-service-account": true,
+			"sensitive-data.github-token":        true,
+			"sensitive-data.google-api-key":      true,
+		}[definition.ID]
+		if definition.DefaultEnabled != wantEnabled {
+			t.Errorf("rule %q defaultEnabled = %v, want %v", definition.ID, definition.DefaultEnabled, wantEnabled)
 		}
 	}
 }
 
+// TestSensitiveDetectorsAreCleanOnInnocuousInput verifies the listed credential detectors stay quiet on a plain greeting and a port number.
 func TestSensitiveDetectorsAreCleanOnInnocuousInput(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "ok.env", Type: source.FileTypeText},
@@ -421,8 +479,10 @@ func TestSensitiveDetectorsAreCleanOnInnocuousInput(t *testing.T) {
 	}
 }
 
-// TestScanLinesForSecretSkipsComments asserts comment-only lines do not trigger findings.
-// This keeps "format: postgres://user:password@host" doc snippets from looking like leaks.
+// TestScanLinesForSecretSkipsComments asserts a connection string on a comment-only line gives no finding.
+//
+// It covers a line comment, a tab-indented godoc line, and one-line and multi-line block comments.
+// This keeps doc snippets like format: postgres://user:password@host from looking like leaks.
 func TestScanLinesForSecretSkipsComments(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -446,9 +506,11 @@ func TestScanLinesForSecretSkipsComments(t *testing.T) {
 	}
 }
 
-// TestScanLinesForSecretHonoursSuppressions asserts inline annotations silence findings.
-// gosec's `#nosec` and golangci-lint's `//nolint:gosec` / `//nolint:all` are both honored.
-func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
+// TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter asserts a line carrying a nosec or nolint comment still reports at rule level.
+//
+// analysis.ApplyInlineSuppressions then applies matching directives and counts the suppressed findings (FAMILY-CONTRACT.md section 13c).
+// The rule must not drop them uncounted.
+func TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter(t *testing.T) {
 	cases := []string{
 		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders // #nosec G101 -- fixture",
 		"DATABASE_URL=postgres://app:supersecretpassword@db.internal:5432/orders //nolint:gosec",
@@ -461,8 +523,8 @@ func TestScanLinesForSecretHonoursSuppressions(t *testing.T) {
 				File:   source.File{Path: "main.go", Type: source.FileTypeGo},
 				Source: line + "\n",
 			}
-			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-				t.Fatalf("expected suppressed line to produce no findings, got %#v", got)
+			if got := (ConnectionStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
+				t.Fatalf("expected one finding for the inline filter to judge, got %#v", got)
 			}
 		})
 	}
@@ -490,9 +552,9 @@ func TestConnectionStringRuleSkipsPlaceholderCredentials(t *testing.T) {
 	}
 }
 
-// TestConnectionStringRuleStillFlagsRealLookingSecrets asserts the placeholder
-// heuristic does not swallow credentials that look like production: either the
-// host is not local, or the password lacks a placeholder marker.
+// TestConnectionStringRuleStillFlagsRealLookingSecrets asserts the placeholder heuristic does not swallow production-looking credentials.
+//
+// Each case uses a host that is not local or a password with no placeholder marker, and must give one finding.
 func TestConnectionStringRuleStillFlagsRealLookingSecrets(t *testing.T) {
 	cases := []string{
 		`u = "postgres://app:supersecretpassword@db.internal:5432/orders"`,   // non-local host
@@ -513,6 +575,9 @@ func TestConnectionStringRuleStillFlagsRealLookingSecrets(t *testing.T) {
 	}
 }
 
+// assertNoRawSecret marks the test failed when the message or preview metadata of item contains raw, the unredacted fixture value.
+//
+// The test keeps running after a leak; a finding with no preview is checked on its message only.
 func assertNoRawSecret(t *testing.T, item finding.Finding, raw string) {
 	t.Helper()
 	if strings.Contains(item.Message, raw) {

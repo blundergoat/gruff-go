@@ -15,9 +15,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestSensitiveRedactionAcrossFormats protects the redaction contract: raw
-// secret values must not appear in any output format, even when a rule emits a
-// "preview" in its metadata.
+// TestSensitiveRedactionAcrossFormats protects the redaction contract: no output format may show a raw secret, even when metadata carries a preview.
+// It renders text, json, summary-json, sarif, github, html and markdown; a failure names the format and the leaked fragment.
 func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	rawSecret := "AKIAIOSFODNN7EXAMPLE"
 	rawPassword := "supersecretQ7UX"
@@ -99,6 +98,7 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 		{"markdown", func(buf *bytes.Buffer) error { return WriteMarkdown(buf, report) }},
 	}
 
+	// Prefixes and suffixes count as leaks too: a renderer that shows the first or last characters of a key still exposes it.
 	leaks := []string{
 		rawSecret, rawSecret[4:10], rawSecret[len(rawSecret)-4:],
 		rawPassword, rawPassword[:6], rawPassword[len(rawPassword)-4:],
@@ -123,6 +123,10 @@ func TestSensitiveRedactionAcrossFormats(t *testing.T) {
 	}
 }
 
+// TestSensitiveRedactionAcrossRealArtifacts runs a real analysis on secrets.env and checks the raw token reaches no artifact the user keeps.
+//
+// That covers the finding JSON, the baseline file, every report format and the dashboard-html page.
+// It also requires exactly one sensitive-data.secret-pattern finding, and a baseline that counts it, stores no occurrence and keeps it visible.
 func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 	rawSecret := "abcdefghijklmnopqrstuvwxyz123456"
 	root := t.TempDir()
@@ -141,8 +145,18 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("analysis run: %v", err)
 	}
-	if len(reportData.Findings) != 1 || reportData.Findings[0].RuleID != "sensitive-data.secret-pattern" {
-		t.Fatalf("findings = %#v, want one sensitive-data.secret-pattern finding", reportData.Findings)
+	// Requiring the finding keeps the leak checks below meaningful: if analysis stopped detecting the token, empty output would pass them.
+	if len(reportData.Findings) != 1 {
+		t.Fatalf("findings = %#v, want the secret-pattern finding", reportData.Findings)
+	}
+	byRule := map[string]bool{}
+	for _, item := range reportData.Findings {
+		byRule[item.RuleID] = true
+	}
+	for _, wanted := range []string{"sensitive-data.secret-pattern"} {
+		if !byRule[wanted] {
+			t.Fatalf("findings = %#v, want one %s finding", reportData.Findings, wanted)
+		}
 	}
 	encodedFinding, err := json.Marshal(reportData.Findings[0])
 	if err != nil {
@@ -152,14 +166,21 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		t.Fatalf("finding carries raw secret: %s", encodedFinding)
 	}
 
-	baselineFile := baseline.FromFindings(reportData.Findings)
+	baselineFile, err := baseline.FromFindings(reportData.Findings)
+	if err != nil {
+		t.Fatalf("build baseline: %v", err)
+	}
 	baselineJSON, err := baseline.Marshal(baselineFile)
 	if err != nil {
 		t.Fatalf("marshal baseline: %v", err)
 	}
-	applyResult := baseline.Apply(reportData.Findings, baselineFile)
-	if applyResult.SuppressedFindings != 1 || len(applyResult.Findings) != 0 {
-		t.Fatalf("baseline apply = %#v, want one suppressed finding", applyResult)
+	applyResult, err := baseline.Apply(reportData.Findings, baselineFile)
+	if err != nil {
+		t.Fatalf("apply baseline: %v", err)
+	}
+	// A secret is never baseline-eligible: it is counted, never stored as an entry, and never hidden on the next run.
+	if applyResult.NotEligibleFindings != 1 || applyResult.SuppressedFindings != 0 || len(applyResult.Findings) != 1 || len(baselineFile.Occurrences) != 0 {
+		t.Fatalf("baseline apply = %#v, want the sensitive finding counted and still visible", applyResult)
 	}
 
 	artifacts := map[string]string{
@@ -183,6 +204,7 @@ func TestSensitiveRedactionAcrossRealArtifacts(t *testing.T) {
 		}
 		artifacts[format.name] = buf.String()
 	}
+	// The dashboard-html artifact is the html report plus injected scan metadata such as the project root and command, so it is checked too.
 	artifacts["dashboard-html"] = InjectScanMetadata(artifacts["html"], ScanMetadata{
 		ExitCode:    reportData.Summary.ExitCode,
 		DurationMs:  12,

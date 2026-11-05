@@ -1,6 +1,8 @@
 // Package rule tests the core findings users receive from gruff-go.
-// Fixtures cover size, complexity, documentation, and sensitive-data checks.
-// They keep each rule's detection and remediation behavior reviewable.
+//
+// Fixtures cover the default rule catalogue plus size, complexity, documentation, sensitive-data and expansion-rule checks.
+// It also defines parseOne, which turns a Go fixture string into the parsed unit most rule tests in the package start from.
+// A failure here points to drift in the catalogue, a rule's calculation, finding metadata or a reported location.
 package rule
 
 import (
@@ -14,7 +16,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// TestDefaultsListRules verifies the default registry exposes the expected rule IDs.
+// TestDefaultsListRules verifies the default registry exposes the expected rule IDs, in order, with each rule's default on or off state.
+// A failure means Defaults and the expected lists in builtin_rule_ids_test.go disagree on a rule's presence, order or default state.
 func TestDefaultsListRules(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
@@ -35,6 +38,7 @@ func TestDefaultsListRules(t *testing.T) {
 	}
 	defaultDisabled := defaultDisabledRuleIDs()
 	for _, id := range want {
+		// A rule must be on by default exactly when defaultDisabledRuleIDs leaves it out, so equal values mean its default state drifted.
 		if enabled[id] == defaultDisabled[id] {
 			t.Fatalf("rule %s defaultEnabled = %v, want %v", id, enabled[id], !defaultDisabled[id])
 		}
@@ -82,6 +86,7 @@ func TestSizeRules(t *testing.T) {
 
 // TestCyclomaticComplexityRule confirms the rule fires for highly branching functions.
 func TestCyclomaticComplexityRule(t *testing.T) {
+	// Twenty-one if statements give risky a cyclomatic score of 22, enough to cross the rule's threshold.
 	unit := parseOne(t, "complex.go", `// Package sample is a test package.
 package sample
 
@@ -116,6 +121,7 @@ func risky(a bool) {
 }
 
 // TestCyclomaticComplexityCases exercises the cyclomatic helper across control-flow shapes.
+// A failure means branch counting changed, so functions near the rule's threshold may gain or lose findings when the rule is enabled.
 func TestCyclomaticComplexityCases(t *testing.T) {
 	tests := []struct {
 		name string
@@ -127,11 +133,23 @@ _ = x`, want: 1},
 		{name: "nested branches", body: `if a {
 	if b {}
 }`, want: 3},
-		{name: "switch", body: `switch {
+		{name: "switch counts once", body: `switch {
 case a:
 case b:
 default:
-}`, want: 3},
+}`, want: 2},
+		{name: "type switch counts once", body: `var v any = a
+switch v.(type) {
+case int:
+case string:
+case bool:
+}`, want: 2},
+		{name: "select counts once", body: `ch := make(chan int)
+select {
+case <-ch:
+case ch <- 1:
+default:
+}`, want: 2},
 		{name: "loops", body: `for i := 0; i < 1; i++ {}
 for range []int{} {}`, want: 3},
 		{name: "early return", body: `if a {
@@ -150,6 +168,7 @@ package sample
 func sample(a bool, b bool) {
 `+tt.body+`
 }`)
+			// Each fixture has no imports, so the first declaration is always func sample.
 			fn := unit.AST.Decls[0].(*ast.FuncDecl)
 			if got := cyclomaticComplexity(fn); got != tt.want {
 				t.Fatalf("complexity = %d, want %d", got, tt.want)
@@ -172,7 +191,8 @@ package withcomment
 	}
 }
 
-// TestPackageCommentRuleSkipsExternalTestPackages confirms that an external xxx_test package without its own summary is not reported, while the sibling production package without one still produces a finding.
+// TestPackageCommentRuleSkipsExternalTestPackages confirms an external xxx_test package without its own summary is not reported.
+// The sibling production package without one still produces exactly one finding, on pkg/prod.go.
 func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
 	production := parseOne(t, "pkg/prod.go", `package pkg
 `)
@@ -188,7 +208,14 @@ func TestPackageCommentRuleSkipsExternalTestPackages(t *testing.T) {
 	}
 }
 
+// syntheticSecretValue is the fake 32-character credential body the keyword-rule tables assign.
+// It is joined from two halves so gruff-go's own secret checks never read one 32-character literal in this file as a possible secret.
+const syntheticSecretValue = "abcdefghijklmnop" + "qrstuvwxyz123456"
+
 // TestSensitiveDataRule verifies the rule flags common secret-like assignment lines.
+//
+// Each line in config.env must give exactly one finding with a non-empty preview in its metadata.
+// A failure means a user with such a key or token in a config file gets no finding, a duplicate, or one without its preview.
 func TestSensitiveDataRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -196,12 +223,12 @@ func TestSensitiveDataRule(t *testing.T) {
 	}{
 		{name: "api key env", line: "api_key = \"12345678901234567890\""},
 		{name: "api key short declaration", line: "apiKey := \"12345678901234567890\""},
-		{name: "auth token", line: "auth_token = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "access token", line: "access-token = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "refresh token camel", line: "refreshToken = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "client secret", line: "client_secret: \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "bearer value", line: "bearer = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "authorization bearer value", line: "authorization = \"Bearer abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "auth token", line: "auth_token = \"" + syntheticSecretValue + "\""},
+		{name: "access token", line: "access-token = \"" + syntheticSecretValue + "\""},
+		{name: "refresh token camel", line: "refreshToken = \"" + syntheticSecretValue + "\""},
+		{name: "client secret", line: "client_secret: \"" + syntheticSecretValue + "\""},
+		{name: "bearer value", line: "bearer = \"" + syntheticSecretValue + "\""},
+		{name: "authorization bearer value", line: "authorization = \"Bearer " + syntheticSecretValue + "\""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -220,7 +247,8 @@ func TestSensitiveDataRule(t *testing.T) {
 	}
 }
 
-// TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig avoids false positives on configish lines.
+// TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig checks that config lines whose keys only look secret-like produce no finding.
+// A failure means users would see a false-positive secret finding on an ordinary setting such as token_ttl or a short bearer value.
 func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	tests := []struct {
 		name string
@@ -228,10 +256,10 @@ func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	}{
 		{name: "plain non secret", line: "name = \"not-secret\""},
 		{name: "token refresh bool", line: "enabled_token_refresh = true"},
-		{name: "token refresh long value", line: "enabled_token_refresh = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "token refresh long value", line: "enabled_token_refresh = \"" + syntheticSecretValue + "\""},
 		{name: "token ttl", line: "token_ttl = 3600"},
-		{name: "access token enabled", line: "access_token_enabled = \"abcdefghijklmnopqrstuvwxyz123456\""},
-		{name: "bearer mode", line: "bearer_mode = \"abcdefghijklmnopqrstuvwxyz123456\""},
+		{name: "access token enabled", line: "access_token_enabled = \"" + syntheticSecretValue + "\""},
+		{name: "bearer mode", line: "bearer_mode = \"" + syntheticSecretValue + "\""},
 		{name: "short bearer authorization", line: "authorization = \"Bearer short\""},
 	}
 	for _, tt := range tests {
@@ -265,8 +293,10 @@ func TestSensitiveDataRuleSkipsGoCommentOnlyLines(t *testing.T) {
 	}
 }
 
-// TestSensitiveDataRuleStillFlagsCodeBearingAssignments keeps the generic rule
-// strict on real source/config assignments and Go raw strings.
+// TestSensitiveDataRuleStillFlagsCodeBearingAssignments keeps the generic rule strict on real source and config assignments.
+//
+// The fixture's raw literal docs must stay silent, while both interpreted-string constants, one with a trailing comment, still flag.
+// The YAML auth_token line must still flag once.
 func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 	tokenValue := secretPatternFixtureValue()
 	goUnit := parseOne(t, "pkg/secrets.go", "package pkg\n\n"+
@@ -274,8 +304,8 @@ func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 		"const accessToken = \""+tokenValue+"\" // fixture comment\n"+
 		"const docs = `auth_token = \""+tokenValue+"\"`\n")
 	goFindings := SensitiveDataRule{}.AnalyzeUnit(goUnit, Context{})
-	if len(goFindings) != 3 {
-		t.Fatalf("go assignments and raw string should still flag, got %#v", goFindings)
+	if len(goFindings) != 2 {
+		t.Fatalf("the two interpreted-string assignments should flag and the raw string should not, got %#v", goFindings)
 	}
 
 	textUnit := parser.Unit{
@@ -324,18 +354,19 @@ func TestSensitiveDataRuleSkipsPlaceholderExamples(t *testing.T) {
 	}
 }
 
-// secretPatternFixtureValue builds the token body across literals so dogfood
-// scans do not treat this test file itself as containing a credential.
+// secretPatternFixtureValue builds the token body across literals so dogfood scans never read this test file as holding a credential.
+// It returns the same 32-character string on every call, the lowercase alphabet followed by six digits, so it is never empty.
 func secretPatternFixtureValue() string {
 	return "abcdefghijklmnopqrstuvwxyz" + "123456"
 }
 
-// TestExpansionRules covers the expansion rule pack (package name, empty block, shell, skip).
+// TestExpansionRules covers the package-name, empty-block and shell-command expansion rules.
 func TestExpansionRules(t *testing.T) {
 	packageUnit := parseOne(t, "bad/package.go", `// Package bad_name is a test package.
 package bad_name
 `)
 	packageFindings := PackageNameUnderscoreRule{}.AnalyzeProject([]parser.Unit{packageUnit}, Context{})
+	// Called directly, the rule leaves RuleID empty; the registry adds it before a user sees the finding.
 	if len(packageFindings) != 1 || packageFindings[0].RuleID != "" {
 		t.Fatalf("package findings = %#v, want one package-name finding before registry metadata", packageFindings)
 	}
@@ -363,56 +394,15 @@ func shell() {
 	exec.Command("git", "status")
 }
 `)
+	// Only the bash -c call runs a shell; the direct git status call must stay silent.
 	shellFindings := ShellCommandRule{}.AnalyzeUnit(shellUnit, Context{})
 	if len(shellFindings) != 1 {
 		t.Fatalf("shell findings = %#v, want one", shellFindings)
 	}
-
-	skipUnit := parseOne(t, "skip_test.go", `// Package sample is a test package.
-package sample
-
-import "testing"
-
-func TestSkipped(t *testing.T) {
-	t.Skip("later")
-}
-`)
-	skipFindings := SkippedTestRule{}.AnalyzeUnit(skipUnit, Context{})
-	if len(skipFindings) != 1 {
-		t.Fatalf("skip findings = %#v, want one", skipFindings)
-	}
-
-	// Confirm Skip-named calls on non-testing receivers do not produce
-	// findings. Without the receiver-type check the matcher would treat any
-	// .Skip()/.Skipf()/.SkipNow() selector as a testing skip, false-flagging
-	// queue clients, table iterators, and similar third-party APIs.
-	thirdPartyUnit := parseOne(t, "third_party_test.go", `// Package sample is a test package.
-package sample
-
-import "testing"
-
-type Iter struct{}
-
-func (Iter) Skip()         {}
-func (Iter) Skipf(string)  {}
-func (Iter) SkipNow()      {}
-
-func TestThirdPartySkipIgnored(t *testing.T) {
-	iter := Iter{}
-	iter.Skip()
-	iter.Skipf("x")
-	iter.SkipNow()
-}
-`)
-	got := SkippedTestRule{}.AnalyzeUnit(thirdPartyUnit, Context{})
-	if len(got) != 0 {
-		t.Fatalf("third-party .Skip() calls must not be flagged; got %#v", got)
-	}
 }
 
-// TestPackageNameUnderscoreRuleSkipsExternalTestPackages confirms idiomatic
-// black-box test packages (`package foo_test`) are not treated as bad package
-// names, while genuinely underscored package names remain in scope.
+// TestPackageNameUnderscoreRuleSkipsExternalTestPackages confirms black-box test packages such as package foo_test are not flagged.
+// Genuinely underscored names stay in scope, so package bad_pkg_test and package bad_pkg are both still flagged.
 func TestPackageNameUnderscoreRuleSkipsExternalTestPackages(t *testing.T) {
 	externalTest := parseOne(t, "pkg/api_test.go", `package api_test
 `)
@@ -434,7 +424,8 @@ func TestPackageNameUnderscoreRuleSkipsExternalTestPackages(t *testing.T) {
 	}
 }
 
-// TestExpansionRulesFireByDefault confirms expansion rules fire under Defaults() and can be disabled.
+// TestExpansionRulesFireByDefault confirms dead-code.empty-block fires under Defaults and can be disabled.
+// A failure means a default analyse run would miss empty blocks, or setting the rule to false in Config.Enabled would not silence it.
 func TestExpansionRulesFireByDefault(t *testing.T) {
 	unit := parseOne(t, "empty.go", `// Package sample is a test package.
 package sample
@@ -460,7 +451,13 @@ func empty(a bool) {
 	}
 }
 
-// parseOne writes contents to a temp file and returns the parsed unit; used by rule tests.
+// parseOne writes contents to a temp file and returns the parsed unit; rule tests across the package use it.
+//
+// rel is the relative path written under a fresh t.TempDir root, parent directories included, and contents is always parsed as Go source.
+// rel also becomes the unit's file path, so tests can match it against a finding's File field.
+//
+// The test fails through t if the file cannot be written, if parsing reports any diagnostic, or if it yields other than one unit.
+// So a returned unit always holds the single parsed file, never a zero value.
 func parseOne(t *testing.T, rel string, contents string) parser.Unit {
 	t.Helper()
 	root := t.TempDir()
@@ -481,11 +478,10 @@ func parseOne(t *testing.T, rel string, contents string) parser.Unit {
 	return units[0]
 }
 
-// TestFileLengthAnchorsToSubstantiveThresholdLine pins the finding to the physical
-// line where the substantive-line budget is actually spent. Counting skips blanks
-// and comments, so a documented file crosses the threshold far below its physical
-// line number; anchoring to the raw count would drop the finding outside a
-// changed-region scan of the code that caused it.
+// TestFileLengthAnchorsToSubstantiveThresholdLine pins the finding to the physical line where the substantive-line budget is spent.
+//
+// Counting skips blanks and comments, so a documented file crosses the threshold far below its physical line number.
+// Anchoring to the raw count would drop the finding outside a changed-region scan of the code that caused it.
 func TestFileLengthAnchorsToSubstantiveThresholdLine(t *testing.T) {
 	var builder strings.Builder
 	builder.WriteString("// Package sample is a test package.\npackage sample\n")

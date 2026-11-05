@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-08-08
+last_reviewed: 2026-10-03
 ---
 
 # Setup Footguns
@@ -27,25 +27,6 @@ How to avoid:
 - When investigating "why doesn't `naming.acronym-case` flag identifier X in this file", check whether X actually contains an initialism shape — the rule won't fire on regular English words even if they appear in `acceptedAbbreviations`.
 - Project-specific Go initialisms (`AST`, `CLI`, `JSON`, `API`, project-domain acronyms) belong in the user's `.gruff-go.yaml` `allowlists.acceptedAbbreviations`, not in `defaultAcceptedAbbreviations` — the latter is the cross-port shared list.
 
-## Footgun: `allowlists.secretPreviews` gates the preview field only - it does not suppress sensitive-data findings
-
-**Status:** active | **Created:** 2026-05-24 | **Evidence:** OBSERVED
-
-hallucination-risk: medium (the field name and sibling configuration invite an incorrect mental model)
-
-Evidence:
-- `internal/rule/sensitive_preview.go` (search: `func (p sensitivePreviewPolicy) format`) - every detector calls one policy. Empty/nonmatching lists return `[redacted]`; matching paths may receive only a fixed category marker or an already-public connection scheme.
-- `internal/rule/defaults.go` (search: `previews := newSensitivePreviewPolicy`) - the same policy is supplied to all 16 sensitive-data rules, including entropy, PII, PHI, GCP primary/secondary, private-key, JWT, and connection-string paths.
-- `internal/config/config.go` (search: `cfg.SensitiveData.PreviewAllowlist = mergeStringLists(cfg.SensitiveData.PreviewAllowlist, cfg.Allowlists.SecretPreviews)`) - the user-facing `allowlists.secretPreviews` key still folds into preview-detail authorization, not into any finding-suppression list.
-
-The field sits next to `allowlists.acceptedAbbreviations`, which IS a suppression-style allowlist for `naming.acronym-case`. The visual parallel plus the name `secretPreviews` (plural noun, "the previews we accept") makes adopters reach for it to silence noisy sensitive-data findings in test fixtures or documented dummies. It does not do that. A matching file still produces the same finding and may show only a marker such as `[redacted:aws-access-key]`; empty/nonmatching policy shows `[redacted]`. No state reveals payload characters.
-
-To actually suppress sensitive-data findings on a path the available levers are:
-- `paths.ignore` glob, which skips discovery entirely (loses all rule coverage on that path).
-- Inline `#nosec` or `//nolint:gosec` / `//nolint:all` on the matching source line - the secret-scan helpers in `internal/rule/sensitive.go` (search: `hasSecretSuppressionAnnotation`) honour both forms.
-
-There is currently no path-scoped finding-allowlist for the sensitive-data rules. If a reviewer or adopter is reaching for `secretPreviews` to silence a known fixture, the right answer is one of the two suppression mechanisms above, not the preview-allowlist field.
-
 ## Footgun: `gruff-go init --reset` wipes hand-tuned `.gruff-go.yaml` policy
 
 **Status:** active | **Created:** 2026-05-24 | **Evidence:** OBSERVED
@@ -59,7 +40,7 @@ Evidence:
 
 Current behaviour:
 - `gruff-go init` (no flags) — refuses to overwrite an existing `.gruff-go.yaml`. Safe.
-- `gruff-go init --force` — parses the existing file and **preserves** `paths.ignore`, `allowlists.acceptedAbbreviations`, `allowlists.secretPreviews`, and every per-rule `enabled`/`severity`/`threshold`/`thresholds`/`options` override. Adds blocks for rules new to the registry at defaults; drops blocks for rules no longer in the registry. Prints `preserved existing tuning: ...` to stderr listing what carried over. Safe regenerate.
+- `gruff-go init --force` — parses the existing file and **preserves** `paths.ignore`, `allowlists.acceptedAbbreviations`, `sensitiveExclusions`, and every per-rule `enabled`/`severity`/`threshold`/`thresholds`/`options` override. Adds blocks for rules new to the registry at defaults; drops blocks for rules no longer in the registry. Prints `preserved existing tuning: ...` to stderr listing what carried over. Safe regenerate.
 - `gruff-go init --force --reset` — performs the **legacy destructive overwrite**: wipes paths.ignore, allowlists, and per-rule overrides; writes fresh registry defaults. Use only when you genuinely want a clean slate.
 
 Historical wipe (resolved by the merge-preserve refactor):
@@ -95,7 +76,7 @@ Evidence:
 - `internal/config/config.go` (search: `var defaultConfigFiles = []string{".gruff-go.yaml"}`)
 - Command measured 2026-05-13: `go run ./cmd/gruff-go list-rules --format json` listed the catalogue and exited 0. [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) (2026-05-18) subsequently flipped every shipped rule to `defaultEnabled: true`; `docs.config-field-comment` is default-enabled but remains path-scoped and no-op until `includePaths` is configured.
 
-The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a GitHub Actions dogfood workflow. Per [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) the rule pack moved to an opt-out posture, and [ADR-016](../decisions/ADR-016-default-pack-retune-to-verifiability-mission.md) then retuned it: the current catalogue has 83 rules - 70 default-enabled and 13 opt-in. The previous "small opt-in expansion pack" framing is superseded - the default posture is opt-out, with the 13 opt-in rules (convention-only naming/modernisation, parser-only dead-code, heuristic sensitive-data, and the redundant-test candidate) enabled by exception. Two documentation rules are path-scoped no-ops until configured with `includePaths`: `docs.comment-rubric` and `docs.config-field-comment`. Trend storage, hosted dashboard/service surfaces, external linter ingestion, and package-manager distribution are still not implemented. Do not claim those integration surfaces until later milestones add them.
+The CLI now supports strict gruff config discovery, baselines, diff filtering, summary JSON, SARIF, GitHub annotations, an HTML report with an opt-in interactive findings UI, a local dashboard server, gitignore-respecting discovery (`--include-ignored` to bypass), and a GitHub Actions dogfood workflow. Per [ADR-007](../decisions/ADR-007-comprehensive-default-rule-pack.md) the rule pack moved to an opt-out posture, and [ADR-016](../decisions/ADR-016-default-pack-retune-to-verifiability-mission.md) then retuned it: the catalogue measured 2026-10-03 with `go run ./cmd/gruff-go list-rules --format json` has 83 rules - 71 default-enabled and 12 opt-in. The previous "small opt-in expansion pack" framing is superseded - the default posture is opt-out, with the 12 opt-in rules (convention-only naming/modernisation, parser-only dead-code, the heuristic PII/PHI sensitive-data detectors, and the redundant-test candidate) enabled by exception. Two documentation rules are path-scoped no-ops until configured with `includePaths`: `docs.comment-rubric` and `docs.config-field-comment`. Trend storage, hosted dashboard/service surfaces, external linter ingestion, and package-manager distribution are still not implemented. Do not claim those integration surfaces until later milestones add them.
 
 ## Footgun: release docs lag the version literals; committed docs must not link into the gitignored scratchpad
 
@@ -112,23 +93,23 @@ How to avoid: run `scripts/bump-version.sh --check-references --root . --source-
 ## Footgun: `stats --check` only greps a semantic anchor when the path sits immediately before `(search: ...)`
 
 **Status:** active | **Created:** 2026-08-08 | **Evidence:** ACTUAL_MEASURED
-**Decision changed:** Write every learning-loop anchor as a backticked path immediately followed by `(search: ...)`. Any other phrasing still reads like evidence to a human but is never checked, so a green `stats --check` is not proof that the entry's anchors resolve.
+**Decision changed:** Write every learning-loop anchor as a backticked path immediately followed by `(search: ...)`, and give every cited needle its own path-plus-clause pair. Since goat-flow 1.17.0 an active footgun with no recognised anchor fails `missing-anchor`, but once an entry has one valid anchor its other non-canonical citations are still never checked, so a green `stats --check` does not prove every anchor in an entry resolves.
 **Trigger phase:** VERIFY
 
-hallucination-risk: high (`.goat-flow/skill-docs/skill-preamble.md` states that `stats --check` fails on stale refs, and it does - but only for the canonical citation form, so an agent that runs the gate and sees `status: pass` will report anchor health the gate never measured)
+hallucination-risk: high (`.goat-flow/skill-docs/skill-preamble.md` states that `stats --check` fails on stale refs, and it does - but only for recognised citation forms, so an agent that runs the gate and sees `status: pass` can report anchor health the gate never measured)
 
-The `stale-ref` rule does open cited files and grep the anchor. Its recogniser is form-sensitive: it matches only `` `path` (search: `anchor`) `` with the path adjacent to the search clause. Prose variants are parsed as ordinary text and silently skipped.
+The `stale-ref` rule opens cited files and greps the anchor. Its recogniser is form-sensitive: in goat-flow 1.17.0 it pairs a backticked path with an immediately following search clause, or reads a path and search clause written together in one comma-separated paren group, and treats other phrasings as ordinary prose. The pairing logic is `node_modules/@blundergoat/goat-flow/dist/cli/facts/shared/search-anchors.js` (search: `function extractVisibleSearchAnchorCitations`); a goat-flow upgrade can move it, so re-measure rather than trusting this table.
 
-Measured 2026-08-08 on a throwaway fixture, one bucket, four entries, one run each:
+Each fixture entry cited a real file with an anchor string that appears nowhere in it, one bucket, one run per version. Citation forms are described rather than reproduced here, because a literal canonical citation in this entry would itself be parsed as a live claim - see the `Do not backtick nonexistent illustrative paths` lesson.
 
-Each fixture entry cited a real file with an anchor string that appears nowhere in it. Citation forms are described rather than reproduced here, because a literal canonical citation in this entry would itself be parsed as a live claim - see the `Do not backtick nonexistent illustrative paths` lesson.
+| Citation form | goat-flow 1.15.x (2026-08-08) | goat-flow 1.17.0 (2026-10-03) |
+|---|---|---|
+| Backticked path, then immediately the search clause in parens | **caught** - `stale-ref` | **caught** - `stale-ref` |
+| Path moved inside the parens, before the colon and anchor | not caught | not caught |
+| Backticked path, prose words, then the search clause | not caught | not caught |
+| Path and search clause together in one paren group, comma-separated | not caught | **caught** - `stale-ref` |
 
-| Citation form | Result |
-|---|---|
-| Backticked path, then immediately the search clause in parens | **caught** - `stale-ref` raised |
-| Path moved inside the parens, before the colon and anchor | not caught |
-| Backticked path, prose words, then the search clause | not caught |
-| Path and search clause together in one paren group, comma-separated | not caught |
+In the 1.17.0 run, every fixture footgun whose only citation was stale or unrecognised also raised `missing-anchor`; a control entry citing a needle the file does contain raised nothing. That closes the silent pass for an entry with no checkable evidence, not for the extra citations of an entry that already has one.
 
 Two live entries had drifted through exactly this hole before it was found: `.goat-flow/learning-loop/footguns/severity.md` used the parens form to cite an `ADR-009: default is` anchor that no longer existed anywhere in `internal/cli/cli.go` after the flag defaults moved to `internal/cli/analyse_flags.go`, and `.goat-flow/learning-loop/footguns/calibration.md` used the prose form to attribute `scan_module` and `cd "$module_root"` to `scripts/calibrate-scratchpad-corpus.sh`, which had since become a 14-line shim. Both files existed, both anchors returned zero lines, and the gate reported `{"status": "pass", "findings": [], "warnings": []}`.
 
@@ -136,29 +117,86 @@ The gate is not inert - it caught a real regression in this same session when a 
 
 How to avoid: use the canonical form so the gate covers you, and repeat the path when one entry cites two anchors in the same file rather than chaining them into one clause. After moving a symbol between files or replacing a script with a shim, grep the learning loop for the old anchor directly - `rg -F '<old-anchor>' .goat-flow/learning-loop/` - because the gate will not do it for non-canonical citations. Re-point a dead anchor at the live symbol rather than deleting it; the recorded claim usually survives the refactor that broke its navigation.
 
-## Footgun: `goat-flow audit --check-content` reports framework dashboard views as project drift; the fix it suggests is a false claim
+## Footgun: the hand-rolled YAML parser and the strict JSON decoder both fight a list-of-mappings config section
 
-**Status:** active | **Created:** 2026-08-08 | **Evidence:** OBSERVED
-**Decision changed:** Do not satisfy the `code-map-dashboard-view-drift` warning by editing `.goat-flow/code-map.md`; treat it as a permanent unsatisfiable warning of the framework's own layout.
-**Trigger phase:** VERIFY
+**Status:** active | **Created:** 2026-08-22 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** Before adding any config section whose entries are objects rather than scalars, budget for two parser changes in gruff-go, not one - and expect the diagnostic to lose the entry index unless the entry type decodes itself.
+**Trigger phase:** SCOPE
 
-hallucination-risk: high (the warning names `.goat-flow/code-map.md` as the path and supplies a concrete, confident-sounding list of view names to paste in, so an agent chasing a green audit will write framework internals into project docs and believe it fixed real drift)
+hallucination-risk: high (both defects are silent in the shape a reviewer checks first - the section reads fine as YAML, and the strict decoder does reject the bad key, so "it works" survives a shallow read while the entry index the contract requires is simply missing)
 
-`node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent claude --check-content` exits 1 on gruff-go with a single warning that cannot be cleared:
-
-> Code map lists dashboard views as none, but src/dashboard/views has about, home, hooks, plans, projects, prompts, quality, settings, setup, skills, workspace.
+`.gruff-go.yaml` is parsed by a deliberately small in-tree parser, not a YAML
+library, and every config value is then decoded through one strict JSON decoder.
+Adding the ratified `sensitiveExclusions` section (FAMILY-CONTRACT.md,
+search: `### 13a. Sensitive exclusions`) hit both layers.
 
 Evidence:
-- `node_modules/@blundergoat/goat-flow/dist/cli/audit/check-factual-semantic-drift.js` (search: `Read live dashboard view files with a stable manifest fallback for filesystem stubs`) — the reader globs `src/dashboard/views/*.html` against the target root, and on zero matches falls back to the framework's own bundled manifest view names instead of concluding the target has no such surface. `driftCodeMapDashboardViews` then diffs gruff-go's code map against that fallback.
-- gruff-go has no `src/` directory at any depth (`find . -maxdepth 2 -type d -name src -not -path './node_modules/*'` returns nothing), so the glob is always empty and the fallback always fires.
-- The 11 reported names are exactly `node_modules/@blundergoat/goat-flow/dist/dashboard/views/*.html` — the GOAT Flow dashboard's views, not this project's.
-- gruff-go's dashboard is `internal/dashboard/` (a Go `net/http` server) rendering HTML from `internal/report/`; it has no per-view `.html` files to enumerate. `.goat-flow/code-map.md` already describes both accurately.
 
-Following the suggestion would document vendored framework internals as gruff-go surfaces, which `CLAUDE.md` → Workspace Boundary forbids and which is simply untrue of this repo.
+- `internal/config/yaml.go` (search: `func parseYAMLList`) accepted only
+  `- scalar` items before this change, so a `- rule: x` item parsed as the
+  string `"rule: x"` and the section decoded into a list of strings, failing
+  with a type error that named neither the key nor the entry. The repair is
+  `yamlListItemOpensMap` plus `parseYAMLListItemMap`, which re-parse the dash
+  line and its deeper-indented siblings as one mapping. A quoted item stays a
+  scalar, which is what keeps `paths.ignore` and the allowlists unchanged.
+- `internal/config/config.go` (search: `func decodeConfigUnvalidated`) sets
+  `DisallowUnknownFields`, so a `message_contains` key inside an entry *is*
+  rejected - but the error reads `json: unknown field "message_contains"` with
+  no entry index, and section 13a requires the diagnostic to name both. The
+  repair is `SensitiveExclusion.UnmarshalJSON` (`internal/config/config.go`,
+  search: `func (entry *SensitiveExclusion) UnmarshalJSON`), which collects
+  offending keys into `UnsupportedKeys` so `validateOneSensitiveExclusion` can
+  report `sensitiveExclusions[1] has unsupported key "value"`.
+- `internal/cli/hook_base.go` (search: `type hookBaseScan`) is the third-order
+  cost: threading one more scan input through the hook's git-base resolver
+  pushed it to six parameters, and `go run ./cmd/gruff-go analyse .` dropped
+  from zero findings to one `size.parameter-count` warning. Grouping the three
+  scan inputs restored grade A. Measured 2026-08-22.
 
-How to avoid: when `--check-content` fails, split findings by rule before fixing any of them. Confirm a drift warning names a surface that exists in this checkout — resolve the cited path on disk first. If it does not resolve, it is framework self-audit leakage: report it, leave the docs correct, and do not count the audit's exit 1 as a project defect. The other content rules (`stale-semantic-anchor`, `skill-playbook-inventory-drift`) do describe real target-project drift and should be fixed normally.
+How to avoid:
+
+- Treat "a new config section whose entries are objects" as a parser change plus
+  a decoder change plus a dogfood re-check, never as a schema addition.
+- Do not rely on `DisallowUnknownFields` when a contract requires a positional
+  diagnostic; give the entry type its own `UnmarshalJSON`.
+- Re-run the dogfood scan after threading a new value through the CLI, because
+  the parameter-count rule fires on the plumbing, not on the feature.
+
+**Portability question this raises for the family.** gruff-go and gruff-ts both
+hand-roll their configuration parsers (gruff-ts in `src/config-parse.ts`), and
+gruff-ts must add `sensitiveExclusions` with no rule-exclusion section to build
+on and no runtime dependency permitted. The question the family has not answered
+is whether each hand-rolled parser grows list-of-mapping support independently -
+five parsers, five subtly different accepted subsets, five different diagnostics
+for one malformed entry - or whether section 13a's entry shape should be
+constrained to what every port's existing parser already reads. gruff-go chose
+to grow the parser and to keep the growth narrow, but nothing in the contract
+pins the accepted subset, so two ports can both conform to 13a while disagreeing
+on whether a given file is valid at all. The same gap covers diagnostic wording:
+13a mandates that the entry index and offending key appear, not how, so
+cross-port conformance can only assert substrings today. M03 should decide
+whether the contract owns the parseable subset and the diagnostic shape, or only
+the semantics.
 
 ## Resolved Entries
+
+## Footgun: `goat-flow audit --check-content` reports framework dashboard views as project drift; the fix it suggests is a false claim
+
+**Status:** resolved | **Created:** 2026-08-08 | **Resolved:** 2026-10-03 | **Evidence:** OBSERVED
+
+**Resolution (goat-flow 1.17.0):** `goat-flow audit . --check-content --agent claude` no longer emits the `code-map-dashboard-view-drift` warning on gruff-go. On 2026-10-03 its Cold-Path Content Lint reported only `stale-semantic-anchor` warnings, one of which was this entry's own evidence needle, the fallback comment in the goat-flow dist file check-factual-semantic-drift.js.
+
+**Original trap (historical):** under goat-flow 1.15.x the check globbed `src/dashboard/views/*.html` in the target and, finding none because gruff-go has no `src/` tree, fell back to goat-flow's own bundled dashboard view names. It then reported gruff-go's code map as drifting from those eleven names and suggested listing them in `.goat-flow/code-map.md`, which would have documented framework internals as project surfaces.
+
+**What carries forward:** when `--check-content` fails, split findings by rule and resolve each cited path on disk before editing docs. A drift warning that names a surface absent from this checkout is framework self-audit leakage, not project drift; `stale-semantic-anchor` warnings do describe real drift and are fixed normally.
+
+## Footgun: `allowlists.secretPreviews` gates the preview field only - it does not suppress sensitive-data findings
+
+**Status:** resolved | **Created:** 2026-05-24 | **Resolved:** 2026-10-03 | **Evidence:** OBSERVED
+
+**Resolution (0.6.0):** the key no longer exists. A config carrying `allowlists.secretPreviews` or `sensitiveData.previewAllowlist` is refused at load: `internal/config/severity_keys.go` (search: `allowlists.secretPreviews is removed in 0.6.0`). Previews are now unconditional category markers, and the preview policy takes no allowlist: `internal/rule/sensitive_preview.go` (search: `func newSensitivePreviewPolicy`). `gruff-go migrate-config` deletes the key from a 0.5 config. The lever for silencing a known fixture remains the `sensitiveExclusions` section: `internal/config/validate.go` (search: `func validateSensitiveExclusions`), which names one rule, one project-relative path and a required reason, and publishes a counted audit row.
+
+**Original trap (historical):** the key sat beside `allowlists.acceptedAbbreviations`, a real suppression allowlist for `naming.acronym-case`, so adopters reached for it to silence sensitive-data findings in fixtures. It only widened which category marker a matching file's preview could show; the finding still reported.
 
 ## Footgun: `acceptedAbbreviations` validator required UPPERCASE
 

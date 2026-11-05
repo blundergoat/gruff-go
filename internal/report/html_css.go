@@ -1,5 +1,6 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file embeds the CSS bundles used by the HTML report.
+//
+// This file embeds the CSS bundles used by the HTML report: the base stylesheet and the extra rules for the diagnostics section.
 package report
 
 // reportCSS is the base stylesheet inlined into every HTML report.

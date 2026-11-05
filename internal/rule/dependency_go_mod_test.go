@@ -1,4 +1,7 @@
 // Package rule tests the parser-only go.mod dependency-posture rules.
+//
+// These tests feed go.mod text to GoModLocalReplaceRule and GoModRemoteReplaceRule and count the findings each one returns.
+// A failure means a user's replace directive is missed, misclassified or counted from a comment, or a file other than go.mod gets scanned.
 package rule
 
 import (
@@ -9,6 +12,9 @@ import (
 )
 
 // goModUnit builds a go.mod text unit for dependency-rule tests.
+//
+// It returns a parser.Unit whose File is the go.mod path typed as source.FileTypeText and whose Source is src unchanged.
+// An empty src gives a go.mod unit with empty Source.
 func goModUnit(src string) parser.Unit {
 	return parser.Unit{
 		File:   source.File{Path: "go.mod", Type: source.FileTypeText},
@@ -16,8 +22,8 @@ func goModUnit(src string) parser.Unit {
 	}
 }
 
-// TestGoModReplaceRules covers local and remote replace directives across the
-// single-line and block forms, and the no-replace / non-go.mod cases.
+// TestGoModReplaceRules covers local and remote replace directives in single-line and block forms, plus absent and commented-out directives.
+// Absolute and quoted local paths must still count as local; a failure names the case and prints the failing rule's findings.
 func TestGoModReplaceRules(t *testing.T) {
 	tests := []struct {
 		name       string

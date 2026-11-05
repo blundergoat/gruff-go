@@ -1,8 +1,12 @@
 // Package rule defines gruff-go's rule registry and analysers.
+//
 // This file wires the default rule pack and the strict-config option helpers.
+// For a missing or wrongly typed option they fall back to the rule's built-in setting instead of raising an error.
+// Config file validation rejects a zero or negative threshold before these helpers run.
 package rule
 
 // Defaults returns the built-in registry without project configuration.
+// It panics if NewRegistryWithComposite rejects the built-in rule lists, a gruff-go defect that no user config can cause.
 func Defaults() Registry {
 	registry, err := DefaultsConfigured(Config{})
 	if err != nil {
@@ -12,6 +16,9 @@ func Defaults() Registry {
 }
 
 // DefaultsConfigured returns the built-in registry after applying rule config.
+//
+// config overrides built-in rule options, thresholds, enablement, and severities.
+// When NewRegistryWithComposite fails, it returns a zero Registry and that error.
 func DefaultsConfigured(config Config) (Registry, error) {
 	registry, err := NewRegistryWithComposite(defaultUnitRules(config), defaultProjectRules(config), defaultCompositeRules(config))
 	if err != nil {
@@ -24,6 +31,7 @@ func DefaultsConfigured(config Config) (Registry, error) {
 }
 
 // defaultUnitRules builds the per-unit rule slice from strict config so DefaultsConfigured stays small.
+// It returns the metric, maintainability, security, dependency, documentation, sensitive-data, naming, and test-quality rules in that order.
 func defaultUnitRules(config Config) []UnitRule {
 	rules := []UnitRule{}
 	rules = append(rules, defaultMetricUnitRules(config)...)
@@ -38,6 +46,7 @@ func defaultUnitRules(config Config) []UnitRule {
 }
 
 // defaultMetricUnitRules returns size, complexity, and dead-code unit rules.
+// Thresholds come from config, falling back to the package defaults when a threshold is absent or not positive.
 func defaultMetricUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		FileLengthRule{MaxLines: intThreshold(config, "size.file-length", "maxLines", fileLengthThreshold)},
@@ -56,7 +65,6 @@ func defaultMaintainabilityUnitRules() []UnitRule {
 	return []UnitRule{
 		IgnoredErrorRule{},
 		ContextTODOProductionRule{},
-		ProductionPanicRule{},
 		DeferInLoopRule{},
 		LogFatalLibraryRule{},
 		LoopVariableAddressRule{},
@@ -73,14 +81,12 @@ func defaultSecurityUnitRules() []UnitRule {
 		HTTPServerNoTimeoutRule{},
 		PermissiveFileModeRule{},
 		RequestBodyWithoutLimitRule{},
-		SQLStringQueryRule{},
 		ArchivePathTraversalRule{},
 		InsecureRandomSecretRule{},
 		WeakCryptoRule{},
 		RequestControlledURLRule{},
 		PathTraversalFileAccessRule{},
 		OpenRedirectRule{},
-		SensitiveDataLoggingRule{},
 		UnsafeDeserializationRule{},
 		XXECandidateRule{},
 		TemplateInjectionXSSRule{},
@@ -92,9 +98,9 @@ func defaultSecurityUnitRules() []UnitRule {
 	}
 }
 
-// defaultDependencyUnitRules returns parser-only Go-module dependency-posture
-// checks. They emit the security pillar but carry dependency.* IDs to mirror the
-// cross-port dependency rule family.
+// defaultDependencyUnitRules returns parser-only Go-module dependency-posture checks.
+//
+// They emit the security pillar but carry dependency.* IDs to mirror the cross-port dependency rule family.
 func defaultDependencyUnitRules() []UnitRule {
 	return []UnitRule{
 		GoModLocalReplaceRule{},
@@ -103,10 +109,13 @@ func defaultDependencyUnitRules() []UnitRule {
 }
 
 // defaultDocumentationUnitRules returns documentation checks that run per source unit.
+// config supplies the exported-comment ignoreInternalPackages flag, default true, and the config-field-comment include and exclude paths.
 func defaultDocumentationUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		SuppressionWithoutRationaleRule{},
 		ExportedSymbolCommentRule{IgnoreInternalPackages: boolOption(config, "docs.exported-symbol-comment", "ignoreInternalPackages", true)},
+		MissingParamDocRule{},
+		MissingReturnDocRule{},
 		ConfigFieldCommentRule{
 			IncludePaths: stringSliceOption(config, "docs.config-field-comment", "includePaths"),
 			ExcludePaths: stringSliceOption(config, "docs.config-field-comment", "excludePaths"),
@@ -115,12 +124,13 @@ func defaultDocumentationUnitRules(config Config) []UnitRule {
 }
 
 // defaultSensitiveDataUnitRules returns vendor and generic sensitive-data checks.
-// The entropy, PII, and PHI detectors ship opt-in (DefaultEnabled:false on their
-// own definitions): they are heuristic and noisier than the exact-prefix vendor
-// rules, so per ADR-007/ADR-009 they stay out of default scans until a project
-// enables them, rather than riding at an inflated severity to dodge the gate.
+//
+// The PII and PHI detectors ship with DefaultEnabled false because they are heuristic and noisier than the exact-prefix vendor rules.
+// Per ADR-007 and ADR-009 they stay out of default scans until a project opts in, rather than riding at an inflated severity to dodge the gate.
+//
+// config is not read; every rule shares one preview policy from newSensitivePreviewPolicy.
 func defaultSensitiveDataUnitRules(config Config) []UnitRule {
-	previews := newSensitivePreviewPolicy(config.SensitiveDataPreviewAllowlist)
+	previews := newSensitivePreviewPolicy()
 	return []UnitRule{
 		SensitiveDataRule{previews: previews},
 		PrivateKeyRule{previews: previews},
@@ -135,17 +145,13 @@ func defaultSensitiveDataUnitRules(config Config) []UnitRule {
 		GCPServiceAccountRule{previews: previews},
 		NPMTokenRule{previews: previews},
 		GitLabTokenRule{previews: previews},
-		HighEntropyStringRule{
-			MinLength: intThreshold(config, "sensitive-data.high-entropy-string", "minLength", highEntropyMinLength),
-			Entropy:   floatThreshold(config, "sensitive-data.high-entropy-string", "entropy", highEntropyMinBitsPerChar),
-			previews:  previews,
-		},
 		PIIPatternRule{previews: previews},
 		PHIPatternRule{previews: previews},
 	}
 }
 
 // defaultNamingUnitRules returns identifier and package-local naming checks.
+// config supplies each rule's options and the contextual-generic thresholds, plus the accepted abbreviations for acronym-case.
 func defaultNamingUnitRules(config Config) []UnitRule {
 	return []UnitRule{
 		AcronymCaseRule{
@@ -158,11 +164,6 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 			ExcludeNames: stringSliceOption(config, "naming.get-prefix", "excludeNames"),
 		},
 		IdentifierQualityRule{PlaceholderNames: stringSliceOption(config, "naming.identifier-quality", "placeholderNames")},
-		NegatedBooleanRule{
-			Prefixes:  stringSliceOption(config, "naming.negated-boolean", "prefixes"),
-			AllowList: stringSliceOption(config, "naming.negated-boolean", "allowList"),
-			Scope:     stringOption(config, "naming.negated-boolean", "scope", "exported"),
-		},
 		MisspellingRule{
 			Extra:  stringMapOption(config, "naming.misspelling", "extra"),
 			Ignore: stringSliceOption(config, "naming.misspelling", "ignore"),
@@ -180,10 +181,9 @@ func defaultNamingUnitRules(config Config) []UnitRule {
 // defaultTestQualityUnitRules returns unit-level test-quality checks.
 func defaultTestQualityUnitRules() []UnitRule {
 	return []UnitRule{
-		SkippedTestRule{},
+		DuplicateTestBodyRule{},
 		EmptyTestRule{},
 		HelperMissingTHelperRule{},
-		NoFailurePathTestRule{},
 		ParallelRangeCaptureRule{},
 		FatalInGoroutineRule{},
 		TempDirMisuseRule{},
@@ -192,8 +192,14 @@ func defaultTestQualityUnitRules() []UnitRule {
 }
 
 // defaultProjectRules builds the project-level rule slice from strict config.
+//
+// It returns the fixed project rule list, which is never empty.
+// config feeds only the package-stutter, receiver-consistency, and comment-rubric settings.
 func defaultProjectRules(config Config) []ProjectRule {
 	return []ProjectRule{
+		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
+		// that boundary in whichever file owns the entry point, not the one that panics.
+		ProductionPanicRule{},
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
 		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},
@@ -224,6 +230,7 @@ func defaultProjectRules(config Config) []ProjectRule {
 }
 
 // defaultCompositeRules builds the composite rule slice from strict config.
+// It returns only the design.hotspot-file rule, its minFindings and minPillars thresholds read from config with package defaults as fallback.
 func defaultCompositeRules(config Config) []CompositeRule {
 	return []CompositeRule{
 		DesignHotspotFileRule{
@@ -234,6 +241,9 @@ func defaultCompositeRules(config Config) []CompositeRule {
 }
 
 // stringSliceOption reads a string-slice rule option from strict config.
+//
+// It looks up key under ruleID in config.Options and returns its non-empty string items in order, skipping other item types.
+// The result is nil when the rule or key is absent or the value is not a list, and empty when no item qualifies.
 func stringSliceOption(config Config, ruleID, key string) []string {
 	options, ok := config.Options[ruleID]
 	if !ok {
@@ -257,6 +267,7 @@ func stringSliceOption(config Config, ruleID, key string) []string {
 }
 
 // boolOption reads a boolean rule option from strict config.
+// It returns the bool stored at key under ruleID in config.Options, or fallback when the rule or key is missing or the value is not a bool.
 func boolOption(config Config, ruleID, key string, fallback bool) bool {
 	options, ok := config.Options[ruleID]
 	if !ok {
@@ -274,11 +285,15 @@ func boolOption(config Config, ruleID, key string, fallback bool) bool {
 }
 
 // boolPointer returns the address of the supplied bool, used for tri-state rule options.
+// Each call yields a pointer to its own copy of value, never nil.
 func boolPointer(value bool) *bool {
 	return &value
 }
 
 // stringOption reads a string rule option from strict config.
+//
+// It returns the string stored at key under ruleID in config.Options.
+// fallback is returned instead when the rule or key is missing or the value is empty or not a string.
 func stringOption(config Config, ruleID, key string, fallback string) string {
 	options, ok := config.Options[ruleID]
 	if !ok {
@@ -296,6 +311,9 @@ func stringOption(config Config, ruleID, key string, fallback string) string {
 }
 
 // stringMapOption reads a string-to-string map rule option from strict config.
+//
+// It returns the entries at key under ruleID in config.Options whose values are non-empty strings, dropping the rest.
+// The result is nil when the rule or key is absent or the value is not a map, and empty when no entry qualifies.
 func stringMapOption(config Config, ruleID, key string) map[string]string {
 	options, ok := config.Options[ruleID]
 	if !ok {
@@ -321,37 +339,29 @@ func stringMapOption(config Config, ruleID, key string) map[string]string {
 }
 
 // intThreshold reads a named positive integer threshold from strict config.
+//
+// It returns the value stored as name under ruleID in config.Thresholds, converted to int.
+// fallback is returned when the rule or name is missing or the value is zero or negative.
 func intThreshold(config Config, ruleID string, name string, fallback int) int {
 	values, ok := config.Thresholds[ruleID]
 	if !ok {
 		return fallback
 	}
 	value, ok := values[name]
+	// Config file validation already rejects zero and negative thresholds, so this value check only guards a rule.Config built in code.
 	if !ok || value <= 0 {
 		return fallback
 	}
 	return int(value)
 }
 
-// floatThreshold reads a named positive floating-point threshold from strict
-// config, falling back when absent or non-positive. It mirrors intThreshold for
-// rules whose knob is fractional - e.g. the entropy rule's bits-per-character
-// cutoff, where rounding to an int would collapse the meaningful 4.0-6.0 range.
-func floatThreshold(config Config, ruleID string, name string, fallback float64) float64 {
-	values, ok := config.Thresholds[ruleID]
-	if !ok {
-		return fallback
-	}
-	value, ok := values[name]
-	if !ok || value <= 0 {
-		return fallback
-	}
-	return value
-}
-
-// intOption reads an integer rule option from strict config, accepting numeric forms (int, int64, float64).
-// Negative values fall through to the supplied fallback; zero is preserved so callers can disable a feature
-// explicitly. The strict config decoder hands integers in as int or float64 depending on the source format.
+// intOption reads an integer rule option from strict config, accepting int, int64, and float64 values.
+//
+// Negative values fall through to fallback; zero is kept so a project can disable a feature explicitly, unlike intThreshold.
+// The config file loader delivers numbers as float64; int and int64 arrive only from a rule.Config built in code.
+//
+// It returns the number stored at key under ruleID in config.Options, with a float64 truncated toward zero by the int conversion.
+// fallback is also returned when the rule or key is missing or the value has another type.
 func intOption(config Config, ruleID, key string, fallback int) int {
 	options, ok := config.Options[ruleID]
 	if !ok {

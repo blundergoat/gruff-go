@@ -1,4 +1,7 @@
 // Package rule tests static-analysis-redundant test candidate detection.
+//
+// The rule flags single assertions about parser-visible declarations, such as a struct's kind, name, field count or a declared field.
+// These tests pin when it fires, what evidence each finding carries, and that it stays opt-in.
 package rule
 
 import (
@@ -8,8 +11,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions covers direct
-// reflection assertions that restate parser-visible type declarations.
+// TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions covers direct reflection assertions that restate parser-visible type declarations.
+//
+// It expects three high-confidence findings on TestWidgetShape that cite pkg/widget/widget.go and carry assertion, fact and reason metadata.
 func TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions(t *testing.T) {
 	production := parseOne(t, "pkg/widget/widget.go", `package widget
 
@@ -38,6 +42,7 @@ func TestWidgetShape(t *testing.T) {
 }
 `)
 	findings := StaticAnalysisRedundantTestRule{}.AnalyzeProject([]parser.Unit{production, testUnit}, Context{})
+	// Each of the three reflect checks restates the Widget declaration, so each one is a separate finding.
 	if len(findings) != 3 {
 		t.Fatalf("findings = %#v, want three static-shape findings", findings)
 	}
@@ -57,8 +62,9 @@ func TestWidgetShape(t *testing.T) {
 	}
 }
 
-// TestStaticAnalysisRedundantTestFlagsFieldByNameAssertions covers direct
-// field-existence checks whose field declaration is visible in the AST.
+// TestStaticAnalysisRedundantTestFlagsFieldByNameAssertions covers direct field-existence checks whose field declaration is visible in the AST.
+//
+// It expects exactly one finding, whose static fact names the Name field and whose fact line is that field's line.
 func TestStaticAnalysisRedundantTestFlagsFieldByNameAssertions(t *testing.T) {
 	production := parseOne(t, "pkg/widget/widget.go", `package widget
 
@@ -86,13 +92,15 @@ func TestWidgetHasNameField(t *testing.T) {
 	if findings[0].Metadata["staticFact"] != "Widget declares field \"Name\"" {
 		t.Fatalf("static fact = %#v, want field declaration", findings[0].Metadata["staticFact"])
 	}
+	// Line 4 is the Name field inside the production fixture, not the type line above it.
 	if findings[0].Metadata["staticFactLine"] != 4 {
 		t.Fatalf("static fact line = %#v, want field line 4", findings[0].Metadata["staticFactLine"])
 	}
 }
 
-// TestStaticAnalysisRedundantTestIgnoresBehaviourAssertions confirms value
-// behaviour remains out of scope even when tests mention reflected types.
+// TestStaticAnalysisRedundantTestIgnoresBehaviourAssertions confirms value behaviour remains out of scope even when tests mention reflected types.
+//
+// The FieldByName check asserts absence, a shape this rule does not match; the test expects no findings.
 func TestStaticAnalysisRedundantTestIgnoresBehaviourAssertions(t *testing.T) {
 	production := parseOne(t, "pkg/widget/widget.go", `package widget
 
@@ -127,8 +135,9 @@ func TestWidgetBehaviour(t *testing.T) {
 	}
 }
 
-// TestStaticAnalysisRedundantTestIgnoresExternalTestPackages confirms parser-only
-// declaration evidence stays scoped to the package under analysis.
+// TestStaticAnalysisRedundantTestIgnoresExternalTestPackages confirms parser-only declaration evidence stays scoped to the package under analysis.
+//
+// The test file is package widget_test, so its Widget is not proven to be the production type; the test expects no findings.
 func TestStaticAnalysisRedundantTestIgnoresExternalTestPackages(t *testing.T) {
 	production := parseOne(t, "pkg/widget/widget.go", `package widget
 
@@ -153,8 +162,9 @@ func TestWidgetShape(t *testing.T) {
 	}
 }
 
-// TestStaticAnalysisRedundantTestIsOptInCandidate asserts the new rule does not
-// enter default scans before broader calibration.
+// TestStaticAnalysisRedundantTestIsOptInCandidate checks the rule stays out of default scans until broader calibration.
+//
+// It also pins the rule to parser capability and advisory severity.
 func TestStaticAnalysisRedundantTestIsOptInCandidate(t *testing.T) {
 	def := StaticAnalysisRedundantTestRule{}.Definition()
 	if def.DefaultEnabled {

@@ -1,5 +1,7 @@
-// Package dashboard server tests cover host gating, shutdown, and URL formatting.
-// They exercise the public Serve entrypoint and helpers.
+// Package dashboard server tests cover host gating, shutdown, and URL formatting for gruff-go dashboard.
+//
+// They exercise the public Serve entrypoint and its helpers, so a failure here means the dashboard may bind where it should not,
+// hang on shutdown, or print a different start URL.
 package dashboard
 
 import (
@@ -12,6 +14,7 @@ import (
 )
 
 // TestIsLoopbackHost verifies loopback detection for common host strings.
+// A failure means the --allow-public gate in Serve would misjudge one of these hosts as local or public.
 func TestIsLoopbackHost(t *testing.T) {
 	loopback := []string{"127.0.0.1", "::1", "localhost", "LocalHost"}
 	for _, host := range loopback {
@@ -28,6 +31,7 @@ func TestIsLoopbackHost(t *testing.T) {
 }
 
 // TestServeRefusesPublicHostWithoutAllowPublic ensures non-loopback binds require opt-in.
+// A failure means --host 0.0.0.0 served without --allow-public, or the error no longer names the host and the flag to add.
 func TestServeRefusesPublicHostWithoutAllowPublic(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := Serve(context.Background(), &stdout, &stderr, Options{Host: "0.0.0.0", Port: 0})
@@ -40,6 +44,7 @@ func TestServeRefusesPublicHostWithoutAllowPublic(t *testing.T) {
 }
 
 // TestServeShutsDownOnContextCancel verifies the server stops cleanly on context cancel.
+// A failure means no ready signal or no stop within 2s, a shutdown error other than context.Canceled, or a missing start-up line on stdout.
 func TestServeShutsDownOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var stdout, stderr bytes.Buffer
@@ -64,6 +69,7 @@ func TestServeShutsDownOnContextCancel(t *testing.T) {
 
 	select {
 	case err := <-done:
+		// Either nil or an error matching context.Canceled counts as a clean stop here.
 		if err != nil && !errors.Is(err, context.Canceled) {
 			t.Fatalf("Serve returned %v on shutdown", err)
 		}
@@ -78,6 +84,7 @@ func TestServeShutsDownOnContextCancel(t *testing.T) {
 }
 
 // TestInitialURLEncodesDefaultState checks initialURL builds an http URL with form state.
+// A failure means the URL lost its http://host:port/? prefix or dropped the project query key.
 func TestInitialURLEncodesDefaultState(t *testing.T) {
 	got := initialURL("127.0.0.1", 8765, Options{ProjectRoot: "/repo", FailOn: "medium"})
 	if !strings.HasPrefix(got, "http://127.0.0.1:8765/?") {
@@ -89,6 +96,7 @@ func TestInitialURLEncodesDefaultState(t *testing.T) {
 }
 
 // ephemeralPort returns a free TCP port suitable for in-process server binding.
+// When pickEphemeralPort fails, the test stops with a fatal error instead of returning a port.
 func ephemeralPort(t *testing.T) int {
 	t.Helper()
 	port, err := pickEphemeralPort()
