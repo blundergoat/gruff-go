@@ -135,7 +135,7 @@ rules:
     enabled: true
     severity: advisory
     options:
-      ignoreInternalPackages: true
+      ignoreInternalPackages: false
 
   # Flags Go packages that do not have a package-level comment in any file.
   docs.package-comment:
