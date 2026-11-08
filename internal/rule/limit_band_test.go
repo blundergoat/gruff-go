@@ -372,7 +372,7 @@ func TestCognitiveComplexitySoftensDispatchAndGuards(t *testing.T) {
 // var is a unit for the size and complexity rules, named after the var, and that no other rule reports on it.
 func TestPackageVarFunctionLiteralIsMeasuredBySizeAndComplexityOnly(t *testing.T) {
 	nested := strings.Repeat("\tif seed > 0 {\n", nestingDepthThreshold+1) + "\t\tseed++\n" + strings.Repeat("\t}\n", nestingDepthThreshold+1)
-	source := "// Package sample holds one long function literal.\npackage sample\n\n// Mix folds a fixed sequence of offsets into seed.\nvar Mix = func(seed int) int {\n" +
+	source := "// Package sample holds one long function literal.\npackage sample\n\n// Mix folds a fixed sequence of offsets into seed and returns the result.\nvar Mix = func(seed int) int {\n" +
 		strings.Repeat("\tseed++\n", functionLengthThreshold) + nested + "\treturn seed\n}\n"
 	unit := parseOne(t, "sample.go", source)
 	if len(unit.Functions) != 1 || unit.Functions[0].Name != "Mix" || unit.Functions[0].Line != 5 {

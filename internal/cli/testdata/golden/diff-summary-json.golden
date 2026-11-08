@@ -271,7 +271,7 @@
             "severity": "advisory",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": false,
+            "defaultEnabled": true,
             "remediation": "Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required."
           },
           {
@@ -282,7 +282,7 @@
             "severity": "advisory",
             "confidence": "medium",
             "capability": "parser",
-            "defaultEnabled": false,
+            "defaultEnabled": true,
             "remediation": "Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required."
           },
           {

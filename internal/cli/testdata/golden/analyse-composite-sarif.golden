@@ -454,7 +454,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false
+                "defaultEnabled": true
               },
               "defaultConfiguration": {
                 "level": "note"
@@ -477,7 +477,7 @@
                 "defaultSeverity": "advisory",
                 "confidence": "medium",
                 "capability": "parser",
-                "defaultEnabled": false
+                "defaultEnabled": true
               },
               "defaultConfiguration": {
                 "level": "note"

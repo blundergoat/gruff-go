@@ -48,11 +48,11 @@
 - **Vendored, built and minified files are skipped by default** - Directories named `vendor`, `vendors`, `third_party`, `third-party`, `bower_components` or `dist`, at any depth and in any letter case, and files with `.min.` directly before the final extension, such as `jquery.min.js`, are no longer scanned, even under a `.gitignore`, which used to bring `dist` and `vendor` back into the scan. Skipped paths are listed in `paths.details` with the reason `dependency`, `build-output` or `generated`; `--include-ignored` or naming a file scans it (FAMILY-CONTRACT.md section 7).
 - **Security rules skip test, fixture and example files** - Every security rule, `dependency.go-mod-local-replace` and `dependency.go-mod-remote-replace` included, now skips the test, fixture and example paths the sensitive-data rules already skip, because a test exercises insecure calls on purpose. **The trade-off is deliberate: a real injection, weak-crypto or TLS mistake committed under one of those paths is no longer reported.** Each skip is counted, never silent: one audit row per file and rule with `source: "built-in"` and the reason "Test, fixture and example files exercise insecure calls on purpose, so security rules skip them by path." (FAMILY-CONTRACT.md section 13a).
 
-- **Two opt-in prose checks for parameters and return values** - `docs.missing-param-doc` reports a documented function,
+- **Two prose checks for parameters and return values, on by default** - `docs.missing-param-doc` reports a documented function,
   method or package-level function variable whose doc comment does not name each parameter; context, HTTP request and
   response, and testing handles are skipped. `docs.missing-return-doc` reports one whose comment does not describe the
-  returned value or say when it returns an error. Both read natural prose, need no tags, and are off by default; enable them
-  with `rules.<id>.enabled: true`.
+  returned value or say when it returns an error. Both read natural prose, need no tags, and are on by default; turn one
+  off with `rules.<id>.enabled: false`.
 - **Missing-doc messages say what the comment should cover** - `docs.exported-symbol-comment` now adds, for a function or
   method, what its new doc comment should cover, worked out from the signature. Baselines keep matching, because a function
   finding's identity is its symbol.

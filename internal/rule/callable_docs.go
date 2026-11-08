@@ -1,10 +1,10 @@
 // Package rule defines gruff-go's rule registry and analysers.
 //
-// This file holds the opt-in docs.missing-param-doc and docs.missing-return-doc rules, which read a callable's doc comment as natural prose.
+// This file holds the docs.missing-param-doc and docs.missing-return-doc rules, which read a callable's doc comment as natural prose.
 // They ask it to name each named, non-blank parameter other than context, HTTP, and testing handles.
 // They also ask it to explain the returned values and to say when an error is returned.
 //
-// Both ship with DefaultEnabled false, so a scan reports them only when they are explicitly enabled.
+// Both ship with DefaultEnabled true; a project turns one off with `rules.<id>.enabled: false`.
 package rule
 
 import (
@@ -25,8 +25,8 @@ import (
 // Callables whose doc comment fails hasUsefulDeclarationComment are skipped.
 type MissingParamDocRule struct{}
 
-// Definition declares the opt-in docs.missing-param-doc rule.
-// It returns the fixed definition: documentation pillar, advisory severity, medium confidence, and DefaultEnabled false.
+// Definition declares the docs.missing-param-doc rule.
+// It returns the fixed definition: documentation pillar, advisory severity, medium confidence, and DefaultEnabled true.
 func (MissingParamDocRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.missing-param-doc",
@@ -35,7 +35,7 @@ func (MissingParamDocRule) Definition() Definition {
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Remediation:    "Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required.",
 	}
 }
@@ -229,8 +229,8 @@ func parameterPhrase(names []string) string {
 // Mentioning a named result also counts, and callables that return nothing are skipped.
 type MissingReturnDocRule struct{}
 
-// Definition declares the opt-in docs.missing-return-doc rule.
-// It returns the fixed definition: documentation pillar, advisory severity, medium confidence, and DefaultEnabled false.
+// Definition declares the docs.missing-return-doc rule.
+// It returns the fixed definition: documentation pillar, advisory severity, medium confidence, and DefaultEnabled true.
 func (MissingReturnDocRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.missing-return-doc",
@@ -239,7 +239,7 @@ func (MissingReturnDocRule) Definition() Definition {
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: false,
+		DefaultEnabled: true,
 		Remediation:    "Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required.",
 	}
 }

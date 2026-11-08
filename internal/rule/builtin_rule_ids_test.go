@@ -152,8 +152,6 @@ func defaultDisabledRuleIDs() map[string]bool {
 		"complexity.cyclomatic":           true,
 		"dependency.go-mod-local-replace": true,
 		// Precision-floor M13 builds the parameter- and return-prose rules off by default until their own measurement passes.
-		"docs.missing-param-doc":          true,
-		"docs.missing-return-doc":         true,
 		"security.insecure-random-secret": true,
 		// Precision-floor M02 turned it off on 2026-10-14: fewer than ten findings remain after its repair.
 		"security.open-redirect-candidate": true,

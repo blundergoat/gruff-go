@@ -19,12 +19,6 @@ paths:
     - '.claude/**'
     - '.codex/**'
     - '.goat-flow/**'
-    - internal/report/sensitive_redaction_test.go
-    - internal/rule/sensitive_test.go
-    # Holds fixture secrets, PII, and PHI for the entropy/PII/PHI detectors;
-    # ignored for the same reason as sensitive_test.go so secret-pattern and the
-    # opt-in detectors never flag their own deliberate test vectors.
-    - internal/rule/sensitive_expansion_test.go
 
 # Per-command exit-code thresholds. `summary` defaults to `none`, so a first scan exits 0.
 # This repository asks for the gate: scripts/preflight-checks.sh fails the build on

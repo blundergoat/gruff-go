@@ -33,11 +33,11 @@ type callableDocView struct {
 	line int
 }
 
-// TestMissingParamDocRuleIsOptIn pins the rule as shipped off by default, so default scans do not change.
-func TestMissingParamDocRuleIsOptIn(t *testing.T) {
+// TestMissingParamDocRuleIsDefaultOn pins the rule as shipped on by default, so default scans check parameter prose.
+func TestMissingParamDocRuleIsDefaultOn(t *testing.T) {
 	definition := (MissingParamDocRule{}).Definition()
-	if definition.ID != "docs.missing-param-doc" || definition.DefaultEnabled {
-		t.Fatalf("definition = %#v, want docs.missing-param-doc with DefaultEnabled false", definition)
+	if definition.ID != "docs.missing-param-doc" || !definition.DefaultEnabled {
+		t.Fatalf("definition = %#v, want docs.missing-param-doc with DefaultEnabled true", definition)
 	}
 }
 
@@ -206,11 +206,11 @@ func assertReturnDocMessages(t *testing.T, findings []callableDocView, want []st
 	}
 }
 
-// TestMissingReturnDocRuleIsOptIn pins the return-prose rule as shipped off by default, so default scans do not change.
-func TestMissingReturnDocRuleIsOptIn(t *testing.T) {
+// TestMissingReturnDocRuleIsDefaultOn pins the return-prose rule as shipped on by default, so default scans check it.
+func TestMissingReturnDocRuleIsDefaultOn(t *testing.T) {
 	definition := (MissingReturnDocRule{}).Definition()
-	if definition.ID != "docs.missing-return-doc" || definition.DefaultEnabled {
-		t.Fatalf("definition = %#v, want docs.missing-return-doc with DefaultEnabled false", definition)
+	if definition.ID != "docs.missing-return-doc" || !definition.DefaultEnabled {
+		t.Fatalf("definition = %#v, want docs.missing-return-doc with DefaultEnabled true", definition)
 	}
 }
 

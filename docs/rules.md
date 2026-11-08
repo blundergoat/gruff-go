@@ -1,8 +1,8 @@
 # Rule Catalog
 
-`gruff-go` ships **80 rules** across **11 pillars**. **56 rules are enabled by default** and 24 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **80 rules** across **11 pillars**. **58 rules are enabled by default** and 22 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
-Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `docs.missing-param-doc`, `docs.missing-return-doc`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
+Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
 Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go list-rules --format json` (full metadata including thresholds, severities, capability labels, and any documented `falsePositiveShapes`). The listing is always the built-in release defaults; a project `.gruff-go.yaml` is validated but its overrides are not shown.
 
@@ -397,7 +397,7 @@ Set `ignoreInternalPackages: false` when internal package exports should follow 
 
 - **Pillar:** documentation
 - **Default severity:** advisory
-- **Default-enabled:** no
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 
@@ -413,7 +413,7 @@ The rule reads the doc comment as plain prose: a parameter counts as named when 
 
 - **Pillar:** documentation
 - **Default severity:** advisory
-- **Default-enabled:** no
+- **Default-enabled:** yes
 - **Confidence:** medium
 - **Capability:** parser
 
