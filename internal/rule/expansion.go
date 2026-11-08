@@ -1,30 +1,28 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements package-name, dead-code, security, and test rules.
-// Its findings explain code changes users can make before the next scan.
+//
+// This file holds the naming.package-underscore, dead-code.empty-block and security.shell-command rules.
+// Their findings explain code changes users can make before the next scan.
 package rule
 
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// skipDebtMarkers introduce work that should not stay hidden behind a test guard.
-// Matching is case-insensitive and anchored by skipMessageLineIntroducesDebt.
-var skipDebtMarkers = []string{"todo", "fixme", "xxx", "hack", "wip"}
-
-// PackageNameUnderscoreRule flags Go package names that contain underscores.
+// PackageNameUnderscoreRule flags Go package names that contain underscores, as rule naming.package-underscore.
+//
+// It ships disabled, so its findings appear only when the user's configuration enables it.
+// Black-box test packages such as foo_test in _test.go files are left alone.
 type PackageNameUnderscoreRule struct{}
 
 // Definition declares the naming.package-underscore rule under the naming pillar with advisory severity and high confidence.
+// It returns the same populated Definition on every call, disabled by default and tagged go-style, with a rename remediation.
 func (PackageNameUnderscoreRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-underscore",
@@ -40,13 +38,18 @@ func (PackageNameUnderscoreRule) Definition() Definition {
 }
 
 // AnalyzeProject emits one finding per Go package whose name contains an underscore.
+//
+// units holds every parsed file of the scan; files without an AST and external test packages such as foo_test in _test.go files are skipped.
+// It returns one finding per directory and package name, at the package clause of the lexically first file, or line 1 without a FileSet.
+//
+// The result is empty but non-nil when nothing matches, and its order follows map iteration rather than file order.
 func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	type packageState struct {
 		name string
 		file string
 		line int
 	}
-	packages := map[string]packageState{}
+	underscorePackages := map[string]packageState{}
 	for _, unit := range units {
 		if unit.AST == nil || !strings.Contains(unit.AST.Name.Name, "_") {
 			continue
@@ -59,14 +62,15 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 			line = unit.FileSet.Position(unit.AST.Name.Pos()).Line
 		}
 		key := filepath.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
-		state := packages[key]
+		state := underscorePackages[key]
+		// Keeping the lexically first file pins each finding to the same location on every scan, whatever order the files arrive in.
 		if state.file == "" || unit.File.Path < state.file {
 			state = packageState{name: unit.AST.Name.Name, file: unit.File.Path, line: line}
 		}
-		packages[key] = state
+		underscorePackages[key] = state
 	}
 	findings := []finding.Finding{}
-	for _, state := range packages {
+	for _, state := range underscorePackages {
 		findings = append(findings, finding.Finding{
 			Message:  fmt.Sprintf("package name %q contains an underscore", state.name),
 			File:     state.file,
@@ -77,9 +81,10 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 	return findings
 }
 
-// isExternalTestPackageName reports whether package name is the idiomatic
-// black-box test shape `foo_test`. The production package name part must still
-// be underscore-free; `bad_pkg_test` remains in scope for the rule.
+// isExternalTestPackageName reports whether package name is the idiomatic black-box test shape foo_test, which the rule leaves alone.
+//
+// filePath must end in _test.go as well, so a foo_test package declared in any other file stays in scope; name is the declared package name.
+// The part before _test must be non-empty and underscore-free, so bad_pkg_test and a bare _test are still reported.
 func isExternalTestPackageName(name, filePath string) bool {
 	if !strings.HasSuffix(filePath, "_test.go") || !strings.HasSuffix(name, "_test") {
 		return false
@@ -88,10 +93,13 @@ func isExternalTestPackageName(name, filePath string) bool {
 	return base != "" && !strings.Contains(base, "_")
 }
 
-// EmptyBlockRule flags empty control-flow blocks that indicate unfinished or dead code.
+// EmptyBlockRule flags empty control-flow blocks that indicate unfinished or dead code, as rule dead-code.empty-block.
+//
+// It reports empty if, switch and type-switch bodies and bare for loops; a comment inside the braces marks the emptiness as deliberate.
 type EmptyBlockRule struct{}
 
-// Definition declares the dead-code.empty-block rule that flags empty if/for/switch/select bodies under the dead-code pillar.
+// Definition declares the dead-code.empty-block rule that flags empty if, bare for, switch and type-switch bodies under the dead-code pillar.
+// It returns the same populated Definition on every call: advisory severity, medium confidence, enabled by default.
 func (EmptyBlockRule) Definition() Definition {
 	return Definition{
 		ID:             "dead-code.empty-block",
@@ -101,11 +109,18 @@ func (EmptyBlockRule) Definition() Definition {
 		Severity:       finding.SeverityAdvisory,
 		Confidence:     finding.ConfidenceMedium,
 		DefaultEnabled: true,
-		Remediation:    "Remove the empty block or add the intended implementation.",
+		// Deleting an empty branch can change behaviour, so the remediation never recommends deletion.
+		//
+		// The rule sees an empty body, not whether the surrounding branch is still needed.
+		// Reported bodies are bare infinite loops and empty if, switch and type-switch bodies, so the advice is to fill the body in or explain it.
+		Remediation: "Add the intended implementation, or leave a comment saying why the branch is deliberately empty.",
 	}
 }
 
-// AnalyzeUnit emits findings for every empty control-flow block in the unit.
+// AnalyzeUnit emits findings for every empty control-flow block in one parsed file.
+//
+// unit is that file; only bodies isControlFlowBlock accepts count, and braces holding a comment mark the emptiness as deliberate.
+// It returns one finding per remaining block at its opening brace, nil without an AST or FileSet, and an empty slice when none remain.
 func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -114,6 +129,10 @@ func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
 		block, ok := node.(*ast.BlockStmt)
 		if !ok || len(block.List) != 0 || !isControlFlowBlock(unit.AST, block) {
+			return true
+		}
+		// A comment in the braces is the author documenting the emptiness.
+		if blockSpanHasComment(unit.AST, block) {
 			return true
 		}
 		position := unit.FileSet.Position(block.Lbrace)
@@ -127,10 +146,13 @@ func (EmptyBlockRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding
 	return findings
 }
 
-// ShellCommandRule flags exec.Command calls that invoke a shell interpreter.
+// ShellCommandRule flags exec.Command calls that invoke a shell interpreter, as rule security.shell-command.
+//
+// It matches exec.Command and exec.CommandContext only with a literal shell name and command flag, such as exec.Command("sh", "-c", script).
 type ShellCommandRule struct{}
 
-// Definition declares the security.shell-command rule that flags exec.Command sh/-c style invocations with medium severity.
+// Definition declares the security.shell-command rule that flags exec.Command sh/-c style invocations with warning severity and medium confidence.
+// It returns the same populated Definition on every call, enabled by default, with PillarSensitiveData as a secondary pillar.
 func (ShellCommandRule) Definition() Definition {
 	return Definition{
 		ID:               "security.shell-command",
@@ -150,7 +172,10 @@ func (ShellCommandRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for exec.Command calls that pass shell interpreter arguments.
+// AnalyzeUnit emits findings for exec.Command and exec.CommandContext calls that start a shell with command text.
+//
+// unit is one parsed file; calls count only through its os/exec import names, with string-literal shell and command-flag arguments.
+// It returns one finding per matching call, nil when the unit has no AST or FileSet, and an empty slice when nothing matches.
 func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -177,224 +202,13 @@ func (ShellCommandRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
-// SkippedTestRule finds test skips that can hide unfinished coverage.
-// Conditional environment guards stay quiet unless their message introduces debt.
-// Users can remove the skip or track the condition outside the test body.
-type SkippedTestRule struct{}
-
-// Definition declares the test-quality.skipped-test rule that fires when t.Skip, t.Skipf, or t.SkipNow appears in any _test.go file.
-func (SkippedTestRule) Definition() Definition {
-	return Definition{
-		ID:             "test-quality.skipped-test",
-		Title:          "Skipped test",
-		Description:    "Flags Go tests that call t.Skip, t.Skipf, or t.SkipNow.",
-		Pillar:         finding.PillarTestQuality,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
-		Tags:           []string{"tests"},
-		Remediation:    "Remove the skip or document and track the condition outside the test body.",
-		FalsePositiveShapes: []FalsePositiveShape{{
-			Shape:      "A legitimate conditional skip reason whose first physical line begins with TODO/FIXME-style product terminology.",
-			Mitigation: "Put explanatory words before the quoted marker, or disable the rule for that path when the external wording must stay first.",
-		}},
-	}
-}
-
-// AnalyzeUnit emits findings for skip-call sites inside Go test files.
+// isControlFlowBlock reports whether block is an if, bare for, switch or type-switch body, the bodies this rule checks for unfinished code.
 //
-// A skip is considered legitimate (and therefore not flagged) when it is reachable
-// only through a conditional control-flow construct (if/for/switch/range/select),
-// since that pattern is the standard way to guard integration tests on missing
-// infrastructure. Skips inside a conditional are still flagged when their message
-// includes a TODO/FIXME-style marker so debt is not hidden behind a runtime check.
+// Empty range and select bodies are idioms that drain or wait on channels or park a goroutine, and a for header can carry the loop's work.
+// An empty if, switch or type-switch body can indicate an unfinished branch, which this rule exists to find.
 //
-// Skip calls are only counted when invoked on a name that this file declared as
-// a *testing.T/B/F parameter. Third-party APIs that happen to expose a method
-// named Skip/Skipf/SkipNow (queue clients, table iterators, fuzzers from other
-// libraries) live in test files too, and matching purely on the selector name
-// produces systematic false positives there.
-func (SkippedTestRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
-		return nil
-	}
-	testingPackages := testingPackageNames(unit.AST)
-	conditionalRegions := conditionalBodyRanges(unit.AST)
-	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
-		}
-		receivers := testingReceiverNames(fn, testingPackages)
-		findings = append(findings, skippedTestFindingsInBlock(unit, fn.Body, testingPackages, receivers, conditionalRegions)...)
-	}
-	return findings
-}
-
-// collectFileTestingReceivers gathers every parameter name across the file's
-// function declarations and nested function literals whose declared type is
-// *testing.T/B/F. The skipped-test rule only treats Skip/Skipf/SkipNow calls
-// on these names as testing skips.
-func collectFileTestingReceivers(file *ast.File, testingPackages map[string]bool) map[string]bool {
-	receivers := map[string]bool{}
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Type == nil || fn.Type.Params == nil {
-			continue
-		}
-		collectTestingFieldNames(fn.Type.Params.List, testingPackages, receivers)
-		if fn.Body != nil {
-			collectNestedTestingReceivers(fn.Body, testingPackages, receivers)
-		}
-	}
-	return receivers
-}
-
-// posRange is a half-open byte/position interval [start, end] inclusive on both
-// ends because ast.Node.End() points at one past the last character but token.Pos
-// comparison still works.
-type posRange struct {
-	start token.Pos
-	end   token.Pos
-}
-
-// conditionalBodyRanges collects the positional extents of every
-// control-flow body in the file. A `t.Skip(...)` whose call site falls inside
-// one of these ranges is reachable only when the condition holds, so we treat
-// it as a deliberate environment guard rather than test debt.
-func conditionalBodyRanges(file *ast.File) []posRange {
-	out := []posRange{}
-	ast.Inspect(file, func(node ast.Node) bool {
-		switch stmt := node.(type) {
-		case *ast.IfStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-			if stmt.Else != nil {
-				out = append(out, posRange{stmt.Else.Pos(), stmt.Else.End()})
-			}
-		case *ast.ForStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.RangeStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.SwitchStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.TypeSwitchStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		case *ast.SelectStmt:
-			if stmt.Body != nil {
-				out = append(out, posRange{stmt.Body.Pos(), stmt.Body.End()})
-			}
-		}
-		return true
-	})
-	return out
-}
-
-// isPosInsideAny reports whether the supplied [start, end] range is fully
-// contained in any of the candidate ranges.
-func isPosInsideAny(start, end token.Pos, ranges []posRange) bool {
-	for _, r := range ranges {
-		if r.start <= start && end <= r.end {
-			return true
-		}
-	}
-	return false
-}
-
-// skipMessageMentionsDebt reports whether a literal skip message introduces debt.
-// Prose mentions stay quiet; a marker may introduce any physical message line.
-func skipMessageMentionsDebt(call *ast.CallExpr) bool {
-	// Only literal text can provide reliable marker evidence to the user.
-	for _, argument := range call.Args {
-		messageText, isLiteral := stringLiteral(argument)
-		// A dynamic message cannot prove that the checked-in test carries marker debt.
-		if !isLiteral {
-			continue
-		}
-		// Multiline reasons may introduce the actionable marker after explanatory text.
-		for _, messageLine := range strings.Split(messageText, "\n") {
-			// An introduced marker keeps the conditional skip visible in the report.
-			if skipMessageLineIntroducesDebt(messageLine) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// skipMessageLineIntroducesDebt matches a leading marker after optional space or a list bullet.
-// Delimiters distinguish real debt from prose names such as TODOs or todo-without-tracking.
-func skipMessageLineIntroducesDebt(messageLine string) bool {
-	messageBody := trimOptionalSkipMessageBullet(strings.TrimSpace(messageLine))
-	lowerMessageBody := strings.ToLower(messageBody)
-	// Check the shared vocabulary without treating a mid-sentence word as an introduced marker.
-	for _, debtMarker := range skipDebtMarkers {
-		markerSuffix, startsWithMarker := strings.CutPrefix(lowerMessageBody, debtMarker)
-		// A different leading word means this marker is only prose, if it appears at all.
-		if !startsWithMarker {
-			continue
-		}
-		return hasSkipDebtMarkerDelimiter(markerSuffix)
-	}
-	return false
-}
-
-// trimOptionalSkipMessageBullet removes a conventional bullet before a marker.
-// A hyphenated word without following space remains ordinary message text.
-func trimOptionalSkipMessageBullet(messageBody string) string {
-	// Empty and one-character messages cannot contain a bullet plus a marker.
-	if len(messageBody) < 2 {
-		return messageBody
-	}
-	// Only common list bullets opt into the marker position that follows.
-	if !strings.ContainsRune("-*+", rune(messageBody[0])) {
-		return messageBody
-	}
-	textAfterBullet := messageBody[1:]
-	firstRune, _ := utf8.DecodeRuneInString(textAfterBullet)
-	// `-TODO` is not a list item, so the leading hyphen remains meaningful text.
-	if !unicode.IsSpace(firstRune) {
-		return messageBody
-	}
-	return strings.TrimSpace(textAfterBullet)
-}
-
-// hasSkipDebtMarkerDelimiter accepts punctuation used by real leading markers.
-// A hyphen counts only at the end or before space, keeping hyphenated names quiet.
-func hasSkipDebtMarkerDelimiter(markerSuffix string) bool {
-	// A bare marker is enough to tell the user the guarded test is deferred work.
-	if markerSuffix == "" {
-		return true
-	}
-	delimiter, delimiterWidth := utf8.DecodeRuneInString(markerSuffix)
-	// Owners, labels, and space-continuation messages are conventional marker forms.
-	if delimiter == ':' || delimiter == '(' || unicode.IsSpace(delimiter) {
-		return true
-	}
-	// Other continuations, such as the `s` in TODOs, are ordinary words.
-	if delimiter != '-' {
-		return false
-	}
-	textAfterHyphen := markerSuffix[delimiterWidth:]
-	// A terminal hyphen is an explicit marker delimiter rather than a word continuation.
-	if textAfterHyphen == "" {
-		return true
-	}
-	nextRune, _ := utf8.DecodeRuneInString(textAfterHyphen)
-	return unicode.IsSpace(nextRune)
-}
-
-// isControlFlowBlock reports whether the block is the body of an if/for/switch/select construct.
+// file is the whole parsed source, searched for the statement whose body is block; the walk stops at the first match.
+// It returns false when no if, bare for, switch or type-switch statement in file has block as its body, so an empty else branch is not counted.
 func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(file, func(node ast.Node) bool {
@@ -405,14 +219,11 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 		case *ast.IfStmt:
 			found = current.Body == block
 		case *ast.ForStmt:
-			found = current.Body == block
-		case *ast.RangeStmt:
-			found = current.Body == block
+			// A header carries the loop's work, so only a bare infinite loop has an empty body with nothing else to it.
+			found = current.Body == block && current.Init == nil && current.Cond == nil && current.Post == nil
 		case *ast.SwitchStmt:
 			found = current.Body == block
 		case *ast.TypeSwitchStmt:
-			found = current.Body == block
-		case *ast.SelectStmt:
 			found = current.Body == block
 		}
 		return !found
@@ -420,8 +231,25 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 	return found
 }
 
-// execCommandShellArgOffset reports whether call invokes os/exec Command or
-// CommandContext and returns the argument offset where the executable appears.
+// blockSpanHasComment reports whether any comment sits between the braces of block.
+//
+// A block written as if err != nil { // handled upstream } is documented, not unfinished: the author said why it is empty.
+// The Go parser already keeps comments (internal/parser/parser.go, search stdparser.ParseComments), so no parser change or second pass is needed.
+//
+// file supplies the comment groups, compared by position with the braces of block; a group counts only when it lies strictly inside them.
+func blockSpanHasComment(file *ast.File, block *ast.BlockStmt) bool {
+	for _, group := range file.Comments {
+		if group.Pos() > block.Lbrace && group.End() < block.Rbrace {
+			return true
+		}
+	}
+	return false
+}
+
+// execCommandShellArgOffset reports whether call invokes os/exec Command or CommandContext and returns the argument offset of the executable.
+//
+// execPackages holds the local names the file imports os/exec under; any other receiver or call shape gives 0 and false.
+// The offset is 0 for Command and 1 for CommandContext, whose first argument is the context.
 func execCommandShellArgOffset(call *ast.CallExpr, execPackages map[string]bool) (int, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -441,12 +269,16 @@ func execCommandShellArgOffset(call *ast.CallExpr, execPackages map[string]bool)
 	}
 }
 
-// usesShellCommand reports whether an exec.Command call invokes a shell interpreter.
+// usesShellCommand reports whether an exec.Command call starts a shell that runs command text rather than a program.
+//
+// shellArgOffset is the argument index of the executable in call, 0 for Command and 1 for CommandContext.
+// It is true only when that argument is a literal shell name and the next is a literal command flag; fewer arguments give false.
 func usesShellCommand(call *ast.CallExpr, shellArgOffset int) bool {
 	if len(call.Args) <= shellArgOffset+1 {
 		return false
 	}
 	shell, ok := stringLiteral(call.Args[shellArgOffset])
+	// A shell name held in a variable is not read, so exec.Command(shell, "-c", script) goes unreported.
 	if !ok || !isShellInterpreter(shell) {
 		return false
 	}
@@ -457,7 +289,10 @@ func usesShellCommand(call *ast.CallExpr, shellArgOffset int) bool {
 	return isShellCommandFlag(flag)
 }
 
-// isShellInterpreter reports whether a string names a known shell interpreter binary.
+// isShellInterpreter reports whether value names a known shell interpreter binary.
+//
+// value may be a path in either slash style; only its lower-cased base name is compared.
+// The known names are sh, bash, zsh, cmd, powershell and pwsh, plus cmd.exe, powershell.exe and pwsh.exe; anything else gives false.
 func isShellInterpreter(value string) bool {
 	normalized := strings.ReplaceAll(value, "\\", "/")
 	name := strings.ToLower(filepath.Base(normalized))
@@ -469,8 +304,8 @@ func isShellInterpreter(value string) bool {
 	}
 }
 
-// isShellCommandFlag reports whether a shell flag consumes the following
-// argument as command text rather than a direct executable argument.
+// isShellCommandFlag reports whether a shell flag makes the next argument command text rather than a direct executable argument.
+// value is compared case-insensitively against -c, -lc, /c and -command; any other value gives false.
 func isShellCommandFlag(value string) bool {
 	switch strings.ToLower(value) {
 	case "-c", "-lc", "/c", "-command":
@@ -480,8 +315,10 @@ func isShellCommandFlag(value string) bool {
 	}
 }
 
-// packageImportNames returns the local identifiers that import a package path,
-// excluding blank and dot imports because selector-based rules cannot use them.
+// packageImportNames returns the local identifiers under which file imports importPath, for rules that match calls through a selector.
+//
+// file supplies the import specs, importPath is the unquoted path to match, and defaultName is the key recorded for an unaliased import.
+// Blank and dot imports are left out because no selector can use them; the map is empty, never nil, when no usable name remains.
 func packageImportNames(file *ast.File, importPath string, defaultName string) map[string]bool {
 	names := map[string]bool{}
 	for _, imported := range file.Imports {
@@ -506,28 +343,10 @@ func packageImportNames(file *ast.File, importPath string, defaultName string) m
 	return names
 }
 
-// isTestingSkipCall reports whether the call is a Skip variant invoked on a
-// known testing receiver name. The receiver set is built from the enclosing
-// file's *testing.T/B/F parameter names; selectors on other receivers do not
-// count, so a third-party API's `.Skip()` method is not misreported.
-func isTestingSkipCall(call *ast.CallExpr, testingReceivers map[string]bool) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	switch selector.Sel.Name {
-	case "Skip", "Skipf", "SkipNow":
-	default:
-		return false
-	}
-	ident, ok := selector.X.(*ast.Ident)
-	if !ok {
-		return false
-	}
-	return testingReceivers[ident.Name]
-}
-
-// stringLiteral returns the unquoted contents of a basic string literal.
+// stringLiteral returns the unquoted contents of a basic string literal, such as a shell name or a panic message.
+//
+// expr qualifies only as a basic literal that strconv.Unquote accepts, so rune literals pass too while number literals do not.
+// For any other expression the result is an empty string and false.
 func stringLiteral(expr ast.Expr) (string, bool) {
 	literal, ok := expr.(*ast.BasicLit)
 	if !ok {

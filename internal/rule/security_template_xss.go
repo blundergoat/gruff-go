@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements a parser-only server-side template/XSS check over
-// request-controlled values rendered into HTTP responses.
+//
+// This file holds security.template-injection-xss, a parser-only check that looks at one function at a time.
+// It flags request data rendered by text/template, wrapped in an unsafe html/template conversion, or written raw to an HTML response.
 package rule
 
 import (
@@ -12,8 +13,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// templateXSSEscapeWords name calls that escape a value before it is written into
-// an HTML response, suppressing the finding.
+// templateXSSEscapeWords are the call-name stems that mark a request value as escaped or sanitized before it reaches HTML.
+//
+// A sanitizer-named call that itself holds request input, such as html.EscapeString(r.FormValue(name)), clears the argument it sits in.
+// Another unescaped argument still flags the write, and an unsafe conversion nested inside an escape call is checked on its own.
 var templateXSSEscapeWords = []string{"escape", "sanit"}
 
 // unsafeTemplateConversions are the html/template type conversions that bypass
@@ -22,13 +25,14 @@ var unsafeTemplateConversions = map[string]bool{
 	"HTML": true, "JS": true, "URL": true, "CSS": true, "HTMLAttr": true, "Srcset": true, "JSStr": true,
 }
 
-// TemplateInjectionXSSRule flags request-controlled values rendered into HTML
-// responses without escaping: text/template execution, html/template unsafe
-// conversions, and raw response writes.
+// TemplateInjectionXSSRule flags request data in text/template response renders, unsafe html/template conversions and raw HTML response writes.
+//
+// A conversion such as template.HTML(r.FormValue(name)) is flagged even when the result is never written to a response.
 type TemplateInjectionXSSRule struct{}
 
-// Definition declares the security.template-injection-xss rule for bounded
-// same-function evidence of unescaped HTML responses.
+// Definition declares security.template-injection-xss for same-function candidates: template renders, unsafe conversions and raw writes.
+//
+// It returns the same fixed metadata on every call: an advisory, medium-confidence, default-enabled security rule with its remediation text.
 func (TemplateInjectionXSSRule) Definition() Definition {
 	return Definition{
 		ID:             "security.template-injection-xss",
@@ -43,7 +47,12 @@ func (TemplateInjectionXSSRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for unescaped request-derived data reaching HTML responses.
+// AnalyzeUnit flags request data in text/template renders, unsafe html/template conversions and raw HTML response writes in one file.
+//
+// unit is the parsed file; the result is nil when it has no AST or file set, is not a production code path, or does not import net/http.
+// It returns one finding per flagged call, with the matched shape as reason metadata, or an empty slice when nothing fires.
+//
+// Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func (TemplateInjectionXSSRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
@@ -70,12 +79,14 @@ func (TemplateInjectionXSSRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 		if built, ok := newRequestTaintScope(unit.AST, funcType, body, httpPackages); ok {
 			scope = built
 		}
+		// Every shape below needs the taint scope, so a function with a ResponseWriter but no request taint scope never fires.
 		if len(writers) == 0 && scope == nil {
 			return
 		}
 		htmlContentType := functionSetsHTMLContentType(body)
 		templateValues := collectTemplateValueKinds(body, pkgs, fileTemplateValues)
 		ast.Inspect(body, func(node ast.Node) bool {
+			// A closure is checked on its own with only its own ResponseWriter parameters, so a write to the handler's captured w inside it is missed.
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
@@ -131,9 +142,14 @@ type templateXSSContext struct {
 	htmlContentType bool
 }
 
-// templateXSSHit classifies one call against the three unescaped-HTML shapes and
-// returns the reason and report position when it fires. Each shape requires the
-// rendered value to be request-controlled, so trusted renders are not flagged.
+// templateXSSHit checks one call against the three shapes and returns the finding's reason code and position when one fires.
+//
+// Each shape requires the value to be request-controlled, so a render of trusted data is not flagged.
+// ctx carries the enclosing function's taint scope, response writers, package aliases, template value kinds and HTML Content-Type flag.
+//
+// The text/template render is tried first, then the unsafe conversion, then the raw write.
+// With no match it returns an empty reason, call.Pos() and false.
+// Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func templateXSSHit(call *ast.CallExpr, ctx templateXSSContext) (string, token.Pos, bool) {
 	switch {
 	case textTemplateXSSHit(call, ctx.scope, ctx.writers, ctx.pkgs, ctx.templateValues):
@@ -147,11 +163,15 @@ func templateXSSHit(call *ast.CallExpr, ctx templateXSSContext) (string, token.P
 	}
 }
 
-// textTemplateXSSHit reports whether call renders request-controlled data into a
-// response writer through text/template, the unescaped path. It requires the
-// template data to be request-controlled so a text/template render of trusted data
-// is not flagged, and same-file evidence that the Execute receiver originated from
-// text/template so a custom Execute method is not misread as a template render.
+// textTemplateXSSHit reports whether call renders request-controlled data into a response writer through text/template, which does not escape.
+//
+// It needs same-file evidence that the Execute receiver came from text/template; a parameter shadowing a known template variable can still match.
+//
+// scope is the request taint scope and pkgs the import aliases; a nil scope, no text/template import or inline sanitizer evidence gives false.
+// writers names the response writers that Execute or ExecuteTemplate must target as their first argument.
+// templateValues holds the function and file template value kinds that decide whether the receiver is a text/template value.
+//
+// Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, templateValues templateValueKinds) bool {
 	if scope == nil || len(pkgs.textTemplate) == 0 {
 		return false
@@ -160,10 +180,8 @@ func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers ma
 	if !ok {
 		return false
 	}
-	// Require positive evidence that the Execute receiver is a text/template
-	// value, regardless of whether html/template is also imported. Otherwise a
-	// custom type with an Execute(w, data) method in a text/template-importing
-	// file would be misread as a text/template render and flagged.
+	// Skip an Execute receiver not traced to text/template, even when html/template is also imported, so most custom Execute methods are not flagged.
+	// Tracing goes by name, so a parameter shadowing a known template variable inherits that variable's origin.
 	if templateExecuteReceiverKind(call, pkgs, templateValues) != templateKindText {
 		return false
 	}
@@ -171,8 +189,12 @@ func textTemplateXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers ma
 	return ok && !scope.argHasInlineSanitizer(dataArg, templateXSSEscapeWords)
 }
 
-// htmlConversionXSSHit reports whether call wraps a request-controlled value in an
-// html/template HTML/JS/URL/CSS conversion that bypasses auto-escaping.
+// htmlConversionXSSHit reports whether call wraps a request-controlled value in an html/template conversion that bypasses auto-escaping.
+//
+// It fires on the conversion alone, so template.HTML(r.FormValue(name)) is flagged even if the result never reaches a response.
+// scope is the request taint scope and pkgs holds the html/template aliases; a nil scope or inline sanitizer evidence on the argument gives false.
+//
+// Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func htmlConversionXSSHit(call *ast.CallExpr, scope *requestTaintScope, pkgs templateXSSPackages) bool {
 	if scope == nil {
 		return false
@@ -185,8 +207,13 @@ func htmlConversionXSSHit(call *ast.CallExpr, scope *requestTaintScope, pkgs tem
 	return ok && !scope.argHasInlineSanitizer(arg, templateXSSEscapeWords)
 }
 
-// rawWriteXSSHit reports whether call writes a request-controlled value directly to
-// a response writer on an HTML content type without escaping.
+// rawWriteXSSHit reports whether call writes a request-controlled value to a response writer in a function that sets an HTML Content-Type.
+//
+// scope is the function's request taint scope, nil giving false, and htmlContentType must be true, meaning an HTML Content-Type header is set.
+// writers names the response-writer parameters and pkgs the fmt and io aliases, which identify w.Write, fmt.Fprint* and io.WriteString calls.
+// It fires when a written argument is request-controlled and argHasInlineSanitizer, given the escape and sanit stems, finds no sanitizer in it.
+//
+// Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func rawWriteXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[string]bool, pkgs templateXSSPackages, htmlContentType bool) bool {
 	if scope == nil || !htmlContentType {
 		return false
@@ -203,8 +230,10 @@ func rawWriteXSSHit(call *ast.CallExpr, scope *requestTaintScope, writers map[st
 	return false
 }
 
-// responseWriterParamNames returns the parameter names declared as
-// http.ResponseWriter on a function type.
+// responseWriterParamNames returns the names of the http.ResponseWriter parameters declared on a function type.
+//
+// funcType is the function type to scan, and httpPackages holds the local names net/http is imported under.
+// Blank names are skipped, and the result is an empty map, never nil, when funcType is nil, has no parameters or none is a writer.
 func responseWriterParamNames(funcType *ast.FuncType, httpPackages map[string]bool) map[string]bool {
 	out := map[string]bool{}
 	if funcType == nil || funcType.Params == nil {
@@ -223,8 +252,10 @@ func responseWriterParamNames(funcType *ast.FuncType, httpPackages map[string]bo
 	return out
 }
 
-// isHTTPResponseWriter reports whether expr is the http.ResponseWriter interface
-// type through an imported net/http name.
+// isHTTPResponseWriter reports whether expr is the http.ResponseWriter type written through an imported net/http name.
+//
+// httpPackages holds the local names net/http is imported under, and the selector's package name must be one of them.
+// A dot-imported ResponseWriter is not recognised, so renders and raw writes through it are not checked.
 func isHTTPResponseWriter(expr ast.Expr, httpPackages map[string]bool) bool {
 	selector, ok := expr.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "ResponseWriter" {
@@ -234,17 +265,17 @@ func isHTTPResponseWriter(expr ast.Expr, httpPackages map[string]bool) bool {
 	return ok && httpPackages[receiver.Name]
 }
 
-// functionSetsHTMLContentType reports whether the body sets an HTML Content-Type
-// header, the precondition for treating a raw response write as an XSS sink.
+// functionSetsHTMLContentType reports whether body contains an HTML Content-Type setter outside nested function literals.
+//
+// Only Header().Set with a literal Content-Type key and a literal value containing html counts, compared in any letter case.
+// Without such a header in the function, raw writes of request data are not flagged.
 func functionSetsHTMLContentType(body *ast.BlockStmt) bool {
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		if found {
 			return false
 		}
-		// A nested closure is a separate scope, visited on its own, so a
-		// Content-Type it sets must not gate raw writes in the enclosing body
-		// (which the raw-write walk likewise scopes by skipping FuncLit).
+		// A Content-Type set in a nested closure is checked with that closure alone, so it never arms raw writes in the outer function.
 		if _, nested := node.(*ast.FuncLit); nested {
 			return false
 		}
@@ -272,10 +303,11 @@ func functionSetsHTMLContentType(body *ast.BlockStmt) bool {
 	return found
 }
 
-// templateExecuteDataArg reports the template data argument rendered into one of
-// the response writers via Execute(w, data) or ExecuteTemplate(w, name, data). The
-// text/template check requires that data to be request-controlled rather than
-// flagging every text/template render of trusted data.
+// templateExecuteDataArg returns the data argument of Execute(w, data) or ExecuteTemplate(w, name, data) when w is a response writer.
+//
+// call must be a selector call named Execute or ExecuteTemplate whose first argument is a plain identifier listed in writers.
+// Otherwise, or when the data argument is missing, the result is nil and false.
+// The caller then requires that data to be request-controlled, so a text/template render of trusted data is not flagged.
 func templateExecuteDataArg(call *ast.CallExpr, writers map[string]bool) (ast.Expr, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -300,8 +332,10 @@ func templateExecuteDataArg(call *ast.CallExpr, writers map[string]bool) (ast.Ex
 	return call.Args[dataIndex], true
 }
 
-// unsafeTemplateConversion reports the converted argument when call is an
-// html/template HTML/JS/URL/CSS-style conversion that bypasses auto-escaping.
+// unsafeTemplateConversion returns the converted argument when call is an html/template conversion that bypasses auto-escaping.
+//
+// htmlTemplatePackages holds the local html/template import names; other packages or a call without exactly one argument give nil and false.
+// The conversion names are those in unsafeTemplateConversions, such as HTML, JS, URL and CSS.
 func unsafeTemplateConversion(call *ast.CallExpr, htmlTemplatePackages map[string]bool) (ast.Expr, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || !unsafeTemplateConversions[selector.Sel.Name] || len(call.Args) != 1 {
@@ -314,8 +348,14 @@ func unsafeTemplateConversion(call *ast.CallExpr, htmlTemplatePackages map[strin
 	return call.Args[0], true
 }
 
-// rawResponseWriteArgs reports the data arguments written directly to a response
-// writer via w.Write, fmt.Fprint*, or io.WriteString.
+// rawResponseWriteArgs returns the data arguments a call writes straight to a response writer through w.Write, fmt.Fprint* or io.WriteString.
+//
+// call is the call expression to classify; writers names the response-writer parameters, and pkgs supplies the fmt and io import aliases.
+// w.Write on a writer yields all its arguments and true.
+//
+// fmt Fprint, Fprintf and Fprintln need at least two arguments; io.WriteString needs exactly two.
+// With a writer identifier as the first argument, these calls return the remaining arguments and true.
+// Any other call gives nil and false.
 func rawResponseWriteArgs(call *ast.CallExpr, writers map[string]bool, pkgs templateXSSPackages) ([]ast.Expr, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {

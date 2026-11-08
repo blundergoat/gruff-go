@@ -1,6 +1,6 @@
 ---
 category: hooks
-last_reviewed: 2026-08-13
+last_reviewed: 2026-10-03
 ---
 
 # Hook Footguns
@@ -58,9 +58,11 @@ How to avoid:
 **Decision changed:** where a fix to a `.goat-flow/hooks/` file must be guarded from
 **Trigger phase:** VERIFY
 
-`.goat-flow/hooks/post-turn-safety.sh` is a managed file: `goat-flow install` restores it from `node_modules/@blundergoat/goat-flow/workflow/hooks/post-turn-safety.sh`. v0.5.0 hardened the installed copy so nonnumeric and leading-zero scan limits fall back to defaults (search: `MAX_FILE_BYTES=$((10#$MAX_FILE_BYTES))`). The upstream template guards only `MAX_SECONDS`, so it still evaluates `$((MAX_FILE_BYTES))` directly.
+`.goat-flow/hooks/post-turn-safety.sh` is a managed file: `goat-flow install` restores it from `node_modules/@blundergoat/goat-flow/workflow/hooks/post-turn-safety.sh`. v0.5.0 hardened the installed copy so nonnumeric and leading-zero scan limits fell back to defaults. The 1.15.x template guarded only `MAX_SECONDS`, so it evaluated `$((MAX_FILE_BYTES))` directly.
 
 That gap is not cosmetic. `MAX_FILE_BYTES` gates every file (template line, search: `[ "$size" -le "$MAX_FILE_BYTES" ]`). In bash, `MAX_FILE_BYTES=invalid` evaluates to `0`, so no file is ever under the limit: the safety scanner examines nothing and still reports clean. `08` is worse - `value too great for base` aborts the arithmetic outright.
+
+**2026-10-03, goat-flow 1.17.0:** the template now validates the byte limit itself: `.goat-flow/hooks/post-turn-safety.sh` (search: `0[0-9]*) MAX_FILE_BYTES=1048576 ;;`). The upgrade took the template with `--force-path`, so the v0.5.0 local hardening is gone; `check_post_turn_limit_hardening` still passes. Two cases the local copy covered are not upstream yet, measured against a disposable repo holding a synthetic AWS key. `GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS=invalid` still exits 2 but prints `[: invalid: integer expression expected` in place of the `blocked AWS access key` line. `GOAT_FLOW_POST_TURN_SAFETY_MAX_SECONDS=08` still exits 2 but the budget check errors with `value too great for base`: `.goat-flow/hooks/post-turn-safety.sh` (search: `((SECONDS >= MAX_SECONDS))`). Neither lets a finding through; both belong upstream.
 
 Two things make this hard to notice:
 
@@ -68,9 +70,25 @@ Two things make this hard to notice:
 - **The drift signal is backwards.** `goat-flow audit` reports `drift: fail` on `.goat-flow/hooks/post-turn-safety.sh` *while the hardening is present*, and would report `pass` once an install has stripped it. A green audit here means the protection is gone; the red one means it is intact.
 
 How to avoid:
-- Guard a managed-file fix from a project-owned file that an install cannot touch. `scripts/preflight-checks.sh` (search: `check_post_turn_limit_hardening`) runs the hook's own self-test under hostile limits: the hardened hook returns 0, the upstream template returns 2 with `clean case failed on scanner 0`. Both directions were verified before the check was committed.
+- Guard a managed-file fix from a project-owned file that an install cannot touch. `scripts/preflight-checks.sh` (search: `check_post_turn_limit_hardening`) runs the hook's own self-test under hostile limits: the hardened hook returns 0, the 1.15.x template returned 2 with `clean case failed on scanner 0`, and the 1.17.0 template returns 0. Both directions were verified before the check was committed.
 - Do not "resolve" this drift finding by reinstalling the template. Re-apply the hardening, or upstream it to goat-flow and take the newer template.
 - When `goat-flow audit` reports content drift on a hook, diff the installed copy against the template and decide which side is newer before acting. Assuming the template is authoritative silently reverts local security fixes.
+
+## Footgun: goat-flow install leaves missing credential-store deny rules absent while its own audit requires them
+
+**Status:** active | **Created:** 2026-10-03 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** After every goat-flow upgrade, diff `.claude/settings.json` `permissions.deny` against the packaged Claude template and add the missing credential-store rules; a clean install run does not mean the settings match the template.
+**Trigger phase:** VERIFY
+
+hallucination-risk: high (install exits 0, prints its settings migration, and a later dry run marks the file `preserve`, so nothing in the install output says rules are missing)
+
+**Prevention:** after `goat-flow install`, compare `jq -r '.permissions.deny[]'` for `.claude/settings.json` against `node_modules/@blundergoat/goat-flow/workflow/hooks/agent-config/claude.json`, add every template rule the project lacks, then rerun `goat-flow audit . --agent claude`. Do not re-add rules the installer retires; the next install strips them again.
+
+**Symptoms:** the audit fails Constraints with "direct literal secret-path blocking incomplete", and its enforcement matrix reports "MISSING Secret file-read paths" even though the settings deny `.env` variants, keys, SSH and AWS paths.
+
+**Why it happens:** the installer pairs only the stores a project already denies: `node_modules/@blundergoat/goat-flow/workflow/install-goat-flow.sh` (search: `Pair only a store the user already denies; absent pairs remain a deliberate project choice`). The 1.17.0 audit requires home-directory rules for four plaintext stores regardless: `node_modules/@blundergoat/goat-flow/dist/cli/facts/agent/settings.js` (search: `const hasPlaintextStores`). The same install deliberately removes the generic rules in `node_modules/@blundergoat/goat-flow/workflow/install-goat-flow.sh` (search: `const RETIRED_DENY_RULES`), including the credentials-prefix and secrets-directory rules.
+
+**Evidence:** upgrading from 1.15.1 on 2026-10-03 left 20 template rules missing (the netrc file, Git's plaintext credential store, the GitHub CLI hosts file, pgpass, and gcloud config, each as `Read` and `Edit` in home and project form). Adding them from the template cleared the Constraints failure, and a following `goat-flow install --dry-run` reported `.claude/settings.json` as `preserve`, so complete pairs survive reinstall.
 
 ## Resolved Entries
 

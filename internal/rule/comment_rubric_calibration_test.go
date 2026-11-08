@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// Comment-rubric calibration tests pin down substantive-token thresholds,
-// _test.go const/var scoping, and the one-line default package summary.
+//
+// Comment-rubric calibration tests pin down substantive-token thresholds, _test.go const/var scoping, and the one-line default package summary.
+// A failure here changes which comment-rubric findings a user sees for sparse comments, test-file declarations or package summaries.
 package rule
 
 import (
@@ -9,9 +10,8 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged confirms the
-// substantive-token threshold is opt-in: when the option stays zero, existing
-// paraphrase behaviour remains accepted.
+// TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged confirms the fixture's comment passes with MinWordsBeyondSymbol unset.
+// With MinWordsBeyondSymbol left at zero, existing paraphrase behaviour is still accepted and the fixture's paraphrase gets no finding.
 func TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged(t *testing.T) {
 	unit := parseOne(t, "fns.go", `package sample
 
@@ -24,9 +24,8 @@ func Documented() {}
 	}
 }
 
-// TestCommentRubricRuleMinWordsBeyondSymbolRejectsRestatement confirms the
-// substantive-token threshold rejects sparse comments whose non-symbol token
-// count falls below the configured threshold.
+// TestCommentRubricRuleMinWordsBeyondSymbolRejectsRestatement confirms the substantive-token threshold rejects sparse comments.
+// A comment whose non-symbol token count falls below MinWordsBeyondSymbol 3 gets one finding, reported on FooRule.Definition.
 func TestCommentRubricRuleMinWordsBeyondSymbolRejectsRestatement(t *testing.T) {
 	// Comment yields only {is} beyond the qualified symbol token set {foo, rule, definition}.
 	unit := parseOne(t, "fns.go", `package sample
@@ -133,14 +132,15 @@ var (
 	}
 }
 
-// TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase confirms common English
-// fillers (the, for, of, is, …) are excluded from the substantive-token count so that paraphrase
-// boilerplate like `// Definition returns the rule metadata for FooRule.` is rejected at N=3.
+// TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase confirms common English fillers do not count as substantive tokens.
+// The fillers the and for cannot make Definition returns the rule metadata for FooRule pass at N=3; one FooRule.Definition finding is expected.
 func TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase(t *testing.T) {
-	// Symbol tokens after qualification: {foo, rule, definition}.
-	// Comment tokens before stopword filter: {definition, returns, the, rule, metadata, for, foo}.
-	// After symbol subtraction: {returns, the, metadata, for}.
-	// After stopword subtraction (the, for): {returns, metadata} = 2 unique tokens. N=3 rejects.
+	// Only two substantive tokens survive, so N=3 rejects the comment.
+	//
+	//   - Symbol tokens after qualification: {foo, rule, definition}.
+	//   - Comment tokens before the stopword filter: {definition, returns, the, rule, metadata, for, foo}.
+	//   - After symbol subtraction: {returns, the, metadata, for}.
+	//   - After stopword subtraction of the and for: {returns, metadata}, two unique tokens.
 	unit := parseOne(t, "fns.go", `package sample
 
 // Definition returns the rule metadata for FooRule.
@@ -160,6 +160,9 @@ func (FooRule) Definition() string { return "" }
 }
 
 // commentRubricTestScopingTestUnit parses the shared _test.go fixture used by const/var scoping tests.
+//
+// It returns the unit parsed from internal/sample/sample_test.go, never a zero unit, because parseOne stops the test on any parse failure.
+// The fixture holds the uncommented const fixtureValue, var fixtureSlice, function TestSomething and type TestWorker, with no package comment.
 func commentRubricTestScopingTestUnit(t *testing.T) parser.Unit {
 	t.Helper()
 	return parseOne(t, "internal/sample/sample_test.go", `package sample
@@ -175,6 +178,9 @@ type TestWorker struct{}
 }
 
 // commentRubricTestScopingProdUnit parses the production fixture paired with the _test.go scoping case.
+//
+// It returns the unit parsed from internal/sample/sample.go, never a zero unit, because parseOne stops the test on any parse failure.
+// The fixture holds the uncommented exported const ProductionConst and unexported var productionVar, with no package comment.
 func commentRubricTestScopingProdUnit(t *testing.T) parser.Unit {
 	t.Helper()
 	return parseOne(t, "internal/sample/sample.go", `package sample
@@ -185,9 +191,8 @@ var productionVar = 2
 `)
 }
 
-// TestCommentRubricRuleTestFileConstVarSkippedByDefault confirms const and var
-// enforcement is suppressed on _test.go files even when ignoreTests is false,
-// while non-test files stay strict.
+// TestCommentRubricRuleTestFileConstVarSkippedByDefault confirms const and var enforcement is skipped on _test.go files.
+// That holds even when IgnoreTests is false; the production fixture is required to produce two findings.
 func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireConstComments: true,
@@ -203,8 +208,7 @@ func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleTestFileFunctionCheckStillFires confirms function
-// comment enforcement on test files survives the const/var exemption.
+// TestCommentRubricRuleTestFileFunctionCheckStillFires confirms function comment enforcement on test files survives the const/var exemption.
 func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireFunctionComments: true,
@@ -216,8 +220,7 @@ func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleTestFileTypeCheckStillFires confirms named-type
-// enforcement on test files survives the const/var exemption.
+// TestCommentRubricRuleTestFileTypeCheckStillFires confirms named-type enforcement on test files survives the const/var exemption.
 func TestCommentRubricRuleTestFileTypeCheckStillFires(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireNamedTypeComments: true,
@@ -229,8 +232,7 @@ func TestCommentRubricRuleTestFileTypeCheckStillFires(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleIgnoreTestsStillExemptsEverything confirms the whole-file exemption lever
-// from IgnoreTests still wins over every check kind.
+// TestCommentRubricRuleIgnoreTestsStillExemptsEverything confirms the test fixture yields no findings with IgnoreTests enabled.
 func TestCommentRubricRuleIgnoreTestsStillExemptsEverything(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireFunctionComments:  true,
@@ -244,9 +246,8 @@ func TestCommentRubricRuleIgnoreTestsStillExemptsEverything(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleDefaultPackageSummaryOneLine covers the default
-// package-summary threshold: a single-line summary passes, while a missing
-// summary still fails.
+// TestCommentRubricRuleDefaultPackageSummaryOneLine covers the default package-summary threshold.
+// A single-line summary passes and a missing summary still gets a finding, while an explicit MinPackageCommentLines of 2 rejects the one-liner.
 func TestCommentRubricRuleDefaultPackageSummaryOneLine(t *testing.T) {
 	rule := CommentRubricRule{RequirePackageSummary: true}
 

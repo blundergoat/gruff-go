@@ -23,7 +23,6 @@ from typing import Any
 TARGET_RULES = (
     "security.weak-crypto",
     "security.insecure-random-secret",
-    "security.sensitive-data-logging",
 )
 CLASSIFICATION_HEADER = (
     "rule_id",
@@ -74,15 +73,6 @@ import "math/rand"
 func generateSessionToken() int {
 	token := rand.Intn(999999)
 	return token
-}
-''',
-    "security.sensitive-data-logging": '''// Package oracle supplies a sensitive-logging positive.
-package oracle
-
-import "log"
-
-func login(password string) {
-	log.Printf("credential supplied: %s", password)
 }
 ''',
 }

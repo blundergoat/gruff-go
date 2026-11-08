@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements focused parser-only security checks beyond secret literals.
+//
+// This file holds two parser-only security rules, security.tls-insecure-config and security.archive-path-traversal.
+// Both read only the syntax tree, with no type information, so they flag what the file spells out and miss values that come from elsewhere.
 package rule
 
 import (
@@ -17,9 +19,13 @@ import (
 var sqlKeywordPattern = regexp.MustCompile(`(?i)\b(select|insert|update|delete|create|drop|alter)\b`)
 
 // TLSInsecureConfigRule flags tls.Config literals with concrete insecure settings.
+//
+// It backs the security.tls-insecure-config rule ID, on by default at warning severity.
+// Only values written inside the literal count, so cfg.InsecureSkipVerify = true or a field set from a variable is not flagged.
 type TLSInsecureConfigRule struct{}
 
 // Definition declares the security.tls-insecure-config rule for direct TLS misconfiguration evidence.
+// It returns the same populated Definition on every call: security pillar, warning severity, high confidence, enabled by default.
 func (TLSInsecureConfigRule) Definition() Definition {
 	return Definition{
 		ID:             "security.tls-insecure-config",
@@ -35,6 +41,10 @@ func (TLSInsecureConfigRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for tls.Config literals with explicit insecure field values.
+//
+// unit is the parsed file; Config literals are matched only through its crypto/tls import names, anywhere in the file.
+// It returns one finding per InsecureSkipVerify set to the literal true or MinVersion set to VersionSSL30, VersionTLS10 or VersionTLS11.
+// The result is nil when unit has no AST or FileSet, and empty but non-nil when no insecure field is found.
 func (TLSInsecureConfigRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -60,6 +70,7 @@ func (TLSInsecureConfigRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 				if isTrueLiteral(keyValue.Value) {
 					findings = append(findings, tlsConfigFinding(unit, keyValue, "TLS config disables certificate verification", field.Name, "true"))
 				}
+			// A numeric MinVersion such as 0x0301 or one held in a variable is not flagged; only the named SSL 3.0, TLS 1.0 and TLS 1.1 constants are.
 			case "MinVersion":
 				value, unsafe := unsafeTLSMinVersion(keyValue.Value, tlsPackages)
 				if unsafe {
@@ -73,6 +84,7 @@ func (TLSInsecureConfigRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.
 }
 
 // isTLSConfigLiteral reports whether literal has type crypto/tls.Config through a selector import name.
+// tlsPackages holds the file's local names for crypto/tls; a Config literal written without a package selector reports false.
 func isTLSConfigLiteral(literal *ast.CompositeLit, tlsPackages map[string]bool) bool {
 	selector, ok := literal.Type.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Config" {
@@ -89,6 +101,9 @@ func isTrueLiteral(expr ast.Expr) bool {
 }
 
 // unsafeTLSMinVersion reports obsolete crypto/tls version selectors that should not be a minimum version.
+//
+// expr is the MinVersion value and tlsPackages the file's local names for crypto/tls; only VersionSSL30, VersionTLS10 and VersionTLS11 count.
+// It returns the selector text with its import name, such as tls.VersionTLS10, and true; any other expr gives an empty string and false.
 func unsafeTLSMinVersion(expr ast.Expr, tlsPackages map[string]bool) (string, bool) {
 	selector, ok := expr.(*ast.SelectorExpr)
 	if !ok {
@@ -106,7 +121,10 @@ func unsafeTLSMinVersion(expr ast.Expr, tlsPackages map[string]bool) (string, bo
 	}
 }
 
-// tlsConfigFinding builds a finding located at the unsafe tls.Config field key.
+// tlsConfigFinding builds a finding located at the unsafe tls.Config field key, so the report points at that key's line and column.
+//
+// unit supplies the file path and the FileSet that turns the keyValue key into a line and column; message becomes the finding message.
+// It returns a Finding with only Message, File, Location and Metadata set; field and value are stored as metadata under their own names.
 func tlsConfigFinding(unit parser.Unit, keyValue *ast.KeyValueExpr, message string, field string, value string) finding.Finding {
 	position := unit.FileSet.Position(keyValue.Key.Pos())
 	return finding.Finding{
@@ -120,81 +138,14 @@ func tlsConfigFinding(unit parser.Unit, keyValue *ast.KeyValueExpr, message stri
 	}
 }
 
-// SQLStringQueryRule flags SQL execution calls with query strings built through formatting or concatenation.
-type SQLStringQueryRule struct{}
-
-// Definition declares the security.sql-string-query rule for parser-only SQL construction evidence.
-func (SQLStringQueryRule) Definition() Definition {
-	return Definition{
-		ID:             "security.sql-string-query",
-		Title:          "SQL string query construction",
-		Description:    "Flags SQL execution calls whose query argument is constructed with string formatting or concatenation.",
-		Pillar:         finding.PillarSecurity,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
-		Tags:           []string{"security", "sql"},
-		Remediation:    "Use parameterized queries or a prepared/query-builder API instead of interpolating SQL text.",
-	}
-}
-
-// AnalyzeUnit emits findings when SQL execution calls receive constructed query strings.
-func (SQLStringQueryRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil {
-		return nil
-	}
-	fmtPackages := packageImportNames(unit.AST, "fmt", "fmt")
-	timePackages := packageImportNames(unit.AST, "time", "time")
-	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil {
-			continue
-		}
-		constructedVars := collectConstructedSQLVars(fn.Body, fmtPackages)
-		testSchemaVars := collectTestSchemaVars(fn.Body, fmtPackages, timePackages)
-		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			if _, nested := node.(*ast.FuncLit); nested {
-				return false
-			}
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			callName, queryArgIndex, ok := sqlExecutionQueryArg(call)
-			if !ok || len(call.Args) <= queryArgIndex {
-				return true
-			}
-			construction, ok := sqlConstructionKind(call.Args[queryArgIndex], constructedVars, fmtPackages, call.Pos())
-			if !ok {
-				return true
-			}
-			if isAcceptedStaticSQLConstruction(call, queryArgIndex, construction) {
-				return true
-			}
-			if isTestSupportPath(unit.File.Path) && isTestSchemaCreation(call.Args[queryArgIndex], testSchemaVars) {
-				return true
-			}
-			position := unit.FileSet.Position(call.Args[queryArgIndex].Pos())
-			findings = append(findings, finding.Finding{
-				Message:  "SQL query string is constructed dynamically",
-				File:     unit.File.Path,
-				Location: &finding.Location{Line: position.Line, Column: position.Column},
-				Metadata: map[string]any{
-					"call": callName,
-					"kind": construction.kind,
-				},
-			})
-			return true
-		})
-	}
-	return findings
-}
-
 // ArchivePathTraversalRule flags archive extraction paths that use entry names without containment evidence.
+//
+// It backs the security.archive-path-traversal rule ID, on by default at advisory severity.
+// A zip or tar entry named ../../etc/passwd, joined straight onto an extraction directory, can land outside it; this rule looks for that join.
 type ArchivePathTraversalRule struct{}
 
 // Definition declares the security.archive-path-traversal rule for parser-only archive extraction evidence.
+// It returns the same populated Definition on every call: security pillar, advisory severity, medium confidence, enabled by default.
 func (ArchivePathTraversalRule) Definition() Definition {
 	return Definition{
 		ID:             "security.archive-path-traversal",
@@ -210,6 +161,13 @@ func (ArchivePathTraversalRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for archive entry names joined into extraction paths without nearby containment checks.
+//
+// unit is the parsed file; with an archive/zip or archive/tar import name, only function and method bodies are scanned, skipping function literals.
+// In those bodies it returns one finding per path or path/filepath Join call that has no containment evidence and takes an archive entry name.
+// An archive entry name is a Name selector argument, or an identifier that collectArchiveNameVars recorded as assigned from one.
+//
+// The result is nil without an AST or FileSet, or when packageImportNames finds no archive/zip or archive/tar import name in unit.
+// Otherwise it is empty but non-nil when no join is flagged.
 func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !importsArchivePackage(unit.AST) {
 		return nil
@@ -226,6 +184,7 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 		}
 		archiveNameVars := collectArchiveNameVars(fn.Body)
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			// Extraction code inside a func literal, such as a goroutine or a callback, is never checked by this rule.
 			if _, nested := node.(*ast.FuncLit); nested {
 				return false
 			}
@@ -256,167 +215,18 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return findings
 }
 
-// collectConstructedSQLVars records same-function variables initialized from
-// SQL construction, preserving assignment order so later reassignment cannot
-// change the classification of an earlier query call.
-func collectConstructedSQLVars(body *ast.BlockStmt, fmtPackages map[string]bool) map[string][]sqlConstructionAssignment {
-	vars := map[string][]sqlConstructionAssignment{}
-	ast.Inspect(body, func(node ast.Node) bool {
-		if _, nested := node.(*ast.FuncLit); nested {
-			return false
-		}
-		switch stmt := node.(type) {
-		case *ast.ValueSpec:
-			for i, name := range stmt.Names {
-				if name.Name == "_" || i >= len(stmt.Values) {
-					continue
-				}
-				if kind, ok := sqlConstructionKind(stmt.Values[i], vars, fmtPackages, stmt.Values[i].Pos()); ok {
-					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Values[i].Pos(), construction: kind})
-				}
-			}
-		case *ast.AssignStmt:
-			for i, lhs := range stmt.Lhs {
-				name, ok := lhs.(*ast.Ident)
-				if !ok || name.Name == "_" || i >= len(stmt.Rhs) {
-					continue
-				}
-				if kind, ok := sqlConstructionKind(stmt.Rhs[i], vars, fmtPackages, stmt.Rhs[i].Pos()); ok {
-					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Rhs[i].Pos(), construction: kind})
-					continue
-				}
-				// A purely static literal append (e.g. q += " ORDER BY id LIMIT ?")
-				// keeps the query safe, so it must not invalidate the static class.
-				if _, static := staticStringExpr(stmt.Rhs[i]); static {
-					continue
-				}
-				// A tracked static SQL var reassigned or appended (+=) with a
-				// genuinely dynamic RHS (one carrying a variable) becomes dynamic;
-				// record a non-static entry so a later use is not accepted under the
-				// stale static classification.
-				if _, tracked := vars[name.Name]; tracked || stmt.Tok == token.ADD_ASSIGN {
-					vars[name.Name] = append(vars[name.Name], sqlConstructionAssignment{pos: stmt.Rhs[i].Pos(), construction: sqlConstruction{kind: "string-concat"}})
-				}
-			}
-		}
-		return true
-	})
-	return vars
-}
-
-// sqlExecutionQueryArg returns the selector name and likely query argument offset for SQL execution calls.
-func sqlExecutionQueryArg(call *ast.CallExpr) (string, int, bool) {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return "", 0, false
-	}
-	switch selector.Sel.Name {
-	case "QueryContext", "QueryRowContext", "ExecContext":
-		return selector.Sel.Name, 1, true
-	case "Query", "QueryRow", "Exec":
-		if len(call.Args) > 1 && looksLikeContextArgument(call.Args[0]) {
-			return selector.Sel.Name, 1, true
-		}
-		return selector.Sel.Name, 0, true
-	default:
-		return "", 0, false
-	}
-}
-
-// looksLikeContextArgument recognises common parser-only context argument shapes used by pgx-style APIs.
-func looksLikeContextArgument(expr ast.Expr) bool {
-	switch value := expr.(type) {
-	case *ast.Ident:
-		return value.Name == "ctx" || value.Name == "context"
-	case *ast.CallExpr:
-		selector, ok := value.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return false
-		}
-		receiver, ok := selector.X.(*ast.Ident)
-		return ok && receiver.Name == "context"
-	default:
-		return false
-	}
-}
-
-// sqlConstructionKind reports dynamic SQL construction only when the expression carries SQL keyword evidence.
-func sqlConstructionKind(expr ast.Expr, constructedVars map[string][]sqlConstructionAssignment, fmtPackages map[string]bool, before token.Pos) (sqlConstruction, bool) {
-	switch value := expr.(type) {
-	case *ast.Ident:
-		return latestSQLConstructionBefore(constructedVars[value.Name], before)
-	case *ast.CallExpr:
-		if isFmtSprintfCall(value, fmtPackages) && exprHasSQLKeyword(value) {
-			return sqlConstruction{kind: "fmt.Sprintf"}, true
-		}
-	case *ast.BinaryExpr:
-		if isStringConcatWithSQL(value) {
-			if text, ok := staticStringExpr(value); ok {
-				return sqlConstruction{
-					kind:          "static-string-concat",
-					static:        true,
-					parameterized: sqlPlaceholderPattern.MatchString(text),
-				}, true
-			}
-			return sqlConstruction{kind: "string-concat"}, true
-		}
-	}
-	return sqlConstruction{}, false
-}
-
-// latestSQLConstructionBefore returns the last known construction assignment
-// that occurs before a query call or another variable assignment.
-func latestSQLConstructionBefore(assignments []sqlConstructionAssignment, before token.Pos) (sqlConstruction, bool) {
-	for index := len(assignments) - 1; index >= 0; index-- {
-		if before == token.NoPos || assignments[index].pos < before {
-			return assignments[index].construction, true
-		}
-	}
-	return sqlConstruction{}, false
-}
-
-// isFmtSprintfCall reports whether call is fmt.Sprintf through a real fmt import name.
-func isFmtSprintfCall(call *ast.CallExpr, fmtPackages map[string]bool) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "Sprintf" {
-		return false
-	}
-	receiver, ok := selector.X.(*ast.Ident)
-	return ok && fmtPackages[receiver.Name]
-}
-
-// isStringConcatWithSQL reports whether a binary + expression contains SQL keyword text.
-func isStringConcatWithSQL(expr *ast.BinaryExpr) bool {
-	return expr.Op.String() == "+" && exprHasSQLKeyword(expr)
-}
-
-// exprHasSQLKeyword scans string literals nested inside expr for SQL statement keywords.
-func exprHasSQLKeyword(expr ast.Expr) bool {
-	found := false
-	ast.Inspect(expr, func(node ast.Node) bool {
-		if found {
-			return false
-		}
-		basic, ok := node.(*ast.BasicLit)
-		if !ok {
-			return true
-		}
-		literal, ok := stringLiteral(basic)
-		if ok && sqlKeywordPattern.MatchString(literal) {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
-}
-
-// importsArchivePackage reports whether the file imports a standard archive package.
+// importsArchivePackage reports whether file imports archive/zip or archive/tar, excluding blank and dot imports.
+// A file that reaches either package only through a dot import is never checked by security.archive-path-traversal.
 func importsArchivePackage(file *ast.File) bool {
 	return len(packageImportNames(file, "archive/zip", "zip")) > 0 || len(packageImportNames(file, "archive/tar", "tar")) > 0
 }
 
-// collectArchiveNameVars records locals assigned from archive entry Name fields.
+// collectArchiveNameVars records locals assigned from archive entry Name fields, so name := header.Name then a Join on name is still caught.
+//
+// body is a function body; var declarations and assignments are scanned, skipping nested function literals and the blank identifier.
+// It returns a map from each such local name to the Name selector assigned to it; the map is empty, not nil, when no local qualifies.
+//
+// A later non-Name assignment does not clear a recorded local, so name = filepath.Base(name) still counts as an entry name.
 func collectArchiveNameVars(body *ast.BlockStmt) map[string]ast.Expr {
 	vars := map[string]ast.Expr{}
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -446,6 +256,7 @@ func collectArchiveNameVars(body *ast.BlockStmt) map[string]ast.Expr {
 }
 
 // isPathJoinCall reports whether call is path/filepath.Join or path.Join through an imported package name.
+// pathPackages holds the file's local names for path and path/filepath; a Join call without such a package selector reports false.
 func isPathJoinCall(call *ast.CallExpr, pathPackages map[string]bool) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Join" {
@@ -456,6 +267,10 @@ func isPathJoinCall(call *ast.CallExpr, pathPackages map[string]bool) bool {
 }
 
 // archiveEntryNameArg returns the first archive entry name expression among call arguments.
+//
+// args are the Join call arguments; an identifier counts when archiveNameVars maps it, and its recorded Name selector is returned instead.
+// So the finding's entry metadata shows the Name selector, such as header.Name, even when the Join used a local copy.
+// When no argument qualifies it returns nil and false.
 func archiveEntryNameArg(args []ast.Expr, archiveNameVars map[string]ast.Expr) (ast.Expr, bool) {
 	for _, arg := range args {
 		if isArchiveNameExpr(arg) {
@@ -473,12 +288,14 @@ func archiveEntryNameArg(args []ast.Expr, archiveNameVars map[string]ast.Expr) (
 }
 
 // isArchiveNameExpr recognises field access to an archive entry's Name field.
+// It reports true for any selector expr ending in .Name, so non-archive Name fields match too; any other expr gives false.
 func isArchiveNameExpr(expr ast.Expr) bool {
 	selector, ok := expr.(*ast.SelectorExpr)
 	return ok && selector.Sel.Name == "Name"
 }
 
 // callName returns a best-effort selector or function identifier name.
+// call is read by its callee: a selector gives the selected name, an identifier its own name, and any other callee an empty string.
 func callName(call *ast.CallExpr) string {
 	switch fun := call.Fun.(type) {
 	case *ast.SelectorExpr:
@@ -491,6 +308,9 @@ func callName(call *ast.CallExpr) string {
 }
 
 // formatExpr renders an AST expression for metadata without requiring type information.
+//
+// expr is printed by go/printer with a fresh token.FileSet rather than the file's own.
+// It returns the printed source text, or the fixed text archive entry name when printing fails.
 func formatExpr(expr ast.Expr) string {
 	var out bytes.Buffer
 	if err := printer.Fprint(&out, token.NewFileSet(), expr); err != nil {

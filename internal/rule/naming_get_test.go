@@ -1,10 +1,13 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file covers the get-prefix rule's accessor detection and exclusion paths.
+//
+// This file tests naming.get-prefix, an opt-in rule that flags Get-prefixed accessor methods such as GetUser on a receiver.
+// Free functions and configured path or name exclusions stay quiet; generated files are checked only when the run includes ignored files.
 package rule
 
 import "testing"
 
 // TestGetPrefixFlagsAccessorMethods verifies the rule flags accessor-shaped Get methods on receivers.
+// GetUserByID with a parameter, a bare Get and the free GetGlobalUser stay quiet; only GetUser and GetCacheStats appear as symbols.
 func TestGetPrefixFlagsAccessorMethods(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -34,6 +37,7 @@ type User struct{}
 
 func (s Store) GetUser() User { return User{} }
 `)
+	// An exclude-path glob such as **/*.pb.go, or an exact excluded name, each silence the finding on their own.
 	if got := (GetPrefixRule{ExcludePaths: []string{"**/*.pb.go"}}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
 		t.Fatalf("excluded path should pass, got %#v", got)
 	}
@@ -57,9 +61,8 @@ func (s Store) GetUser() User { return User{} }
 	}
 }
 
-// TestGetPrefixSkipsFreeFunctions confirms package-level helpers, including
-// context accessors such as `GetLogger(ctx)`, stay out of this receiver-method
-// style rule.
+// TestGetPrefixSkipsFreeFunctions confirms package-level helpers stay out of this receiver-method style rule.
+// That covers context accessors such as GetLogger(ctx) and free functions that take extra arguments or return three values.
 func TestGetPrefixSkipsFreeFunctions(t *testing.T) {
 	unit := parseOne(t, "pkg/ctx.go", `package pkg
 

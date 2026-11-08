@@ -1,5 +1,7 @@
 // Package report renders gruff-go analysis results into output formats.
+//
 // Shared HTML helpers centralize escaping and formatting so renderer methods stay structural.
+// They build the headline severity counts, verdict subtitle, complexity caption, table cells and masthead rows of the HTML report.
 package report
 
 import (
@@ -21,7 +23,10 @@ type severityTotals struct {
 	advisory int
 }
 
-// severityCounts tallies findings across the report by severity.
+// severityCounts tallies findings across the report by severity for the headline summaries.
+//
+// Returns a severityTotals whose total is len(report.Findings) and whose error, warning and advisory fields count findings of that severity.
+// A finding of any other severity adds to total only, and every count is zero when report has no findings.
 func severityCounts(report analysis.Report) severityTotals {
 	counts := severityTotals{total: len(report.Findings)}
 	for _, item := range report.Findings {
@@ -37,9 +42,13 @@ func severityCounts(report analysis.Report) severityTotals {
 	return counts
 }
 
-// verdictSubtitle returns the human-readable subtitle shown beneath the grade stamp.
+// verdictSubtitle returns the human-readable verdict subtitle that sums up warning-or-higher findings in the HTML report.
+//
+// counts supplies the error and warning totals; when their sum is zero the subtitle says no warning or higher severity findings were flagged.
+// Otherwise it states that sum and the number of distinct pillars holding an error or warning finding in r.report.
 func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
 	thresholdFindings := counts.error + counts.warning
+	// A report holding only advisory findings lands here too, so the subtitle mentions none of them.
 	if thresholdFindings == 0 {
 		return "No warning or higher severity findings flagged."
 	}
@@ -61,6 +70,10 @@ func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
 }
 
 // cyclomaticSummary formats a one-line caption describing the over-threshold complexity bins.
+//
+// distribution maps complexity bin labels to method counts, and only the 11-15, 16-20 and 21+ bins are read.
+// A non-empty scope appends a note that the counts come from the finding-only distribution.
+// Returns a sentence with the over-threshold method total and each bin's count, or a zero-methods sentence when the three bins total zero.
 func cyclomaticSummary(distribution map[string]int, scope string) string {
 	moderate := distribution["11-15"]
 	high := distribution["16-20"]
@@ -86,6 +99,7 @@ func cyclomaticSummary(distribution map[string]int, scope string) string {
 }
 
 // histogramTier maps a complexity bin label to the CSS tier suffix used for the histogram bar.
+// Returns the suffix " warn" for the 11-15 bin, " fail" for the 16-20 and 21+ bins, and an empty string for any other bin label.
 func histogramTier(bin string) string {
 	switch bin {
 	case "11-15":
@@ -98,6 +112,7 @@ func histogramTier(bin string) string {
 }
 
 // severityTierClass maps a severity to the CSS class used to colour severity badges.
+// Returns the class "fail" for SeverityError, "warn" for SeverityWarning, and "note" for SeverityAdvisory or any other severity.
 func severityTierClass(severity finding.Severity) string {
 	switch severity {
 	case finding.SeverityError:
@@ -109,9 +124,12 @@ func severityTierClass(severity finding.Severity) string {
 	}
 }
 
-// severityCountCell renders a numeric per-severity table cell. Zero-valued
-// cells stay neutral so a clean pillar reads as visually quiet; non-zero cells
-// pick up the supplied severity tier class for colour emphasis.
+// severityCountCell renders a numeric per-severity table cell.
+//
+// Zero and negative counts stay neutral so a clean pillar reads as quiet; positive counts take the supplied tier class for colour emphasis.
+//
+// count is the number printed in the cell, and tier is the HTML-escaped class added beside num only when count is above zero.
+// Returns the td cell markup; a zero or negative count renders with the num class alone.
 func severityCountCell(count int, tier string) string {
 	if count <= 0 {
 		return fmt.Sprintf(`<td class="num">%d</td>`, count)
@@ -120,6 +138,7 @@ func severityCountCell(count int, tier string) string {
 }
 
 // tierClass derives the CSS tier class from a single-letter grade.
+// Returns the lower-cased first byte of grade, or "n" when grade is empty.
 func tierClass(grade string) string {
 	if grade == "" {
 		return "n"
@@ -128,6 +147,7 @@ func tierClass(grade string) string {
 }
 
 // metaRow renders a labelled metadata row in the masthead.
+// Returns a div markup string holding a label span with label and a val span with value, both HTML-escaped.
 func metaRow(label, value string) string {
 	return fmt.Sprintf(
 		`<div><span class="label">%s</span><span class="val">%s</span></div>`,
@@ -137,6 +157,9 @@ func metaRow(label, value string) string {
 }
 
 // stat renders a single statistic block with a number, label, and optional tier class.
+//
+// Returns a stat div markup string with number, label and class all HTML-escaped, and class placed beside num on the number div.
+// An empty class leaves the number div with the num class alone.
 func stat(number, label, class string) string {
 	return fmt.Sprintf(
 		`<div class="stat"><div class="num %s">%s</div><div class="lbl">%s</div></div>`,
@@ -147,6 +170,9 @@ func stat(number, label, class string) string {
 }
 
 // optionalInt formats an optional integer, returning "n/a" when it is nil.
+//
+// value is the optional integer to format; a non-nil value renders as its base-10 digits.
+// Returns "n/a" when value is nil, so a missing number never reads as 0.
 func optionalInt(value *int) string {
 	if value == nil {
 		return "n/a"
@@ -155,6 +181,7 @@ func optionalInt(value *int) string {
 }
 
 // pluralise returns singular or plural depending on the count.
+// Returns singular only when count is exactly 1, so zero and negative counts read as plural, as in 0 findings.
 func pluralise(count int, singular, plural string) string {
 	if count == 1 {
 		return singular
@@ -173,6 +200,7 @@ func displayInputs(inputs []string) []string {
 }
 
 // scopeLabel returns the human-readable scan scope label for the masthead.
+// summary is the diff summary; when Enabled is set the label names diff mode and the count of ChangedFiles, otherwise it is "full project".
 func scopeLabel(summary analysis.DiffSummary) string {
 	if summary.Enabled {
 		return fmt.Sprintf("diff · %d changed files", len(summary.ChangedFiles))
@@ -181,6 +209,9 @@ func scopeLabel(summary analysis.DiffSummary) string {
 }
 
 // encodePathSegments percent-encodes each segment of a slash-separated path.
+//
+// absolutePath is split on forward slashes and each segment is escaped with url.PathEscape, so the separators survive.
+// Returns the rejoined path, keeping any leading slash; an empty absolutePath gives an empty string.
 func encodePathSegments(absolutePath string) string {
 	segments := strings.Split(absolutePath, "/")
 	for i, segment := range segments {
@@ -190,6 +221,7 @@ func encodePathSegments(absolutePath string) string {
 }
 
 // esc HTML-escapes a value for safe inclusion in the rendered document.
+// Returns value with html.EscapeString applied, so less-than, greater-than, ampersand, and single and double quotes become entities.
 func esc(value string) string {
 	return html.EscapeString(value)
 }

@@ -1,5 +1,7 @@
-// Package rule keeps HTTP redirect-status recognition separate from request
-// taint analysis so each security policy remains small enough to review.
+// Package rule keeps HTTP redirect-status recognition separate from request taint analysis so each security policy remains small enough to review.
+//
+// A Location header write is paired with a redirect only when the same response writer may later send a redirect status.
+// A recognised non-redirect status, or one in another branch of the same if, switch or select, cannot qualify the header; a later status still can.
 package rule
 
 import (
@@ -9,9 +11,15 @@ import (
 	"strings"
 )
 
-// locationHeaderHasRedirectStatus ties a Location write to a later redirect
-// status on the same response writer. Dynamic status expressions stay out of
-// this candidate rule because their redirect behavior cannot be proven here.
+// locationHeaderHasRedirectStatus ties a Location write to a later redirect status on the same response writer.
+//
+// A dynamic status expression counts as a possible redirect, because its redirect behavior cannot be ruled out here.
+// functionBody is searched, outside nested function literals, for a one-argument WriteHeader call after locationCall on the same writer.
+// httpPackageAliases is passed to statusCanRedirect so net/http Status constants can be read by name.
+//
+// It reports true once such a call and locationCall sit in no different branches of one if, switch or select, and its status can redirect.
+// Switch clauses joined by fallthrough still count as different branches, so such a redirect is missed.
+// The result is false when locationCall is not a method call on an identifier's Header() result, or when no such call qualifies.
 func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *ast.CallExpr, httpPackageAliases map[string]bool) bool {
 	responseWriter, ok := locationHeaderResponseWriter(locationCall)
 	if !ok {
@@ -22,6 +30,7 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 		if found {
 			return false
 		}
+		// A WriteHeader inside a closure, such as a deferred func literal, is never paired with this Location write.
 		if _, nested := node.(*ast.FuncLit); nested {
 			return false
 		}
@@ -31,12 +40,11 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 		}
 		selector, isSelector := statusCall.Fun.(*ast.SelectorExpr)
 		writer, isIdentifier := selectorReceiverIdent(selector)
-		// Only a redirect status on the same response binding activates Location.
+		// A redirect or unresolved status counts only from WriteHeader on the same response binding, so a shadowed or different writer is ignored.
 		if !isSelector || !isIdentifier || selector.Sel.Name != "WriteHeader" || !identifiersShareBinding(writer, responseWriter) {
 			return true
 		}
-		// Mutually exclusive branches cannot combine a Location value with a
-		// redirect status on any execution path.
+		// Calls in different branches of one if, switch or select are never paired, even when switch fallthrough would run both.
 		if !nodesCanShareControlPath(functionBody, locationCall, statusCall) {
 			return true
 		}
@@ -46,8 +54,11 @@ func locationHeaderHasRedirectStatus(functionBody *ast.BlockStmt, locationCall *
 	return found
 }
 
-// locationHeaderResponseWriter returns the lexical `w` from w.Header().Set(...).
+// locationHeaderResponseWriter returns the lexical w from w.Header().Set(...).
+//
 // The caller uses its object identity so a shadowed writer cannot activate Location.
+// The bool is false, with a nil identifier, unless locationCall calls a method on the result of a no-argument Header() call on a plain identifier.
+// A writer reached through a field, such as s.w.Header().Set, gives false, so that Location write is never paired with a status.
 func locationHeaderResponseWriter(locationCall *ast.CallExpr) (*ast.Ident, bool) {
 	setSelector, ok := locationCall.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -68,8 +79,10 @@ func locationHeaderResponseWriter(locationCall *ast.CallExpr) (*ast.Ident, bool)
 	return writer, true
 }
 
-// identifiersShareBinding reports whether two receiver names resolve to the
-// same lexical object. Name fallback preserves scans of unresolved partial code.
+// identifiersShareBinding reports whether two receiver names resolve to the same lexical object.
+//
+// Name fallback preserves scans of unresolved partial code.
+// It is false when leftIdentifier or rightIdentifier is nil, or when only one resolves; with neither resolved it compares their names.
 func identifiersShareBinding(leftIdentifier, rightIdentifier *ast.Ident) bool {
 	// Missing receiver syntax cannot describe one response writer.
 	if leftIdentifier == nil || rightIdentifier == nil {
@@ -83,6 +96,9 @@ func identifiersShareBinding(leftIdentifier, rightIdentifier *ast.Ident) bool {
 }
 
 // selectorReceiverIdent safely returns an identifier receiver for method calls.
+//
+// A nil selector, such as one left by a failed type assertion, yields a nil identifier and false.
+// Otherwise the bool is true exactly when selector.X is an identifier, and that identifier is returned.
 func selectorReceiverIdent(selector *ast.SelectorExpr) (*ast.Ident, bool) {
 	if selector == nil {
 		return nil, false
@@ -91,16 +107,18 @@ func selectorReceiverIdent(selector *ast.SelectorExpr) (*ast.Ident, bool) {
 	return receiver, ok
 }
 
-// statusCanRedirect reports whether a WriteHeader argument can send the browser
-// somewhere else. An integer literal and a net/http Status constant each name
-// their code exactly, so a response that is provably 200 or 201 keeps its
-// Location header out of the user's findings.
+// statusCanRedirect reports whether a WriteHeader argument can send the browser somewhere else.
 //
-// Everything else - a variable, a helper call, another package's constant -
-// stays a redirect candidate. Requiring a statically known redirect instead hid
-// the ordinary `code := http.StatusFound; ...; w.WriteHeader(code)` handler
-// completely, and an unreported open redirect costs more than one extra finding
-// on a response whose status this parser-only rule cannot read.
+// Integer literals are parsed as decimal and net/http Status constants are matched by name.
+// A recognised non-redirect such as 200 gives false here, though another WriteHeader may still qualify the Location header.
+// Other expressions stay candidates; every Status-prefixed selector on an unshadowed net/http alias is classified solely by its name.
+//
+// A status variable stays unresolved, so a handler that stores http.StatusFound in a variable before WriteHeader still counts as a candidate.
+// An unreported open redirect costs more than one extra finding on a response whose status this parser-only rule cannot read.
+//
+// statusExpression is the WriteHeader argument; httpPackageAliases decides, through isImportedPackageIdentifier, which selectors count as net/http.
+// An integer literal that strconv.Atoi cannot parse, such as a hex or underscored one, also stays a redirect candidate.
+// A leading-zero octal literal is misread as decimal, so 0455, which is 301, is not a candidate, and 0301, which is 193, is.
 func statusCanRedirect(statusExpression ast.Expr, httpPackageAliases map[string]bool) bool {
 	if literal, isLiteral := statusExpression.(*ast.BasicLit); isLiteral && literal.Kind == token.INT {
 		statusCode, err := strconv.Atoi(literal.Value)
@@ -129,6 +147,7 @@ func statusCanRedirect(statusExpression ast.Expr, httpPackageAliases map[string]
 }
 
 // isRedirectStatusCode lists the numeric statuses clients follow as redirects.
+// It reports true when statusCode is 301, 302, 303, 307 or 308, and false for any other code, including 300 and 304.
 func isRedirectStatusCode(statusCode int) bool {
 	switch statusCode {
 	case 301, 302, 303, 307, 308:
@@ -138,7 +157,10 @@ func isRedirectStatusCode(statusCode int) bool {
 	}
 }
 
-// isRedirectStatusConstant lists the net/http spellings of those statuses.
+// isRedirectStatusConstant lists the net/http spellings of the statuses isRedirectStatusCode accepts.
+//
+// It reports true when constantName is StatusMovedPermanently, StatusFound, StatusSeeOther, StatusTemporaryRedirect or StatusPermanentRedirect.
+// Any other name, such as StatusMultipleChoices or StatusNotModified, gives false; the match is exact and case-sensitive.
 func isRedirectStatusConstant(constantName string) bool {
 	switch constantName {
 	case "StatusMovedPermanently", "StatusFound", "StatusSeeOther", "StatusTemporaryRedirect", "StatusPermanentRedirect":

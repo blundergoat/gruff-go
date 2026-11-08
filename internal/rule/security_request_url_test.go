@@ -1,9 +1,55 @@
-// Package rule tests parser-only request-driven URL security rules.
+// Package rule tests the parser-only rules that flag request-controlled URLs in outbound HTTP calls and redirects.
+//
+// Each case parses one inline handler and counts findings; a mismatch means a user would see a missed or a false finding.
 package rule
 
 import "testing"
 
-// TestRequestControlledURLRule covers SSRF sinks and validated/safe non-findings.
+// TestOpenRedirectHTTPSUpgrade keeps the autocert-style HTTPS upgrade to the same request host quiet.
+// Submitted destinations, hosts or paths, a request host overwritten first, and helpers whose bodies change the host still produce one finding.
+func TestOpenRedirectHTTPSUpgrade(t *testing.T) {
+	// helper mirrors the observed autocert port helper: it keeps the request host and only swaps the port to 443.
+	helper := `func stripPort(hostport string) string {
+ host, _, err := net.SplitHostPort(hostport)
+ if err != nil { return hostport }
+ return net.JoinHostPort(host, "443")
+}`
+	cases := []struct {
+		name   string
+		target string
+		helper string
+		before string
+		want   int
+	}{
+		{"observed autocert upgrade", `"https://" + stripPort(r.Host) + r.URL.RequestURI()`, helper, "", 0},
+		{"direct same host", `"https://" + r.Host + r.URL.RequestURI()`, "", "", 0},
+		{"submitted host", `"https://" + r.FormValue("host") + r.URL.RequestURI()`, "", "", 1},
+		{"request host overwritten before the upgrade", `"https://" + r.Host + r.URL.RequestURI()`, "", `r.Host = r.FormValue("host")`, 1},
+		{"submitted destination", `r.FormValue("next")`, "", "", 1},
+		{"helper returns another host", `"https://" + stripPort(r.Host) + r.URL.RequestURI()`, `func stripPort(string) string { return "another.example" }`, "", 1},
+		{"port helper has an extra destination input", `"https://" + stripPort(r.Host, r.FormValue("next")) + r.URL.RequestURI()`, `func stripPort(host, next string) string { return next }`, "", 1},
+		{"query is not an escaped request URI", `"https://" + r.Host + r.FormValue("path")`, "", "", 1},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			unit := parseOne(t, "handler.go", `package handler
+import ("net/http"; "net")
+`+test.helper+`
+func upgrade(w http.ResponseWriter, r *http.Request) {
+ `+test.before+`
+ target := `+test.target+`
+ http.Redirect(w, r, target, http.StatusFound)
+}`)
+			findings := (OpenRedirectRule{}).AnalyzeUnit(unit, Context{})
+			if len(findings) != test.want {
+				t.Fatalf("findings = %#v, want %d", findings, test.want)
+			}
+		})
+	}
+}
+
+// TestRequestControlledURLRule checks that a request value reaching an outbound HTTP call is flagged as server-side request forgery.
+// Fixed, validated, or later-assigned URLs stay quiet, and path.Clean or aliasing does not clear the taint.
 func TestRequestControlledURLRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -263,6 +309,7 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := "handler.go"
+			// The skip case reuses a flagged handler under a _test.go name, so a finding there means test files are no longer exempt.
 			if tt.name == "test file skipped" {
 				path = "handler_test.go"
 			}
@@ -275,7 +322,8 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TestOpenRedirectRule covers request-controlled redirect targets and safe ones.
+// TestOpenRedirectRule expects a finding for a request value used as a redirect target, or as a Location header followed by a redirect status.
+// Fixed paths, relative paths with a request query, and validated targets stay quiet; a bare "/" prefix or path.Clean is not enough.
 func TestOpenRedirectRule(t *testing.T) {
 	tests := []struct {
 		name string

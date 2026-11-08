@@ -1,8 +1,9 @@
-// Package cli tests cover the init subcommand and the interactive bootstrap.
-// The init checks lock in the file-creation contract (default path, --force
-// behaviour, refusal to clobber); the bootstrap checks lock in the prompt
-// gating (skip on -n, skip on non-TTY stdin, skip when --config or --no-config
-// already disambiguate intent, write the file on an affirmative answer).
+// Package cli tests cover the init subcommand and the interactive config bootstrap that analyse offers.
+//
+// The init tests lock in the file contract: default path, refusal to overwrite, the --force merge that keeps tuning, and --force --reset.
+//
+// With no config, analyse can offer to write one; these tests check that -n and --no-config skip the offer.
+// Here a y answer writes the file, an n answer keeps built-in defaults, and prompt text goes to stderr so JSON on stdout stays valid.
 package cli
 
 import (
@@ -18,9 +19,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestInitWritesDefaultConfigFile checks the default invocation path: the
-// file lands at .gruff-go.yaml in the working directory and parses cleanly
-// through the config loader.
+// TestInitWritesDefaultConfigFile checks plain gruff-go init writes .gruff-go.yaml in the working directory and that it parses cleanly.
+//
+// It also pins the stdout confirmation and the baseline hint, and that init prints the baseline command without creating gruff-baseline.json.
 func TestInitWritesDefaultConfigFile(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -48,8 +49,7 @@ func TestInitWritesDefaultConfigFile(t *testing.T) {
 	}
 }
 
-// TestInitRefusesToOverwriteWithoutForce makes sure a second init call does
-// not silently clobber existing edits. The user must opt in with --force.
+// TestInitRefusesToOverwriteWithoutForce makes sure a second init call does not silently clobber existing edits. The user must opt in with --force.
 func TestInitRefusesToOverwriteWithoutForce(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -73,8 +73,7 @@ func TestInitRefusesToOverwriteWithoutForce(t *testing.T) {
 	}
 }
 
-// TestInitForceOverwritesExistingConfig confirms --force replaces an existing
-// config and that the new file parses cleanly.
+// TestInitForceOverwritesExistingConfig confirms --force replaces an existing config and that the new file parses cleanly.
 func TestInitForceOverwritesExistingConfig(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -98,10 +97,9 @@ func TestInitForceOverwritesExistingConfig(t *testing.T) {
 	}
 }
 
-// TestInitForcePreservesExistingTuning is the regression test for the
-// 8282478-style wipe: a hand-tuned .gruff-go.yaml must survive `init --force`
-// with its paths.ignore, allowlists, and per-rule overrides intact. The
-// regenerate is a merge, not a clobber.
+// TestInitForcePreservesExistingTuning verifies init --force merges existing tuning into the regenerated config instead of clobbering it.
+//
+// A hand-tuned .gruff-go.yaml keeps its paths.ignore, allowlists and per-rule overrides, and stderr says the tuning was preserved.
 func TestInitForcePreservesExistingTuning(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -161,17 +159,10 @@ rules:
 	}
 }
 
-// TestInitForcePreservesPreADR009Config locks in the v0.2.0 migration contract:
-// `init --force` on a pre-0.2 config carrying legacy 5-bucket severity names
-// (notice/medium/critical/...) must still preserve paths.ignore, allowlists,
-// thresholds, and options. The legacy severity overrides themselves fall back
-// to registry defaults (no silent legacy mapping per the no-legacy-compat
-// policy), but everything else survives.
+// TestInitForcePreservesPreADR009Config locks in the v0.2.0 migration contract for init --force on a pre-0.2 config.
 //
-// Without LoadPermissive the strict load fails on the first invalid severity,
-// the preservation path silently writes fresh defaults, and the user loses
-// every customisation they made before the migration - the exact ship-day
-// surprise this test guards against.
+// The output must parse, omit severity: medium and severity: notice, and retain the fixture's paths, ID, threshold: 4 and minWordsBeyondSymbol: 3.
+// When the strict load fails the old config must still be recovered; the prior-tuning-lost warning would mean it was not.
 func TestInitForcePreservesPreADR009Config(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -216,6 +207,7 @@ rules:
 	if strings.Contains(rendered, "severity: medium") || strings.Contains(rendered, "severity: notice") {
 		t.Fatalf("legacy severity values must not round-trip; rendered:\n%s", rendered)
 	}
+	// The prior-tuning-lost warning means the old tuning was not recovered, so this legacy-severity fixture must never produce it.
 	if strings.Contains(stderr.String(), "prior tuning was lost") {
 		t.Fatalf("permissive fallback should suppress the parse-error warning: %s", stderr.String())
 	}
@@ -228,17 +220,15 @@ rules:
 	}
 }
 
-// TestInitForcePreservesMinimumSeverityBlock is the regression test for
-// ADR-010's preservation contract: a project that has tuned minimumSeverity
-// (e.g. set `analyse: error` for stricter CI gating) must keep that block
-// across `init --force`. The check passes only if Render's
-// preservedMinimumSeverityFor consulted opts.Existing.MinimumSeverity instead
-// of always emitting DefaultFailThresholdFor.
-func TestInitForcePreservesMinimumSeverityBlock(t *testing.T) {
+// TestInitForcePreservesFailOnBlock is the regression test for ADR-010's preservation contract on the failOn block.
+//
+// The fixture's failOn entries must survive init --force, and stderr must mention failOn entries.
+// The regenerated file must also parse back with the tuned analyse and dashboard entries intact.
+func TestInitForcePreservesFailOnBlock(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	tuned := `schemaVersion: "gruff-go.config.v0.1"
-minimumSeverity:
+failOn:
   analyse: error
   summary: error
   report: warning
@@ -264,24 +254,24 @@ minimumSeverity:
 		"dashboard: advisory",
 	} {
 		if !strings.Contains(rendered, want) {
-			t.Fatalf("init --force lost preserved minimumSeverity entry %q\nrendered:\n%s", want, rendered)
+			t.Fatalf("init --force lost preserved failOn entry %q\nrendered:\n%s", want, rendered)
 		}
 	}
-	if !strings.Contains(stderr.String(), "minimumSeverity entries") {
-		t.Fatalf("stderr should mention preserved minimumSeverity count: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "failOn entries") {
+		t.Fatalf("stderr should mention preserved failOn count: %s", stderr.String())
 	}
 	cfg, err := cfgpkg.Parse(body, ruleDefinitionsForTest())
 	if err != nil {
 		t.Fatalf("merged config did not parse back: %v\nbody:\n%s", err, body)
 	}
-	if cfg.MinimumSeverity["analyse"] != "error" || cfg.MinimumSeverity["dashboard"] != "advisory" {
-		t.Fatalf("round-trip lost MinimumSeverity entries: %#v", cfg.MinimumSeverity)
+	if cfg.FailOn["analyse"] != "error" || cfg.FailOn["dashboard"] != "advisory" {
+		t.Fatalf("round-trip lost FailOn entries: %#v", cfg.FailOn)
 	}
 }
 
-// TestInitForceResetDiscardsExistingTuning verifies the explicit escape hatch:
-// `init --force --reset` performs the old destructive overwrite for callers
-// who really do want a fresh defaults file.
+// TestInitForceResetDiscardsExistingTuning verifies the explicit escape hatch, init --force --reset, for users who want a fresh defaults file.
+//
+// Here the old destructive overwrite is wanted: preserved paths.ignore entries vanish and the file carries an empty ignore list.
 func TestInitForceResetDiscardsExistingTuning(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -310,8 +300,7 @@ paths:
 	}
 }
 
-// TestInitResetRequiresForce locks in the destructive-reset guard documented in
-// the setup footgun: --reset is only meaningful with --force.
+// TestInitResetRequiresForce locks in the destructive-reset guard documented in the setup footgun: --reset is only meaningful with --force.
 func TestInitResetRequiresForce(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -328,9 +317,9 @@ func TestInitResetRequiresForce(t *testing.T) {
 	}
 }
 
-// TestBootstrapPromptCreatesConfigOnYes runs the analyse path with a faked
-// TTY stdin that answers "y" and confirms the file gets written before the
-// scan continues with the configured registry.
+// TestBootstrapPromptCreatesConfigOnYes runs analyse with a faked TTY stdin that answers y, as a first run in a project with no config would.
+//
+// After analyse returns, the config file must exist; stderr must contain the prompt question, confirmation and baseline hint.
 func TestBootstrapPromptCreatesConfigOnYes(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -359,8 +348,7 @@ func TestBootstrapPromptCreatesConfigOnYes(t *testing.T) {
 	}
 }
 
-// TestBootstrapPromptDoesNotCorruptJSONOutput verifies interactive bootstrap
-// text never precedes machine-readable stdout.
+// TestBootstrapPromptDoesNotCorruptJSONOutput verifies interactive bootstrap text never precedes machine-readable stdout.
 func TestBootstrapPromptDoesNotCorruptJSONOutput(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -383,8 +371,7 @@ func TestBootstrapPromptDoesNotCorruptJSONOutput(t *testing.T) {
 	}
 }
 
-// TestBootstrapPromptSkippedOnNoInteraction asserts that -n keeps analyse
-// quiet: no prompt text, no config file on disk, scan still completes.
+// TestBootstrapPromptSkippedOnNoInteraction checks that -n leaves no config file, exits 0 and puts no prompt question on stdout.
 func TestBootstrapPromptSkippedOnNoInteraction(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -404,8 +391,7 @@ func TestBootstrapPromptSkippedOnNoInteraction(t *testing.T) {
 	}
 }
 
-// TestBootstrapPromptSkippedWithNoConfig confirms --no-config is treated as a
-// firm "do not autoload" intent and never triggers the bootstrap prompt.
+// TestBootstrapPromptSkippedWithNoConfig checks that --no-config exits 0 without creating a config or writing the prompt question to stdout.
 func TestBootstrapPromptSkippedWithNoConfig(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -425,9 +411,9 @@ func TestBootstrapPromptSkippedWithNoConfig(t *testing.T) {
 	}
 }
 
-// TestBootstrapPromptDecliningKeepsBuiltInDefaults verifies that answering
-// anything other than "y" leaves no config file on disk and still completes
-// the scan.
+// TestBootstrapPromptDecliningKeepsBuiltInDefaults verifies that answering n leaves no config file on disk.
+//
+// The scan exits 0, and the prompt question appears on stderr and is absent from stdout.
 func TestBootstrapPromptDecliningKeepsBuiltInDefaults(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -450,9 +436,9 @@ func TestBootstrapPromptDecliningKeepsBuiltInDefaults(t *testing.T) {
 	}
 }
 
-// withFakeTerminalStdin swaps the prompt reader (and forces the TTY check to
-// pass) for the duration of a test, restoring the prior state afterwards so
-// neighbouring tests are not affected.
+// withFakeTerminalStdin makes the bootstrap prompt read its answer from reader and forces the TTY check to pass for one test.
+//
+// Cleanup restores whatever reader and terminal check were set before, so later tests do not share this fake input.
 func withFakeTerminalStdin(t *testing.T, reader io.Reader) {
 	t.Helper()
 	prevReader := promptStdin
@@ -465,8 +451,7 @@ func withFakeTerminalStdin(t *testing.T, reader io.Reader) {
 	})
 }
 
-// ruleDefinitionsForTest returns the live registry's catalogue so config.Parse
-// can validate the rendered file against the real rule set.
+// ruleDefinitionsForTest returns the live registry's catalogue so config.Parse can validate the rendered file against the real rule set.
 func ruleDefinitionsForTest() []rule.Definition {
 	defaults := rule.Defaults()
 	return defaults.Definitions()

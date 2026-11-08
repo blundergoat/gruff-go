@@ -1,5 +1,7 @@
-// Package analysis tests exercise the Analyze pipeline end-to-end.
-// They cover diagnostics, deterministic output, and exit-code thresholds.
+// Package analysis tests run the Analyze pipeline end to end against small temporary projects.
+//
+// They cover baseline load diagnostics, repeat-run stability, exit-code thresholds, bounded deep scans and composite pruning.
+// They also pin how changed-range filtering, diff mode and config paths.ignore decide which findings reach the report.
 package analysis
 
 import (
@@ -12,10 +14,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestAnalyzeMissingBaselineDoesNotMarkApplied asserts that a baseline file which
-// fails to load leaves Baseline.Applied false, so the SARIF renderer does not
-// label every emitted result baselineState:"new" as though it had been compared
-// against a real baseline. The load failure must still surface as a diagnostic.
+// TestAnalyzeMissingBaselineDoesNotMarkApplied checks that a baseline file which fails to load leaves Baseline.Applied false.
+//
+// SARIF marks a result baselineState:"new" only when a baseline was applied and that finding's BaselineStatus is "new".
+// The load failure must still surface as a baseline-stage diagnostic, so the user learns the baseline was not applied.
 func TestAnalyzeMissingBaselineDoesNotMarkApplied(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -42,7 +44,8 @@ func TestAnalyzeMissingBaselineDoesNotMarkApplied(t *testing.T) {
 	}
 }
 
-// TestAnalyzeIsDeterministicExceptStartedAt confirms repeated runs match aside from timestamps.
+// TestAnalyzeIsDeterministicExceptStartedAt checks that repeated scans have the same exit code and first scanned path.
+// Only those two fields are compared; a failure means two scans of one unchanged project disagreed on one of them.
 func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
@@ -62,6 +65,7 @@ func TestAnalyzeIsDeterministicExceptStartedAt(t *testing.T) {
 }
 
 // TestAnalyzeExitsOneWhenFindingMeetsThreshold checks the threshold-driven exit code.
+// One finding from a warning-severity rule under a warning fail threshold must make the scan exit 1, and that finding must carry a fingerprint.
 func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -86,11 +90,41 @@ func TestAnalyzeExitsOneWhenFindingMeetsThreshold(t *testing.T) {
 	}
 }
 
-// TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence confirms
-// that composite findings (carrying an underlyingFingerprints metadata slice)
-// are dropped when none of their underlying fingerprints survive the diff
-// filter. Without this prune, composites would stay in --diff-base reports
-// even when the size/complexity evidence they composed has been filtered out.
+// TestAnalyzeBoundedDeepScanRetainsTextRules checks that a file over the deep-scan budget loses AST-derived function evidence but stays scanned.
+//
+// With a one-line budget the text-level rule still fires and the function-declaration rule stays silent.
+// The run must exit 0 with one bounded-deep-scan diagnostic that does not invalidate it, so the degradation is visible but not fatal.
+func TestAnalyzeBoundedDeepScanRetainsTextRules(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	t.Chdir(root)
+	registry, err := rule.NewRegistry([]rule.UnitRule{findingRule{}, functionDeclarationRule{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := Analyze(Options{
+		Registry:       registry,
+		FailOn:         finding.FailThresholdNone,
+		DeepScanBudget: DeepScanBudget{Enabled: true, MaxLines: 1, MaxBytes: 10_000, Override: "cli"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.ExitCode != 0 || report.Summary.FilesScanned != 1 {
+		t.Fatalf("summary = %#v, want one analysed file and clean non-fatal exit", report.Summary)
+	}
+	if !containsRuleID(report.Findings, "size.file-length") || containsRuleID(report.Findings, "test.function-declaration") {
+		t.Fatalf("findings = %#v, want text-level rule only", report.Findings)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].DiagnosticType != "bounded-deep-scan" || report.Diagnostics[0].InvalidatesRun == nil || *report.Diagnostics[0].InvalidatesRun {
+		t.Fatalf("diagnostics = %#v, want one visible non-fatal degradation", report.Diagnostics)
+	}
+}
+
+// TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence checks that pruneOrphanedComposites removes orphaned composites.
+//
+// A composite carries underlyingFingerprints metadata and is dropped and counted when none of those fingerprints survive the diff filter.
+// Without this prune, --diff-base reports would keep composites even when the size or complexity evidence they composed was filtered out.
 func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testing.T) {
 	survivingEvidence := finding.Finding{
 		RuleID:      "size.function-length",
@@ -135,9 +169,9 @@ func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testi
 	}
 }
 
-// TestAnalyzeChangedRangesUseEnclosingFunction checks that symbol-scope filtering
-// keeps a finding when its enclosing function was changed, suppresses findings in
-// untouched functions, and reports the suppressed total.
+// TestAnalyzeChangedRangesUseEnclosingFunction checks symbol-scope filtering against a change on line 8, inside changed().
+//
+// The finding for changed() must stay, the finding for the untouched stable() must be suppressed, and the suppressed total must be 1.
 func TestAnalyzeChangedRangesUseEnclosingFunction(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", `package main
@@ -174,9 +208,8 @@ func changed() {
 	}
 }
 
-// TestAnalyzeChangedScopeHunkExcludesSignatureFindings checks that hunk scope is
-// line-exact: a finding on the function signature is dropped when only an inner
-// line is in the changed range, unlike the function-wide symbol scope.
+// TestAnalyzeChangedScopeHunkExcludesSignatureFindings checks that hunk scope is line-exact.
+// A finding on the function signature is dropped when only an inner line is in the changed range, unlike the function-wide symbol scope.
 func TestAnalyzeChangedScopeHunkExcludesSignatureFindings(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", `package main
@@ -206,11 +239,10 @@ func changed() {
 	}
 }
 
-// TestAnalyzeExplicitIgnoredArgProducesNoFindings proves config paths.ignore is
-// authoritative when the file is passed as an explicit argument (the coding-agent
-// hook shape): the file yields zero findings and is reported in Skipped with
-// source=config and the matching glob, even though findingRule would otherwise
-// fire on it. Without the ignore, the same file produces a finding.
+// TestAnalyzeExplicitIgnoredArgProducesNoFindings checks that config paths.ignore is authoritative for a file passed as an explicit argument.
+//
+// That is the coding-agent hook shape: the file must yield zero findings and appear in Skipped with source=config and the matching glob.
+// A control run without the ignore proves findingRule fires on the same file, and the file must also be listed in IgnoredPaths.
 func TestAnalyzeExplicitIgnoredArgProducesNoFindings(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "ignored/bad.go", "package ignored\n")
@@ -249,9 +281,8 @@ func TestAnalyzeExplicitIgnoredArgProducesNoFindings(t *testing.T) {
 	}
 }
 
-// TestAnalyzeDirectoryWalkReportsIgnoredPaths proves the cross-port
-// paths.ignoredPaths list is populated from config paths.ignore during ordinary
-// directory discovery, alongside the detailed paths.skipped object.
+// TestAnalyzeDirectoryWalkReportsIgnoredPaths checks that ordinary directory discovery fills the cross-port paths.ignoredPaths list.
+// The config-ignored secret.go must appear in IgnoredPaths and have a source=config record in report.Paths.Skipped.
 func TestAnalyzeDirectoryWalkReportsIgnoredPaths(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -279,10 +310,10 @@ func TestAnalyzeDirectoryWalkReportsIgnoredPaths(t *testing.T) {
 	}
 }
 
-// TestAnalyzeDiffModeHonorsConfigIgnore proves config paths.ignore is
-// authoritative in diff mode: a changed-ranges scan over an ignored file still
-// produces zero findings and records the config skip, so a hook scoping to the
-// agent's diff never surfaces an excluded file.
+// TestAnalyzeDiffModeHonorsConfigIgnore checks that config paths.ignore stays authoritative in diff mode.
+//
+// A changed-ranges scan over an ignored file must produce zero findings and record the config skip.
+// Otherwise a hook scoping to the agent's diff could surface a file the user excluded.
 func TestAnalyzeDiffModeHonorsConfigIgnore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "ignored/bad.go", "package ignored\n")
@@ -313,9 +344,8 @@ func TestAnalyzeDiffModeHonorsConfigIgnore(t *testing.T) {
 	}
 }
 
-// TestAnalyzeIncludeIgnoredKeepsConfigIgnore proves --include-ignored opts into
-// git/default ignores only and never overrides config paths.ignore: the ignored
-// file stays unscanned and config-skipped.
+// TestAnalyzeIncludeIgnoredKeepsConfigIgnore checks that --include-ignored preserves config paths.ignore.
+// It never overrides config paths.ignore: the ignored file must stay unscanned, config-skipped and listed in IgnoredPaths.
 func TestAnalyzeIncludeIgnoredKeepsConfigIgnore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "ignored/bad.go", "package ignored\n")
@@ -346,12 +376,10 @@ func TestAnalyzeIncludeIgnoredKeepsConfigIgnore(t *testing.T) {
 	}
 }
 
-// TestAnalyzeDiffModeKeepsFullProjectContext proves a changed-region scan parses the
-// whole project, not just the changed files, so a project-level rule
-// (dead-code.unused-private-function) does not falsely flag a private function in a
-// changed file that an unchanged sibling still calls. The patch touches the helper's
-// own line, so a false finding would survive the symbol-scope filter; the scan stays
-// clean only because the unchanged caller is still parsed for cross-file resolution.
+// TestAnalyzeDiffModeKeepsFullProjectContext checks that a changed-region scan parses the whole project, not just the changed files.
+//
+// Otherwise dead-code.unused-private-function would falsely flag a private helper in a changed file that an unchanged sibling still calls.
+// The patch touches the helper's own line, so the symbol-scope filter would keep a false finding; parsing the unchanged caller prevents it.
 func TestAnalyzeDiffModeKeepsFullProjectContext(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "used.go", "package svc\n\nfunc helper() string {\n\treturn \"ok\"\n}\n")
@@ -381,8 +409,8 @@ func TestAnalyzeDiffModeKeepsFullProjectContext(t *testing.T) {
 	}
 }
 
-// hasConfigSkip reports whether skipped contains path with source=config and the
-// expected matched glob.
+// hasConfigSkip reports whether skipped holds an entry for path with source=config and the expected matched glob in pattern.
+// It reports false when skipped is empty or no entry matches path, config and pattern.
 func hasConfigSkip(skipped []SkippedPath, path, pattern string) bool {
 	for _, item := range skipped {
 		if item.Path == path && item.Source == "config" && item.Pattern == pattern {
@@ -392,7 +420,7 @@ func hasConfigSkip(skipped []SkippedPath, path, pattern string) bool {
 	return false
 }
 
-// hasString reports whether values contains want.
+// hasString reports whether values contains want; it reports false when values is empty.
 func hasString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
@@ -402,7 +430,7 @@ func hasString(values []string, want string) bool {
 	return false
 }
 
-// containsRuleID reports whether findings include a finding for id.
+// containsRuleID reports whether findings include a finding for id; it reports false when findings is empty.
 func containsRuleID(findings []finding.Finding, id string) bool {
 	for _, item := range findings {
 		if item.RuleID == id {
@@ -413,9 +441,11 @@ func containsRuleID(findings []finding.Finding, id string) bool {
 }
 
 // findingRule is a test rule that always emits one finding per unit.
+// It borrows the size.file-length rule ID at warning severity, so its findings count toward a warning fail threshold.
 type findingRule struct{}
 
 // Definition returns the rule metadata used by the registry.
+// The result is a fixed, default-enabled size.file-length definition with warning severity and high confidence.
 func (findingRule) Definition() rule.Definition {
 	return rule.Definition{
 		ID:             "size.file-length",
@@ -428,6 +458,7 @@ func (findingRule) Definition() rule.Definition {
 }
 
 // AnalyzeUnit emits a single fixed finding for the given unit.
+// It returns a one-element slice whose finding carries unit.File.Path, line 1 and a fixed test message, so the result is never empty.
 func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Finding {
 	return []finding.Finding{{
 		Message:  "test finding",
@@ -441,6 +472,7 @@ func (findingRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Findi
 type functionDeclarationRule struct{}
 
 // Definition returns this test rule's metadata used by the registry.
+// The result is a fixed, default-enabled test.function-declaration definition with warning severity and high confidence.
 func (functionDeclarationRule) Definition() rule.Definition {
 	return rule.Definition{
 		ID:             "test.function-declaration",
@@ -452,9 +484,10 @@ func (functionDeclarationRule) Definition() rule.Definition {
 	}
 }
 
-// AnalyzeUnit emits one fingerprinted finding per function in the unit, located at
-// the function's line and carrying its name as Symbol, so changed-scope filtering
-// can resolve the enclosing function.
+// AnalyzeUnit emits one fingerprinted finding per function in unit, so changed-scope filtering can resolve the enclosing function.
+//
+// Each finding sits at the function's line and carries its name as Symbol.
+// It returns one finding per entry of unit.Functions, in that order, and an empty non-nil slice when the unit has no functions.
 func (functionDeclarationRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {
@@ -470,7 +503,8 @@ func (functionDeclarationRule) AnalyzeUnit(unit parser.Unit, _ rule.Context) []f
 	return findings
 }
 
-// writeFile writes contents to root/rel, creating parent directories as needed.
+// writeFile writes contents to the file rel under root, creating parent directories as needed.
+// A failed directory or file write stops the test at once through t.Fatal.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

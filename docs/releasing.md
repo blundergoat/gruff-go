@@ -39,8 +39,8 @@ go run ./cmd/gruff-go summary --help
 go run ./cmd/gruff-go list-rules --format json
 ```
 
-`--fail-on` and `--min-severity` must both remain accepted until a documented
-breaking release removes the old name.
+`--fail-on` is the exit-gate flag. `--min-severity` is refused in 0.6.0 and
+returns in 0.7.0 as a display filter.
 
 ## Docs
 

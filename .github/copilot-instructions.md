@@ -1,4 +1,4 @@
-# gruff-go - Go code-quality scanner (v0.5.0)
+# gruff-go - Go code-quality scanner (v0.6.0)
 
 `gruff-go` is a parser-only Go static analysis CLI. Its mission is to govern AI-generated code: used as a coding-agent hook, it forces output a human who didn't write it can verify, trust, and sign off on — legible, secure where review misses, and honestly tested (no low-signal test bloat). Judge every default, threshold, and rule against that goal; full framing in [`.goat-flow/architecture.md`](../.goat-flow/architecture.md) → Mission, recorded in [ADR-011](../.goat-flow/learning-loop/decisions/ADR-011-mission-ai-generated-code-verifiability.md). The Go application lives under `cmd/gruff-go` (entrypoint) and `internal/` (analysis pipeline, rule registry, scoring, report rendering, dashboard). GOAT Flow lives alongside for agent guardrails and project memory under `.goat-flow/` and `.github/`.
 
@@ -25,7 +25,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Keep `.github/copilot-instructions.md` concise; move domain and architecture detail to cold-path docs.
 - Use `rg`/`rg --files` for search. Open matching learning-loop entries before acting.
 - When a goat-* skill is active, its Step 0 satisfies READ/SCOPE; resume this loop at ACT.
-- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](../.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--min-severity` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
+- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](../.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--fail-on` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
 
 ## Commit Messages
@@ -91,6 +91,7 @@ Every line in this hot-path file must be a behavioral rule, scope boundary, comm
 | Orientation | `.goat-flow/code-map.md`, `.goat-flow/glossary.md` |
 | Learning loop | `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, `.goat-flow/learning-loop/decisions/` |
 | Skill reference (meta) | `.goat-flow/skill-docs/` |
+| Security policy (optional; read by `goat-security`) | `.goat-flow/security-policy.md` |
 | Tool playbooks (CLI/MCP availability checks) | `.goat-flow/skill-docs/playbooks/` — read BEFORE declaring a tool unavailable |
 | Copilot skills/config/hooks | `.github/skills/`, `.github/hooks/hooks.json`, `.goat-flow/hooks/` |
 | Application entrypoint | `cmd/gruff-go/main.go` |

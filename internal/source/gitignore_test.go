@@ -1,5 +1,7 @@
-// Package source gitignore tests cover pattern semantics for the Matcher.
-// They write temp .gitignore trees and assert ignore decisions for varied paths.
+// Package source tests in this file pin Matcher to git's .gitignore pattern semantics.
+//
+// Tests build temporary trees, usually with writeIgnoreTree, and check the ignore decisions Match returns for sample paths.
+// Separate tests cover the .gitignore each decision came from, ParseErrors diagnostics, and a tree with no .gitignore.
 package source
 
 import (
@@ -96,7 +98,7 @@ func TestMatcherNegationReincludesDirectoryDescendants(t *testing.T) {
 	}
 }
 
-// TestMatcherNegationCannotReIncludeUnderExcludedDir matches git's negation precedence rules.
+// TestMatcherNegationCannotReIncludeUnderExcludedDir verifies !secrets/public.txt cannot re-include a file once secrets/ is excluded, as in git.
 func TestMatcherNegationCannotReIncludeUnderExcludedDir(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "secrets/\n!secrets/public.txt\n",
@@ -148,10 +150,8 @@ func TestMatcherTrailingDoubleStar(t *testing.T) {
 	}
 }
 
-// TestMatcherTrailingDoubleStarDoesNotMatchParentDir verifies that "foo/**"
-// targets descendants of foo and not foo itself, matching git's semantics. The
-// regression: a terminal ** branch used to short-circuit to true, which made
-// "!foo/a" negations fail because the ancestor walk re-ignored foo.
+// TestMatcherTrailingDoubleStarDoesNotMatchParentDir verifies "foo/**" targets descendants of foo and not foo itself, matching git.
+// Regression guard: if a terminal ** also matched foo, the ancestor walk would re-ignore foo and break "!foo/a" negations.
 func TestMatcherTrailingDoubleStarDoesNotMatchParentDir(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "foo/**\n!foo/a\n",
@@ -172,7 +172,8 @@ func TestMatcherTrailingDoubleStarDoesNotMatchParentDir(t *testing.T) {
 	}
 }
 
-// TestMatcherCommentsAndBlankLines verifies comments and blank lines are skipped during parsing.
+// TestMatcherCommentsAndBlankLines verifies *.tmp still matches scratch.tmp when surrounded by comments and blank lines.
+// It also checks that scratch.go remains unignored.
 func TestMatcherCommentsAndBlankLines(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "# leading comment\n\n*.tmp\n   \n#trailing comment\n",
@@ -190,6 +191,7 @@ func TestMatcherCommentsAndBlankLines(t *testing.T) {
 // TestMatcherEscapedTrailingWhitespace confirms backslash-escaped trailing spaces are preserved.
 func TestMatcherEscapedTrailingWhitespace(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
+		// The escaped trailing space is part of the ignored filename, so name without that space must remain unignored.
 		".gitignore": "name\\ \n*.log\n",
 	})
 	m := NewMatcher(root)
@@ -205,7 +207,8 @@ func TestMatcherEscapedTrailingWhitespace(t *testing.T) {
 	}
 }
 
-// TestMatcherNestedOverride verifies nested .gitignore files override parent patterns.
+// TestMatcherNestedOverride verifies a nested .gitignore layers on the root one rather than replacing it.
+// Its negation re-includes only the names it lists, and its own rules ignore more paths inside its directory.
 func TestMatcherNestedOverride(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore":           "*.log\n",
@@ -228,8 +231,7 @@ func TestMatcherNestedOverride(t *testing.T) {
 	}
 }
 
-// TestMatcherNestedIgnoreWithoutRoot verifies nested .gitignore files still
-// apply when the discovery root has no .gitignore of its own.
+// TestMatcherNestedIgnoreWithoutRoot verifies nested .gitignore files still apply when the discovery root has no .gitignore of its own.
 func TestMatcherNestedIgnoreWithoutRoot(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		"pkg/.gitignore": "*.tmp\n",
@@ -244,8 +246,7 @@ func TestMatcherNestedIgnoreWithoutRoot(t *testing.T) {
 	}
 }
 
-// TestMatcherNestedParseErrorWithoutRoot verifies the fast path still loads
-// nested .gitignore files so parse diagnostics are not lost.
+// TestMatcherNestedParseErrorWithoutRoot verifies the fast path still loads nested .gitignore files so parse diagnostics are not lost.
 func TestMatcherNestedParseErrorWithoutRoot(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		"pkg/.gitignore": "[bad\n",
@@ -273,9 +274,8 @@ func TestMatcherEmptyFile(t *testing.T) {
 	}
 }
 
-// TestMatcherMalformedPatternSkipsOnlyBadRule verifies valid rules survive a
-// malformed line, matching Git's line-local handling while still surfacing a
-// diagnostic for the bad pattern.
+// TestMatcherMalformedPatternSkipsOnlyBadRule verifies valid rules survive a malformed line, matching Git's line-local handling.
+// ParseErrors still lists the .gitignore, so the bad pattern is surfaced as a diagnostic.
 func TestMatcherMalformedPatternSkipsOnlyBadRule(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "*.log\n[bad\n*.tmp\n",
@@ -344,6 +344,9 @@ func TestMatcherSource(t *testing.T) {
 }
 
 // writeIgnoreTree materialises a temporary directory tree with the supplied files.
+//
+// It returns the root path of that tree, a fresh t.TempDir directory that holds no files when files is empty.
+// Keys of files are slash-separated paths relative to that root and values are file contents; a failed directory or file write calls t.Fatal.
 func writeIgnoreTree(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()

@@ -1,9 +1,14 @@
 // Package rule tests parser-only HTTP security rules.
+//
+// These fixtures pin when an http.Client with no Timeout, or a request body read with no size limit, becomes a finding in gruff-go analyse output.
 package rule
 
 import "testing"
 
-// TestHTTPClientNoTimeoutRule covers client literals with and without Timeout.
+// TestHTTPClientNoTimeoutRule checks the finding a user sees when an http.Client literal has no Timeout, even if it sets a Transport.
+//
+// A client with Timeout set and any _test.go file stay quiet.
+// Only the literal's fields are inspected; request-context deadlines and Transport timeouts are outside these fixtures.
 func TestHTTPClientNoTimeoutRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -81,7 +86,10 @@ func sample() http.Client {
 	}
 }
 
-// TestRequestBodyWithoutLimitRule covers unbounded request-body reads and obvious limiters.
+// TestRequestBodyWithoutLimitRule checks the finding a user sees when code reads r.Body with io.ReadAll and no size limit.
+//
+// MaxBytesReader or LimitReader clears it; plain io.Reader values, _test.go files, RoundTrip transports and *testing.T helpers stay quiet.
+// A handler method merely named RoundTrip, or a parameter named t of a non-testing type, still reports.
 func TestRequestBodyWithoutLimitRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -173,6 +181,90 @@ func handle(w http.ResponseWriter, r *http.Request) {
 }
 `,
 			want: 0,
+		},
+		{
+			name: "round tripper reads its own outgoing request",
+			file: "client.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+)
+
+type recorder struct{ body []byte }
+
+func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	body, err := io.ReadAll(req.Body)
+	r.body = body
+	return nil, err
+}
+`,
+			want: 0,
+		},
+		{
+			name: "helper taking a testing handle reads the request it sends",
+			file: "testhelpers/request.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+	"testing"
+)
+
+func executeRequest(t *testing.T, req *http.Request) []byte {
+	t.Helper()
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+`,
+			want: 0,
+		},
+		{
+			name: "handler method named RoundTrip still reports",
+			file: "handler.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+)
+
+type server struct{}
+
+func (server) RoundTrip(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.ReadAll(r.Body)
+	_ = w
+}
+`,
+			want: 1,
+		},
+		{
+			name: "parameter named t without a testing type still reports",
+			file: "handler.go",
+			code: `// Package sample is a test package.
+package sample
+
+import (
+	"io"
+	"net/http"
+)
+
+type T struct{}
+
+func handle(t *T, r *http.Request) {
+	_, _ = io.ReadAll(r.Body)
+	_ = t
+}
+`,
+			want: 1,
 		},
 	}
 	for _, tt := range tests {

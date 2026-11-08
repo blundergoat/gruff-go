@@ -1,7 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file tests the M30 sensitive-data expansion detectors (entropy, PII, PHI):
-// that they fire on real-looking values, stay quiet on placeholders and the
-// shapes they must defer on, and never leak a raw value into a preview.
+//
+// This file tests the PII and PHI sensitive-data detectors and the documented-sample controls on config and text files.
+// The tests check positive matches, the email, phone, card and SSN false-positive guards, documented samples, and redacted previews.
 package rule
 
 import (
@@ -13,15 +13,14 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// randomSecretToken is a 41-char base64url string with no provider prefix - a
-// stand-in for a rotated or vendor-less credential. Its mixed alphabet pushes
-// Shannon entropy well above the 4.5 bits/char default, so the entropy tests key
-// on the detector's logic rather than on a borderline score.
+// randomSecretToken is a 41-char base64url string with no provider prefix, a stand-in for a rotated or vendor-less credential.
+//
+// No test in this file uses it; its mixed alphabet gives it high Shannon entropy.
 const randomSecretToken = "Zx9KqW2mB7vN4pL8dT3rYcF1gHjS0aQwE4tU7iO5n"
 
-// sensitiveTextUnit builds a text-file unit from a source body. The expansion
-// detectors are line scanners over unit.Source, so a text unit (no Go parse
-// needed) is the most direct fixture and matches the style of sensitive_test.go.
+// sensitiveTextUnit builds a text-file unit at path whose source is body, so a test can run a line-scanning detector with no Go parse.
+//
+// It returns a parser.Unit typed as a text file, matching the fixture style of sensitive_test.go.
 func sensitiveTextUnit(path, body string) parser.Unit {
 	return parser.Unit{
 		File:   source.File{Path: path, Type: source.FileTypeText},
@@ -29,9 +28,9 @@ func sensitiveTextUnit(path, body string) parser.Unit {
 	}
 }
 
-// assertNoRawLeak fails when any finding's preview metadata contains the raw
-// value. Every M30 detector must emit only a redacted preview, so the positive
-// tests run this after asserting a hit.
+// assertNoRawLeak fails the test when any of findings has a preview in its metadata that contains raw, the unredacted fixture value.
+//
+// Each PII and PHI detector must emit only a redacted preview, so positive tests call this after a hit; a finding with no preview passes.
 func assertNoRawLeak(t *testing.T, findings []finding.Finding, raw string) {
 	t.Helper()
 	for _, f := range findings {
@@ -42,80 +41,38 @@ func assertNoRawLeak(t *testing.T, findings []finding.Finding, raw string) {
 	}
 }
 
-// TestHighEntropyStringFlagsRandomToken verifies the entropy detector fires on a
-// long random token and redacts it.
-func TestHighEntropyStringFlagsRandomToken(t *testing.T) {
-	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	findings := HighEntropyStringRule{}.AnalyzeUnit(unit, Context{})
-	if len(findings) != 1 {
-		t.Fatalf("findings = %#v, want 1", findings)
+// TestDocumentedSamplesAreNotReported verifies AWS's example key id, the jwt.io token and a published test card never report.
+//
+// A key of the same shape and a value that merely contains the sample still report (FAMILY-CONTRACT.md section 5).
+// Every value is assembled from parts, so this file holds none of them whole.
+func TestDocumentedSamplesAreNotReported(t *testing.T) {
+	example := "AKIA" + "IOSFODNN7" + "EXAMPLE"
+	live := "AKIA" + "Q7R2M8N4" + "P6T9V1X3"
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + "." + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ" + "." + "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	card := "4111" + " 1111 1111 " + "1111"
+	cases := []struct {
+		name    string
+		rule    UnitRule
+		source  string
+		reports int
+	}{
+		{name: "aws example", rule: AWSAccessKeyRule{}, source: "key = " + example + "\n", reports: 0},
+		{name: "aws live-shaped", rule: AWSAccessKeyRule{}, source: "key = " + live + "\n", reports: 1},
+		{name: "jwt sample", rule: JWTTokenRule{}, source: "token = " + jwt + "\n", reports: 0},
+		{name: "jwt sample with a suffix", rule: JWTTokenRule{}, source: "token = " + jwt + "x\n", reports: 1},
+		{name: "test card", rule: PIIPatternRule{}, source: "card = " + card + "\n", reports: 0},
 	}
-	assertNoRawLeak(t, findings, randomSecretToken)
-}
-
-// TestHighEntropyStringSkipsNonSecretShapes verifies the detector stays quiet on
-// the identifier and structural shapes that look random but are not secrets.
-func TestHighEntropyStringSkipsNonSecretShapes(t *testing.T) {
-	cases := map[string]string{
-		"hex digest":  "d41d8cd98f00b204e9800998ecf8427ed41d8cd9",
-		"uuid":        "550e8400-e29b-41d4-a716-446655440000",
-		"sri hash":    "sha256-47DEQpj8HBSaTImW1OD2tz6O5Kz9SzaQ1bln",
-		"import path": "github.com/blundergoat/gruff-go/internal/rule/sensitive",
-		"short token": "abc123def456",
-		"repetitive":  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	}
-	for name, value := range cases {
-		t.Run(name, func(t *testing.T) {
-			unit := sensitiveTextUnit("x.env", "v = \""+value+"\"\n")
-			if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-				t.Fatalf("findings = %#v, want 0 for %s", got, name)
-			}
-		})
-	}
-}
-
-// TestHighEntropyStringDefersToProviderRules verifies precedence: a token a
-// provider-specific rule already owns (here a high-entropy GitHub token) is not
-// also reported as a generic high-entropy string, so one secret yields one finding.
-func TestHighEntropyStringDefersToProviderRules(t *testing.T) {
-	// randomSecretToken is 41 alphanumeric chars, clearing githubTokenPattern's
-	// 36-char body floor so the provider rule claims it.
-	token := "ghp_" + randomSecretToken
-	unit := sensitiveTextUnit("x.env", "token = \""+token+"\"\n")
-	if got := (HighEntropyStringRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("entropy findings = %#v, want 0 (GitHubTokenRule owns this token)", got)
-	}
-	if got := (GitHubTokenRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
-		t.Fatalf("github findings = %#v, want 1 (provider rule should own it)", got)
-	}
-}
-
-// TestHighEntropyThresholdIsConfigurable verifies the minLength knob takes effect
-// both as a struct field and when wired through DefaultsConfigured: raising
-// minLength above the token length silences the finding.
-func TestHighEntropyThresholdIsConfigurable(t *testing.T) {
-	unit := sensitiveTextUnit("x.env", "secret = \""+randomSecretToken+"\"\n")
-	if got := (HighEntropyStringRule{MinLength: 200}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
-		t.Fatalf("findings = %#v, want 0 with minLength 200", got)
-	}
-	registry, err := DefaultsConfigured(Config{
-		Enabled: map[string]bool{"sensitive-data.high-entropy-string": true},
-		Thresholds: map[string]map[string]float64{
-			"sensitive-data.high-entropy-string": {"minLength": 200},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range registry.Analyze([]parser.Unit{unit}, Context{}) {
-		if f.RuleID == "sensitive-data.high-entropy-string" {
-			t.Fatalf("entropy finding fired despite configured minLength 200: %#v", f)
+	for _, testCase := range cases {
+		unit := sensitiveTextUnit("x.env", testCase.source)
+		findings := testCase.rule.AnalyzeUnit(unit, Context{})
+		if len(findings) != testCase.reports {
+			t.Fatalf("%s: findings = %d, want %d", testCase.name, len(findings), testCase.reports)
 		}
 	}
 }
 
-// TestPIIPatternFlagsRealValues verifies email, punctuated phone, and a Luhn-valid
-// payment card are each detected and redacted.
+// TestPIIPatternFlagsRealValues checks that each email, punctuated phone, and Luhn-valid card fixture yields one finding.
+// Any non-empty string preview must omit the corresponding raw fixture value.
 func TestPIIPatternFlagsRealValues(t *testing.T) {
 	cases := []struct {
 		name string
@@ -124,7 +81,7 @@ func TestPIIPatternFlagsRealValues(t *testing.T) {
 	}{
 		{"email", "contact = \"jane.roe@acmecorp.co\"\n", "jane.roe@acmecorp.co"},
 		{"phone", "phone = \"+1 (415) 555-0137\"\n", "(415) 555-0137"},
-		{"card", "card = \"4242 4242 4242 4242\"\n", "4242 4242 4242 4242"},
+		{"card", "card = \"4539 5787 6362 1486\"\n", "4539 5787 6362 1486"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -137,9 +94,9 @@ func TestPIIPatternFlagsRealValues(t *testing.T) {
 	}
 }
 
-// TestPIIPatternSkipsPlaceholdersAndBareNumbers verifies the FP guards: example
-// domains, generic local-parts, a bare phone-length digit run without phone
-// punctuation, and a Luhn-invalid card-shaped number all stay quiet.
+// TestPIIPatternSkipsPlaceholdersAndBareNumbers verifies the PII false-positive guards stay quiet.
+//
+// It covers example domains, generic local-parts, a phone-length digit run with no phone punctuation, and a Luhn-invalid card number.
 func TestPIIPatternSkipsPlaceholdersAndBareNumbers(t *testing.T) {
 	cases := map[string]string{
 		"example domain": "e = \"you@example.com\"\n",
@@ -156,8 +113,8 @@ func TestPIIPatternSkipsPlaceholdersAndBareNumbers(t *testing.T) {
 	}
 }
 
-// TestPHIPatternFlagsHealthIdentifiers verifies a valid SSN, a Medicare MBI, and a
-// label-anchored MRN are each detected and redacted.
+// TestPHIPatternFlagsHealthIdentifiers checks that each SSN, Medicare MBI, and label-anchored MRN fixture yields one finding.
+// Any non-empty string preview must omit the corresponding raw fixture value.
 func TestPHIPatternFlagsHealthIdentifiers(t *testing.T) {
 	cases := []struct {
 		name string
@@ -179,9 +136,9 @@ func TestPHIPatternFlagsHealthIdentifiers(t *testing.T) {
 	}
 }
 
-// TestPHIPatternSkipsInvalidAndPlaceholderSSNs verifies the SSN FP guards:
-// unissuable number spaces (000/666/9xx areas, 00 group, 0000 serial) and a
-// well-known placeholder SSN are not flagged.
+// TestPHIPatternSkipsInvalidAndPlaceholderSSNs verifies the SSN false-positive guards stay quiet.
+//
+// It covers unissuable number spaces (000, 666 and 9xx areas, a 00 group, a 0000 serial) and the well-known placeholder 123-45-6789.
 func TestPHIPatternSkipsInvalidAndPlaceholderSSNs(t *testing.T) {
 	for _, ssn := range []string{"000-12-3456", "666-12-3456", "900-12-3456", "536-00-4399", "536-90-0000", "123-45-6789"} {
 		t.Run(ssn, func(t *testing.T) {
@@ -192,9 +149,9 @@ func TestPHIPatternSkipsInvalidAndPlaceholderSSNs(t *testing.T) {
 	}
 }
 
-// TestPHIOwnsSSNNotPII documents the PII/PHI precedence: a Social Security number
-// is reported by the PHI rule only, never the PII rule, so an SSN is not counted
-// twice when both rules are enabled.
+// TestPHIOwnsSSNNotPII pins the PII/PHI precedence: a Social Security number is reported by the PHI rule only, never the PII rule.
+//
+// Separate direct calls yield zero PII findings and one PHI finding for the same SSN fixture.
 func TestPHIOwnsSSNNotPII(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "s = \"536-90-4399\"\n")
 	if got := (PIIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
@@ -202,5 +159,14 @@ func TestPHIOwnsSSNNotPII(t *testing.T) {
 	}
 	if got := (PHIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 1 {
 		t.Fatalf("PHI findings = %#v, want 1", got)
+	}
+}
+
+// TestDocumentedCardDoesNotHideARealCard checks for exactly one payment-card finding on a line with a test card followed by another card.
+func TestDocumentedCardDoesNotHideARealCard(t *testing.T) {
+	source := "cards = " + "4111" + " 1111 1111 " + "1111" + " / " + "4539 5787 " + "6362 1486\n"
+	findings := PIIPatternRule{}.AnalyzeUnit(sensitiveTextUnit("x.env", source), Context{})
+	if len(findings) != 1 || findings[0].Metadata["category"] != "payment-card" {
+		t.Fatalf("findings = %+v, want one payment-card finding", findings)
 	}
 }

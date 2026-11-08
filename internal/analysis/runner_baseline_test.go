@@ -11,9 +11,11 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestApplyBaselineReportsOneToOneCardinality checks that runner summaries
-// preserve every current finding and every duplicate baseline entry exactly once.
+// TestApplyBaselineReportsOneToOneCardinality checks that summaries count every current finding and duplicate baseline entry exactly once.
+//
+// A failure points at wrong new, unchanged or resolved totals, mismatched compatibility counts or detail lists, or a fixture setup error.
 func TestApplyBaselineReportsOneToOneCardinality(t *testing.T) {
+	// Both findings share one subject and differ only by line, as when a user adds code above an existing issue.
 	exactFinding := runnerBaselineTestFinding(10)
 	shiftedFinding := runnerBaselineTestFinding(20)
 	testCases := []struct {
@@ -55,10 +57,19 @@ func TestApplyBaselineReportsOneToOneCardinality(t *testing.T) {
 		t.Run(testCase.journeyName, func(t *testing.T) {
 			projectRoot := t.TempDir()
 			baselinePath := filepath.Join(projectRoot, "baseline.json")
-			baselineFile := baseline.FromFindings(testCase.baselineFindings)
+			baselineFile, err := baseline.FromFindings(testCase.baselineFindings)
+			// A FromFindings error means the baseline package rejected the fixture findings before the runner was reached.
+			if err != nil {
+				t.Fatal(err)
+			}
 			// A write failure means the runner never received a usable user baseline.
 			if err := baseline.Write(baselinePath, baselineFile); err != nil {
 				t.Fatal(err)
+			}
+			// A v3 entry carries a count, so the reviewed total is the sum of counts, not the row count.
+			reviewedOccurrences := 0
+			for _, occurrence := range baselineFile.Occurrences {
+				reviewedOccurrences += occurrence.Count
 			}
 			newFindings, summary, diagnostics := applyBaseline(projectRoot, testCase.currentFindings, nil, "baseline.json", true)
 			// A valid baseline should not create a user-facing diagnostic.
@@ -70,11 +81,11 @@ func TestApplyBaselineReportsOneToOneCardinality(t *testing.T) {
 				t.Fatalf("new %d + unchanged %d != current %d", len(newFindings), summary.UnchangedFindings, len(testCase.currentFindings))
 			}
 			// Prior entries must be split exactly between unchanged and resolved.
-			if summary.UnchangedFindings+summary.ResolvedFindings != len(baselineFile.Findings) {
-				t.Fatalf("unchanged %d + resolved %d != baseline %d", summary.UnchangedFindings, summary.ResolvedFindings, len(baselineFile.Findings))
+			if summary.UnchangedFindings+summary.ResolvedFindings != reviewedOccurrences {
+				t.Fatalf("unchanged %d + resolved %d != reviewed %d", summary.UnchangedFindings, summary.ResolvedFindings, reviewedOccurrences)
 			}
-			// Summary compatibility fields must remain aligned for existing UI consumers.
-			if summary.SuppressedFindings != summary.UnchangedFindings || summary.StaleEntries != summary.ResolvedFindings || summary.Entries != len(baselineFile.Findings) {
+			// Compatibility counts must equal the new ones; a mismatch means existing summary consumers would see different numbers.
+			if summary.SuppressedFindings != summary.UnchangedFindings || summary.StaleEntries != summary.ResolvedFindings || summary.Entries != len(baselineFile.Occurrences) {
 				t.Fatalf("summary compatibility counts drifted: %#v", summary)
 			}
 			// The row-specific result is what the user should see in baseline status.
@@ -90,7 +101,9 @@ func TestApplyBaselineReportsOneToOneCardinality(t *testing.T) {
 }
 
 // runnerBaselineTestFinding creates one same-subject finding at a selected line.
+//
 // Moving the line changes its fingerprint but not the user's semantic issue.
+// Returns a nonzero finding at lineNumber with its fingerprint computed by WithFingerprint; rule ID, file, symbol and message stay fixed.
 func runnerBaselineTestFinding(lineNumber int) finding.Finding {
 	return finding.Finding{
 		RuleID:   "test.duplicate",

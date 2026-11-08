@@ -1,18 +1,11 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements a project-level dead-code check that flags
-// package-private top-level functions whose names never appear elsewhere
-// in the same parsed package.
 //
-// The rule is parser-only: it does not resolve identifier bindings or
-// reach into type information, it just counts how often each name
-// appears across all units in the package. That is enough for the
-// common case (a private function that nobody ever calls is a dead
-// function), but it intentionally favours false-negatives over
-// false-positives. Names that collide with struct fields, parameters,
-// or method names anywhere in the package suppress the finding even
-// when the function itself is genuinely unused. This is a deliberate
-// precision-over-recall trade-off; nobody wants a noisy dead-code rule
-// they have to suppress per-finding to ship a release.
+// This file implements dead-code.unused-private-function, which flags private top-level functions never named elsewhere in their package.
+// The rule is parser-only: it counts how often each name appears across the package's units, without binding identifiers or reading types.
+//
+// That catches the common case, a private function nobody calls, but it favours false negatives over false positives.
+// A name shared with a struct field, parameter or method anywhere in the package hides even a truly unused function.
+// This precision-over-recall trade-off is deliberate: nobody wants a noisy dead-code rule they must suppress per finding to ship a release.
 package rule
 
 import (
@@ -25,11 +18,14 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// UnusedPrivateFunctionRule flags package-private top-level functions that
-// are not syntactically referenced anywhere in their parsed package.
+// UnusedPrivateFunctionRule flags package-private top-level functions that are not syntactically referenced anywhere in their parsed package.
+//
+// It checks all parsed units together, so a call from another file of the same package keeps a function live.
+// Methods, init, main, and packages that import reflect are left out; each finding names the function and its package.
 type UnusedPrivateFunctionRule struct{}
 
 // Definition declares the dead-code.unused-private-function rule.
+// It returns the fixed rule metadata: advisory severity, medium confidence, parser capability, enabled by default, with no options.
 func (UnusedPrivateFunctionRule) Definition() Definition {
 	return Definition{
 		ID:             "dead-code.unused-private-function",
@@ -46,19 +42,21 @@ func (UnusedPrivateFunctionRule) Definition() Definition {
 }
 
 // AnalyzeProject emits findings for unreferenced package-private functions.
+//
+// units supply the name counts per package; when ctx has IncludeIgnored set, generated Go files no longer mark their package skipForPrecision.
+// Groups marked skipForPrecision are skipped whole, and a function is reported only when its name appears nowhere but its own declaration.
+// It returns the findings in the index's group order, or an empty, non-nil slice when no private function is unreferenced.
 func (UnusedPrivateFunctionRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	index := newPackageReferenceIndex(units, ctx)
 	findings := []finding.Finding{}
 	for _, group := range index.ordered {
+		// A package gets no findings at all when any of its parsed files imports reflect, lives under a vendor path, or is treated as generated.
 		if group.skipForPrecision {
 			continue
 		}
 		for _, decl := range group.privateFuncs {
-			// Each FuncDecl's own Name ident contributes one occurrence to
-			// the count. Anything greater means the name appears somewhere
-			// else and we cannot prove the function is unused with parser-
-			// only evidence. Equal-to-one means only the declaration carries
-			// the name, so nothing in the package uses it.
+			// The declaration's own name counts once; any higher count means the name appears elsewhere and parser-only evidence cannot prove it unused.
+			// A count of exactly one means nothing else in the package names the function, so the user gets a finding for it.
 			if !group.unreferenced(decl) {
 				continue
 			}
@@ -75,11 +73,10 @@ func (UnusedPrivateFunctionRule) AnalyzeProject(units []parser.Unit, ctx Context
 	return findings
 }
 
-// importsReflectPackage reports whether the file imports a runtime-
-// reflection package. Reflective dispatch can reference functions by name
-// without ever producing a syntactic identifier reference, which would
-// turn this rule into a noise factory; the safer call is to step aside
-// for the whole package when reflection is in play.
+// importsReflectPackage reports whether file imports the reflect package; false means no reflect import was found in file.
+//
+// A true result makes the rule skip the whole parsed package, even when every private function in it is unreferenced.
+// That keeps the rule precision-first, as its description promises, at the cost of missing dead code in those packages.
 func importsReflectPackage(file *ast.File) bool {
 	for _, imp := range file.Imports {
 		if imp.Path == nil {
@@ -97,9 +94,9 @@ func importsReflectPackage(file *ast.File) bool {
 	return false
 }
 
-// startsLowercase reports whether name begins with a lowercase rune.
-// Go uses leading case to gate package visibility; lowercase means
-// package-private, which is the only scope this rule considers.
+// startsLowercase reports whether name begins with a lowercase rune; false covers an empty name and names led by a capital or underscore.
+//
+// Go uses leading case to gate package visibility; lowercase means package-private, which is the only scope this rule considers.
 func startsLowercase(name string) bool {
 	if name == "" {
 		return false
@@ -110,10 +107,13 @@ func startsLowercase(name string) bool {
 	return false
 }
 
-// isReservedFuncName protects Go's special function names. `init` is
-// invoked automatically at package load and may be defined per-file;
-// `main` is the program entrypoint. Neither produces an explicit
-// caller reference yet both are by-spec live.
+// isReservedFuncName protects Go's special function names, init and main, which produce no explicit caller reference.
+//
+// init runs automatically at package load and may be defined per file; main is the program entrypoint.
+// init is live by spec in every package, main only in package main.
+//
+// It reports true only when name is exactly init or main, and false for every other name.
+// It never sees the package, so it also reports true for a main declared outside package main.
 func isReservedFuncName(name string) bool {
 	return name == "init" || name == "main"
 }

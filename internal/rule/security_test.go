@@ -1,5 +1,6 @@
 // Package rule tests security evidence surfaced in CLI findings.
-// Fixtures separate direct library use from paths that invoke an interpreter.
+//
+// Fixtures separate direct executable calls from paths that invoke a shell interpreter, and pin which tls.Config literals are flagged.
 // This keeps warning-level guidance focused on commands users can remediate.
 package rule
 
@@ -121,8 +122,8 @@ func sample() {
 	}
 }
 
-// TestShellCommandRuleGradesGoExecutionEvidence pins the three process shapes
-// users see: direct argv stays quiet while an explicit shell remains a warning.
+// TestShellCommandRuleGradesGoExecutionEvidence pins three exec.Command shapes: a fixed executable and a dynamic executable name stay quiet.
+// Only the sh -c call gives one warning; the test also pins its message and the rule's severity, remediation and false-positive guidance.
 func TestShellCommandRuleGradesGoExecutionEvidence(t *testing.T) {
 	unit := parseOne(t, "process.go", `// Package sample contains command examples.
 package sample

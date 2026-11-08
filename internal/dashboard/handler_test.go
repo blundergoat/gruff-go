@@ -1,5 +1,7 @@
 // Package dashboard handler tests cover routing, scan execution, and form state.
-// They exercise the HTTP surface against in-memory test servers.
+//
+// They run the handler behind local httptest servers and call the package's form, command and scan helpers directly.
+// A failure means the page, report, form defaults or command that gruff-go dashboard gives a user has drifted.
 package dashboard
 
 import (
@@ -19,6 +21,7 @@ import (
 )
 
 // TestHandlerServesShellOnRoot verifies the root path returns the dashboard shell HTML.
+// A failure means a user opening the dashboard root no longer gets the page title, controls panel, scan form or report frame.
 func TestHandlerServesShellOnRoot(t *testing.T) {
 	handler := NewHandler(Options{ProjectRoot: "/tmp/proj"})
 	server := httptest.NewServer(handler)
@@ -50,6 +53,7 @@ func TestHandlerServesShellOnRoot(t *testing.T) {
 }
 
 // TestHandlerScanRendersReportWithMetadata asserts /scan returns HTML with embedded metadata.
+// A failure means a scan run from the dashboard form no longer returns a report page carrying the gruff-scan-complete metadata.
 func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 	tempDir := t.TempDir()
 	handler := NewHandler(Options{ProjectRoot: tempDir, FailOn: "medium"})
@@ -75,7 +79,9 @@ func TestHandlerScanRendersReportWithMetadata(t *testing.T) {
 }
 
 // TestHandlerScanMetadataCommandIncludesParityFlags verifies CLI parity flags appear in metadata.
-// Uses the 3-bucket "warning" value (post-ADR-009 + ADR-010 successor to the old "medium").
+//
+// The warning threshold makes the fixture's upper-band warning produce exit code 1.
+// A failure means the metadata command text differs from the expected flags and path; it is compared as text, not rerun as a scan.
 func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gitignore"), "ignored/\n")
@@ -101,25 +107,29 @@ func TestHandlerScanMetadataCommandIncludesParityFlags(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	html := string(body)
-	if !strings.Contains(html, "complexity.cyclomatic") {
+	// The request names this file directly, which bypasses .gitignore, so this finding does not prove includeIgnored reached discovery.
+	if !strings.Contains(html, "complexity.cognitive") {
 		t.Fatalf("scan should include ignored fixture finding; body:\n%s", html)
 	}
 	metadata := extractScanMetadata(t, html)
+	// Exit code 1 is the failing exit for a finding at or above failOn, here the fixture's upper-band warning.
 	if metadata.ExitCode != 1 {
 		t.Fatalf("metadata exitCode = %d, want 1", metadata.ExitCode)
 	}
-	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --min-severity warning ignored/complex.go"
+	wantCommand := "gruff-go analyse --format html --report-interactive --include-ignored --fail-on warning ignored/complex.go"
 	if metadata.Command != wantCommand {
 		t.Fatalf("metadata command = %q, want %q", metadata.Command, wantCommand)
 	}
 }
 
-// TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory checks runScan preserves cwd.
+// TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory checks runScan reads the project's .gruff-go.yaml and leaves cwd as it was.
+// A failure means the size.file-length finding from maxLines 1 is missing, the report root is not the project, or the cwd moved.
 func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.T) {
 	originalWD, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)
 	}
+	// Restoring the cwd here keeps a runScan that wrongly calls chdir from breaking later tests in this package.
 	t.Cleanup(func() {
 		if err := os.Chdir(originalWD); err != nil {
 			t.Fatalf("restore cwd: %v", err)
@@ -128,6 +138,7 @@ func TestRunScanUsesProjectRootConfigWithoutChangingWorkingDirectory(t *testing.
 
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.file-length:
     thresholds:
@@ -155,6 +166,7 @@ rules:
 }
 
 // hasFinding reports whether the slice contains any finding with the given rule ID.
+// It compares ruleID with the RuleID of each entry in findings exactly, so a nil or empty findings slice gives false.
 func hasFinding(findings []finding.Finding, ruleID string) bool {
 	for _, item := range findings {
 		if item.RuleID == ruleID {
@@ -165,6 +177,7 @@ func hasFinding(findings []finding.Finding, ruleID string) bool {
 }
 
 // TestRunScanRespectsCanceledContext checks runScan returns context.Canceled on cancel.
+// A failure means runScan ignored the canceled context or wrapped the error, which the direct err != context.Canceled check rejects.
 func TestRunScanRespectsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -182,6 +195,7 @@ func TestRunScanRespectsCanceledContext(t *testing.T) {
 }
 
 // TestHandlerScanReturnsErrorDocOnInvalidProject ensures invalid projects produce an error page.
+// A failure means a user who enters a missing project path gets something other than the Scan failed page.
 func TestHandlerScanReturnsErrorDocOnInvalidProject(t *testing.T) {
 	handler := NewHandler(Options{})
 	server := httptest.NewServer(handler)
@@ -200,6 +214,7 @@ func TestHandlerScanReturnsErrorDocOnInvalidProject(t *testing.T) {
 }
 
 // writeFile writes a file in the test tree, creating directories as needed.
+// It writes content to path, truncating an existing file, and calls t.Fatalf if parent-directory creation or writing fails.
 func writeFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -243,6 +258,7 @@ func TestHandlerUnknownPathIs404(t *testing.T) {
 }
 
 // TestStateFromQueryAppliesDefaults verifies missing query keys fall back to option defaults.
+// A failure means a dashboard opened without query parameters no longer pre-fills the project, paths and failOn it was started with.
 func TestStateFromQueryAppliesDefaults(t *testing.T) {
 	opts := Options{
 		ProjectRoot:  "/repo",
@@ -265,6 +281,7 @@ func TestStateFromQueryAppliesDefaults(t *testing.T) {
 }
 
 // TestStateFromQueryOverridesDefaults verifies explicit query values override defaults.
+// A failure means a scan request that sets project, failOn or reportInteractive would get the server defaults instead.
 func TestStateFromQueryOverridesDefaults(t *testing.T) {
 	opts := Options{ProjectRoot: "/repo", FailOn: "advisory"}
 	values := map[string][]string{
@@ -285,6 +302,7 @@ func TestStateFromQueryOverridesDefaults(t *testing.T) {
 }
 
 // TestBuildScanOptionsIncludeIgnoredFromQuery checks query state propagates IncludeIgnored.
+// A failure means includeIgnored=1 from the form would not reach the scan, so gitignored files would stay skipped.
 func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	state := report.DashboardState{
 		Project:        "/repo",
@@ -297,7 +315,8 @@ func TestBuildScanOptionsIncludeIgnoredFromQuery(t *testing.T) {
 	}
 }
 
-// TestBuildScanOptionsIncludeIgnoredFromOptionsDefault confirms that when the dashboard state leaves IncludeIgnored unset, the dashboard Options.IncludeIgnored default is the fallback honoured by buildScanOptions.
+// TestBuildScanOptionsIncludeIgnoredFromOptionsDefault checks an unset state falls back to Options.IncludeIgnored.
+// A failure means a server started with IncludeIgnored on would skip gitignored files whenever the form leaves includeIgnored unset.
 func TestBuildScanOptionsIncludeIgnoredFromOptionsDefault(t *testing.T) {
 	state := report.DashboardState{Project: "/repo", FailOn: "warning"}
 	scan := buildScanOptions(Options{IncludeIgnored: true}, state)
@@ -315,26 +334,24 @@ func TestStateFromQueryIncludeIgnoredOverride(t *testing.T) {
 	}
 }
 
-// TestDefaultStatePicksUpMinimumSeverityFromConfig asserts ADR-010 precedence
-// when no server CLI flag is set: defaultState reads minimumSeverity.dashboard
-// from the project config so the rendered form default reflects what the
-// project committed, not the binary default.
-func TestDefaultStatePicksUpMinimumSeverityFromConfig(t *testing.T) {
+// TestDefaultStatePicksUpFailOnFromConfig asserts ADR-010 precedence when the dashboard starts without a --fail-on flag.
+//
+// defaultState then reads failOn.dashboard from the project config, so the form shows the committed level, not the binary default.
+func TestDefaultStatePicksUpFailOnFromConfig(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   dashboard: error
 `)
 	state := defaultState(Options{ProjectRoot: project})
 	if state.FailOn != "error" {
-		t.Fatalf("defaultState.FailOn = %q, want %q (from config minimumSeverity.dashboard)", state.FailOn, "error")
+		t.Fatalf("defaultState.FailOn = %q, want %q (from config failOn.dashboard)", state.FailOn, "error")
 	}
 }
 
-// TestDefaultStateFallsBackToBinaryDefaultWithoutConfig asserts the binary
-// default kicks in when there is no project config: dashboard never fails
-// (none) per the user philosophy that viewing commands are artifact generators.
+// TestDefaultStateFallsBackToBinaryDefaultWithoutConfig asserts failOn falls back to the binary default none when the project has no config.
+// Per the user philosophy that viewing commands are artifact generators, findings never fail a dashboard scan by default; run errors still can.
 func TestDefaultStateFallsBackToBinaryDefaultWithoutConfig(t *testing.T) {
 	project := t.TempDir()
 	// No .gruff-go.yaml in project.
@@ -344,14 +361,13 @@ func TestDefaultStateFallsBackToBinaryDefaultWithoutConfig(t *testing.T) {
 	}
 }
 
-// TestDefaultStateServerFlagBeatsConfig asserts that opts.FailOn (the
-// --min-severity flag passed when starting the dashboard) wins over any
-// minimumSeverity.dashboard config entry, matching ADR-010's precedence rule.
+// TestDefaultStateServerFlagBeatsConfig asserts opts.FailOn, the --fail-on flag given when starting the dashboard, wins over failOn.dashboard.
+// That is the flag over config over default precedence; a failure means a committed config would override the user's --fail-on flag.
 func TestDefaultStateServerFlagBeatsConfig(t *testing.T) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), `
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   dashboard: error
 `)
 	state := defaultState(Options{ProjectRoot: project, FailOn: "warning"})
@@ -361,6 +377,9 @@ minimumSeverity:
 }
 
 // TestDisplayCommandIncludesKeyFlags ensures common CLI flags appear in the rendered command.
+//
+// ScanScope diff must render as --diff-base HEAD, and the editor link comes from the server Options.
+// A failure means a checked flag or path is missing from the display string, which is compared as text, not run.
 func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 	command := displayCommand(report.DashboardState{
 		Project:           "/repo",
@@ -381,7 +400,7 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 		"--baseline baseline.json",
 		"--diff-base HEAD",
 		"--include-ignored",
-		"--min-severity high",
+		"--fail-on high",
 		"src",
 		"internal",
 	} {
@@ -392,6 +411,9 @@ func TestDisplayCommandIncludesKeyFlags(t *testing.T) {
 }
 
 // extractScanMetadata pulls the gruff-dashboard-meta payload out of an HTML response.
+//
+// It returns the decoded Type, ExitCode and Command fields of the JSON inside that script element in html.
+// It stops the test through t instead when the script is missing or unclosed, its JSON does not decode, or Type is not gruff-scan-complete.
 func extractScanMetadata(t *testing.T, html string) struct {
 	Type     string `json:"type"`
 	ExitCode int    `json:"exitCode"`
@@ -424,12 +446,15 @@ func extractScanMetadata(t *testing.T, html string) struct {
 
 // dashboardComplexFixture returns Go source intentionally violating complexity rules.
 func dashboardComplexFixture() string {
+	// Forty branches put cognitive complexity at 40, past one and a half times the limit of 25,
+	// so the finding keeps its warning severity instead of becoming a lower-band advisory notice.
 	return "// Package sample is a test package.\npackage sample\n\nfunc risky(a bool) {\n" +
-		strings.Repeat("\tif a {}\n", 21) +
+		strings.Repeat("\tif a {}\n", 40) +
 		"}\n"
 }
 
 // TestSplitPaths exercises comma-separated path normalisation cases.
+// A failure means stray commas or spaces in a paths value would leave blank or space-padded entries in the result.
 func TestSplitPaths(t *testing.T) {
 	cases := []struct {
 		input string
@@ -450,6 +475,7 @@ func TestSplitPaths(t *testing.T) {
 }
 
 // equalSlices reports whether two string slices have equal length and elements.
+// It gives false when a and b differ in length or at any index, so a nil slice and an empty slice count as equal.
 func equalSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

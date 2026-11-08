@@ -1,5 +1,7 @@
 // Package config tests cover YAML parsing, rule validation, and discovery.
+//
 // They guard the strict schema, rule overrides, and legacy alias compatibility.
+// A failure means a .gruff-go.yaml a user already has would load differently, or a broken one would stop being rejected with its error.
 package config
 
 import (
@@ -12,12 +14,14 @@ import (
 )
 
 // defaultDefinitions returns rule definitions from the default registry for tests.
+// The list is never empty; Parse, ParseFile and LoadAuto check each rule ID, threshold and option in a test config against it.
 func defaultDefinitions() []rule.Definition {
 	defaults := rule.Defaults()
 	return defaults.Definitions()
 }
 
 // TestParseValidatesStrictConfig checks the strict schema accepts a typical config.
+// t checks that size.file-length is enabled and size.function-length is not, maxLines stays 120, and acceptedAbbreviations sort as HTTP then ID.
 func TestParseValidatesStrictConfig(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
@@ -32,9 +36,6 @@ rules:
       maxLines: 120
   size.function-length:
     enabled: false
-sensitiveData:
-  previewAllowlist:
-    - testdata/**
 `), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
@@ -52,16 +53,16 @@ sensitiveData:
 }
 
 // TestParseYAMLGruffShape verifies the gruff-go YAML shape maps to rule options.
+// t checks paths.ignore on cfg.IgnorePaths, selection and abbreviations in RuleOptions, and threshold: 100 mapped to maxComplexity.
 func TestParseYAMLGruffShape(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 paths:
   ignore:
     - 'fixtures/**'
 allowlists:
   acceptedAbbreviations:
     - ID
-  secretPreviews:
-    - 'testdata/**'
 selection:
   rules:
     - dead-code.empty-block
@@ -94,29 +95,23 @@ rules:
 	if len(options.AcceptedAbbreviations) != 1 || options.AcceptedAbbreviations[0] != "ID" {
 		t.Fatalf("accepted abbreviations = %#v, want normalized ID", options.AcceptedAbbreviations)
 	}
-	if len(options.SensitiveDataPreviewAllowlist) != 1 || options.SensitiveDataPreviewAllowlist[0] != "testdata/**" {
-		t.Fatalf("secret preview allowlist = %#v, want normalized testdata pattern", options.SensitiveDataPreviewAllowlist)
-	}
 }
 
-// TestParseMergesLegacyAndGruffShapeLists verifies gruff-family aliases extend
-// rather than replace legacy top-level list fields.
+// TestParseMergesLegacyAndGruffShapeLists verifies gruff-family aliases extend rather than replace legacy top-level list fields.
+// t checks that nested paths, allowlists and selection blocks extend select, excludeRules, ignorePaths and acceptedAbbreviations.
 func TestParseMergesLegacyAndGruffShapeLists(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 select: [size.file-length]
 excludeRules: [complexity.cyclomatic]
 ignorePaths: ['legacy/**']
 acceptedAbbreviations: [HTTP]
-sensitiveData:
-  previewAllowlist: ['legacy-secrets/**']
 paths:
   ignore:
     - 'nested/**'
 allowlists:
   acceptedAbbreviations:
     - ID
-  secretPreviews:
-    - 'nested-secrets/**'
 selection:
   rules:
     - dead-code.empty-block
@@ -138,16 +133,14 @@ selection:
 	if got, want := strings.Join(cfg.AcceptedAbbreviations, ","), "HTTP,ID"; got != want {
 		t.Fatalf("accepted abbreviations = %q, want %q", got, want)
 	}
-	if got, want := strings.Join(cfg.SensitiveData.PreviewAllowlist, ","), "legacy-secrets/**,nested-secrets/**"; got != want {
-		t.Fatalf("secret preview allowlist = %q, want %q", got, want)
-	}
 }
 
-// TestResolvePathLoadsOnlyGruffGoYAML asserts auto-discovery prefers .gruff-go.yaml.
+// TestResolvePathLoadsOnlyGruffGoYAML checks that auto-discovery loads .gruff-go.yaml from the scan root.
+// t checks that LoadAuto finds .gruff-go.yaml in the root and keeps its path and enabled: true, so a user's config is not missed.
 func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	root := t.TempDir()
 	definitions := defaultDefinitions()
-	writeConfig(t, root, ".gruff-go.yaml", "rules:\n  size.file-length:\n    enabled: true\n")
+	writeConfig(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: true\n")
 
 	loaded, err := LoadAuto(root, "", false, definitions)
 	if err != nil {
@@ -156,16 +149,18 @@ func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	if loaded.Path != filepath.ToSlash(filepath.Join(root, ".gruff-go.yaml")) {
 		t.Fatalf("path = %q, want .gruff-go.yaml", loaded.Path)
 	}
+	// A nil Enabled here means the enabled: true written in .gruff-go.yaml never reached the loaded config.
 	if loaded.Config.Rules["size.file-length"].Enabled == nil || !*loaded.Config.Rules["size.file-length"].Enabled {
 		t.Fatalf("loaded config = %#v, want preferred .gruff-go.yaml", loaded.Config.Rules)
 	}
 }
 
 // TestResolvePathIgnoresNonDefaultConfigFiles asserts non-default filenames are skipped.
+// t checks that config.yaml is not discovered: Path stays empty and no rule overrides load, even though the file disables a rule.
 func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	root := t.TempDir()
 	definitions := defaultDefinitions()
-	writeConfig(t, root, "config.yaml", "rules:\n  size.file-length:\n    enabled: false\n")
+	writeConfig(t, root, "config.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: false\n")
 
 	loaded, err := LoadAuto(root, "", false, definitions)
 	if err != nil {
@@ -179,7 +174,8 @@ func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	}
 }
 
-// TestParseFileRejectsUnsupportedConfigExtension ensures only .yaml configs are accepted.
+// TestParseFileRejectsUnsupportedConfigExtension checks rejection of .yml and .txt config paths.
+// t checks that .yml and .txt paths fail with an unsupported config file extension error.
 func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 	for _, path := range []string{"config.txt", "config.yml"} {
 		t.Run(path, func(t *testing.T) {
@@ -192,8 +188,10 @@ func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 }
 
 // TestParseAcceptsExpansionRuleConfig covers expansion documentation and naming rule options.
+// t parses one config for eight rules; a failure means a threshold, severity or option written for one of them is rejected or read back wrong.
 func TestParseAcceptsExpansionRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 rules:
   size.parameter-count:
     enabled: true
@@ -264,6 +262,7 @@ rules:
 }
 
 // assertExpansionRuleEnablement checks the expansion rules are enabled in options.
+// t fails the test, printing the enabled map, if any of the eight rules TestParseAcceptsExpansionRuleConfig turns on is not enabled.
 func assertExpansionRuleEnablement(t *testing.T, options rule.Config) {
 	t.Helper()
 	if !options.Enabled["size.parameter-count"] || !options.Enabled["complexity.nesting-depth"] || !options.Enabled["docs.exported-symbol-comment"] || !options.Enabled["docs.comment-rubric"] || !options.Enabled["naming.acronym-case"] || !options.Enabled["naming.receiver-consistency"] || !options.Enabled["naming.get-prefix"] || !options.Enabled["naming.contextual-generic"] {
@@ -271,7 +270,10 @@ func assertExpansionRuleEnablement(t *testing.T, options rule.Config) {
 	}
 }
 
-// assertExpansionRuleThresholds verifies parsed numeric thresholds and severity aliases for the size, complexity, naming, and docs expansion rules against expected values like maxDepth=6 and minBodyLines=9.
+// assertExpansionRuleThresholds checks numeric thresholds and verbatim severities for the expansion rules, such as maxDepth=6 and minBodyLines=9.
+//
+// The options argument is the rule.Config that TestParseAcceptsExpansionRuleConfig parsed; t stops the test at the first value that differs.
+// It also checks the ignoreInternalPackages option, maxParameters=8, and docs.comment-rubric minPackageCommentLines=2.
 func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 	t.Helper()
 	if options.Thresholds["size.parameter-count"]["maxParameters"] != 8 {
@@ -301,6 +303,9 @@ func assertExpansionRuleThresholds(t *testing.T, options rule.Config) {
 }
 
 // assertExpansionRuleOptions checks parsed option maps for expansion rules.
+//
+// The options argument is the rule.Config that TestParseAcceptsExpansionRuleConfig parsed; t stops the test at the first value that differs.
+// An empty allow, excludeNames, genericNames or accumulatorNames list panics on its first-element index instead of failing the test.
 func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 	t.Helper()
 	if options.Options["docs.comment-rubric"]["requireFunctionComments"] != true {
@@ -327,8 +332,10 @@ func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 }
 
 // TestParseAcceptsCompositeRuleConfig verifies composite design rules parse and validate.
+// t checks that design.hotspot-file is enabled with minFindings 4 and minPillars 3, so a user's hotspot thresholds apply.
 func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 rules:
   design.hotspot-file:
     enabled: true
@@ -352,8 +359,10 @@ rules:
 }
 
 // TestParseAcceptsLegacyRuleIDAliases covers hyphenated and renamed legacy rule IDs.
+// t checks that old IDs such as size-file-length and documentation.package-comment reach their current rules, so older configs keep working.
 func TestParseAcceptsLegacyRuleIDAliases(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
+schemaVersion: gruff-go.config.v0.1
 selection:
   rules:
     - size-file-length
@@ -379,6 +388,7 @@ rules:
 }
 
 // writeConfig writes a config file under the test root for discovery tests.
+// It writes contents to the file rel joined under root, mode 0o644, and fails the test when the write fails; parent directories are not created.
 func writeConfig(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
@@ -387,8 +397,10 @@ func writeConfig(t *testing.T, root, rel, contents string) {
 	}
 }
 
-// TestParseRejectsInvalidConfigAndPathPatterns table-tests rejection cases for
-// invalid configurations, including repository-relative path boundaries.
+// TestParseRejectsInvalidConfigAndPathPatterns table-tests rejection cases for invalid configurations.
+//
+// Cases cover repository-relative path boundaries, unknown rules and keys, and keys removed in 0.6.0; each error must contain want.
+// t fails when an invalid config loads quietly or its error no longer contains the case's want text.
 func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 	tests := []struct {
 		name string
@@ -396,31 +408,37 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 		want string
 	}{
 		{name: "unknown top-level key", yaml: `unknown: true`, want: "unknown field"},
-		{name: "unknown selected rule", yaml: "select:\n  - missing-rule\n", want: "unknown selected rule"},
-		{name: "unknown rule", yaml: "rules:\n  missing-rule:\n    enabled: true\n", want: "unknown rule"},
-		{name: "unknown threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxBytes: 1\n", want: "unknown threshold"},
-		{name: "invalid threshold", yaml: "rules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
-		{name: "combined threshold forms", yaml: "rules:\n  size.file-length:\n    threshold: 100\n    thresholds:\n      maxLines: 120\n", want: "cannot combine threshold and thresholds"},
-		{name: "invalid ignore", yaml: "ignorePaths:\n  - ../outside\n", want: "must stay inside"},
-		{name: "Windows drive ignore", yaml: "paths:\n  ignore:\n    - 'C:/outside/*.go'\n", want: "Windows drive qualifier"},
-		{name: "backslash ignore", yaml: "paths:\n  ignore:\n    - 'pkg\\*.go'\n", want: "slash separators"},
-		{name: "mid-pattern recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/generated.go'\n", want: "one ** as a trailing recursive suffix"},
-		{name: "multiple recursive ignore", yaml: "paths:\n  ignore:\n    - 'pkg/**/**'\n", want: "one ** as a trailing recursive suffix"},
-		{name: "invalid preview path", yaml: "allowlists:\n  secretPreviews:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
-		{name: "blank abbreviation", yaml: "acceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
-		{name: "unknown threshold on parameter-count", yaml: "rules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
-		{name: "invalid threshold on nesting-depth", yaml: "rules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
-		{name: "unknown threshold on hotspot", yaml: "rules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
-		{name: "unknown option on comment rubric", yaml: "rules:\n  docs.comment-rubric:\n    options:\n      requireEmoji: true\n", want: "unknown option"},
-		{name: "unknown threshold on comment rubric", yaml: "rules:\n  docs.comment-rubric:\n    thresholds:\n      minCommentVibes: 3\n", want: "unknown threshold"},
-		{name: "unknown option on acronym case", yaml: "rules:\n  naming.acronym-case:\n    options:\n      canonicalOnly: true\n", want: "unknown option"},
-		{name: "unknown option on receiver consistency", yaml: "rules:\n  naming.receiver-consistency:\n    options:\n      allowValue: true\n", want: "unknown option"},
-		{name: "unknown option on get prefix", yaml: "rules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
-		{name: "unknown option on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
-		{name: "unknown threshold on contextual generic", yaml: "rules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
-		{name: "unknown minimumSeverity command", yaml: "minimumSeverity:\n  not-a-command: warning\n", want: `minimumSeverity has unknown command "not-a-command"`},
-		{name: "legacy minimumSeverity value", yaml: "minimumSeverity:\n  analyse: medium\n", want: `minimumSeverity.analyse: unknown threshold "medium"`},
-		{name: "rejected off-switch alias", yaml: "minimumSeverity:\n  report: never\n", want: `minimumSeverity.report: unknown threshold "never"`},
+		{name: "unknown selected rule", yaml: "schemaVersion: gruff-go.config.v0.1\nselect:\n  - missing-rule\n", want: "unknown selected rule"},
+		{name: "unknown rule", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  missing-rule:\n    enabled: true\n", want: "unknown rule"},
+		{name: "unknown threshold", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    thresholds:\n      maxBytes: 1\n", want: "unknown threshold"},
+		{name: "invalid threshold", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    thresholds:\n      maxLines: 0\n", want: "must be positive"},
+		{name: "combined threshold forms", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    threshold: 100\n    thresholds:\n      maxLines: 120\n", want: "cannot combine threshold and thresholds"},
+		{name: "invalid ignore", yaml: "schemaVersion: gruff-go.config.v0.1\nignorePaths:\n  - ../outside\n", want: "must stay inside"},
+		{name: "Windows drive ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'C:/outside/*.go'\n", want: "Windows drive qualifier"},
+		{name: "backslash ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'pkg\\*.go'\n", want: "slash separators"},
+		{name: "mid-pattern recursive ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'pkg/**/generated.go'\n", want: "one ** as a trailing recursive suffix"},
+		{name: "multiple recursive ignore", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'pkg/**/**'\n", want: "one ** as a trailing recursive suffix"},
+		{name: "invalid ignore path", yaml: "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'D:/secrets/**'\n", want: "Windows drive qualifier"},
+		{name: "blank abbreviation", yaml: "schemaVersion: gruff-go.config.v0.1\nacceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
+		{name: "unknown threshold on parameter-count", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
+		{name: "invalid threshold on nesting-depth", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
+		{name: "unknown threshold on hotspot", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
+		{name: "unknown option on comment rubric", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    options:\n      requireEmoji: true\n", want: "unknown option"},
+		{name: "unknown threshold on comment rubric", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    thresholds:\n      minCommentVibes: 3\n", want: "unknown threshold"},
+		{name: "unknown option on acronym case", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.acronym-case:\n    options:\n      canonicalOnly: true\n", want: "unknown option"},
+		{name: "unknown option on receiver consistency", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.receiver-consistency:\n    options:\n      allowValue: true\n", want: "unknown option"},
+		{name: "unknown option on get prefix", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.get-prefix:\n    options:\n      allowGenerated: true\n", want: "unknown option"},
+		{name: "unknown option on contextual generic", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.contextual-generic:\n    options:\n      allowShortLoops: true\n", want: "unknown option"},
+		{name: "unknown threshold on contextual generic", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.contextual-generic:\n    thresholds:\n      maxGenericNames: 2\n", want: "unknown threshold"},
+		{name: "unknown failOn command", yaml: "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  not-a-command: warning\n", want: `failOn has unknown command "not-a-command"`},
+		{name: "legacy failOn value", yaml: "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  analyse: medium\n", want: `failOn.analyse: unknown threshold "medium"`},
+		{name: "rejected off-switch alias", yaml: "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  report: never\n", want: `failOn.report: unknown threshold "never"`},
+		{name: "pre-0.6.0 gate spelling", yaml: "schemaVersion: gruff-go.config.v0.1\nminimumSeverity:\n  analyse: error\n", want: "move the per-command exit gate to failOn"},
+		{name: "display floor outside the vocabulary", yaml: "schemaVersion: gruff-go.config.v0.1\nminimumSeverity: medium\n", want: `minimumSeverity "medium" is not a severity`},
+		{name: "removed preview allowlist", yaml: "schemaVersion: gruff-go.config.v0.1\nallowlists:\n  secretPreviews: []\n", want: "allowlists.secretPreviews is removed in 0.6.0"},
+		{name: "removed preview allowlist legacy spelling", yaml: "schemaVersion: gruff-go.config.v0.1\nsensitiveData:\n  previewAllowlist: []\n", want: "section 5 makes category"},
+		{name: "zero deep scan lines", yaml: "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  maxLines: 0\n", want: "deepScanBudget.maxLines must be a positive integer"},
+		{name: "negative deep scan bytes", yaml: "schemaVersion: gruff-go.config.v0.1\ndeepScanBudget:\n  maxBytes: -1\n", want: "deepScanBudget.maxBytes must be a positive integer"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -432,13 +450,14 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 	}
 }
 
-// TestParseAcceptsMinimumSeverityBlock confirms the four canonical command keys
-// + the four canonical FailThreshold values round-trip through Parse without
-// validation errors. Locks the ADR-010 contract surface.
-func TestParseAcceptsMinimumSeverityBlock(t *testing.T) {
+// TestParseAcceptsFailOnBlock confirms the four canonical command keys and the four canonical FailThreshold values round-trip through Parse.
+//
+// Parse must return no validation error, which locks the ADR-010 contract surface under the family's gate key.
+// t fails if a failOn entry for analyse, summary, report or dashboard is rejected or reads back changed.
+func TestParseAcceptsFailOnBlock(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   analyse: advisory
   summary: warning
   report: none
@@ -454,25 +473,48 @@ minimumSeverity:
 		"dashboard": "error",
 	}
 	for cmd, expected := range want {
-		if got := cfg.MinimumSeverity[cmd]; got != expected {
-			t.Errorf("MinimumSeverity[%q] = %q, want %q", cmd, got, expected)
+		if got := cfg.FailOn[cmd]; got != expected {
+			t.Errorf("FailOn[%q] = %q, want %q", cmd, got, expected)
 		}
 	}
 }
 
-// TestParseAcceptsNoneInMinimumSeverity confirms `none` is a valid value -
-// regression guard for the off-switch sentinel that distinguishes
-// FailThreshold from Severity.
-func TestParseAcceptsNoneInMinimumSeverity(t *testing.T) {
+// TestParseAcceptsNoneInFailOn confirms none is a valid failOn value, a regression guard for the off-switch sentinel.
+// t checks that failOn.analyse: none reads back as none, the off switch that FailThreshold has and Severity does not.
+func TestParseAcceptsNoneInFailOn(t *testing.T) {
 	cfg, err := Parse([]byte(`
 schemaVersion: gruff-go.config.v0.1
-minimumSeverity:
+failOn:
   analyse: none
 `), defaultDefinitions())
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	if got := cfg.MinimumSeverity["analyse"]; got != "none" {
-		t.Errorf("MinimumSeverity[analyse] = %q, want \"none\"", got)
+	if got := cfg.FailOn["analyse"]; got != "none" {
+		t.Errorf("FailOn[analyse] = %q, want \"none\"", got)
+	}
+}
+
+// TestParseReadsScalarKeysTheFamilyRatified covers the two shapes the family contract introduced.
+//
+// A bare failOn gates analyse, summary, report and dashboard, and a scalar minimumSeverity only decides what a report shows.
+// t fails if any of those four commands misses the error gate or the display floor does not read back as warning.
+func TestParseReadsScalarKeysTheFamilyRatified(t *testing.T) {
+	cfg, err := Parse([]byte(`
+schemaVersion: gruff-go.config.v0.1
+failOn: error
+minimumSeverity: warning
+`), defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	for _, command := range []string{"analyse", "summary", "report", "dashboard"} {
+		if got := cfg.FailOn[command]; got != "error" {
+			t.Errorf("FailOn[%q] = %q, want error from the bare form", command, got)
+		}
+	}
+	floor, configured := cfg.MinimumSeverity.Severity()
+	if !configured || floor != "warning" {
+		t.Errorf("display floor = %q configured=%t, want warning", floor, configured)
 	}
 }

@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the config-field-comment rule that requires doc comments
-// on exported struct fields, usually scoped to configuration types.
+//
+// This file implements docs.config-field-comment, which reports exported struct fields that have no useful doc comment.
+// It checks only files matched by includePaths, so users usually scope it to their configuration schema types.
 package rule
 
 import (
@@ -13,10 +14,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/pathfilter"
 )
 
-// ConfigFieldCommentRule flags exported struct fields without a doc comment within configured paths.
-// IncludePaths is required because broad enforcement on every struct can produce noise on obvious
-// fields (`Name string`, `Path string`). Scope it to user-facing configuration schema types when
-// maintainers want every knob documented.
+// ConfigFieldCommentRule flags exported struct fields without a useful doc comment in files matched by IncludePaths and not by ExcludePaths.
+//
+// It is enabled by default but reports nothing until IncludePaths is set, since every struct would be noisy on obvious fields like Name or Path.
+// Scope it to user-facing configuration schema types when maintainers want every config knob documented.
 type ConfigFieldCommentRule struct {
 	// IncludePaths restricts enforcement to file paths matching at least one of the supplied globs.
 	IncludePaths []string
@@ -25,6 +26,9 @@ type ConfigFieldCommentRule struct {
 }
 
 // Definition declares the docs.config-field-comment rule that requires doc comments on exported struct fields.
+//
+// It returns the fixed rule metadata: advisory severity, medium confidence, parser capability and enabled by default.
+// Its includePaths and excludePaths options default to empty lists, and AnalyzeUnit reports nothing while IncludePaths is empty.
 func (r ConfigFieldCommentRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.config-field-comment",
@@ -45,6 +49,10 @@ func (r ConfigFieldCommentRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits a finding for each exported struct field in scope that lacks a useful doc comment.
+//
+// unit is the parsed source file; only top-level type declarations whose type is an unparenthesized struct literal are checked.
+// It returns the findings in source order, or an empty slice when every exported field in scope is documented.
+// The result is nil when unit has no AST or FileSet, or when its path misses IncludePaths or matches ExcludePaths.
 func (r ConfigFieldCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !r.appliesToPath(unit.File.Path) {
 		return nil
@@ -70,7 +78,9 @@ func (r ConfigFieldCommentRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 	return findings
 }
 
-// appliesToPath reports whether the rule should analyse the given file path under its include/exclude config.
+// appliesToPath reports whether the rule should analyse the file at path under its IncludePaths and ExcludePaths globs.
+//
+// It reports false when IncludePaths is empty or misses path, or when ExcludePaths matches it, so that file gives no config-field findings.
 func (r ConfigFieldCommentRule) appliesToPath(path string) bool {
 	if len(r.IncludePaths) == 0 || !pathfilter.MatchesAny(r.IncludePaths, path) {
 		return false
@@ -82,7 +92,12 @@ func (r ConfigFieldCommentRule) appliesToPath(path string) bool {
 }
 
 // structFieldFindings emits one finding per exported, undocumented field inside the struct type.
+//
 // Embedded fields (no Names) and unexported fields are skipped without producing findings.
+// A field counts as documented when either its doc comment or its trailing same-line comment is useful for that field name.
+//
+// unit supplies the file path and positions, typeSpec names the struct in each message and symbol, and structType holds the fields checked.
+// It returns one finding per undocumented exported name in field order, or an empty, non-nil slice when every exported field is documented.
 func (r ConfigFieldCommentRule) structFieldFindings(unit parser.Unit, typeSpec *ast.TypeSpec, structType *ast.StructType) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, field := range structType.Fields.List {
@@ -96,10 +111,8 @@ func (r ConfigFieldCommentRule) structFieldFindings(unit parser.Unit, typeSpec *
 			if hasUsefulDeclarationComment(field.Doc, name.Name, 0) {
 				continue
 			}
-			// Trailing inline comments live in field.Comment, not field.Doc:
-			//   Port int // TCP port used by the server
-			// Treat either form as sufficient documentation; otherwise the
-			// rule misreports every project that prefers same-line field docs.
+			// A comment after the field on the same line lives in field.Comment, not field.Doc.
+			// Either form counts; checking only field.Doc would misreport every project that documents its fields on the same line.
 			if hasUsefulDeclarationComment(field.Comment, name.Name, 0) {
 				continue
 			}
