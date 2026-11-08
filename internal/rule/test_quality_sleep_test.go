@@ -269,8 +269,8 @@ func TestSleepInTestRuleIsDefaultEnabled(t *testing.T) {
 	}
 }
 
-// TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling ensures a sleep in a goroutine spawned inside a bounded polling loop still flags.
-// That sleep is not the loop's backoff, so t requires exactly one finding: accepting the loop must not whitelist nested-closure sleeps.
+// TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling checks a polling fixture with two sleeps yields exactly one finding.
+// One sleep is the bounded loop's backoff and one sits in a goroutine; the test does not check which of them the finding names.
 func TestSleepInTestRuleFlagsSleepInsideGoroutineWithinPolling(t *testing.T) {
 	unit := parseOne(t, "poll_test.go", `package sample
 

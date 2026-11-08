@@ -97,8 +97,7 @@ func TestCalculateCompositeCountsCleanRuleBackedPillars(t *testing.T) {
 	}
 }
 
-// TestCalculateCompositeNeverDropsWhenFindingRemoved protects the user journey
-// where resolving any one finding must not make the headline quality score worse.
+// TestCalculateCompositeNeverDropsWhenFindingRemoved checks that removing any one unclustered fixture finding never lowers the composite.
 func TestCalculateCompositeNeverDropsWhenFindingRemoved(t *testing.T) {
 	registeredPillars := registeredRuleBackedPillars(t)
 	findings := []finding.Finding{
@@ -138,8 +137,8 @@ func TestCalculateCompositeKeepsClearedPillarInMean(t *testing.T) {
 	}
 }
 
-// TestCalculateCompositeCarriesTwoDecimals pins the ratified serialization: the composite is a
-// two-decimal mean, not the integer that truncated a user's fractional score toward zero before M06.
+// TestCalculateCompositeCarriesTwoDecimals checks the calculated composite is the two-decimal mean of the pillar scores.
+// Before M06 the composite was an integer that truncated a user's fractional score toward zero.
 func TestCalculateCompositeCarriesTwoDecimals(t *testing.T) {
 	registeredPillars := registeredRuleBackedPillars(t)
 	pillarCount := len(registeredPillars)
@@ -517,7 +516,7 @@ func TestCalculateLoneCorrelatedFindingKeepsFullPenalty(t *testing.T) {
 	}
 }
 
-// TestCalculateClusteringRequiresSymbolAndLine confirms findings without a symbol and line never cluster.
+// TestCalculateClusteringRequiresSymbolAndLine confirms two findings with neither a symbol nor a location never cluster.
 //
 // Two complexity findings with neither bill the full sum of 8, because clustering cannot prove they share one symbol occurrence.
 func TestCalculateClusteringRequiresSymbolAndLine(t *testing.T) {

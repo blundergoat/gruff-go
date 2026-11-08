@@ -155,6 +155,7 @@ func (ProductionPanicRule) Definition() Definition {
 //
 // units holds the scan's parsed files, grouped per directory and package name; test, testdata, example, main-package and cmd files are left out.
 // A constructed message is a Sprintf, Errorf or New call passed straight to panic, as panicHasLiteralEvidence accepts it.
+// Functions named init, main or Defaults, Must-prefixed functions and panics inside function literals are skipped.
 //
 // It returns findings by first-seen package group, preserving file order within each group, and an empty non-nil slice when none qualify.
 func (ProductionPanicRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {

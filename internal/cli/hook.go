@@ -149,8 +149,8 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 
 // hookExitCode decides what the hook tells the calling agent, from the findings it actually published.
 //
-// The gate is read over the payload rather than the raw scan, so what blocks an edit is exactly what the agent was
-// shown. A finding the changed-region filter or the baseline removed is not in the payload and does not block.
+// The gate is read over the payload rather than the raw scan, so what blocks an edit is exactly what the agent was shown.
+// A finding the changed-region filter or the baseline removed is not in the payload and does not block.
 //
 // payload is the report already written for the agent, and hookFlags carries failOnDiagnostics, failOn and the confidence and new-finding gates.
 // It returns 1 if failOnDiagnostics meets a diagnostic, failOnNew a new finding, or any finding reaches failOn and the confidence floor, else 0.
@@ -280,7 +280,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 //
 // Run it before FlagSet parsing so help returns the hook's command guidance instead of a scan.
 // commandArguments is normalized as in parseHookFlags, and hookFlagHasSeparateValue keeps flag values from counting as help.
-// It returns true when the user asked for help, as in gruff-go hook --help, and false when the hook should parse flags and scan.
+// It returns true when the user asked for help, as in gruff-go hook --help, and false otherwise.
 func hookHelpRequested(commandArguments []string) bool {
 	normalizedArguments := normalizeAnalyseDiffArgs(commandArguments)
 	return helpRequested(normalizedArguments, hookFlagHasSeparateValue)

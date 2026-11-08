@@ -179,7 +179,7 @@ func (result ApplyResult) UnchangedCount() int { return result.UnchangedFindings
 // ResolvedCount returns how many reviewed occurrences are counted resolved; collided identities are left out, so zero means none outside them.
 func (result ApplyResult) ResolvedCount() int { return result.ResolvedFindings }
 
-// GatedCount returns how many findings the baseline left visible, the set exit codes and scores are computed over; zero means none remain.
+// GatedCount returns how many findings the baseline left visible, before any later changed-region filtering; zero means none remain.
 func (result ApplyResult) GatedCount() int { return len(result.Findings) }
 
 // FromFindings builds the baseline for the current run, stamped with the current time; sensitive findings become counts rather than entries.
@@ -412,7 +412,8 @@ func Apply(currentFindings []finding.Finding, baselineFile File) (ApplyResult, e
 // Ineligibility is decided before any lookup, so no baseline entry can reach a secret.
 // Findings without an identity are sensitive ones and ones whose symbol carries the ordinal separator.
 //
-// The statuses slice must have one slot per entry in currentFindings; slots for findings without an identity are set to StatusNotEligible.
+// The statuses slice must have one slot per entry in currentFindings; each finding without an identity gets StatusNotEligible in its slot,
+// and that write panics when the slot is missing.
 // It returns the identity groups in first-seen order, empty when no finding has an identity, or an error when one cannot be computed.
 func groupEligibleFindings(currentFindings []finding.Finding, statuses []Status) (identityGroups, error) {
 	groups := identityGroups{byIdentity: map[string]*identityGroup{}}
@@ -444,9 +445,11 @@ func groupEligibleFindings(currentFindings []finding.Finding, statuses []Status)
 
 // classifyGroups spends each identity's reviewed count over its occurrences and reports any identity that cannot separate two declarations.
 //
-// It returns the collided identities so they are not also counted resolved.
-// Reviewed counts come from baselineFile, groups index currentFindings for positions, and each grouped finding gets its status in statuses.
-// Each collision is appended to result, and the returned map is empty, not nil, when no identity collided.
+// Reviewed counts come from baselineFile, and each finding in groups gets its status in statuses.
+// A non-collided group also reads currentFindings to order its positions; an out-of-range statuses write or currentFindings read panics.
+//
+// It returns the collided identities so they are not also counted resolved, and each collision is appended to result.
+// The returned map is empty, not nil, when no identity collided.
 func classifyGroups(currentFindings []finding.Finding, groups identityGroups, baselineFile File, statuses []Status, result *ApplyResult) map[string]bool {
 	reviewedByIdentity := map[string]int{}
 	for _, occurrence := range baselineFile.Occurrences {
@@ -507,7 +510,8 @@ func resolveSurplus(groups identityGroups, baselineFile File, collided map[strin
 // assembleResult splits current findings in scan order, increments their status counts, and sets the suppression and stale-count aliases.
 //
 // It copies the ResolvedFindings that resolveSurplus already counted into StaleEntries, keeping the ADR-012 aliases in step.
-// The statuses slice holds one Status per entry of currentFindings, and result receives non-nil Findings, Unchanged and Resolved lists.
+// The statuses slice holds one Status per entry of currentFindings, and a shorter slice panics with an index error.
+// result receives non-nil Findings, Unchanged and Resolved lists.
 func assembleResult(currentFindings []finding.Finding, statuses []Status, result *ApplyResult) {
 	result.Findings = []finding.Finding{}
 	result.Unchanged = []finding.Finding{}
@@ -551,6 +555,7 @@ func declarationKey(currentFinding finding.Finding) string {
 //
 // Only the spend order depends on it; no position enters an identity.
 // It returns a negative number when left comes before right by line then column, a positive one when after, and zero for the same position.
+// A finding with no location, or a line below 1, sorts after every located one.
 func comparePosition(left, right finding.Finding) int {
 	leftLine, leftColumn := positionOf(left)
 	rightLine, rightColumn := positionOf(right)
@@ -713,6 +718,7 @@ type MigrationResult struct {
 //
 // It returns an error when a path is empty or both name the same file, or when the input cannot be read or parsed.
 // It also fails when a covered finding's identity cannot be computed, writing fails, or the input changed during the run.
+// That last check runs after outputPath is written, so a changed input returns an error with the v3 output already in place.
 func Migrate(inputPath, outputPath string, currentFindings []finding.Finding, generatedAt time.Time) (MigrationResult, error) {
 	if inputPath == "" || outputPath == "" {
 		return MigrationResult{}, fmt.Errorf("migration needs both a 0.5 input path and a separate output path")

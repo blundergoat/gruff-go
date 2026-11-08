@@ -89,8 +89,7 @@ func TestGoModReplaceRules(t *testing.T) {
 	}
 }
 
-// TestGoModRulesIgnoreNonGoMod confirms the rules only run on go.mod, not other
-// files that happen to contain an arrow token.
+// TestGoModRulesIgnoreNonGoMod confirms the rules only run on go.mod, not other files that happen to contain an arrow token.
 func TestGoModRulesIgnoreNonGoMod(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "notes.txt", Type: source.FileTypeText},

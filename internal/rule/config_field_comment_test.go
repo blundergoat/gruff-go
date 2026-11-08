@@ -16,8 +16,7 @@ func configFieldRuleScoped() ConfigFieldCommentRule {
 	return ConfigFieldCommentRule{IncludePaths: []string{"internal/config/**"}}
 }
 
-// TestConfigFieldCommentRuleDocumentedFieldPasses confirms a field with a useful doc comment
-// produces no finding under the rule.
+// TestConfigFieldCommentRuleDocumentedFieldPasses confirms a field with a useful doc comment produces no finding under the rule.
 func TestConfigFieldCommentRuleDocumentedFieldPasses(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config
 
@@ -117,8 +116,7 @@ type External struct {
 	}
 }
 
-// TestConfigFieldCommentRuleExcludePathsRemovesPath confirms a path listed in excludePaths is not
-// enforced even when it sits inside includePaths.
+// TestConfigFieldCommentRuleExcludePathsRemovesPath confirms a path listed in excludePaths is not enforced even when it sits inside includePaths.
 func TestConfigFieldCommentRuleExcludePathsRemovesPath(t *testing.T) {
 	unit := parseOne(t, "internal/config/legacy.go", `package config
 
@@ -135,8 +133,7 @@ type Legacy struct {
 	}
 }
 
-// TestConfigFieldCommentRuleNoExportedFields confirms structs with only unexported fields produce
-// no findings.
+// TestConfigFieldCommentRuleNoExportedFields confirms structs with only unexported fields produce no findings.
 func TestConfigFieldCommentRuleNoExportedFields(t *testing.T) {
 	unit := parseOne(t, "internal/config/config.go", `package config
 

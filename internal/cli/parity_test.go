@@ -200,8 +200,7 @@ func TestSummaryCommandSuggestsGeneratedBaseline(t *testing.T) {
 	}
 }
 
-// TestSummaryCommandDefaultPath verifies running summary with no path argument
-// scans the current working directory.
+// TestSummaryCommandDefaultPath verifies running summary with no path argument scans the current working directory.
 func TestSummaryCommandDefaultPath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")

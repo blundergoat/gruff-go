@@ -225,8 +225,7 @@ func summarisePreserved(cfg cfgpkg.Config) string {
 	return "preserved existing tuning: " + strings.Join(parts, ", ") + " (pass --reset to discard)"
 }
 
-// writeFreshStartSetupHint points new adopters at the first-run baseline flow
-// without creating a baseline implicitly.
+// writeFreshStartSetupHint points new adopters at the first-run baseline flow without creating a baseline implicitly.
 //
 // stdout receives two lines: the analyse --generate-baseline command and the analyse --baseline scan, both using defaultBaselineFileName.
 // Returns an error when either write to stdout fails, and nil once both lines are written.

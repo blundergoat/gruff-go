@@ -76,7 +76,7 @@ func (f Finding) BaselineSubject() (string, error) {
 // ComputeBaselineIdentity returns the identity a baseline stores for this finding.
 //
 // It is sha256 over the NUL-separated tool language, rule id, project-relative path, and subject, truncated to sixteen hex characters.
-// Line, column, severity and tier are excluded; a changed declaration ordinal or normalised message still changes the identity.
+// Line, column, severity and tier are excluded; a changed ordinal, or a changed normalised message on a symbol-less finding, changes it.
 // An error is returned, with an empty identity, when the rule id or path is empty or BaselineSubject fails.
 func (f Finding) ComputeBaselineIdentity() (string, error) {
 	return f.ComputeBaselineIdentityFor(BaselineToolLanguage)
@@ -110,8 +110,8 @@ func (f Finding) ComputeBaselineIdentityFor(toolLanguage string) (string, error)
 // AssignSymbolOrdinals ranks each symbol-bearing finding's declaration among same-named declarations in its file.
 //
 // declarationPosition names the line a finding's declaration begins on.
-// Two findings on one declaration share a position and therefore an ordinal, while a second declaration of the same name takes the next.
-// Ordinals count declarations rather than lines, so inserting code above a function moves its line and not its ordinal.
+// Findings whose declarations start on one line share an ordinal, and each later distinct start line for the same name takes the next.
+// Ordinals rank distinct start lines rather than count lines, so inserting code above a function moves its line and not its ordinal.
 //
 // It returns a copy of findings in which every symbol-bearing finding carries its DeclarationPosition and SymbolOrdinal.
 // A finding without a symbol is copied unchanged, the input slice is not modified, and a position below 1 is ranked as line 1.
@@ -119,7 +119,7 @@ func AssignSymbolOrdinals(findings []Finding, declarationPosition func(Finding) 
 	return AssignSymbolOrdinalsFromInventory(findings, declarationPosition, nil)
 }
 
-// AssignSymbolOrdinalsFromInventory ranks like AssignSymbolOrdinals, but also gives every declaration sameNamedPositions lists a slot.
+// AssignSymbolOrdinalsFromInventory ranks like AssignSymbolOrdinals, but also reserves a slot for each distinct line sameNamedPositions lists.
 //
 // A listed declaration takes its slot whether or not it has a finding this run.
 // Without the inventory a clean earlier declaration takes no slot, so when it first warns it takes the later one's ordinal and stored review.

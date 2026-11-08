@@ -13,7 +13,7 @@ import (
 // TestSplitIdentifierTokensPreservesDigits checks that each listed name rejoins unchanged and yields at least one token made only of digits.
 //
 // It does not pin the exact split, so boundary heuristics can change; the names are canonical identifiers P1 forbids flagging as placeholders.
-// A failure means splitIdentifierTokens dropped characters or left no digit run as a token of its own.
+// A failure means the tokens did not rejoin to the original name, or no token was a standalone digit run.
 func TestSplitIdentifierTokensPreservesDigits(t *testing.T) {
 	for _, name := range []string{"sha256", "parseHTTP2Header", "step0", "v2", "adr020", "base64", "utf8"} {
 		tokens := splitIdentifierTokens(name)

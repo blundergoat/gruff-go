@@ -40,8 +40,8 @@ func TestRuleBackedPillarsCoversEveryRegisteredPillar(t *testing.T) {
 
 // TestRuleBackedPillarsIsDerivedNotHandWritten fails if the set stops tracking the registry.
 //
-// Adding a rule under a new pillar must widen the denominator on its own. A hand-written list
-// would return the same set for both registries, so these assertions check that a new pillar widens it.
+// Adding a rule under a new pillar must widen the denominator on its own.
+// A hand-written list would return the same set for both registries, so these assertions check that a new pillar widens it.
 func TestRuleBackedPillarsIsDerivedNotHandWritten(t *testing.T) {
 	base := []rule.Definition{{ID: "a.one", Pillar: finding.PillarDesign}}
 	// A rule under a new pillar must enter the scoring denominator even before it produces a finding.

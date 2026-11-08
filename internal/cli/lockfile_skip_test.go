@@ -35,7 +35,7 @@ func rulesByFile(payload map[string]any) map[string][]string {
 
 // TestTestPathSensitiveFindingsAreSkippedAndCounted verifies a key in test, fixture or example files is skipped and counted.
 //
-// Rows are one per rule and file, all built-in, numbered in order and sorted by path, then rule.
+// Every suppression row is built-in and numbered in order, exactly two carry the test-path reason, and the first names Tests/Fixtures/keys.json.
 // The same bytes in production code, and in src/latest.json, whose name only resembles a test, still report.
 func TestTestPathSensitiveFindingsAreSkippedAndCounted(t *testing.T) {
 	root := t.TempDir()
@@ -90,7 +90,8 @@ func shellCommandSource(packageName string) string {
 
 // TestTestPathSecurityFindingsAreSkippedAndCounted verifies a deliberate shell call in test or example code is skipped and counted.
 //
-// The same call in production code still reports, and each skipped file gets one row with the security reason.
+// The same call in production code still reports, and exactly two rows carry the security reason.
+// The first of them names examples/demo/demo.go, the security.shell-command rule and the built-in source.
 func TestTestPathSecurityFindingsAreSkippedAndCounted(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "go.mod", "module probe\n\ngo 1.22\n")

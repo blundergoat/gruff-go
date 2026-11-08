@@ -608,7 +608,7 @@ func applyChangedFilter(findings []finding.Finding, units []parser.Unit, changed
 // filterFindingsByChangedScope applies the changed-region filter at the requested granularity, hunk or symbol.
 //
 // Hunk scope keeps findings on changed lines, unlocated findings in changed files, and every finding in a wholly changed file.
-// Symbol scope, the default, keeps a finding whose own lines or enclosing function changed.
+// Symbol scope, the default, keeps a finding whose own lines or enclosing function changed, and an unlocated finding whose file changed.
 //
 // Any changedScope other than "hunk" takes the symbol path, which checks the lines in changed against function spans read from units.
 // It returns a diff.FilterResult with the kept findings and FilteredFindings counting the findings dropped.
@@ -687,7 +687,7 @@ func enclosingFunction(line int, symbol string, functions []parser.Function) (pa
 
 // suppressedCountPointer returns a pointer to the diff-filtered count, or nil when diff mode is off.
 //
-// The nil case makes JSON output omit suppressedCount entirely instead of reporting a misleading 0 when no filtering happened.
+// The nil case makes JSON output omit summary.suppressedFindings instead of reporting a misleading 0 when no filtering happened.
 // diffSummary is a copy, so the pointer addresses its own FilteredFindings and later changes to the caller's summary do not show through.
 func suppressedCountPointer(diffSummary DiffSummary) *int {
 	if !diffSummary.Enabled {
@@ -696,7 +696,7 @@ func suppressedCountPointer(diffSummary DiffSummary) *int {
 	return &diffSummary.FilteredFindings
 }
 
-// scannedPaths extracts the relative paths from discovered source files.
+// scannedPaths extracts the display paths from discovered source files; an input outside the discovery root keeps its absolute path.
 // It returns the Path of each file in order, or an empty non-nil slice when files is empty.
 func scannedPaths(files []source.File) []string {
 	scanned := make([]string, 0, len(files))
