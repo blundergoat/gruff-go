@@ -72,8 +72,7 @@ func TestCheckIgnoreExitCodesMirrorGit(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreTextListsOnlyIgnored checks the text format mirrors git
-// check-ignore: only ignored paths print, one per line.
+// TestCheckIgnoreTextListsOnlyIgnored checks the text format mirrors git check-ignore: only ignored paths print, one per line.
 func TestCheckIgnoreTextListsOnlyIgnored(t *testing.T) {
 	root := t.TempDir()
 	writeIgnoreConfig(t, root)

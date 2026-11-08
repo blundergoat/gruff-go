@@ -15,7 +15,7 @@ import (
 )
 
 // TestParseAndFilterChangedLines verifies hunk parsing and filtering against changed lines.
-// A failure means a changed-lines run would list the wrong files or keep findings outside the edit.
+// It expects sorted a.go and b.go paths, one kept finding and two filtered findings.
 func TestParseAndFilterChangedLines(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
 --- a/a.go
@@ -58,8 +58,7 @@ func TestParseIgnoresDeletedOnlyFiles(t *testing.T) {
 	}
 }
 
-// TestParseMarksNewFilesWholeFileChanged checks that a new-file diff marks the
-// entire file changed, so a finding on any line of it is retained.
+// TestParseMarksNewFilesWholeFileChanged checks that a new-file diff retains a finding on line 99, beyond its added hunk.
 func TestParseMarksNewFilesWholeFileChanged(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/new.go b/new.go
 new file mode 100644
@@ -80,7 +79,7 @@ new file mode 100644
 // TestParseAnchorsDeletionOnlyHunk verifies a pure-deletion hunk in a still-present file records its anchor line.
 //
 // The hunk adds zero lines, so without the anchor the file's line map would hold no changed lines.
-// That would silently suppress findings in the edited function; the anchor keeps its enclosing region in scope.
+// Without that anchor, a finding on line 3 would be suppressed; the test checks that it is retained.
 func TestParseAnchorsDeletionOnlyHunk(t *testing.T) {
 	changed := Parse("main", []byte(`diff --git a/a.go b/a.go
 --- a/a.go
@@ -100,8 +99,7 @@ func TestParseAnchorsDeletionOnlyHunk(t *testing.T) {
 	}
 }
 
-// TestExplicitRangesApplyToFiles checks that explicit ranges are applied per file:
-// a line inside a range counts as changed and one outside does not.
+// TestExplicitRangesApplyToFiles checks that explicit ranges are applied per file: a line inside a range counts as changed and one outside does not.
 func TestExplicitRangesApplyToFiles(t *testing.T) {
 	changed, err := ExplicitRanges("explicit", "3-3,8-10", []string{"a.go"})
 	if err != nil {
@@ -179,6 +177,7 @@ func runGit(t *testing.T, root string, args ...string) {
 }
 
 // writeFile writes contents to root/rel, creating parent directories as needed.
+// It fails the test if directory creation or writing fails.
 func writeFile(t *testing.T, root, rel, contents string) {
 	t.Helper()
 	path := filepath.Join(root, rel)

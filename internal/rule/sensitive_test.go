@@ -38,7 +38,7 @@ const (
 }`
 )
 
-// TestPrivateKeyRuleDetectsPEMHeader keeps a text-file key header visible without exposing its bytes in a finding.
+// TestPrivateKeyRuleDetectsPEMHeader verifies a text-file key header gives one finding whose message and any string preview omit the raw header.
 func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -51,8 +51,7 @@ func TestPrivateKeyRuleDetectsPEMHeader(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawPrivateKey)
 }
 
-// TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks keeps documentation
-// wording out of findings without accepting actual PEM-like key blocks.
+// TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks keeps documentation wording out of findings without accepting actual PEM-like key blocks.
 func TestPrivateKeyRuleSkipsPrefixProseButFlagsRawBlocks(t *testing.T) {
 	prose := parser.Unit{
 		File:   source.File{Path: "README.txt", Type: source.FileTypeText},
@@ -134,7 +133,7 @@ func TestAWSAccessKeyRuleDetectsAndRedacts(t *testing.T) {
 // TestAWSAccessKeyRuleDetectsASessionToken pins the ASIA half of the shape.
 //
 // AWS issues temporary session credentials under that prefix over the same fixed body.
-// A temporary credential must get the same finding as a long-term AKIA key.
+// The test checks for one finding whose message and any string preview omit the raw ASIA value.
 func TestAWSAccessKeyRuleDetectsASessionToken(t *testing.T) {
 	sessionToken := "ASIA" + "IOSFODNN7" + "EXAMPLE"
 	unit := parser.Unit{
@@ -180,7 +179,7 @@ func TestJWTTokenRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawJWT)
 }
 
-// TestConnectionStringRuleDetectsAndRedacts verifies a postgres URL with a password gives one finding that never shows the password.
+// TestConnectionStringRuleDetectsAndRedacts verifies a postgres URL gives one finding whose message and any string preview omit the password.
 func TestConnectionStringRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -258,7 +257,8 @@ func TestAnthropicAPIKeyRuleDetectsAndRedacts(t *testing.T) {
 	assertNoRawSecret(t, findings[0], rawAnthropicAPIKey)
 }
 
-// TestNPMTokenRuleDetectsAndRedacts verifies npm_ and npm_pat_ tokens on two lines give two findings, neither showing its raw token.
+// TestNPMTokenRuleDetectsAndRedacts verifies npm_ and npm_pat_ tokens on two lines give two findings,
+// whose messages and any string previews omit their respective tokens.
 func TestNPMTokenRuleDetectsAndRedacts(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config.env", Type: source.FileTypeText},
@@ -358,8 +358,7 @@ func TestGCPServiceAccountRuleDetectsBothMarkers(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleIgnoresTypeOnly asserts the type marker alone (a
-// common documentation snippet) does not trigger a finding.
+// TestGCPServiceAccountRuleIgnoresTypeOnly asserts the type marker alone (a common documentation snippet) does not trigger a finding.
 func TestGCPServiceAccountRuleIgnoresTypeOnly(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "docs.json", Type: source.FileTypeText},
@@ -372,7 +371,7 @@ func TestGCPServiceAccountRuleIgnoresTypeOnly(t *testing.T) {
 
 // TestGCPServiceAccountRuleIgnoresPrivateKeyOnly asserts a PEM private key without the service-account type marker gives no GCP finding.
 //
-// The sensitive-data.private-key rule still fires on this input; the PrivateKeyRule tests cover that.
+// Standalone private-key detection is exercised separately by the PrivateKeyRule tests.
 func TestGCPServiceAccountRuleIgnoresPrivateKeyOnly(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "key.pem", Type: source.FileTypeText},
@@ -383,8 +382,7 @@ func TestGCPServiceAccountRuleIgnoresPrivateKeyOnly(t *testing.T) {
 	}
 }
 
-// TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers asserts both markers
-// inside Go comments do not trigger a finding.
+// TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers asserts both markers inside Go comments do not trigger a finding.
 func TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers(t *testing.T) {
 	cases := map[string]string{
 		"line comment":  "// Example: \"type\": \"service_account\"\n// -----BEGIN PRIVATE KEY-----\n",
@@ -405,7 +403,7 @@ func TestGCPServiceAccountRuleIgnoresCommentOnlyMarkers(t *testing.T) {
 
 // TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter asserts the rule still reports a key whose marker line carries a nosec comment.
 //
-// The inline filter then suppresses and counts it (FAMILY-CONTRACT.md section 13c) instead of the rule dropping it silently.
+// This test checks rule-level reporting; suppression and counting belong to the inline filter (FAMILY-CONTRACT.md section 13c).
 func TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter(t *testing.T) {
 	src := `{
   "type": "service_account", // #nosec -- fixture
@@ -420,10 +418,10 @@ func TestGCPServiceAccountRuleLeavesNoSecToTheInlineFilter(t *testing.T) {
 	}
 }
 
-// TestSensitiveDetectorsAreDefaultEnabled pins which credential rules a default gruff-go analyse run uses.
+// TestSensitiveDetectorsAreDefaultEnabled pins the built-in DefaultEnabled flags of the listed credential rules.
 //
 // The map lookup that sets wantEnabled names the five rules off by default under ADR-021; the other listed rules stay on.
-// A failure means a DefaultEnabled flag changed, so default scans gain or lose that rule's findings.
+// A failure means a listed DefaultEnabled flag differs from policy; configuration can override its effect on scans.
 func TestSensitiveDetectorsAreDefaultEnabled(t *testing.T) {
 	for _, definition := range []Definition{
 		PrivateKeyRule{}.Definition(),
@@ -508,7 +506,7 @@ func TestScanLinesForSecretSkipsComments(t *testing.T) {
 
 // TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter asserts a line carrying a nosec or nolint comment still reports at rule level.
 //
-// analysis.ApplyInlineSuppressions then applies matching directives and counts the suppressed findings (FAMILY-CONTRACT.md section 13c).
+// This test checks rule-level reporting; analysis.ApplyInlineSuppressions owns suppression and counting (FAMILY-CONTRACT.md section 13c).
 // The rule must not drop them uncounted.
 func TestScanLinesForSecretLeavesSuppressionsToTheInlineFilter(t *testing.T) {
 	cases := []string{

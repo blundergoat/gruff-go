@@ -6,8 +6,7 @@ package rule
 
 import "testing"
 
-// TestRequestControlledURLRequiresAffirmativeConstraint distinguishes syntax
-// parsing and name collisions from actual destination-validation evidence.
+// TestRequestControlledURLRequiresAffirmativeConstraint distinguishes syntax parsing and name collisions from actual destination-validation evidence.
 func TestRequestControlledURLRequiresAffirmativeConstraint(t *testing.T) {
 	testCases := []struct {
 		journeyName      string
@@ -365,8 +364,7 @@ func requestURLHelperBody(helperName string) string {
 	_, _ = http.Get(target)`
 }
 
-// redirectHelperBody builds the equivalent user journey for redirect sinks so
-// request and redirect naming policies stay aligned.
+// redirectHelperBody builds the equivalent user journey for redirect sinks so request and redirect naming policies stay aligned.
 //
 // helperName is spliced verbatim as the function the guard calls on target, so callers pass a helper that requestURLConstraintSource declares.
 // It returns Go statement text, never empty, that reads target from the next form field and returns early when the helper call is false.
@@ -380,8 +378,7 @@ func redirectHelperBody(helperName string) string {
 	http.Redirect(w, r, target, 302)`
 }
 
-// requestURLConstraintSource wraps one journey in a parseable handler with all
-// helper-name variants a user project might expose to the scanner.
+// requestURLConstraintSource wraps one journey in a parseable handler with helper-name variants a user project might expose to the scanner.
 //
 // handlerName names the generated handler function, and handlerBody is spliced verbatim as its body, where w and r are in scope.
 // It returns the complete source of package handler, never empty, importing context, net/http, net/url and strings.

@@ -41,7 +41,7 @@ func TestFlowMappingRefusalNamesTheShapeAndTheBlockForm(t *testing.T) {
 	}
 }
 
-// A quoted value that merely starts with a brace is a string, not a flow mapping, and must still parse.
+// TestQuotedBraceValueRemainsAScalar checks that a quoted brace value is accepted and its text survives JSON encoding.
 func TestQuotedBraceValueRemainsAScalar(t *testing.T) {
 	encoded, err := encodeYAMLAsJSON([]byte("schemaVersion: \"1\"\nreportTitle: \"{project}\"\n"))
 	if err != nil {

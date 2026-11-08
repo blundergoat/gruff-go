@@ -102,7 +102,7 @@ func Hot(a bool, b bool) {
 // baseFinding builds a minimal finding fixture used across composite tests.
 //
 // It returns a warning, high-confidence finding from rule ruleID, with a fingerprint from WithFingerprint.
-// file is the source path the hotspot groups by, and pillar counts toward the distinct pillars a hotspot needs.
+// file is the source path the hotspot groups by; pillar counts toward its distinct pillars unless it is the design pillar.
 //
 // symbol names the flagged declaration; the fixtures pass an empty symbol for file-level findings.
 // A positive line becomes the Location line; zero or a negative line leaves Location nil, as for a file-level finding.

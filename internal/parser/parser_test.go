@@ -127,8 +127,8 @@ func TestParseReportsParseDiagnostics(t *testing.T) {
 
 // TestParseWithBudgetDegradesOnlyGoFiles covers independent line and byte bounds for the bounded deep scan.
 //
-// Each case trips one limit alone: main.go keeps its raw source but loses its AST, and gets one non-fatal bounded-deep-scan diagnostic.
-// The text file notes.md is still returned as a unit and draws no diagnostic.
+// Each case trips one limit alone and checks for two units, with nonempty source and no AST in the first.
+// It also requires exactly one non-fatal bounded-deep-scan diagnostic for main.go.
 func TestParseWithBudgetDegradesOnlyGoFiles(t *testing.T) {
 	root := t.TempDir()
 	goPath := filepath.Join(root, "main.go")

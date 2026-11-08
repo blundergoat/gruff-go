@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestFingerprintIsStableAndIdentityBased asserts identity-only fields drive the hash.
+// TestFingerprintIsStableAndIdentityBased checks fingerprint consistency and sensitivity to a line change.
 // A failure means WithFingerprint and ComputeFingerprint disagree, or moving a finding to another line kept the same fingerprint.
 func TestFingerprintIsStableAndIdentityBased(t *testing.T) {
 	finding := Finding{
@@ -73,7 +73,7 @@ func TestStableIdentityIsLineInsensitive(t *testing.T) {
 	}
 }
 
-// TestFindingJSONShape asserts findings emit the strict canonical v3 shape.
+// TestFindingJSONShape checks selected canonical v3 finding fields.
 //
 // It checks the flat file, line, endLine and column fields and rejects a nested location object.
 // It also pins the default tier, both identity fields, an empty secondaryPillars list and scanner-pinpointed locationPrecision.

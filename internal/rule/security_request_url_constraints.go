@@ -25,12 +25,13 @@ type parsedDestinationEvidence struct {
 	hasAllowedHost   bool
 }
 
-// bodyHasParsedDestinationAllowlist accepts a parsed URL only when exiting guards constrain both its HTTP scheme and exact host.
+// bodyHasParsedDestinationAllowlist recognises rejecting HTTP scheme and exact host checks on one parsed URL linked to the sink.
+// A sink inside a rejecting guard's body can qualify even though that destination need not pass those checks.
 //
 // Parsing establishes syntax, not destination trust, so nothing weaker clears the sink.
 //
 // The requestScope recognises net/url parse calls, functionBody is the body searched, and sinkValueNames are the locals carrying the destination.
-// Only parses and exiting guards before sinkPosition count, and a guard counts only when every region enclosing it also contains the sink.
+// Only parses and exiting guards starting before sinkPosition count; every region enclosing a guard must also contain the sink.
 // Jumps such as goto are not followed, so this does not prove every path to the sink runs the guard.
 //
 // It returns true when one parsed URL has both a rejecting http or https scheme check and a non-empty host check; false means none was found.
@@ -278,9 +279,9 @@ func anyNameAssignedBetween(functionBody *ast.BlockStmt, names map[string]bool, 
 	return found
 }
 
-// branchLeavesTrimLoop reports whether a branch statement can reach code after the loop, or skip a pass, without re-testing the condition.
+// branchLeavesTrimLoop reports whether branch is conservatively treated as an escape from the trim loop.
 //
-// True voids the whole normalisation proof and the redirect stays in the user's report, the safe direction for an escape we cannot rule out.
+// True rejects this loop as normalisation evidence; another qualifying loop can still suppress the redirect finding.
 // Labelled branches are conservatively treated as escapes without resolving their targets, including labels naming this loop or an inner loop.
 //
 // insideNestedBreakable says whether the branch sits inside an inner for, range, switch, type switch, or select.
@@ -304,7 +305,7 @@ func branchLeavesTrimLoop(branch *ast.BranchStmt, insideNestedBreakable bool) bo
 	}
 }
 
-// trimLoopBodyEscapes reports whether any branch inside the trim loop can leave it before the condition is re-tested.
+// trimLoopBodyEscapes reports whether a branch in subtree is conservatively treated as an escape before the trim loop's next condition test.
 //
 // It walks depth-aware because an unlabelled break changes meaning once it sits inside an inner breakable construct.
 // A single flat scan cannot tell those two spellings apart.
@@ -508,9 +509,9 @@ func blockEndsWithReturn(statementBlock *ast.BlockStmt) bool {
 	return endsWithReturn
 }
 
-// bodyHasCommittedRelativePrefix accepts an exiting HasPrefix guard only when its literal names a real path segment rather than a bare slash.
+// bodyHasCommittedRelativePrefix recognises an exiting HasPrefix guard with a literal starting / followed by neither / nor backslash.
 //
-// An exiting guard in functionBody before sinkPosition must negate a HasPrefix call on the strings package.
+// A negated strings.HasPrefix guard in functionBody must start before sinkPosition; the sink may be inside its rejecting body.
 // Every region enclosing the guard must also contain the sink; jumps such as goto are not followed.
 //
 // The stringPackageAliases set names that package's import aliases, and the call's first argument must use one of sinkValueNames.
@@ -557,9 +558,10 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 	return foundCommittedPrefix
 }
 
-// bodyStripsProtocolRelativePrefix accepts a slash-trimming loop as evidence that a redirect value no longer starts with //.
+// bodyStripsProtocolRelativePrefix accepts a matching slash-trimming loop as evidence for suppressing a redirect finding.
+// A sink inside the loop body before trimming can qualify, even while its target still starts with //.
 //
-// A for loop in functionBody before sinkPosition must test HasPrefix of one of sinkValueNames against a double slash.
+// A for loop in functionBody starting before sinkPosition must test HasPrefix of one of sinkValueNames against a double slash.
 // Every region enclosing the loop must also contain the sink; jumps such as goto are not followed.
 // Its body must contain a recognised top-level trim assignment made through stringPackageAliases.
 //
@@ -740,7 +742,7 @@ func isNegativeIntLiteral(countExpression ast.Expr) bool {
 // loopTrimsOneLeadingSlash recognises a top-level strings.TrimPrefix assignment in a loop body with no rejected branch statements.
 //
 // The loopBody is rejected for any goto, any labelled break or continue, and any unlabelled break not inside an inner breakable construct.
-// One of its top-level statements must assign redirectVariableName the TrimPrefix of itself and a slash, called through stringPackageAliases.
+// A top-level assignment to redirectVariableName must call TrimPrefix on itself and a slash through stringPackageAliases; += also counts.
 // Finding that assignment does not prove it runs on every pass: an unlabelled continue placed before it is accepted.
 //
 // It returns true when the body is not rejected and has that assignment, and false otherwise.

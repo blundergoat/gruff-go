@@ -34,7 +34,7 @@ func alwaysIgnoredFile(rel string) (string, bool) {
 	return "", false
 }
 
-// fallbackIgnoredDir reports directories skipped when no project .gitignore exists.
+// fallbackIgnoredDir reports directory skips used when no readable .gitignore exists from the discovery root through rel's parent.
 //
 // rel is a slash-separated path, possibly absolute; its segments are compared with exact case, and the first match decides the reason.
 // It returns true with "dependency" for node_modules, "build-output" for build or coverage, and "local-tooling" for .fleet, .idea or .vscode.

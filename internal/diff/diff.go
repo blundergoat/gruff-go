@@ -238,7 +238,8 @@ func markParsedFile(result *ChangedLines, file string, newFile bool) {
 // addHunkLines records the added-side line range from a unified-diff hunk.
 //
 // line is the hunk header; its added-side lines go into the LinesByFile entry for file in result, and a file already marked whole is skipped.
-// A pure-deletion hunk records only its anchor line, and a header that does not match hunkPattern changes nothing.
+// A pure-deletion hunk records its new-side start, using line 1 when that start is 0.
+// A header that does not match hunkPattern changes nothing.
 func addHunkLines(result *ChangedLines, file string, line string) {
 	if _, whole := result.WholeFiles[file]; whole {
 		return
@@ -270,7 +271,8 @@ func addHunkLines(result *ChangedLines, file string, line string) {
 	}
 }
 
-// Filter keeps findings whose file and line ranges overlap the changed set.
+// Filter keeps findings overlapping changed, including all findings in wholly changed files and unlocated findings in any listed file.
+// A nil Location or line 0 counts as unlocated, and an empty changed-line set for the file still retains such findings.
 //
 // It returns a FilterResult with the kept findings in input order and the dropped count in FilteredFindings, zero when every finding overlaps.
 // When nothing overlaps, Findings is an empty, non-nil slice.

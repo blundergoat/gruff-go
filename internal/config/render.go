@@ -32,8 +32,10 @@ type RenderOptions struct {
 // Render returns a default .gruff-go.yaml body that mirrors the registry's per-rule enablement, severity, and threshold defaults.
 //
 // Rule blocks are sorted by rule ID; a list value yamlQuoteIfNeeded leaves bare, such as true, can read back through Load as another type.
-// When opts.Existing is non-nil its scaffolds and per-rule overrides are layered into the output.
 // definitions is copied before sorting, so the caller's slice keeps its order; opts carries the optional Existing config to merge.
+//
+// When opts.Existing is non-nil, its supported scaffolds and per-rule overrides are layered in; selection lists are always written empty.
+// Overrides are looked up by exact rule ID, so one kept under a legacy alias is dropped and that rule is written with its default.
 func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 	sorted := append([]rule.Definition(nil), definitions...)
 	slices.SortFunc(sorted, func(a, b rule.Definition) int { return strings.Compare(a.ID, b.ID) })
@@ -291,7 +293,7 @@ func ruleOverrideFor(opts RenderOptions, id string) RuleConfig {
 	return opts.Existing.Rules[id]
 }
 
-// writeRenderRuleBlock writes one rule entry: a description comment, then enabled, severity, threshold or thresholds, and optional options.
+// writeRenderRuleBlock writes one rule entry with enabled and severity, plus any description, thresholds and options that are present.
 //
 // Each knob prefers the override value when set and otherwise falls back to the rule's registry default.
 // It writes to buf under the ID of definition, leaving out the description comment when its Description is empty.
@@ -320,7 +322,7 @@ func writeRenderRuleBlock(buf *bytes.Buffer, definition rule.Definition, overrid
 	writeRenderOptionsBlock(buf, override.Options)
 }
 
-// writeRenderThresholdsWithOverride emits the threshold section from override when it sets any value, and from the rule's defaults otherwise.
+// writeRenderThresholdsWithOverride renders defaults with named thresholds from override merged in, using a singular override where applicable.
 // It writes to buf with writeRenderOverrideThresholds when override sets any threshold, and with writeRenderThresholds otherwise.
 func writeRenderThresholdsWithOverride(buf *bytes.Buffer, defaults map[string]float64, override RuleConfig) {
 	if override.Threshold != nil || len(override.Thresholds) > 0 {

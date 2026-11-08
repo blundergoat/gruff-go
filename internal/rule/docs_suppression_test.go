@@ -31,7 +31,7 @@ func sample() {
 
 // TestSuppressionWithoutRationaleRuleAcceptsReasons covers the rationale shapes the rule accepts.
 //
-// A -- reason or a second comment on the same line counts, and so does a reason: or rationale: comment on a nearby line.
+// The fixture mixes inline -- and // explanations with adjacent reason: and rationale: comments, and expects no findings.
 // A failure means users would see suppression findings on directives that already explain themselves.
 func TestSuppressionWithoutRationaleRuleAcceptsReasons(t *testing.T) {
 	unit := parseOne(t, "suppress.go", `// Package sample is a test package.

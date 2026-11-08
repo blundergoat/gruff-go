@@ -163,7 +163,7 @@ func (c *misspellingContext) emit(tok, suggestion string, pos token.Pos) {
 	})
 }
 
-// checkText tokenises the given text and emits findings for any tokens in the dictionary.
+// checkText tokenises the given text and emits findings for dictionary tokens unless ignored or already reported at the same line and column.
 // pos is where text starts and is reported for every finding in it, so all findings from one text share a line and column.
 func (c *misspellingContext) checkText(text string, pos token.Pos) {
 	for _, tok := range tokenizeForMisspelling(text) {

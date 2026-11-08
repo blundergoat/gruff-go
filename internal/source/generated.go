@@ -10,12 +10,13 @@ import (
 	"strings"
 )
 
-// HasGeneratedGoHeader reports whether source begins with a generated-code header, scanning line by line until a line starts with package.
+// HasGeneratedGoHeader returns whether source's leading comments have both markers, stopping at a trimmed "package " prefix outside block comments.
+// Scanning also stops at EOF or bufio.Scanner's default token-size limit and checks only the comments collected so far.
 //
 // The marker needs both "generated" and "do not edit", in any letter case, somewhere in the leading comments.
 // Ordinary prose that says only one of those phrases stays in scope for analysis.
 //
-// It reports false for empty source, or when a line that is not blank, a // comment or a /* comment comes first.
+// It reports false for empty source or any nonblank, non-comment line without the "package " prefix, even after both markers.
 // A line opening with /* is kept whole, so text after that comment on the same line, even a package clause, also counts.
 func HasGeneratedGoHeader(source string) bool {
 	scanner := bufio.NewScanner(strings.NewReader(source))

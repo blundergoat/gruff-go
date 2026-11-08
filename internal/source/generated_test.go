@@ -30,8 +30,7 @@ func TestDiscoverGeneratedHeaderVariants(t *testing.T) {
 	}
 }
 
-// TestDiscoverGeneratedHeaderRequiresBothMarkers keeps hand-written files that
-// merely mention "do not edit" or "generated" inside the analysable set.
+// TestDiscoverGeneratedHeaderRequiresBothMarkers keeps hand-written files that merely mention "do not edit" or "generated" inside the analysable set.
 func TestDiscoverGeneratedHeaderRequiresBothMarkers(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "manual/comment.go", "// DO NOT EDIT these fixtures without updating tests.\npackage manual\n")

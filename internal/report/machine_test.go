@@ -370,8 +370,7 @@ func requireNoRawSARIFResultKeys(t *testing.T, result map[string]any, keys ...st
 
 // baselineIdentityOf returns the ratified durable identity a SARIF result must publish for one finding.
 //
-// Code scanning groups alerts by it, so a hand-built finding is ranked the way the analysis pipeline
-// would have ranked it before the identity is computed.
+// Code scanning groups alerts by this identity; an unranked symbol-bearing item gets ordinal 1 without a declaration inventory.
 // The item is ranked alone through finding.EnsureSymbolOrdinals, and a failed identity computation fails the test.
 func baselineIdentityOf(t *testing.T, item finding.Finding) string {
 	t.Helper()

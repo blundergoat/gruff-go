@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestConfigPromptSkipsNullDevice verifies redirected null input never triggers first-run setup.
+// TestConfigPromptSkipsNullDevice verifies that null-device stdin produces no generate-config prompt and no bootstrap error.
 // If the prompt-text check fails, a first run with stdin from /dev/null, as in a container, would print the generate-config prompt.
 func TestConfigPromptSkipsNullDevice(t *testing.T) {
 	nullDevice, err := os.Open(os.DevNull)
@@ -42,7 +42,7 @@ func TestConfigPromptSkipsNullDevice(t *testing.T) {
 	}
 }
 
-// TestAnsiAutoDetectionRejectsNullDevice verifies redirected output remains free of terminal styling.
+// TestAnsiAutoDetectionRejectsNullDevice verifies that isTerminalWriter rejects the null device.
 // If the isTerminalWriter check fails, output sent to /dev/null passes the terminal gate that automatic colour relies on.
 func TestAnsiAutoDetectionRejectsNullDevice(t *testing.T) {
 	nullDevice, err := os.Open(os.DevNull)

@@ -169,8 +169,7 @@ func TestDiscoverIncludeIgnoredPreservesConfigIgnores(t *testing.T) {
 	}
 }
 
-// TestDiscoverRootGitignoreOwnsFallbackDirectories verifies projects own node_modules when .gitignore exists; vendor and
-// dist no longer defer (FAMILY-CONTRACT.md section 7, precision-floor M04).
+// TestDiscoverRootGitignoreOwnsFallbackDirectories verifies a comment-only root .gitignore disables the node_modules fallback.
 func TestDiscoverRootGitignoreOwnsFallbackDirectories(t *testing.T) {
 	root := t.TempDir()
 	// A root .gitignore holding only a comment is enough: its presence alone turns off the node_modules fallback.
@@ -317,8 +316,7 @@ func TestDiscoverNoGitignoreFallsBackToHardcoded(t *testing.T) {
 
 // TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore confirms the repository .gitignore never drops an explicit file outside the root.
 //
-// displayPath gives a file outside the root an absolute path, so a root rule like "tmp/" must never be matched against /tmp/foo.go.
-// Explicit files bypass .gitignore matching, and repoRelative also keeps absolute paths out of Matcher.Match.
+// The test requires main.go and the outside file, identified by AbsPath, to appear in Files.
 func TestDiscoverExplicitInputOutsideRootIgnoresRepoGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "tmp/\n")
@@ -381,8 +379,7 @@ func TestDiscoverRecordsMissingInputs(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreSharesEngineWithDiscover proves both recursive-directory
-// spellings report the same configured pattern across every discovery shape.
+// TestCheckIgnoreSharesEngineWithDiscover proves both recursive-directory spellings report one pattern in a root walk, a file operand, CheckIgnore.
 func TestCheckIgnoreSharesEngineWithDiscover(t *testing.T) {
 	for _, pattern := range []string{"ignored/", "ignored/**"} {
 		t.Run(pattern, func(t *testing.T) {
@@ -467,8 +464,7 @@ func TestCheckIgnoreIncludeIgnoredStillHonorsConfig(t *testing.T) {
 
 // TestCheckIgnoreReportsGitignoreAndDefaultSources confirms non-config ignores report their own source, and the gitignore one has no pattern.
 //
-// Only config ignores carry a pattern.
-// The default case uses VCS internals because an unrelated .gitignore disables non-VCS fallbacks while VCS paths remain blocked.
+// The default-source assertion checks .git; only the gitignore assertion checks that Pattern is empty.
 func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored/\n")
@@ -485,8 +481,9 @@ func TestCheckIgnoreReportsGitignoreAndDefaultSources(t *testing.T) {
 	}
 }
 
-// TestDiscoverThirdPartyClassesIgnoreGitignore verifies section 7's third-party, build-output and minified classes skip
-// at any depth and in any ASCII case even under a governing .gitignore, and are listed with their reasons.
+// TestDiscoverThirdPartyClassesIgnoreGitignore verifies third-party, build-output and supported minified fixtures are skipped with reasons.
+// The directory fixtures include nested and mixed-case names under a governing .gitignore.
+// The unsupported minified JavaScript fixture has no skipped-path record.
 func TestDiscoverThirdPartyClassesIgnoreGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "*.log\n")
@@ -513,7 +510,8 @@ func TestDiscoverThirdPartyClassesIgnoreGitignore(t *testing.T) {
 	}
 }
 
-// TestDiscoverThirdPartyClassesComeBackOnRequest verifies --include-ignored and explicit files bring the classes back.
+// TestDiscoverThirdPartyClassesComeBackOnRequest verifies --include-ignored restores the vendor, dist and minified fixtures.
+// Explicit operands restore the vendor and minified fixtures.
 func TestDiscoverThirdPartyClassesComeBackOnRequest(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "vendor/copied.go", "package copied\n")

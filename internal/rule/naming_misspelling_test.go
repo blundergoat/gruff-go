@@ -100,7 +100,7 @@ type Sample struct {
 	}
 }
 
-// TestMisspellingAcceptsExtraDictionary verifies user-provided Extra entries augment the dictionary.
+// TestMisspellingAcceptsExtraDictionary verifies that the configured Extra entry reports foo as a misspelling of bar.
 // A failure means the expected foo to bar finding is missing or its message changed.
 func TestMisspellingAcceptsExtraDictionary(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg

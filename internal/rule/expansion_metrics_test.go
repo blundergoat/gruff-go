@@ -84,7 +84,7 @@ func Transform[T ~int](x func(int) error, options TransformOptions[T]) error {
 }
 
 // TestNestingDepthRule checks Deep, six blocks deep, reports depth=6 while Shallow stays quiet, and that the rule is on by default.
-// Five ifs nested in a function literal inside Outer must give no finding, as Outer is measured apart from the literal.
+// Five nested ifs in a function literal inside Outer also produce no findings with the default rule.
 func TestNestingDepthRule(t *testing.T) {
 	deep := parseOne(t, "deep.go", `package sample
 
@@ -230,7 +230,7 @@ func ExportedTestHelper() {}
 // TestGenericMethodsCarryTheirBaseTypeSymbol checks generic methods carry the same Type.Method symbol as methods on plain receivers.
 //
 // Undocumented methods on an exported generic type are reported, and those on an unexported generic type are not.
-// A finding inside a generic method names it Stack.Deep, never the bare method name, and that symbol feeds the finding's stable identity.
+// A nesting-depth finding inside a generic method names it Stack.Deep, never the bare method name.
 func TestGenericMethodsCarryTheirBaseTypeSymbol(t *testing.T) {
 	unit := parseOne(t, "stack.go", `package sample
 
@@ -284,7 +284,7 @@ func (s *Stack[T]) Deep(a, b, c bool) {
 }
 
 // TestExportedSymbolCommentRuleCanIgnoreInternalPackages sets ignoreInternalPackages to true in the rule options.
-// An undocumented export under internal/service is then silenced, while one under pkg/api is still the only finding.
+// The findings omit VisibleInsideModule under internal/service and contain only the symbol VisibleOutsideModule under pkg/api.
 func TestExportedSymbolCommentRuleCanIgnoreInternalPackages(t *testing.T) {
 	internalUnit := parseOne(t, "internal/service/service.go", `package service
 

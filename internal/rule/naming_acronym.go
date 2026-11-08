@@ -96,7 +96,7 @@ func (r AcronymCaseRule) Definition() Definition {
 // AnalyzeUnit walks the unit and emits findings for identifiers that mis-case configured initialisms.
 //
 // It returns nil when unit has no AST or FileSet, when shouldSkipGeneratedUnit skips it under ctx, or when no acronym spec remains.
-// Otherwise it checks declared type, func, var, const, field and parameter names, skipping _ and exact Allow entries.
+// Otherwise it checks declared type, func, var, const, field and parameter names, skipping _, exact Allow entries and AcceptedAbbreviations tokens.
 // It returns one finding per mis-cased name with the token and canonical acronym in its metadata, or an empty non-nil slice when none match.
 func (r AcronymCaseRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) {
@@ -249,7 +249,7 @@ func exactStringSet(values []string) map[string]bool {
 	return out
 }
 
-// lowerStringSet returns a set keyed by trimmed, lowercased entries of values.
+// lowerStringSet returns a set keyed by trimmed, lowercased entries of values, skipping entries that are empty after trimming.
 func lowerStringSet(values []string) map[string]bool {
 	out := make(map[string]bool, len(values))
 	for _, value := range values {

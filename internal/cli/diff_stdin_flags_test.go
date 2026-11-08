@@ -74,7 +74,7 @@ func TestNormalizeGlobalStdinFlagValues(t *testing.T) {
 	}
 }
 
-// TestGlobalFlagsSurviveStdinPatchValue runs the real entrypoint with each global flag placed after --diff - or --since -.
+// TestGlobalFlagsSurviveStdinPatchValue runs the real entrypoint with each listed global flag placed after --diff - or --since -.
 //
 // Global parsing must consume each flag instead of passing it to the analyse FlagSet, which would reject it as an undefined flag.
 // The test checks acceptance only: the run must not exit 2 or write anything to stderr.
@@ -97,8 +97,7 @@ func TestGlobalFlagsSurviveStdinPatchValue(t *testing.T) {
 	}
 }
 
-// TestQuietSuppressesOutputAfterStdinPatchValue confirms the recovered flag is
-// applied rather than merely accepted: quiet still discards the command's stdout.
+// TestQuietSuppressesOutputAfterStdinPatchValue checks that stdout is empty when --quiet follows --diff -.
 func TestQuietSuppressesOutputAfterStdinPatchValue(t *testing.T) {
 	withEmptyStdin(t)
 	_, stdout, _ := captureCLIResult([]string{"analyse", "--diff", "-", "--quiet", "."})
@@ -107,8 +106,8 @@ func TestQuietSuppressesOutputAfterStdinPatchValue(t *testing.T) {
 	}
 }
 
-// withEmptyStdin points os.Stdin at an already-closed pipe for one test. Reading a
-// `-` patch drains stdin, so an inherited terminal would otherwise block the suite.
+// withEmptyStdin points os.Stdin at a pipe whose write end is closed for one test.
+// Reading a `-` patch drains stdin, so an inherited terminal would otherwise block the suite.
 func withEmptyStdin(t *testing.T) {
 	t.Helper()
 	readEnd, writeEnd, err := os.Pipe()

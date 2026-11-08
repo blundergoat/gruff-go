@@ -70,8 +70,7 @@ func expectCounts(t *testing.T, result ApplyResult, want counts) {
 	}
 }
 
-// TestIdentityMatchesTheFamilyOracle reproduces the digests the family case
-// file pins for other ports, which is the only proof the rule is one rule.
+// TestIdentityMatchesTheFamilyOracle checks that the listed findings and tool languages produce their expected baseline identity digests.
 func TestIdentityMatchesTheFamilyOracle(t *testing.T) {
 	pins := []struct {
 		toolLanguage string
@@ -124,8 +123,7 @@ func TestIdentityIgnoresEveryExcludedField(t *testing.T) {
 	}
 }
 
-// TestOrdinalsCountDeclarationsNotLines keeps two findings on one declaration
-// together and separates a second declaration of the same name.
+// TestOrdinalsCountDeclarationsNotLines keeps two findings on one declaration together and separates a second declaration of the same name.
 func TestOrdinalsCountDeclarationsNotLines(t *testing.T) {
 	ranked := finding.AssignSymbolOrdinals([]finding.Finding{
 		ordinary("process", 12), ordinary("process", 15), ordinary("process", 90), ordinary("handle", 40),
@@ -142,15 +140,13 @@ func TestOrdinalsCountDeclarationsNotLines(t *testing.T) {
 	}
 }
 
-// TestLineMovementKeepsTheEntry inserts three hundred lines above a reviewed
-// finding and expects nothing to expire.
+// TestLineMovementKeepsTheEntry checks that moving a reviewed finding from line 10 to line 310 leaves it unchanged with no resolutions.
 func TestLineMovementKeepsTheEntry(t *testing.T) {
 	result := classify(t, []finding.Finding{ordinary("process", 10)}, []finding.Finding{ordinary("process", 310)})
 	expectCounts(t, result, counts{1, 0, 0, 0, 0})
 }
 
-// TestMatchingIsCountAware proves a second occurrence on one declaration is
-// new, and that surplus reviewed occurrences are resolved, not silently kept.
+// TestMatchingIsCountAware checks new same-named declarations, increased duplicate counts and resolved surplus reviewed occurrences.
 func TestMatchingIsCountAware(t *testing.T) {
 	one := ordinary("process", 10)
 	duplicate := classify(t, []finding.Finding{one}, []finding.Finding{one, ordinary("process", 42)})
@@ -161,8 +157,7 @@ func TestMatchingIsCountAware(t *testing.T) {
 	expectCounts(t, increase, counts{2, 1, 0, 0, 0})
 }
 
-// TestReviewedCountIsSpentLowestLineFirst pins which occurrence is unchanged,
-// not merely how many; the run is supplied out of order on purpose.
+// TestReviewedCountIsSpentLowestLineFirst pins which occurrence is unchanged, not merely how many; the run is supplied out of order on purpose.
 func TestReviewedCountIsSpentLowestLineFirst(t *testing.T) {
 	result := classify(t, []finding.Finding{ordinary("process", 10)}, []finding.Finding{ordinary("process", 300), ordinary("process", 10)})
 	if result.Statuses[0] != StatusNew || result.Statuses[1] != StatusUnchanged {
@@ -170,8 +165,7 @@ func TestReviewedCountIsSpentLowestLineFirst(t *testing.T) {
 	}
 }
 
-// TestReplacementAndRenameAreReviewWorthy keeps a new sibling from inheriting a
-// review, whether the symbol or the file changed.
+// TestReplacementAndRenameAreReviewWorthy keeps a new sibling from inheriting a review, whether the symbol or the file changed.
 func TestReplacementAndRenameAreReviewWorthy(t *testing.T) {
 	replaced := classify(t, []finding.Finding{ordinary("process", 10)}, []finding.Finding{ordinary("handle", 90)})
 	expectCounts(t, replaced, counts{0, 1, 1, 0, 0})
@@ -181,8 +175,7 @@ func TestReplacementAndRenameAreReviewWorthy(t *testing.T) {
 	expectCounts(t, renamed, counts{0, 1, 1, 0, 0})
 }
 
-// TestSameNamedDeclarationsStayApart is the collision the ordinal was ratified
-// to resolve: reviewing the first process must not baseline the second.
+// TestSameNamedDeclarationsStayApart checks that one reviewed finding yields one unchanged and one new same-named finding.
 func TestSameNamedDeclarationsStayApart(t *testing.T) {
 	result := classify(t, []finding.Finding{ordinary("process", 10)}, []finding.Finding{ordinary("process", 10), ordinary("process", 90)})
 	expectCounts(t, result, counts{1, 1, 0, 0, 0})
@@ -260,7 +253,7 @@ func TestSeparatorBearingSymbolHasNoIdentity(t *testing.T) {
 // TestSensitiveFindingsAreNeverEligible covers both directions: what a written baseline stores and what a hand-written one can suppress.
 //
 // A written baseline keeps one ordinary entry and two sensitive counts, and its JSON holds neither the raw secret nor the secret's file path.
-// A hand-written entry claiming a secret's identity suppresses nothing: it counts as resolved and the secret stays visible.
+// A hand-written entry with an unmatched identity counts as resolved, and the sensitive finding stays visible and not eligible.
 func TestSensitiveFindingsAreNeverEligible(t *testing.T) {
 	rawSecret := "synthetic-fixture-credential-body"
 	secret := finding.Finding{
@@ -335,8 +328,7 @@ func TestGeneratedFilesAreDeterministic(t *testing.T) {
 	}
 }
 
-// TestParseRejectsEveryWayAFileCouldExpireLeakOrReorder covers the validator
-// and the loud rejection of a 0.5 file.
+// TestParseRejectsEveryWayAFileCouldExpireLeakOrReorder covers the validator and the loud rejection of a 0.5 file.
 func TestParseRejectsEveryWayAFileCouldExpireLeakOrReorder(t *testing.T) {
 	legacy := `{"schemaVersion":"gruff-go.baseline.v0.1","findings":[]}`
 	if _, err := Parse([]byte(legacy)); err == nil || !strings.Contains(err.Error(), "--migrate") {
@@ -473,8 +465,7 @@ func TestSymbolLessOccurrencesAreCountedNotCollided(t *testing.T) {
 	}
 }
 
-// TestMigrationRefusesAnAmbiguousInput keeps a 0.5 file that names two row
-// containers from migrating one way here and another way in a sibling port.
+// TestMigrationRefusesAnAmbiguousInput checks that two row containers cause an error, leave the input unchanged and create no output.
 func TestMigrationRefusesAnAmbiguousInput(t *testing.T) {
 	root := t.TempDir()
 	inputPath := filepath.Join(root, "legacy.json")
@@ -502,8 +493,7 @@ func TestMigrationRefusesAnAmbiguousInput(t *testing.T) {
 	}
 }
 
-// TestMigrationRefusesAHardLinkedOutput keeps a second name for one inode from
-// overwriting the retreat copy the migration is supposed to preserve.
+// TestMigrationRefusesAHardLinkedOutput keeps a second name for one inode from overwriting the retreat copy the migration is supposed to preserve.
 func TestMigrationRefusesAHardLinkedOutput(t *testing.T) {
 	root := t.TempDir()
 	inputPath := filepath.Join(root, "legacy.json")
@@ -530,10 +520,9 @@ func TestMigrationRefusesAHardLinkedOutput(t *testing.T) {
 	}
 }
 
-// TestABaselineOnlyEverRemovesReviewedFindings is the ratified score-and-exit invariant.
+// TestABaselineOnlyEverRemovesReviewedFindings checks baseline status counts and the number of surviving findings.
 //
-// Applying a baseline may remove unchanged ordinary findings from the score and the exit code and nothing else.
-// If any other total moves, enforcement moved silently and the run is wrong.
+// It expects one unchanged, one new and one not-eligible finding, no resolutions or collisions, and two gated findings.
 func TestABaselineOnlyEverRemovesReviewedFindings(t *testing.T) {
 	reviewed := ordinary("Process", 10)
 	fresh := ordinary("Handle", 40)

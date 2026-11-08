@@ -24,10 +24,10 @@ func TestSummarySchemaVersion(t *testing.T) {
 	}
 }
 
-// TestBuildPillarSummaryRowsCleanScan asserts a clean scan yields all ten canonical pillars at grade A, score 100 and zero counts.
+// TestBuildPillarSummaryRowsCleanScan checks a clean scan yields ten rows with allowed pillar names, grade A, score 100 and zero counts.
 //
-// That keeps the summary block's row set fixed; the test also checks Penalty 0 and Applicable true on every clean row.
-// A failure means the clean row set, one of those row values, or the pillar-name tie-break is wrong.
+// The test also checks Penalty 0 and Applicable true on every clean row.
+// A failure means the row count or a checked row value is wrong, or test-quality is not last.
 func TestBuildPillarSummaryRowsCleanScan(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -165,10 +165,10 @@ func TestWritePillarsBlockEmptyEmitsHeader(t *testing.T) {
 	}
 }
 
-// TestWriteSummaryV01JSONShape locks the canonical analysis projection used by the summary command.
+// TestWriteSummaryV01JSONShape checks the summary JSON schema string, expected key strings and absence of a top-level findings key.
 //
 // Despite V01 in the writer's name, the document must announce gruff.summary.v3.
-// A failure means summary JSON changed its schema string, lost a top-level key such as run or score, or brought back the per-finding array.
+// The key-string checks search the entire JSON text; only schemaVersion and findings are checked directly in the top-level map.
 func TestWriteSummaryV01JSONShape(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",

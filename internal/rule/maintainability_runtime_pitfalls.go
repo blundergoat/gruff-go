@@ -74,10 +74,10 @@ func (LogFatalLibraryRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for direct log.Fatal* and os.Exit calls in reusable production code.
+// AnalyzeUnit emits findings for direct log.Fatal* and os.Exit call shapes within function and method declaration bodies in reusable production code.
 //
 // unit is skipped as a test, testdata, example, main-package or cmd file; ctx goes to shouldSkipGeneratedUnit, which can skip it too.
-// It returns one finding per call with the enclosing function and rendered callee, and nil when skipped or neither log nor os is imported.
+// It returns one finding per matched call with the enclosing function and rendered callee, and nil when skipped or neither log nor os is imported.
 func (LogFatalLibraryRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || unit.AST.Name.Name == "main" || isBootstrapPath(unit.File.Path) || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
@@ -252,7 +252,8 @@ func deferInLoopStmtList(unit parser.Unit, stmts []ast.Stmt, symbol string, loop
 	return deferInLoopBlock(unit, &ast.BlockStmt{List: stmts}, symbol, loopDepth)
 }
 
-// fatalLibraryCallName returns the rendered fatal call when it is a direct standard-library process exit.
+// fatalLibraryCallName returns the rendered callee and true for os.Exit, log.Fatal, log.Fatalf or log.Fatalln matched by import-name spelling.
+// Shadowed import names also match; the callee's identity is not resolved.
 //
 // logPackages and osPackages hold the import names of log and os; call must be Exit on an os name or Fatal, Fatalf or Fatalln on a log name.
 // Any other call gives an empty string and false.

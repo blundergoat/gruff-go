@@ -147,7 +147,8 @@ type templateXSSContext struct {
 // Each shape requires the value to be request-controlled, so a render of trusted data is not flagged.
 // ctx carries the enclosing function's taint scope, response writers, package aliases, template value kinds and HTML Content-Type flag.
 //
-// The text/template render is tried first, then the unsafe conversion, then the raw write; with no match it gives an empty reason and false.
+// The text/template render is tried first, then the unsafe conversion, then the raw write.
+// With no match it returns an empty reason, call.Pos() and false.
 // Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func templateXSSHit(call *ast.CallExpr, ctx templateXSSContext) (string, token.Pos, bool) {
 	switch {
@@ -264,7 +265,7 @@ func isHTTPResponseWriter(expr ast.Expr, httpPackages map[string]bool) bool {
 	return ok && httpPackages[receiver.Name]
 }
 
-// functionSetsHTMLContentType reports whether body sets an HTML Content-Type header, which arms the raw-write shape.
+// functionSetsHTMLContentType reports whether body contains an HTML Content-Type setter outside nested function literals.
 //
 // Only Header().Set with a literal Content-Type key and a literal value containing html counts, compared in any letter case.
 // Without such a header in the function, raw writes of request data are not flagged.
@@ -350,7 +351,10 @@ func unsafeTemplateConversion(call *ast.CallExpr, htmlTemplatePackages map[strin
 // rawResponseWriteArgs returns the data arguments a call writes straight to a response writer through w.Write, fmt.Fprint* or io.WriteString.
 //
 // call is the call expression to classify; writers names the response-writer parameters, and pkgs supplies the fmt and io import aliases.
-// w.Write on a writer yields all its arguments; fmt Fprint, Fprintf and Fprintln and io.WriteString yield the arguments after the writer.
+// w.Write on a writer yields all its arguments and true.
+//
+// fmt Fprint, Fprintf and Fprintln need at least two arguments; io.WriteString needs exactly two.
+// With a writer identifier as the first argument, these calls return the remaining arguments and true.
 // Any other call gives nil and false.
 func rawResponseWriteArgs(call *ast.CallExpr, writers map[string]bool, pkgs templateXSSPackages) ([]ast.Expr, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)

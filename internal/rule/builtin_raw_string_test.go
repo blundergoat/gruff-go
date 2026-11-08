@@ -56,14 +56,14 @@ func TestSecretPatternStillReportsAnAssignmentInCode(t *testing.T) {
 }
 
 // TestSecretPatternStillReportsAnInterpretedString checks that an interpreted string is ordinary code and is not excluded.
-// Only backtick literals are excluded; zero findings means a double-quoted secret is now skipped too.
+// Zero findings means this double-quoted authToken assignment was skipped.
 func TestSecretPatternStillReportsAnInterpretedString(t *testing.T) {
 	value := secretPatternFixtureValue()
 	requireSecretPatternCount(t, "package pkg\n\nvar authToken = \""+value+"\"\n", 1)
 }
 
-// TestSecretPatternResumesAfterARawStringCloses checks that code after a raw string closes is scanned again.
-// One finding is expected, from authToken; zero means that assignment was missed, and two or more means an extra line was flagged.
+// TestSecretPatternResumesAfterARawStringCloses expects one finding from a fixture with a raw string and a later authToken assignment.
+// Zero findings or more than one finding fails the count assertion.
 func TestSecretPatternResumesAfterARawStringCloses(t *testing.T) {
 	value := secretPatternFixtureValue()
 	requireSecretPatternCount(t, "package pkg\n\nconst doc = `\npassword = \""+value+"\"\n`\n\nfunc connect() {\n\tauthToken := \""+value+"\"\n\t_ = authToken\n}\n", 1)

@@ -68,9 +68,9 @@ func TestHookPublishesBoundedDeepScanDiagnostic(t *testing.T) {
 	}
 }
 
-// TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual covers B1 and B2 on the 1010-line fixture.
+// TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual covers B1 and B2 on a fixture of 1010 substantive lines.
 //
-// A full run reports size.file-length at file scope; --changed-ranges 501-501 drops it and counts the drop in suppressed.count.
+// A full run reports size.file-length at file scope; --changed-ranges 501-501 hides it and yields a nonzero suppressed.count.
 // --changed-ranges 5-5 keeps security.shell-command at line scope on line 5, where the fixture's exec.Command call sits.
 func TestHookChangedRegionOmitsFileScopeWithoutAnchorResidual(t *testing.T) {
 	root := t.TempDir()
@@ -398,8 +398,7 @@ func TestHookMetadataDirection(t *testing.T) {
 	}
 }
 
-// TestHookMetadataKeepsLimitBand pins that the hook's measurement object keeps a size
-// or complexity finding's band, so an agent can tell a lower-band notice from a finding.
+// TestHookMetadataKeepsLimitBand checks that size.function-length metadata retains its lower limit band and measured line count.
 func TestHookMetadataKeepsLimitBand(t *testing.T) {
 	notice := hookMetadata("size.function-length", map[string]any{"lines": 94, "threshold": 80, "limitBand": "lower"})
 	if notice["limitBand"] != "lower" || notice["measured"] != 94 {
@@ -486,8 +485,7 @@ func TestHookDiffNoHeadDegradesToJSON(t *testing.T) {
 	}
 }
 
-// TestExportGitTreeScopesToRequestedPackageContext proves hook base export is
-// bounded to the package context needed for explicit Go file scans.
+// TestExportGitTreeScopesToRequestedPackageContext proves base export for an explicit Go file in a subdirectory stays within its package context.
 func TestExportGitTreeScopesToRequestedPackageContext(t *testing.T) {
 	root := t.TempDir()
 	hookRunGit(t, root, "init", "-q")

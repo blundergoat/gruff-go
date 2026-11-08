@@ -95,8 +95,7 @@ func TestHookBaselineConsumesIdentityPairsOneToOne(t *testing.T) {
 	}
 }
 
-// TestHookNeverHidesASensitiveFinding keeps a reviewed secret from covering the
-// same secret on the next run: a sensitive finding has no baseline identity.
+// TestHookNeverHidesASensitiveFinding checks that a sensitive finding remains visible after a baseline is built from the same finding.
 func TestHookNeverHidesASensitiveFinding(t *testing.T) {
 	secret := finding.Finding{
 		RuleID:   "sensitive-data.secret-pattern",

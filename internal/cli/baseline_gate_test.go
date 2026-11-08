@@ -11,8 +11,7 @@ import (
 	"testing"
 )
 
-// TestAnalyseBaselineUnchangedOnlyExitsZero verifies reviewed debt remains
-// hidden and lets the user's CI command succeed.
+// TestAnalyseBaselineUnchangedOnlyExitsZero verifies reviewed debt remains hidden and lets the user's CI command succeed.
 func TestAnalyseBaselineUnchangedOnlyExitsZero(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "complex.go", complexFixture())
@@ -30,8 +29,7 @@ func TestAnalyseBaselineUnchangedOnlyExitsZero(t *testing.T) {
 	}
 }
 
-// TestAnalyseBaselineMixedFindingsExitOne verifies a newly introduced issue
-// still fails CI while the reviewed sibling remains unchanged.
+// TestAnalyseBaselineMixedFindingsExitOne verifies a newly introduced issue still fails CI while the reviewed sibling remains unchanged.
 func TestAnalyseBaselineMixedFindingsExitOne(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "reviewed.go", complexFixture())
@@ -70,8 +68,7 @@ func TestAnalyseBaselineSeverityFloorStillApplies(t *testing.T) {
 	}
 }
 
-// TestAnalyseDiffAndBaselineSuppressShiftedFinding verifies baseline matching
-// happens on the complete scan before the user's changed-region filter.
+// TestAnalyseDiffAndBaselineSuppressShiftedFinding verifies baseline matching happens on the complete scan before the user's changed-region filter.
 func TestAnalyseDiffAndBaselineSuppressShiftedFinding(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "complex.go", complexFixture())

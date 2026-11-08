@@ -80,6 +80,8 @@ type Options struct {
 // Serve binds the dashboard listener, prints the start-up banner and serves HTTP clients until shut down.
 //
 // The opts value supplies the bind address and scan defaults: a blank Host means DefaultHost and a Port of zero or less means DefaultPort.
+// Serve closes opts.Ready, when non-nil, after binding the listener and attempting to write the start-up banner.
+//
 // The stdout writer receives the start-up banner with the dashboard URL, and stderr a warning when opts.AllowPublic admits a non-loopback host.
 // Cancelling ctx or receiving SIGINT or SIGTERM starts a graceful shutdown with a five-second deadline.
 //

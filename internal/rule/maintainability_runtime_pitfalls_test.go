@@ -122,7 +122,8 @@ func Safe(values []int) []*int {
 	}
 }
 
-// TestLoopVariableAddressRuleSyntaxVersionMatrix pins declaration and assignment forms independently across every supported module-version state.
+// TestLoopVariableAddressRuleSyntaxVersionMatrix checks := and = loops with legacy, modern, missing and implicit module versions.
+// It also checks nested module overrides for := loops.
 func TestLoopVariableAddressRuleSyntaxVersionMatrix(t *testing.T) {
 	tests := []struct {
 		name                 string

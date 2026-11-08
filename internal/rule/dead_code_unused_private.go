@@ -73,7 +73,7 @@ func (UnusedPrivateFunctionRule) AnalyzeProject(units []parser.Unit, ctx Context
 	return findings
 }
 
-// importsReflectPackage reports whether file imports the reflect package; false means this file alone gives no reason to skip its package.
+// importsReflectPackage reports whether file imports the reflect package; false means no reflect import was found in file.
 //
 // A true result makes the rule skip the whole parsed package, even when every private function in it is unreferenced.
 // That keeps the rule precision-first, as its description promises, at the cost of missing dead code in those packages.

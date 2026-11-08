@@ -334,7 +334,9 @@ func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd st
 // analyseDisplayFilter builds what the report shows, from the four selectors and the configured severity floor.
 //
 // Everything here is presentation: the exit code and the score were decided by the rules that ran, so hiding a finding
-// from the report never changes them. It reports false after explaining an unknown rule or pillar on stderr.
+// from the report never changes them.
+//
+// It returns the display filter and true, or a zero filter and false after explaining an unknown rule or pillar on stderr.
 // values carries the show and hide selectors, registry the rule definitions they are checked against, and cfg the configured severity floor.
 func analyseDisplayFilter(values analyseFlagValues, registry rule.Registry, cfg cfgpkg.Config, stderr io.Writer) (analysis.DisplayFilter, bool) {
 	displayFilter, err := parseDisplayFilter(values.showRules, values.hideRules, values.showPillars, values.hidePillars, registry.Definitions())

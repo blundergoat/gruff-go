@@ -146,7 +146,7 @@ func sameSourceFileSet(left []source.File, right []source.File) bool {
 // contextOnlyParseDiagnostics keeps the parser diagnostics for sibling files pulled in only for package context.
 //
 // Primary-file diagnostics come from the primary parse, so re-reporting them here would double-count them.
-// The rest explain a sibling that failed to parse, so a project rule misfiring on a primary file because of it has a visible cause.
+// The rest expose sibling read failures, parse errors and nonfatal deep-scan budget skips, so missing context has a visible cause.
 //
 // projectDiagnostics holds the parser diagnostics to filter, and primary is the report target set whose file paths are dropped.
 // It returns the remaining diagnostics in their original order, or nil when projectDiagnostics is empty.

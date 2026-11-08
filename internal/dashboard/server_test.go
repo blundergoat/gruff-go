@@ -95,7 +95,7 @@ func TestInitialURLEncodesDefaultState(t *testing.T) {
 	}
 }
 
-// ephemeralPort returns a free TCP port suitable for in-process server binding.
+// ephemeralPort returns a TCP port that was free when selected; it is released before return and is not reserved for the test server.
 // When pickEphemeralPort fails, the test stops with a fatal error instead of returning a port.
 func ephemeralPort(t *testing.T) int {
 	t.Helper()

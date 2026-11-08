@@ -68,7 +68,7 @@ func TestSizeRuleConfiguredSeverityOverridesTestCalibration(t *testing.T) {
 	}
 }
 
-// assertCalibratedTestSizeFinding fails the test unless item is a size finding softened for a test file.
+// assertCalibratedTestSizeFinding checks item for the fields expected from test-file size calibration.
 //
 // It fails when item has an empty RuleID, is not advisory severity with medium confidence, or lacks true testFile metadata.
 // An empty RuleID means the rule never fired on the fixture.

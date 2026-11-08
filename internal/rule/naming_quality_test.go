@@ -155,8 +155,8 @@ func TestPopulated(t *testing.T) {
 	}
 }
 
-// TestEmptyTestRuleIgnoresNonTestFiles confirms non-test files do not trigger empty-test findings.
-// The fixture declares TestEmpty in sample.go, so a failure means production functions named Test-something get flagged.
+// TestEmptyTestRuleIgnoresNonTestFiles expects no findings for a parameterless TestEmpty in sample.go.
+// The fixture lacks a runnable test signature, so the assertion does not isolate the file-name guard.
 func TestEmptyTestRuleIgnoresNonTestFiles(t *testing.T) {
 	unit := parseOne(t, "pkg/sample.go", `package pkg
 

@@ -151,7 +151,7 @@ func markSleeps(node ast.Node, timePackages map[string]bool, skipped map[token.P
 
 // recordTimedSleeps marks a sleep the test times itself, so a test measuring elapsed time around a sleep raises no finding for it.
 //
-// The sleep must be its own statement between start := time.Now() and a later statement in the same block that calls time.Since(start).
+// The sleep must be its own statement after a time.Now() assignment and before a later statement in the same block calling time.Since on that name.
 // body is searched block by block, timePackages holds the time import names, and skipped receives each timed sleep's call position.
 func recordTimedSleeps(body *ast.BlockStmt, timePackages map[string]bool, skipped map[token.Pos]bool) {
 	ast.Inspect(body, func(node ast.Node) bool {

@@ -159,7 +159,7 @@ func TestAnalyseChangedRangesFailOnNoneExitsZero(t *testing.T) {
 	}
 }
 
-// TestAnalyseHelpDocumentsChangedRegionFlags checks that every analyse help route lists --changed-ranges, --changed-scope and --no-baseline.
+// TestAnalyseHelpDocumentsChangedRegionFlags checks that the listed analyse help routes show --changed-ranges, --changed-scope and --no-baseline.
 // The routes are help analyse, analyse --help and analyse --diff --help; downstream hooks string-match GNU-style long flags to detect support.
 func TestAnalyseHelpDocumentsChangedRegionFlags(t *testing.T) {
 	for _, args := range [][]string{
@@ -559,7 +559,7 @@ func TestAnalyseSummarySARIFAndGitHubFormats(t *testing.T) {
 	}
 }
 
-// TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs ensures display filters affect rendering only.
+// TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs checks finding visibility, the exit code and the summary count under a display filter.
 // With --exclude-rules complexity.cognitive the finding leaves the findings list, yet the run still exits 1 and the summary still counts it.
 func TestAnalyseDisplayFiltersDoNotChangeExitOrScoreInputs(t *testing.T) {
 	root := t.TempDir()

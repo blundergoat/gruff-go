@@ -372,7 +372,7 @@ func stripYAMLComment(line string) string {
 
 // executableRunLines returns the 0-indexed lines that belong to a run: step body, each mapped to true.
 //
-// That is the run: line itself plus its more-indented block-scalar continuation lines; the caller strips comments within them.
+// That is the run: line itself plus its more-indented continuation lines, even without a block-scalar header; the caller strips comments.
 // A run: line nested in another YAML scalar, such as a multi-line name: value, also matches, since only text and indentation are read.
 //
 // The source is the whole workflow text; blank lines inside a run block count as run lines, and a source without run: keys gives an empty map.

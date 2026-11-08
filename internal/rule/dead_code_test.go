@@ -7,7 +7,7 @@ package rule
 import "testing"
 
 // TestUnreachableCodeRule covers same-block unreachable statements and label recovery.
-// A failure means a statement after return or panic is missed, or the target label no longer stops reporting after LabelTarget's return.
+// It expects two findings in total across the return, panic and label fixtures.
 func TestUnreachableCodeRule(t *testing.T) {
 	unit := parseOne(t, "dead.go", `// Package sample is a test package.
 package sample
@@ -37,7 +37,7 @@ target:
 }
 
 // TestUnreachableCodeRuleBranchTermination covers branch forms where every syntactic path exits.
-// It expects one finding after the if/else and one after the switch, since each branch returns or panics.
+// It expects two findings in total across the if/else and switch fixtures.
 func TestUnreachableCodeRuleBranchTermination(t *testing.T) {
 	unit := parseOne(t, "dead.go", `// Package sample is a test package.
 package sample

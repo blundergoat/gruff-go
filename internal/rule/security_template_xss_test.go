@@ -6,8 +6,7 @@ package rule
 
 import "testing"
 
-// TestTemplateInjectionXSSRule covers unescaped HTML response shapes and the
-// auto-escaped or escaped cases that must not fire.
+// TestTemplateInjectionXSSRule covers unescaped HTML response shapes and the auto-escaped or escaped cases that must not fire.
 func TestTemplateInjectionXSSRule(t *testing.T) {
 	tests := []struct {
 		name string

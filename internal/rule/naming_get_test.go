@@ -7,7 +7,7 @@ package rule
 import "testing"
 
 // TestGetPrefixFlagsAccessorMethods verifies the rule flags accessor-shaped Get methods on receivers.
-// GetUserByID with a parameter, a bare Get and the free GetGlobalUser must stay quiet, so exactly two findings report.
+// GetUserByID with a parameter, a bare Get and the free GetGlobalUser stay quiet; only GetUser and GetCacheStats appear as symbols.
 func TestGetPrefixFlagsAccessorMethods(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 

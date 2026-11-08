@@ -462,7 +462,7 @@ func computeTopRules(report analysis.Report, top int) []ruleCount {
 	return entries
 }
 
-// gradeOrNA returns the grade letter, or the placeholder "n/a" when the run graded nothing.
+// gradeOrNA returns the string pointed to by grade, or the placeholder "n/a" when grade is nil or points to an empty string.
 // A nil grade means no applicable pillar was evaluated, which is distinct from a bad grade.
 func gradeOrNA(grade *string) string {
 	if grade == nil || *grade == "" {

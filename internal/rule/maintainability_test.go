@@ -32,7 +32,7 @@ func sample(file interface{ Close() error }) {
 	}
 }
 
-// TestContextTODOProductionRule verifies production context.TODO calls are visible while tests and Background are ignored.
+// TestContextTODOProductionRule expects one finding from a production fixture with TODO and Background, and none from a test fixture.
 // A count failure prints the production or test-file findings that were reported.
 func TestContextTODOProductionRule(t *testing.T) {
 	production := parseOne(t, "service.go", `// Package sample is a test package.
@@ -62,9 +62,9 @@ func sample() {
 	}
 }
 
-// TestProductionPanicRule checks that analyseProductionPanicUnit flags a panic with a literal message in production code.
+// TestProductionPanicRule expects one finding from a production fixture with literal and variable panics.
 //
-// A panic(err) call and a panic in a command's package main are exempt; a count failure prints the findings that were reported.
+// It expects no findings from a command's package main; a count failure prints the findings that were reported.
 func TestProductionPanicRule(t *testing.T) {
 	production := parseOne(t, "service.go", `// Package sample is a test package.
 package sample

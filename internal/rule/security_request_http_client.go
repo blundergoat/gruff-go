@@ -201,7 +201,8 @@ func (clientBindings httpClientBindings) assignmentHoldsHTTPClient(identifier *a
 // functionType, when non-nil, supplies the parameters; functionBody supplies AssignStmt and ValueSpec nodes outside nested function literals.
 // httpPackageAliases names the net/http imports used to recognise client types and values.
 //
-// It returns the bindings with a timeline entry for each resolved non-blank name those nodes bind; range clause variables get none.
+// It returns the bindings with a timeline entry for each resolved non-blank name those nodes bind.
+// Range clauses add no initial entry, but assignments to their resolved non-blank variables are still recorded.
 func collectHTTPClientBindings(functionType *ast.FuncType, functionBody *ast.BlockStmt, httpPackageAliases map[string]bool) httpClientBindings {
 	clientBindings := httpClientBindings{
 		functionBody:        functionBody,

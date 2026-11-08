@@ -92,8 +92,8 @@ func TestTable(t *testing.T) {
 	}
 }
 
-// TestParallelRangeCaptureRuleRequiresLegacyGoVersion verifies Go 1.22+ modules use per-iteration range variables and are therefore out of scope.
-// Without a go.mod the rule stays silent, while a go.mod with no go directive counts as Go 1.16 and still reports the capture.
+// TestParallelRangeCaptureRuleRequiresLegacyGoVersion checks that a Go 1.25 module yields no capture finding.
+// Without a go.mod the rule stays silent, while a go.mod with no go directive yields one capture finding.
 func TestParallelRangeCaptureRuleRequiresLegacyGoVersion(t *testing.T) {
 	unit := parseOne(t, "parallel_test.go", parallelRangeCaptureFixture())
 	root := writeGoModForUnit(t, unit, ".", "module sample\n\ngo 1.25.0\n")

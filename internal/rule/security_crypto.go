@@ -302,10 +302,10 @@ func randomSelectionBuildsSecretBuffer(call *ast.CallExpr, parents map[ast.Node]
 // assignmentBuildsSecretBuffer decides whether the assignment carrying the random selection grows a secret.
 //
 // A plain binding of one drawn element to a variable picks one existing value instead.
-// When securityContext is true it reports true for the two shapes that add one element per pass: an accumulating += and an indexed write.
+// The first right-hand value of assignment that contains call and has a target at the same position selects that target.
 //
-// Only the first right-hand value of assignment that contains call and has a target at the same position is judged.
-// An accumulating target reports true, an indexed write reports securityContext, and a plain target or no matching value reports false.
+// It reports true when the target accumulates: +=, or = with an identifier target and a right-hand + expression, parentheses aside, reading it.
+// An indexed target reports securityContext, and a plain target or no matching value reports false.
 func assignmentBuildsSecretBuffer(assignment *ast.AssignStmt, call *ast.CallExpr, securityContext bool) bool {
 	for valueIndex, assignedValue := range assignment.Rhs {
 		// A multi-assignment can mix this call with unrelated values, so only the value holding the call is judged, and only when it has a target.

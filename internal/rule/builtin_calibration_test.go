@@ -63,8 +63,7 @@ func TestFunctionLengthLeavesNolintToTheInlineFilter(t *testing.T) {
 	}
 }
 
-// TestFunctionLengthStillFiresOnRealCode confirms that a function which
-// exceeds the threshold on real code (not just comments) still fires.
+// TestFunctionLengthStillFiresOnRealCode confirms that a function which exceeds the threshold on real code (not just comments) still fires.
 func TestFunctionLengthStillFiresOnRealCode(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 3}
 	unit := parseOne(t, "real.go", `// Package sample is a test package.
@@ -119,8 +118,7 @@ func TestTable(t *testing.T) {
 	}
 }
 
-// TestFunctionLengthStillFiresOnLongTestLogic keeps the table-fixture
-// discount from hiding tests whose executable logic is itself too long.
+// TestFunctionLengthStillFiresOnLongTestLogic keeps the table-fixture discount from hiding tests whose executable logic is itself too long.
 func TestFunctionLengthStillFiresOnLongTestLogic(t *testing.T) {
 	rule := FunctionLengthRule{MaxLines: 5}
 	unit := parseOne(t, "logic_test.go", `package sample

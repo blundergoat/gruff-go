@@ -94,8 +94,7 @@ func TestRequestURLReviewRegressions(t *testing.T) {
 	}
 }
 
-// TestRequestURLNestedValidatorProtectsSinkInSameBranch preserves the safe
-// nested form where every path to the sink passes through the validator.
+// TestRequestURLNestedValidatorProtectsSinkInSameBranch preserves the safe nested form where every path to the sink passes through the validator.
 func TestRequestURLNestedValidatorProtectsSinkInSameBranch(t *testing.T) {
 	body := `target := r.FormValue("url")
 	if r.Method == "POST" {
@@ -129,8 +128,7 @@ func TestRequestURLParsedAllowlistSurvivesLaterHelperReuse(t *testing.T) {
 	}
 }
 
-// TestRequestURLAcceptsWholeInlineSanitizerResult preserves the affirmative
-// direct-wrapper shape while mixed expressions remain visible above.
+// TestRequestURLAcceptsWholeInlineSanitizerResult expects no finding when an inline sanitizer supplies the entire HTTP request URL.
 func TestRequestURLAcceptsWholeInlineSanitizerResult(t *testing.T) {
 	body := `_, _ = http.Get(sanitizedURL(r.FormValue("url")))`
 	unit := parseOne(t, "handler.go", requestURLConstraintSource("fetch", body))
@@ -140,8 +138,7 @@ func TestRequestURLAcceptsWholeInlineSanitizerResult(t *testing.T) {
 	}
 }
 
-// TestRequestURLRecognizesTypedHTTPClient covers usable value declarations
-// while keeping an unusable nil pointer out of the outbound-sink set.
+// TestRequestURLRecognizesTypedHTTPClient covers usable value declarations while keeping an unusable nil pointer out of the outbound-sink set.
 func TestRequestURLRecognizesTypedHTTPClient(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -192,8 +189,7 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TestRequestURLHTTPClientBindingRespectsLexicalScope keeps an inner custom
-// client out of the net/http sink set without losing the outer HTTP client.
+// TestRequestURLHTTPClientBindingRespectsLexicalScope expects one finding across an inner custom client and an outer HTTP client.
 func TestRequestURLHTTPClientBindingRespectsLexicalScope(t *testing.T) {
 	unit := parseOne(t, "handler.go", `package handler
 
@@ -235,8 +231,7 @@ func fetch(client *http.Client, r *http.Request) {
 	}
 }
 
-// TestRequestURLHTTPClientAssignmentOrder classifies an interface receiver from
-// the value it holds when each request runs, not from a later assignment.
+// TestRequestURLHTTPClientAssignmentOrder expects one finding across calls made before and after assigning an HTTP client to an interface.
 func TestRequestURLHTTPClientAssignmentOrder(t *testing.T) {
 	unit := parseOne(t, "handler.go", `package handler
 
@@ -396,8 +391,7 @@ func TestAssignedRootNameFindsTheWrittenValue(t *testing.T) {
 	}
 }
 
-// TestOpenRedirectConstraintDominance keeps optional prefix checks and
-// normalization loops from hiding a later open redirect outside their branch.
+// TestOpenRedirectConstraintDominance keeps optional prefix checks and normalization loops from hiding a later open redirect outside their branch.
 func TestOpenRedirectConstraintDominance(t *testing.T) {
 	t.Run("committed prefix guard inside optional branch does not protect later redirect", func(t *testing.T) {
 		body := `target := r.FormValue("next")

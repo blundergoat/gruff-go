@@ -16,7 +16,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// WriteSummaryJSON writes the scan-level JSON contract without the heavier per-finding payload.
+// WriteSummaryJSON writes the scan-level JSON contract without the top-level findings array, retaining enabled baseline detail arrays.
 //
 // The summary is built by calling MachineSummary on report and encoded as JSON onto writer through WriteJSON.
 // It returns an error when MachineSummary fails, in which case nothing is written, or when WriteJSON fails.
@@ -363,8 +363,8 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 
 // sarifPartialFingerprints projects one finding into the fingerprints GitHub code scanning groups alerts by.
 //
-// gruffFingerprint is the ratified durable identity and nothing else, so an alert survives a line move and a
-// second declaration of one name opens its own alert. A sensitive finding has no identity at all and therefore
+// gruffFingerprint separates same-named declarations with distinct ordinals; a line move preserves an alert only if its ordinal stays unchanged.
+// A sensitive finding has no identity at all and therefore
 // contributes no fingerprints: publishing one would give a secret a stable name in a system gruff does not control.
 //
 // It returns a map holding only the gruffFingerprint key for findingItem, or nil when the finding has no baseline identity or computing it fails.

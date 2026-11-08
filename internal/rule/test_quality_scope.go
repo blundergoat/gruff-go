@@ -347,10 +347,10 @@ func blockHasFailureCallWithHelpers(body *ast.BlockStmt, testingPackages, assert
 	return found
 }
 
-// capturedAssertionHelperObjects records locals initialized from a call that receives a testing handle, such as h := NewHarness(t).
+// capturedAssertionHelperObjects records non-blank names paired with calls receiving a testing handle in declarations or assignments.
 //
 // body is the function body to scan, skipping nested function literals, and receivers holds the testing handle names a call must pass.
-// It returns each captured name mapped to the positions of its initializing calls, and an empty map for a nil body or when nothing is captured.
+// It returns each captured name mapped to the positions of those calls, and an empty map for a nil body or when nothing is captured.
 func capturedAssertionHelperObjects(body *ast.BlockStmt, receivers map[string]bool) map[string][]token.Pos {
 	objects := map[string][]token.Pos{}
 	if body == nil {

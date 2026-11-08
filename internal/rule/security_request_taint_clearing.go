@@ -168,9 +168,9 @@ func (s *requestTaintScope) exprCarriesNoRequestData(expr ast.Expr) bool {
 	return clean
 }
 
-// replacementValueFor returns the value a plain = or := assignment writes to binding, and true when it found one.
+// replacementValueFor returns the value a plain = or := assignment writes to binding as a bare identifier, and true when it found one.
 //
-// A compound assignment keeps the previous value and a multi-value call cannot be split per name, so neither yields a replacement.
+// A compound assignment keeps the previous value, and sides of unequal length, as in a multi-value call or comma-ok read, cannot pair per name.
 // It returns nil and false for those, and when assignment does not name binding on its left-hand side.
 func replacementValueFor(assignment *ast.AssignStmt, binding *ast.Object) (ast.Expr, bool) {
 	if assignment.Tok != token.ASSIGN && assignment.Tok != token.DEFINE {
@@ -187,7 +187,7 @@ func replacementValueFor(assignment *ast.AssignStmt, binding *ast.Object) (ast.E
 	return nil, false
 }
 
-// assignmentWritesBinding reports whether binding appears on the assignment's left-hand side under any assignment operator.
+// assignmentWritesBinding reports whether binding is a bare identifier on the assignment's left-hand side under any assignment operator.
 //
 // Unlike replacementValueFor, it also counts += and multi-value writes such as name, err = parse(data).
 // It reports false when assignment only writes other names, or writes a field or element such as user.Name rather than binding itself.

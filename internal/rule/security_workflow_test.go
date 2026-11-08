@@ -185,8 +185,8 @@ func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsSecretsInPRRule checks that a named secret in a pull_request_target workflow is reported, because forks can reach it.
-// GITHUB_TOKEN, plain pull_request and push workflows stay quiet, and a pull_request word in a comment, if: or with: is not a trigger.
+// TestGitHubActionsSecretsInPRRule checks that a named secret in a pull_request_target workflow is reported.
+// GITHUB_TOKEN, plain pull_request and push workflows stay quiet, including push examples with pull_request in comments, if: or with:.
 func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -212,7 +212,7 @@ func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	}
 }
 
-// TestWorkflowRulesIgnoreNonWorkflowFiles checks that YAML outside .github/workflows, such as config/ci.yml, gets no workflow findings.
+// TestWorkflowRulesIgnoreNonWorkflowFiles checks that broad-permissions and unpinned-action rules ignore config/ci.yml.
 // A failure means users would see broad-permission or unpinned-action findings on ordinary YAML config files.
 func TestWorkflowRulesIgnoreNonWorkflowFiles(t *testing.T) {
 	unit := parser.Unit{

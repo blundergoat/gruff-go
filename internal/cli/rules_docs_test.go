@@ -10,8 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// TestDocsRulesReferenceCoversRegistry catches registry/docs drift when rule IDs
-// are added or renamed without a matching per-rule reference section.
+// TestDocsRulesReferenceCoversRegistry catches registry/docs drift when rule IDs are added or renamed without a matching per-rule reference section.
 func TestDocsRulesReferenceCoversRegistry(t *testing.T) {
 	root := repoRootForTest(t)
 	data, err := os.ReadFile(filepath.Join(root, "docs", "rules.md"))
@@ -69,8 +68,7 @@ func TestDocsRulesPrecisionGuidanceMatchesRegistry(t *testing.T) {
 	}
 }
 
-// repoRootForTest walks upward from the package test directory to locate files
-// that live at repository root.
+// repoRootForTest walks upward from the package test directory to locate files that live at repository root.
 //
 // It returns the first directory holding a go.mod file, starting at the working directory and moving up one parent at a time.
 // When the working directory cannot be read or no ancestor holds go.mod, it stops the test through t.Fatal, so no empty path is returned.

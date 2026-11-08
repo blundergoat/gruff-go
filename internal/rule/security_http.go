@@ -92,7 +92,8 @@ func (RequestBodyWithoutLimitRule) Definition() Definition {
 // Functions with a named *http.Request parameter are checked, except those with a named testing handle parameter or the RoundTrip signature.
 // Reads inside function literals, including a handler written as one, are never examined.
 //
-// It returns nil when unit has no parsed AST or FileSet, is not a production-code path, or lacks a net/http import or an io or ioutil import.
+// It returns nil when unit has no parsed AST or FileSet or is not a production-code path.
+// It also returns nil if net/http has no usable import name, or neither io nor ioutil has one; dot and blank imports give none.
 // Otherwise it returns one finding per ReadAll of a request Body that no limiter anywhere in the function covers, or an empty slice.
 func (RequestBodyWithoutLimitRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
@@ -174,7 +175,8 @@ func readsOwnRequest(fn *ast.FuncDecl, packages httpBodyPackages) bool {
 	return len(testingHelperReceiverNames(fn, packages.testing)) > 0 || isRoundTripperMethod(fn, packages.http)
 }
 
-// isRoundTripperMethod matches http.RoundTripper's RoundTrip signature exactly, so a handler that only shares the name keeps its findings.
+// isRoundTripperMethod matches http.RoundTripper's RoundTrip signature by syntax, so a handler that only shares the name keeps its findings.
+// A result spelled error counts even when it shadows the predeclared type.
 //
 // fn is the method to test, and httpPackages holds the local names under which the file imports net/http.
 // It reports true only for a method named RoundTrip taking one *http.Request and returning *http.Response and error, and false otherwise.

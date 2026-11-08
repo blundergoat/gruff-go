@@ -42,7 +42,7 @@ func (StaticAnalysisRedundantTestRule) Definition() Definition {
 // AnalyzeProject emits findings for test assertions that restate parser-visible declaration facts from the same package.
 //
 // units holds the parsed files; each one with an AST feeds the declaration index, and only test files are inspected for findings.
-// It returns one finding per assertion-shaped if statement that restates a declaration fact, and an empty, non-nil slice when none do.
+// It returns one finding per matched static-fact check outside nested function literals, and an empty, non-nil slice when none match.
 func (StaticAnalysisRedundantTestRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	index := newStaticFactIndex(units)
 	findings := []finding.Finding{}
@@ -273,7 +273,7 @@ func staticFactFindingsForUnit(unit parser.Unit, group *staticFactPackage) []fin
 
 // staticFactFindingsForFunction inspects assertion-shaped if statements in one test.
 //
-// ctx carries the unit, package group, test name, and reflect qualifiers; fn is the test, and nested function literals are not entered.
+// ctx carries the unit, package group, test name, and reflect qualifiers; fn is the test, with function literals skipped for candidate discovery.
 // receivers, assertionPackages, and testingPackages let blockHasFailureCall recognise failure, assertion, or delegation calls in an if body.
 // It returns one finding per such if statement that restates a static fact, and an empty, non-nil slice when none do.
 func staticFactFindingsForFunction(ctx staticFactAssertionContext, fn *ast.FuncDecl, receivers, assertionPackages, testingPackages map[string]bool) []finding.Finding {

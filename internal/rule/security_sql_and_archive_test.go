@@ -7,7 +7,7 @@ import "testing"
 
 // TestArchivePathTraversalRule checks that joining an archive entry name onto a destination path is flagged as a zip-slip risk.
 //
-// A join passed through Clean and a prefix check stays quiet, but that check does not cover a separately named join in the same function.
+// A join passed through Clean and a prefix check stays quiet; a fixture with that join and a separately named join expects one finding.
 // Files without an archive import, fixed names and entry.Name() calls stay quiet.
 func TestArchivePathTraversalRule(t *testing.T) {
 	tests := []struct {

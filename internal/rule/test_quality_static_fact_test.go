@@ -13,7 +13,8 @@ import (
 
 // TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions covers direct reflection assertions that restate parser-visible type declarations.
 //
-// It expects three high-confidence findings on TestWidgetShape that cite pkg/widget/widget.go and carry assertion, fact and reason metadata.
+// It expects three high-confidence findings on TestWidgetShape that cite pkg/widget/widget.go.
+// It rejects empty-string assertion, staticFact and confidenceReason metadata values.
 func TestStaticAnalysisRedundantTestFlagsReflectShapeAssertions(t *testing.T) {
 	production := parseOne(t, "pkg/widget/widget.go", `package widget
 

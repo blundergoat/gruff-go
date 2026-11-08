@@ -48,8 +48,7 @@ func find(matches []string) string {
 `, 0)
 }
 
-// The control: a bare directive with nothing explaining it still fires.
-// A failure means a suppression with no rationale at all stops being reported.
+// TestSuppressionStillReportsABareDirective expects one finding for the fixture's unexplained nolint directive.
 func TestSuppressionStillReportsABareDirective(t *testing.T) {
 	requireSuppressionCount(t, `package pkg
 

@@ -118,8 +118,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TestXXECandidateRule covers entity-resolving XML decoders and the safe stdlib
-// default that must not fire.
+// TestXXECandidateRule covers entity-resolving XML decoders and the safe stdlib default that must not fire.
 func TestXXECandidateRule(t *testing.T) {
 	tests := []struct {
 		name string

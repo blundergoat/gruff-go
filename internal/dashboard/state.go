@@ -82,7 +82,7 @@ func boolFlag(value bool) string {
 
 // loadDashboardConfigForDefault loads the project config so defaultState can consult failOn.dashboard.
 //
-// Best-effort: any config path, read, parse or validation error, or a failed os.Getwd, gives a zero-value Config.
+// It returns the loaded Config, or a zero-value Config if no config is found, the file is empty or comment-only, or loading or os.Getwd fails.
 // defaultState then falls back to DefaultFailThresholdFor rather than reporting the config problem.
 // Loading per request is cheap and keeps the dashboard reactive to config edits made mid-session.
 //

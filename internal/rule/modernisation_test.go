@@ -5,7 +5,7 @@ package rule
 
 import "testing"
 
-// TestIoutilDeprecatedRule checks that IoutilDeprecatedRule flags aliased ReadFile, TempFile and Discard selectors from io/ioutil.
+// TestIoutilDeprecatedRule checks the total finding count for an aliased io/ioutil fixture using ReadFile, TempFile and Discard.
 //
 // It expects three findings and a first finding whose replacement metadata is not the empty string; an absent replacement key also passes.
 func TestIoutilDeprecatedRule(t *testing.T) {

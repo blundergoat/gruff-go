@@ -146,7 +146,8 @@ type hookBaseScan struct {
 // scan carries the registry, ignore patterns, sensitive exclusions and deep-scan budget the git-base analysis reuses.
 //
 // It returns an enabled baseline from the file or the git base, or a disabled zero value when neither is requested.
-// The error is returned when the baseline file fails to load or the git base cannot be resolved, exported, analysed or turned into entries.
+// An error is returned when baseline loading, git base resolution or export, analysis.Analyze, or baseline entry creation returns an error.
+// Base-analysis diagnostics are ignored and do not prevent baseline creation.
 func resolveHookFindingBaseline(scanContext context.Context, projectRoot string, hookFlags hookFlagValues, scan hookBaseScan) (hookFindingBaseline, error) {
 	// An explicit baseline takes precedence over any git-derived hook base.
 	if hookFlags.baselinePath != "" {

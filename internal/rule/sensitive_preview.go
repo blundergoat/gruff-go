@@ -114,8 +114,7 @@ func newSensitivePreviewPolicy() sensitivePreviewPolicy {
 
 // format returns the most specific marker the detector already classified, and a bare mask otherwise.
 //
-// The path is unused and kept in the signature because every caller has one, and a marker that varied by path is
-// exactly what section 5 removed.
+// The path is unused and kept in the signature because every caller has one, and a marker that varied by path is exactly what section 5 removed.
 //
 // A generic, entropy or unrecognised category gives the bare marker; an approved one gives a marker that names the category.
 // Only a connection-string category reads raw, passing it to connectionStringPreview so an approved scheme may show; otherwise raw is ignored.

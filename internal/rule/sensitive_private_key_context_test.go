@@ -30,7 +30,7 @@ func privateKeyTestSource(template string) string {
 	).Replace(template)
 }
 
-// TestPrivateKeyRuleRecognizesObservedRegexpMarkers confirms the gosec RSA, DSA and EC parser patterns carry no key body.
+// TestPrivateKeyRuleRecognizesObservedRegexpMarkers checks that marker-only RSA, DSA and EC regexp fixtures yield no private-key findings.
 // Only DSA and EC are adjudicated false-positive cases; RSA is checked because the same predicate reaches it.
 func TestPrivateKeyRuleRecognizesObservedRegexpMarkers(t *testing.T) {
 	unit := parseOne(t, "patterns.go", privateKeyTestSource(`package patterns
@@ -48,7 +48,7 @@ var secretsPatterns = []any{
 }
 
 // TestPrivateKeyRuleAcceptsResolvedNativeMarkerUses covers both regexp spellings and the supported string delimiter calls.
-// Aliases remain safe only when they still name the imported standard-library package.
+// The fixtures exercise marker-only calls through regexp and strings import aliases.
 func TestPrivateKeyRuleAcceptsResolvedNativeMarkerUses(t *testing.T) {
 	unit := parseOne(t, "parser.go", privateKeyTestSource(`package parser
 import (

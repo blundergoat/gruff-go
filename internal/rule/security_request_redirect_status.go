@@ -111,7 +111,7 @@ func selectorReceiverIdent(selector *ast.SelectorExpr) (*ast.Ident, bool) {
 //
 // Integer literals are parsed as decimal and net/http Status constants are matched by name.
 // A recognised non-redirect such as 200 gives false here, though another WriteHeader may still qualify the Location header.
-// Everything else, such as a variable, a helper call or another package's constant, stays a redirect candidate.
+// Other expressions stay candidates; every Status-prefixed selector on an unshadowed net/http alias is classified solely by its name.
 //
 // A status variable stays unresolved, so a handler that stores http.StatusFound in a variable before WriteHeader still counts as a candidate.
 // An unreported open redirect costs more than one extra finding on a response whose status this parser-only rule cannot read.

@@ -10,7 +10,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged confirms the substantive-token threshold is opt-in.
+// TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged confirms the fixture's comment passes with MinWordsBeyondSymbol unset.
 // With MinWordsBeyondSymbol left at zero, existing paraphrase behaviour is still accepted and the fixture's paraphrase gets no finding.
 func TestCommentRubricRuleMinWordsBeyondSymbolDefaultUnchanged(t *testing.T) {
 	unit := parseOne(t, "fns.go", `package sample
@@ -133,7 +133,7 @@ var (
 }
 
 // TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase confirms common English fillers do not count as substantive tokens.
-// Fillers like the, for, of and is are not counted, so the paraphrase Definition returns the rule metadata for FooRule fails at N=3.
+// The fillers the and for cannot make Definition returns the rule metadata for FooRule pass at N=3; one FooRule.Definition finding is expected.
 func TestCommentRubricRuleMinWordsBeyondSymbolStopwordsRejectParaphrase(t *testing.T) {
 	// Only two substantive tokens survive, so N=3 rejects the comment.
 	//
@@ -192,7 +192,7 @@ var productionVar = 2
 }
 
 // TestCommentRubricRuleTestFileConstVarSkippedByDefault confirms const and var enforcement is skipped on _test.go files.
-// That holds even when IgnoreTests is false, while the production fixture still gets findings for ProductionConst and productionVar.
+// That holds even when IgnoreTests is false; the production fixture is required to produce two findings.
 func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireConstComments: true,
@@ -208,8 +208,7 @@ func TestCommentRubricRuleTestFileConstVarSkippedByDefault(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleTestFileFunctionCheckStillFires confirms function
-// comment enforcement on test files survives the const/var exemption.
+// TestCommentRubricRuleTestFileFunctionCheckStillFires confirms function comment enforcement on test files survives the const/var exemption.
 func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireFunctionComments: true,
@@ -221,8 +220,7 @@ func TestCommentRubricRuleTestFileFunctionCheckStillFires(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleTestFileTypeCheckStillFires confirms named-type
-// enforcement on test files survives the const/var exemption.
+// TestCommentRubricRuleTestFileTypeCheckStillFires confirms named-type enforcement on test files survives the const/var exemption.
 func TestCommentRubricRuleTestFileTypeCheckStillFires(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireNamedTypeComments: true,
@@ -234,8 +232,7 @@ func TestCommentRubricRuleTestFileTypeCheckStillFires(t *testing.T) {
 	}
 }
 
-// TestCommentRubricRuleIgnoreTestsStillExemptsEverything confirms the whole-file exemption lever
-// from IgnoreTests still wins over every check kind.
+// TestCommentRubricRuleIgnoreTestsStillExemptsEverything confirms the test fixture yields no findings with IgnoreTests enabled.
 func TestCommentRubricRuleIgnoreTestsStillExemptsEverything(t *testing.T) {
 	rule := CommentRubricRule{
 		RequireFunctionComments:  true,

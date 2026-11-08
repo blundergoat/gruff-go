@@ -47,8 +47,7 @@ func TestParseYAMLRejectsDuplicateKeysByMappingScope(t *testing.T) {
 	}
 }
 
-// TestParseYAMLAllowsSameKeyInSeparateScopes proves duplicate identity is local
-// to one mapping invocation rather than global across the document.
+// TestParseYAMLAllowsSameKeyInSeparateScopes proves duplicate identity is local to one mapping invocation rather than global across the document.
 func TestParseYAMLAllowsSameKeyInSeparateScopes(t *testing.T) {
 	_, err := Parse([]byte("schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: true\n  size.function-length:\n    enabled: false\n"), defaultDefinitions())
 	if err != nil {

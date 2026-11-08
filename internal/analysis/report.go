@@ -1172,7 +1172,9 @@ func machinePaths(root string, values []string) ([]string, error) {
 // machinePath converts one path to project-relative POSIX form and rejects values outside the report root.
 //
 // root is the directory an absolute value is made relative to, and value is the path to convert after filepath.Clean.
-// It returns the cleaned slash-separated path; an empty value, a Windows drive path, or an absolute value with no root fails with an error.
+// It returns the cleaned slash-separated path, or an empty string and an error if value is empty or a Windows drive path.
+// An absolute value returns an empty string and an error when root is empty or filepath.Rel cannot make it relative to root.
+//
 // A value outside root, or one still holding a backslash, fails with an empty string and an error wrapping errOutsideProjectRoot.
 func machinePath(root, value string) (string, error) {
 	if value == "" {

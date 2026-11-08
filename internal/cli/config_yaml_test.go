@@ -51,8 +51,7 @@ func TestAnalyseDuplicateYAMLConfigErrorIsSanitized(t *testing.T) {
 	}
 }
 
-// configYAMLFixtureValue returns a secret-shaped token assembled from short
-// fragments so dogfood never sees the complete value in this source file.
+// configYAMLFixtureValue returns a secret-shaped token assembled from short fragments so dogfood never sees the complete value in this source file.
 func configYAMLFixtureValue() string {
 	return strings.Join([]string{"M07c8R", "w3P6m", "T9k2V", "b5N4q"}, "")
 }

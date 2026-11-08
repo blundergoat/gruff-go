@@ -257,10 +257,9 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 	}
 }
 
-// TestWriteHTMLPillarsTableMatchesCanonicalShape confirms the HTML pillars section mirrors the canonical Pillars block.
+// TestWriteHTMLPillarsTableMatchesCanonicalShape checks the expected column headers and all ten canonical pillar name cells.
 //
-// Every applicable pillar appears as a row with grade, 2-decimal score, findings, advisory, warning and error columns.
-// Rows sort by findings DESC, then pillar ASC.
+// It also checks for a 100.00 marker and the fixture's complexity-before-naming-before-size order.
 func TestWriteHTMLPillarsTableMatchesCanonicalShape(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -310,8 +309,8 @@ func TestWriteHTMLPillarsTableMatchesCanonicalShape(t *testing.T) {
 	}
 }
 
-// TestWriteHTMLPillarsTableCleanScan asserts a zero-finding scan still emits
-// every canonical pillar row (10 entries) at grade A and score 100.00.
+// TestWriteHTMLPillarsTableCleanScan checks that a zero-finding scan renders all ten canonical pillar name cells.
+// It also requires at least ten grade A markers and at least ten 100.00 markers anywhere in the HTML.
 func TestWriteHTMLPillarsTableCleanScan(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",

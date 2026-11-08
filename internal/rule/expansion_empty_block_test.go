@@ -82,10 +82,10 @@ func documented(err error) {
 `, 0)
 }
 
-// The controls: an empty if body, a bare infinite loop and an empty switch are each still reported.
+// TestEmptyBlockStillReportsUnfinishedBranches checks that an empty if body, a bare infinite loop and an empty switch are each still reported.
 //
 // The empty if is the confirmed true positive the precision corpus pins for this rule.
-// A failure means the rule was narrowed far enough to miss unfinished branches.
+// A count mismatch means one of these constructs did not produce exactly one finding.
 func TestEmptyBlockStillReportsUnfinishedBranches(t *testing.T) {
 	requireEmptyBlockCount(t, `package pkg
 

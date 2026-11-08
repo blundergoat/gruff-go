@@ -135,7 +135,7 @@ selection:
 	}
 }
 
-// TestResolvePathLoadsOnlyGruffGoYAML asserts auto-discovery prefers .gruff-go.yaml.
+// TestResolvePathLoadsOnlyGruffGoYAML checks that auto-discovery loads .gruff-go.yaml from the scan root.
 // t checks that LoadAuto finds .gruff-go.yaml in the root and keeps its path and enabled: true, so a user's config is not missed.
 func TestResolvePathLoadsOnlyGruffGoYAML(t *testing.T) {
 	root := t.TempDir()
@@ -174,8 +174,8 @@ func TestResolvePathIgnoresNonDefaultConfigFiles(t *testing.T) {
 	}
 }
 
-// TestParseFileRejectsUnsupportedConfigExtension ensures only .yaml configs are accepted.
-// t checks that .yml and .txt paths fail with an unsupported config file extension error; only the .yaml spelling loads.
+// TestParseFileRejectsUnsupportedConfigExtension checks rejection of .yml and .txt config paths.
+// t checks that .yml and .txt paths fail with an unsupported config file extension error.
 func TestParseFileRejectsUnsupportedConfigExtension(t *testing.T) {
 	for _, path := range []string{"config.txt", "config.yml"} {
 		t.Run(path, func(t *testing.T) {

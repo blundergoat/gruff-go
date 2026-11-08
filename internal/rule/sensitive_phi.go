@@ -97,12 +97,13 @@ func (r PHIPatternRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
-// phiLineFindings returns the PHI findings for a single line, one per category that matches.
+// phiLineFindings returns the PHI findings for a single line, at most one per category.
 //
 // Each records its category and a policy marker, never the raw identifier.
 //
 // path and lineNumber locate each finding, line is the text scanned, and previews is the policy that formats each finding's preview.
-// Only the first match per category on the line is reported, and the result is an empty slice when nothing matches.
+// Only the first candidate per category is examined; a structurally invalid or placeholder SSN is skipped without examining later SSNs.
+// The result is an empty slice when no candidate is reportable.
 func phiLineFindings(path, line string, lineNumber int, previews sensitivePreviewPolicy) []finding.Finding {
 	out := []finding.Finding{}
 	// Only the first dashed SSN is checked, so a placeholder such as 123-45-6789 earlier on the line hides a real SSN after it.

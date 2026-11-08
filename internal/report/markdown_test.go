@@ -45,7 +45,7 @@ func TestWriteMarkdownRendersCoreSections(t *testing.T) {
 }
 
 // TestWriteMarkdownPillarsTableShape checks the canonical pillar row names, a two-decimal score marker and the fixture's row order.
-// Every canonical pillar needs a row, 100.00 must appear, and rows sort by findings DESC, then pillar ASC.
+// Every canonical pillar needs a row and 100.00 must appear; only the relative order of complexity, naming and size is asserted.
 func TestWriteMarkdownPillarsTableShape(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer

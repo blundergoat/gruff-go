@@ -190,7 +190,7 @@ func (r htmlRenderer) verdict() string {
 // pillars renders the canonical Pillars table.
 //
 // Rows mirror the text summary shape produced by BuildPillarSummaryRows.
-// Every applicable pillar shows grade, score to two decimals, findings, and per-severity counts, sorted by findings descending then pillar name.
+// Rows exclude design and show grade, score to two decimals, findings, and per-severity counts, sorted by findings descending then pillar name.
 //
 // It returns the pillars section markup with one row per pillar in summaryPillarOrder, so a report with no findings still lists every pillar.
 // Rows marked not applicable are included and render like any other row, with no applicability column.

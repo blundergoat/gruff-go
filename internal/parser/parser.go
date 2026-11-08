@@ -166,9 +166,10 @@ func parseDiagnostics(path string, err error) []Diagnostic {
 	}}
 }
 
-// functions extracts top-level function metadata from a parsed AST file, including each function literal assigned to a package-level var.
+// functions extracts top-level function metadata from a parsed AST file, including the function literals selected by PackageVarFuncs.
 //
-// Each such literal's findings take their identity and changed scope from the var's span; ParseWithBudget stores the result as Unit.Functions.
+// Each such literal's findings take their identity from the var's span, and symbol-scope changed-region filtering uses that span too.
+// ParseWithBudget stores the result as Unit.Functions.
 // fset is the FileSet file was parsed with; it turns each declaration's start and end positions into 1-based lines.
 //
 // It returns each function and method declaration in source order, named by FuncDeclSymbol, then each var-assigned literal named by its var.
@@ -205,7 +206,7 @@ type VarFunc struct {
 	Lit *ast.FuncLit
 }
 
-// PackageVarFuncs lists every function literal assigned by name to a package-level var, in source order.
+// PackageVarFuncs lists unparenthesised function literals assigned by name to package-level vars, in source order.
 //
 // file is the parsed source to scan, and a nil file gives no entries.
 // Blank names, and specs whose names and values do not pair one to one, are skipped.

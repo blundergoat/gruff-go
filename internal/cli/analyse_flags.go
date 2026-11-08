@@ -273,7 +273,7 @@ func registerAnalyseFlags(flags *flag.FlagSet) analyseFlagPointers {
 	}
 }
 
-// values snapshots the parsed flag pointers into the immutable analyse state.
+// values snapshots the parsed flag pointers into analyse command state.
 //
 // diffPatch is the patch read for the diff flags and minSeverityExplicit marks a threshold set on the command line; both are copied in unchanged.
 // It returns that snapshot with superseded display spellings merged by firstNonEmpty and baselinePath left empty when noBaseline is set.

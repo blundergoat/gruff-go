@@ -303,10 +303,10 @@ func leftmostStringLiteral(targetExpression ast.Expr) (string, bool) {
 
 // redirectIsHTTPSUpgrade accepts only a fixed HTTPS scheme, the current request's host, and its escaped request URI.
 //
-// Submitted host or path values stay candidates, and a write to the request before the sink keeps the finding.
-// Writes made inside a closure, a called function or through another name for the request are not seen.
+// Submitted host or path values stay candidates, and a recognised write to the request before the sink keeps the finding.
+// Writes made inside a closure, a called function, through another name for the request or by a range clause are not seen.
 //
-// target is traced through one unchanged local assignment made before sinkPosition; scope supplies the request names and handler body.
+// target is traced through one local assignment with no recognised later write before sinkPosition; scope supplies the request names and body.
 // file supplies the net import names a host-preserving helper must call, and sinkPosition ends the check for writes to the request.
 // It reports true only for that exact upgrade shape, and false for any other target.
 func redirectIsHTTPSUpgrade(file *ast.File, scope *requestTaintScope, target ast.Expr, sinkPosition token.Pos) bool {
@@ -331,11 +331,11 @@ func redirectIsHTTPSUpgrade(file *ast.File, scope *requestTaintScope, target ast
 		!anyNameAssignedBetween(scope.body, map[string]bool{request.Name: true}, scope.body.Pos(), sinkPosition)
 }
 
-// redirectAssignedTarget follows one unchanged local assignment, so a target built earlier in the handler is judged by its assigned value.
+// redirectAssignedTarget follows one local assignment when no later recognised write invalidates it.
 //
-// Reassignment keeps the finding because the original destination no longer proves the sink.
+// Recognised reassignment keeps the finding; range-clause assignments and writes inside closures are ignored.
 // It returns target without parentheses, or the assigned value when target is a resolved identifier.
-// It returns nil when that declaration is not an assignment ending before sinkPosition, or the name is reassigned in body before the sink.
+// It returns nil when that declaration is not an assignment ending before sinkPosition, or a later write in body before the sink is recognised.
 //
 // It also returns nil when replacementValueFor finds no assigned value; in redirectIsHTTPSUpgrade a nil target keeps the redirect a candidate.
 func redirectAssignedTarget(body *ast.BlockStmt, target ast.Expr, sinkPosition token.Pos) ast.Expr {
@@ -355,7 +355,7 @@ func redirectAssignedTarget(body *ast.BlockStmt, target ast.Expr, sinkPosition t
 	return target
 }
 
-// redirectHTTPSParts separates an exact three-part HTTPS target; extra inputs could change the destination, so they are never recognised.
+// redirectHTTPSParts separates an HTTPS concatenation's operands without validating the host or URI expressions.
 // It returns the host and URI operands, without parentheses, of a target built as "https://" + host + URI, and two nils for any other shape.
 func redirectHTTPSParts(target ast.Expr) (ast.Expr, ast.Expr) {
 	outer, ok := unwrapRequestExprParens(target).(*ast.BinaryExpr)
@@ -414,7 +414,7 @@ func redirectSplitHostPort(function *ast.FuncDecl, netPackages map[string]bool) 
 	return parameter, host, errName, hostOK && errOK
 }
 
-// redirectPortFallback requires the helper to return the original host when net.SplitHostPort fails.
+// redirectPortFallback recognises a split-error guard that returns the parameter binding.
 //
 // statement must be an if without init or else whose condition is errName != nil and whose only statement returns parameter alone.
 // It reports true for that exact fallback and false for any other statement shape.
@@ -472,7 +472,7 @@ type destinationConstraintOptions struct {
 
 // destinationHasConstraint looks for guard syntax that suppresses a URL or redirect candidate before it reaches the report.
 //
-// It accepts an exact validator token, a parsed scheme and host allowlist, or a redirect guard requiring a committed relative-path segment.
+// It accepts exact validator tokens, parsed scheme and host allowlists, committed relative-prefix guards, or protocol-relative slash-trimming loops.
 // requestScope and functionBody give the handler's request input and body, sinkArgument is the destination, and sinkPosition marks the sink.
 // constraintOptions adds redirect validator tokens, and its strings aliases turn on the relative-prefix and protocol-relative checks.
 //
@@ -516,7 +516,8 @@ func argHasDestinationSanitizer(requestScope *requestTaintScope, sinkArgument as
 // bodyHasDestinationSanitizer recognises a validator call before the sink only when its call name holds a complete approved identifier token.
 //
 // functionBody is searched outside nested closures for such a call before sinkPosition, with additionalValidatorTokens added to the shared set.
-// It reports true when the call reads one of sinkValueNames, none is reassigned before the sink, and the call guards it; no names give false.
+// It reports true when the call reads one of sinkValueNames, no intervening write is recognised, and the call guards it; no names give false.
+// Range-clause assignments do not invalidate that evidence.
 func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, additionalValidatorTokens map[string]bool, sinkPosition token.Pos) bool {
 	// Inline request expressions have no local name for a separate validator call.
 	if len(sinkValueNames) == 0 {
@@ -551,8 +552,8 @@ func bodyHasDestinationSanitizer(functionBody *ast.BlockStmt, sinkValueNames, ad
 
 // validatorCallProtectsSink recognises the two affirmative control-flow forms a validator guard can take around the sink.
 //
-// A rejecting guard counts when its body returns and only its false path reaches a later sink.
-// A positive guard counts when its true body contains the sink.
+// A rejecting guard counts when the whole if ends before the sink, its body ends with return, and its false condition implies validator success.
+// A positive guard counts when its true body contains the sink and its true condition implies validator success. Goto paths are not followed.
 //
 // It searches functionBody, outside nested closures, for an if whose condition holds validatorCall and whose enclosing regions hold sinkPosition.
 // It reports true when such a guard has either form for the sink, and false otherwise.

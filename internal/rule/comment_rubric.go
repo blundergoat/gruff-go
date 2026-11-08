@@ -218,7 +218,7 @@ func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit) map[
 	return packages
 }
 
-// updatePackageSummaryState folds the package comment of unit into state.
+// updatePackageSummaryState marks state as having an in-scope file and folds in the package comment of unit.
 // It keeps the longest summary's line count and the lexicographically first file path, and notes when unit is not a test file.
 func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit) {
 	state.hasInScope = true
@@ -410,7 +410,7 @@ func hasUsefulComment(group *ast.CommentGroup) bool {
 	return stats.lines > 0 && stats.words > 0
 }
 
-// hasUsefulDeclarationComment reports whether the comment adds context beyond the symbol name itself.
+// hasUsefulDeclarationComment reports whether the comment differs from symbol after normalization and meets any enabled token floor.
 //
 // When minWordsBeyondSymbol is positive, the comment must also add that many unique non-stopword tokens outside the symbol's own identifier set.
 // group is the attached comment and symbol the documented name; a nil or blank group, or one matching symbol after normalizing, reports false.

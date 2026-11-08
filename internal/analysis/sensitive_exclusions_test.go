@@ -181,8 +181,7 @@ func TestTwoDistinctEntriesCountIndependently(t *testing.T) {
 	}
 }
 
-// TestSameRuleInAnotherFileSurvives covers the same-rule-other-file-survives
-// case: excluding the sibling file leaves the primary file reporting.
+// TestSameRuleInAnotherFileSurvives covers the same-rule-other-file-survives case: excluding the sibling file leaves the primary file reporting.
 func TestSameRuleInAnotherFileSurvives(t *testing.T) {
 	exclusions := []SensitiveExclusion{{
 		Rule:   "sensitive-data.aws-access-key",

@@ -64,8 +64,8 @@ func refuseMinSeverity(flags *flag.FlagSet, stderr io.Writer) bool {
 
 // warnSupersededSpellings prints one line per superseded flag name the user passed.
 //
-// The run continues: behaviour is identical under the family spelling, so refusing would break a working command line
-// for a rename. The warning is what tells the user the old name is going away.
+// The run continues: behaviour is identical under the family spelling, so refusing would break a working command line for a rename.
+// The warning is what tells the user the old name is going away.
 //
 // flags is the parsed flag set; only flags actually passed are visited, in lexical order, and each is looked up in supersededSpellings.
 // stderr receives one warning per match naming the old flag and its replacement; nothing is written when no superseded name was passed.

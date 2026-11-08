@@ -122,7 +122,7 @@ func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 
 // TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject checks a refused run still publishes its JSON envelope.
 //
-// Launched from a sibling, an unreadable baseline outside the project gives one baseline diagnostic with no file key, and the run exits 2.
+// Launched from a sibling, an invalid baseline outside the project gives one baseline diagnostic with no non-null file value, and the run exits 2.
 // Section 5 of the decided contract requires a refusal after argument parsing to publish the envelope; the other four ports omit the key too.
 func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) {
 	root := t.TempDir()
@@ -168,7 +168,7 @@ func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) 
 // TestLaunchDirectoryDoesNotChangeTheResult compares stable report fields and baseline occurrences across three launch directories.
 //
 // The launches are the project, a sibling naming ../project and a subdirectory naming ..; analyse, summary and report must match on each.
-// Baseline occurrences must match and never name a host path, so the stray.go above the project must stay outside every scan.
+// The compared baseline occurrences must match and omit the temporary root path.
 func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")
@@ -240,7 +240,7 @@ func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
 
 // TestProjectConfigIsReadFromTheProjectRoot verifies .gruff-go.yaml applies to scans launched from the project, a sibling or its subdirectory.
 //
-// A CI scan of /srv/checkout from elsewhere must get the project's rules, gates and sensitive exclusions instead of silently running without them.
+// A scan launched elsewhere must still honour the project's disabled docs.exported-symbol-comment rule.
 func TestProjectConfigIsReadFromTheProjectRoot(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")
@@ -278,7 +278,7 @@ func TestProjectConfigIsReadFromTheProjectRoot(t *testing.T) {
 // TestBaselinePathsAreReadFromTheLaunchDirectory verifies --generate-baseline and --baseline resolve paths from the launch directory.
 //
 // From two levels inside the project, the read must find the file the write put at the typed path, not join it to the project root and miss it.
-// The last check confirms a missing baseline's diagnostic does not publish the joined host path.
+// The last check rejects the temporary root path anywhere in stdout from the missing-baseline run.
 func TestBaselinePathsAreReadFromTheLaunchDirectory(t *testing.T) {
 	root := t.TempDir()
 	project := filepath.Join(root, "project")

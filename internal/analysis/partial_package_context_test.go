@@ -80,7 +80,7 @@ func TestAnalyzeExplicitFileSurfacesSiblingParseFailure(t *testing.T) {
 	}
 }
 
-// TestAnalyzeExplicitFileHidesContextOnlyFindings proves sibling package files are context for project rules, not additional report targets.
+// TestAnalyzeExplicitFileHidesContextOnlyFindings checks that scanning impl.go reports no findings from the unrequested sibling.go.
 // A failure means gruff-go analyse impl.go reports findings, such as the exec.Command call, from sibling.go, a file the user never named.
 func TestAnalyzeExplicitFileHidesContextOnlyFindings(t *testing.T) {
 	root := t.TempDir()

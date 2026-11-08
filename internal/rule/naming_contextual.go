@@ -93,7 +93,7 @@ func (r ContextualGenericRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit walks each function in the unit and emits range and accumulator findings.
+// AnalyzeUnit checks top-level function and method declarations with bodies, skipping names inside function literals.
 //
 // unit is the parsed file and runCtx feeds the generated-code skip check; _test.go files and units without an AST or file set are skipped too.
 // It returns each function's range findings then its accumulator findings, nil for a skipped unit, and an empty slice when nothing fires.

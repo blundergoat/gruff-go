@@ -282,7 +282,7 @@ func TestAnalyzeExplicitIgnoredArgProducesNoFindings(t *testing.T) {
 }
 
 // TestAnalyzeDirectoryWalkReportsIgnoredPaths checks that ordinary directory discovery fills the cross-port paths.ignoredPaths list.
-// Entries come from config paths.ignore, and each must also have a source=config record in report.Paths.Skipped.
+// The config-ignored secret.go must appear in IgnoredPaths and have a source=config record in report.Paths.Skipped.
 func TestAnalyzeDirectoryWalkReportsIgnoredPaths(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "main.go", "package main\n")
@@ -344,7 +344,7 @@ func TestAnalyzeDiffModeHonorsConfigIgnore(t *testing.T) {
 	}
 }
 
-// TestAnalyzeIncludeIgnoredKeepsConfigIgnore checks that --include-ignored opts into git and default ignores only.
+// TestAnalyzeIncludeIgnoredKeepsConfigIgnore checks that --include-ignored preserves config paths.ignore.
 // It never overrides config paths.ignore: the ignored file must stay unscanned, config-skipped and listed in IgnoredPaths.
 func TestAnalyzeIncludeIgnoredKeepsConfigIgnore(t *testing.T) {
 	root := t.TempDir()

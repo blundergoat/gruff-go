@@ -207,7 +207,7 @@ func LoadAuto(root string, explicitPath string, noConfig bool, definitions []rul
 // ResolvePath finds the explicit or auto-discovered config path for a root.
 //
 // An empty root means the current directory; a relative explicitPath is joined to the absolute root, and an empty one triggers discovery.
-// It returns the absolute config path and true when a file is found, or an empty path and false when discovery finds no .gruff-go.yaml.
+// It returns an absolute path and true for a file, or an empty path, false and nil if discovery finds none, skipping directories and stat errors.
 // It returns an error when the explicit file is missing, is a directory, or cannot be checked, or when root cannot be made absolute.
 func ResolvePath(root string, explicitPath string) (string, bool, error) {
 	if root == "" {
@@ -543,7 +543,7 @@ func (cfg Config) Normalized() Config {
 
 // normalizedSensitiveExclusions rewrites each entry's path into the project-relative display form a finding carries.
 //
-// That stops the caller's working directory from changing which findings an entry claims.
+// Removing a leading ./ lets an entry match a finding whose display path omits that prefix.
 // Order is preserved: the entry index is user-visible in both diagnostics and audit rows.
 //
 // The entries slice is not modified; each Path is trimmed of whitespace, converted to forward slashes, and stripped of one leading ./ prefix.

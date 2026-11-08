@@ -217,7 +217,8 @@ func parentSlashDir(rel string) string {
 
 // visitInput processes a single user-provided input path, file or directory.
 //
-// A relative input is joined to rootAbs; a missing one is recorded in Missing, a file is visited as explicit, and a directory is walked.
+// A relative input is joined to rootAbs; a missing one is recorded in Missing, and a file is visited as explicit.
+// An ignored non-root directory is recorded in Skipped and returns nil without walking; other directories are walked.
 // The error is non-nil when the context is done, os.Stat fails with anything but not-exist, or the directory walk fails.
 func (w *discoveryWalker) visitInput(input string) error {
 	if err := w.ctx.Err(); err != nil {
@@ -381,7 +382,7 @@ func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) Ig
 //
 // path is the absolute file path, and its display form becomes File.Path.
 // An unsupported file is dropped without a record; a generated Go file is recorded in Skipped as generated unless IncludeIgnored is set.
-// Generated-file detection reads the file, so it cannot live in the path-only engine that check-ignore shares.
+// Generated-file detection reads the file outside check-ignore's path-only engine; a read failure leaves the Go file in Result.Files.
 func (w *discoveryWalker) addFile(path string) {
 	rel := displayPath(w.rootAbs, path)
 	fileType, ok := classify(path)

@@ -222,13 +222,13 @@ func (r ConnectionStringRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding
 	return out
 }
 
-// scanLinesForSecret walks the unit source line by line, emitting a finding for each pattern match with preview metadata from the shared policy.
+// scanLinesForSecret emits findings for pattern matches except recognized private-key mentions, fully masked AWS keys, and documented samples.
 //
 // Lines rejected by lineIsCodeBearing are skipped; a closed block comment followed by a line comment remains eligible.
 // A suppression comment such as `#nosec` is honoured, and counted, after the rules run (analysis.ApplyInlineSuppressions).
 //
 // Each finding carries message at its line in unit, and previews formats the matched text for category as the finding's preview.
-// It returns an empty, non-nil slice when no eligible line matches pattern.
+// It returns an empty, non-nil slice when no match survives the line and secret exclusions.
 func scanLinesForSecret(unit parser.Unit, pattern *regexp.Regexp, message string, previews sensitivePreviewPolicy, category sensitivePreviewCategory) []finding.Finding {
 	matches := secretMatchesOnCodeLines(unit, pattern)
 	findings := make([]finding.Finding, 0, len(matches))
@@ -575,7 +575,7 @@ func splitConnectionCredentials(rest string) (string, string, bool) {
 	return "", "", false
 }
 
-// connectionAuthority trims path, query, and fragment from a host suffix so only the host and optional port remain.
+// connectionAuthority trims path, query, and fragment from a tentative host suffix, preserving any remaining @ or credential text.
 //
 // It returns hostSuffix cut before its first slash, question mark, or hash, or hostSuffix unchanged when it has none, so empty input stays empty.
 func connectionAuthority(hostSuffix string) string {

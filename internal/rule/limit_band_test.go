@@ -44,7 +44,7 @@ func bandCases() []bandCase {
 	}
 }
 
-// fileOfCodeLines returns a Go file of exactly value substantive lines.
+// fileOfCodeLines returns a Go file of value substantive lines when value is positive, or one substantive line otherwise.
 func fileOfCodeLines(value int) string {
 	var b strings.Builder
 	b.WriteString("package sample\n")
@@ -55,12 +55,14 @@ func fileOfCodeLines(value int) string {
 }
 
 // functionOfCodeLines returns a function of exactly value code lines, its signature and closing brace included.
+// It panics when value is less than 3.
 func functionOfCodeLines(value int) string {
 	return "package sample\n\nfunc long(n int) int {\n" + strings.Repeat("\tn++\n", value-3) + "\treturn n\n}\n"
 }
 
-// functionWithBranches returns a builder of a function with flat if statements, so that its cyclomatic complexity
-// (one plus each branch) or its cognitive complexity (one per flat branch) equals the value; offset picks the measure.
+// functionWithBranches returns a builder of Go source with value+offset flat if statements.
+// offset -1 makes cyclomatic complexity equal value; offset 0 does the same for cognitive complexity.
+// The returned builder panics when value+offset is negative.
 func functionWithBranches(offset int) func(value int) string {
 	return func(value int) string {
 		return "package sample\n\nfunc branchy(a bool) {\n" + strings.Repeat("\tif a {\n\t\tprintln(1)\n\t}\n", value+offset) + "}\n"
@@ -68,11 +70,13 @@ func functionWithBranches(offset int) func(value int) string {
 }
 
 // functionNestedTo returns a function whose if statements nest value levels deep.
+// It panics when value is negative.
 func functionNestedTo(value int) string {
 	return "package sample\n\nfunc nested(a bool) {\n" + strings.Repeat("if a {\n", value) + "println(1)\n" + strings.Repeat("}\n", value) + "}\n"
 }
 
-// functionWithParameters returns a function with value int parameters.
+// functionWithParameters returns Go source for a function with value int parameters when value is positive.
+// For value zero, the function has one unnamed int parameter; a negative value panics.
 func functionWithParameters(value int) string {
 	names := make([]string, value)
 	for i := range names {
@@ -318,8 +322,8 @@ func TestTable(t int) {
 	}
 }
 
-// TestComplexityRulesSkipFlatDispatchAndTestFiles pins M14's bounded repairs: a switch over many flat cases
-// is one decision, a test file is not measured, and a function of real branches still reports.
+// TestComplexityRulesSkipFlatDispatchAndTestFiles checks a many-case switch produces no cyclomatic finding.
+// It also checks a branchy function reports under both complexity rules in a Go source file and under neither in a test file.
 func TestComplexityRulesSkipFlatDispatchAndTestFiles(t *testing.T) {
 	var dispatch strings.Builder
 	dispatch.WriteString("package sample\n\nfunc dispatch(kind int) int {\n\tswitch kind {\n")
@@ -348,8 +352,7 @@ func TestComplexityRulesSkipFlatDispatchAndTestFiles(t *testing.T) {
 	}
 }
 
-// TestCognitiveComplexitySoftensDispatchAndGuards pins the two cognitive shapes M14 softened, and that nested
-// logic still pays its nesting penalty.
+// TestCognitiveComplexitySoftensDispatchAndGuards pins the two cognitive shapes M14 softened, and that nested logic still pays its nesting penalty.
 func TestCognitiveComplexitySoftensDispatchAndGuards(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string

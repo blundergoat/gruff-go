@@ -271,7 +271,7 @@ func TestAnalyseRespectsGitignoreByDefault(t *testing.T) {
 	}
 }
 
-// TestAnalyseIncludeIgnoredBypassesGitignore confirms --include-ignored scans gitignored files.
+// TestAnalyseIncludeIgnoredBypassesGitignore checks that JSON records --include-ignored and names ignored.go without any gitignored skip reason.
 func TestAnalyseIncludeIgnoredBypassesGitignore(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gitignore", "ignored.go\n")

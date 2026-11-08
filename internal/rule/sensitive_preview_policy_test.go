@@ -31,7 +31,7 @@ type sensitivePreviewFixture struct {
 // TestSensitivePreviewPolicyMatrix pins the one marker every sensitive-data rule and every PII/PHI category emits.
 //
 // Section 5 makes markers unconditional: specific categories name their class, while the generic secret-pattern marker names none.
-// Markers carry no credential or personal data and cannot be configured; a connection-string marker may name its approved scheme, such as postgres.
+// The fixtures check exact markers and reusable-value exclusions; the connection-string fixture expects a marker naming postgres.
 func TestSensitivePreviewPolicyMatrix(t *testing.T) {
 	states := []struct {
 		name string

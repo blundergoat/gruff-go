@@ -310,8 +310,8 @@ func duplicateTestSubtestLoop(body *ast.BlockStmt, receivers map[*ast.Object]boo
 //
 // expr is the ranged or measured expression, body the enclosing test body, and before the loop position that bounds the writes examined.
 //
-// It returns true for a literal table, or for a variable whose declaration or latest top-level write before that position holds one.
-// A write nested in a branch or loop makes the value unknown until a later top-level write, and writes inside function literals are skipped.
+// It returns true for a literal table, or for a variable whose declaration or latest tracked top-level write before that position holds one.
+// Only assignment statements and value specs are tracked; nested ones hide the value until a later top-level write, and closures are skipped.
 // Any other expression, or a variable whose value is unknown, gives false.
 func duplicateTestTableSource(expr ast.Expr, body *ast.BlockStmt, before token.Pos) bool {
 	expr = ast.Unparen(expr)
@@ -398,7 +398,8 @@ func duplicateTestAssignedValue(node ast.Node, object *ast.Object) (ast.Expr, bo
 // duplicateTestCountedTable recognizes an ascending index loop over a visible case table.
 //
 // loop is the for statement to inspect, and body is the enclosing test body used to confirm the table holds a visible literal.
-// It returns true when the condition is index < len(table), the post step increments index, and loop.Body reads table by index; otherwise false.
+// It returns true only when the condition is index < len(table) with unshadowed builtin len and the post step increments the same index.
+// The loop body must also index the visible table with that index outside function literals; otherwise it returns false.
 func duplicateTestCountedTable(loop *ast.ForStmt, body *ast.BlockStmt) bool {
 	condition, ok := ast.Unparen(loop.Cond).(*ast.BinaryExpr)
 	if !ok || condition.Op != token.LSS {

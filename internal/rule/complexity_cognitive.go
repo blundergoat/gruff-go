@@ -57,7 +57,8 @@ func (r CognitiveComplexityRule) Definition() Definition {
 // AnalyzeUnit emits findings for functions above the cognitive complexity threshold.
 //
 // It returns nil when unit lacks an AST or file set, or when the path of unit is a Go test file.
-// Otherwise the result holds one finding per function, method or package-level var function literal scoring above the cap, empty when none does.
+// Otherwise it returns one finding per measured declaration scoring above the cap, or an empty slice when none does.
+// It measures functions, methods and unparenthesized function literals paired one-to-one with nonblank package-level var names.
 //
 // Each finding spans the function's first to last line and reads function cognitive complexity is N, above threshold M.
 func (r CognitiveComplexityRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {

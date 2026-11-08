@@ -37,9 +37,9 @@ func (SuppressionWithoutRationaleRule) Definition() Definition {
 
 // AnalyzeUnit emits findings for suppression directives that contain no rationale.
 //
-// When unit has a parsed AST and FileSet, only real Go comments are checked; otherwise each trimmed line of unit.Source is checked as text.
+// When unit has a parsed AST and FileSet, only real Go comments are checked; otherwise only trimmed lines starting with nolint or #nosec are checked.
 // ctx is passed to shouldSkipGeneratedUnit, which decides whether a generated unit is skipped.
-// It returns one finding per directive lacking a rationale, and nil for an empty source, a skipped generated unit or a vendored path.
+// It returns one finding per checked directive lacking a rationale, and nil for an empty source, a skipped generated unit or a vendored path.
 func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.Source == "" || shouldSkipGeneratedUnit(unit, ctx) || isVendorPath(unit.File.Path) {
 		return nil
@@ -243,7 +243,7 @@ func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
 	return contiguousCommentBlockExplains(comments, index)
 }
 
-// contiguousCommentBlockExplains reports whether a free-standing comment block directly above the directive explains it in prose.
+// contiguousCommentBlockExplains reports whether free-standing comments with consecutive start lines above the directive contain prose.
 //
 // Ordinary prose counts without a reason: marker, as in cobra's command.go; a line gap, a doc group or a comment trailing code stops the search.
 // Free-standing directives in between are skipped, so one prose block can explain several directives stacked under it.

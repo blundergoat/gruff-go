@@ -43,8 +43,8 @@ func (HTTPServerNoTimeoutRule) Definition() Definition {
 // Each ListenAndServe or ListenAndServeTLS call made through a net/http import name adds one finding as well.
 //
 // A literal's finding points at its http.Server type name, and a helper's finding points at the start of the call.
-// The result is nil when unit has no AST or file set, is not a production code path, is skipped as generated, or does not import net/http.
-// It is empty, not nil, when the file imports net/http and nothing is flagged.
+// The result is nil when unit has no AST or file set, is not a production path, is skipped as generated, or has no usable net/http import name.
+// Otherwise it is empty, not nil, when nothing is flagged.
 func (HTTPServerNoTimeoutRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil

@@ -71,8 +71,8 @@ func TestDocumentedSamplesAreNotReported(t *testing.T) {
 	}
 }
 
-// TestPIIPatternFlagsRealValues verifies email, punctuated phone, and a Luhn-valid
-// payment card are each detected and redacted.
+// TestPIIPatternFlagsRealValues checks that each email, punctuated phone, and Luhn-valid card fixture yields one finding.
+// Any non-empty string preview must omit the corresponding raw fixture value.
 func TestPIIPatternFlagsRealValues(t *testing.T) {
 	cases := []struct {
 		name string
@@ -113,8 +113,8 @@ func TestPIIPatternSkipsPlaceholdersAndBareNumbers(t *testing.T) {
 	}
 }
 
-// TestPHIPatternFlagsHealthIdentifiers verifies a valid SSN, a Medicare MBI, and a
-// label-anchored MRN are each detected and redacted.
+// TestPHIPatternFlagsHealthIdentifiers checks that each SSN, Medicare MBI, and label-anchored MRN fixture yields one finding.
+// Any non-empty string preview must omit the corresponding raw fixture value.
 func TestPHIPatternFlagsHealthIdentifiers(t *testing.T) {
 	cases := []struct {
 		name string
@@ -151,7 +151,7 @@ func TestPHIPatternSkipsInvalidAndPlaceholderSSNs(t *testing.T) {
 
 // TestPHIOwnsSSNNotPII pins the PII/PHI precedence: a Social Security number is reported by the PHI rule only, never the PII rule.
 //
-// With both rules enabled, a scan counts the SSN once.
+// Separate direct calls yield zero PII findings and one PHI finding for the same SSN fixture.
 func TestPHIOwnsSSNNotPII(t *testing.T) {
 	unit := sensitiveTextUnit("x.env", "s = \"536-90-4399\"\n")
 	if got := (PIIPatternRule{}).AnalyzeUnit(unit, Context{}); len(got) != 0 {
@@ -162,7 +162,7 @@ func TestPHIOwnsSSNNotPII(t *testing.T) {
 	}
 }
 
-// TestDocumentedCardDoesNotHideARealCard verifies a published test card first on a line leaves the real card after it reported.
+// TestDocumentedCardDoesNotHideARealCard checks for exactly one payment-card finding on a line with a test card followed by another card.
 func TestDocumentedCardDoesNotHideARealCard(t *testing.T) {
 	source := "cards = " + "4111" + " 1111 1111 " + "1111" + " / " + "4539 5787 " + "6362 1486\n"
 	findings := PIIPatternRule{}.AnalyzeUnit(sensitiveTextUnit("x.env", source), Context{})

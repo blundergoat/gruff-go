@@ -17,7 +17,8 @@ import (
 
 // runReport handles gruff-go report: it parses report flags, runs analysis once, and writes the selected report format.
 //
-// args holds the report flags and target paths, and interactive allows the first-run config prompt through configuredRegistryInteractive.
+// args holds the report flags and target paths; with no target paths, the current working directory is scanned.
+// interactive allows the first-run config prompt through configuredRegistryInteractive.
 // stdout receives the report unless --output names a file, and stderr receives diagnostics and any config prompt.
 //
 // Returns the analysis summary exit code once the report is written, or 2 for any flag, config, analysis or report-writing failure.

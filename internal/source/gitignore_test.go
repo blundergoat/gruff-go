@@ -172,7 +172,8 @@ func TestMatcherTrailingDoubleStarDoesNotMatchParentDir(t *testing.T) {
 	}
 }
 
-// TestMatcherCommentsAndBlankLines verifies comments and blank lines are skipped during parsing.
+// TestMatcherCommentsAndBlankLines verifies *.tmp still matches scratch.tmp when surrounded by comments and blank lines.
+// It also checks that scratch.go remains unignored.
 func TestMatcherCommentsAndBlankLines(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		".gitignore": "# leading comment\n\n*.tmp\n   \n#trailing comment\n",
@@ -230,8 +231,7 @@ func TestMatcherNestedOverride(t *testing.T) {
 	}
 }
 
-// TestMatcherNestedIgnoreWithoutRoot verifies nested .gitignore files still
-// apply when the discovery root has no .gitignore of its own.
+// TestMatcherNestedIgnoreWithoutRoot verifies nested .gitignore files still apply when the discovery root has no .gitignore of its own.
 func TestMatcherNestedIgnoreWithoutRoot(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		"pkg/.gitignore": "*.tmp\n",
@@ -246,8 +246,7 @@ func TestMatcherNestedIgnoreWithoutRoot(t *testing.T) {
 	}
 }
 
-// TestMatcherNestedParseErrorWithoutRoot verifies the fast path still loads
-// nested .gitignore files so parse diagnostics are not lost.
+// TestMatcherNestedParseErrorWithoutRoot verifies the fast path still loads nested .gitignore files so parse diagnostics are not lost.
 func TestMatcherNestedParseErrorWithoutRoot(t *testing.T) {
 	root := writeIgnoreTree(t, map[string]string{
 		"pkg/.gitignore": "[bad\n",

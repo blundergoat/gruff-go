@@ -227,7 +227,7 @@ func parseRulesDocsHeader(line string) (rulesDocsHeader, error) {
 
 // parseRulesDocsOptInIDs reads the exact backticked rule-ID list after the summary.
 //
-// It accepts the existing comma/and punctuation but no free-form text.
+// It normalizes the existing comma/and punctuation and checks item length and outer backticks, without validating rule-ID syntax.
 // line must end with a full stop; its "Opt-in rules: " prefix and the stop are dropped, and the first ", and " then the first " and " become ", ".
 //
 // It returns the rule IDs in written order with their backticks removed.

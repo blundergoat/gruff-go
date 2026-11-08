@@ -142,8 +142,8 @@ func TestRenderWritesBothSeverityKeys(t *testing.T) {
 	}
 }
 
-// TestRenderPreservesPerRuleOverrides confirms a regenerated config keeps an existing config's per-rule threshold, disable and options overrides.
-// The fixture also sets a severity override without asserting it; rules without overrides still render registry defaults.
+// TestRenderPreservesPerRuleOverrides checks maxDepth 4, false enablement, requirePackageSummary true and non-nil minWordsBeyondSymbol.
+// The fixture also sets a severity override without asserting it.
 func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 	definitions := defaultDefinitions()
 	customThreshold := 4.0

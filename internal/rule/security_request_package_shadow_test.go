@@ -6,8 +6,7 @@ package rule
 
 import "testing"
 
-// TestRequestControlledURLPackageShadowing pins that a local shadowing an import
-// stops naming that package, while every genuine net/http sink still reports.
+// TestRequestControlledURLPackageShadowing checks local http and fmt shadows while genuine, aliased and DefaultClient Get calls still report.
 func TestRequestControlledURLPackageShadowing(t *testing.T) {
 	tests := []struct {
 		name string

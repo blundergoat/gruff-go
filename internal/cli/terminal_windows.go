@@ -12,6 +12,7 @@ import (
 )
 
 // platformIsInteractiveTerminal asks Windows whether the stream belongs to a console.
+// Calling stream.Fd() can detach a pollable handle from Go's I/O completion port and disable I/O deadlines, even if detection returns false.
 //
 // Use only behind isInteractiveTerminal; an unavailable console mode means non-interactive input or output.
 // It reports true when GetConsoleMode succeeds on the stream's handle, and false when that call fails, as for a pipe, a file or NUL.

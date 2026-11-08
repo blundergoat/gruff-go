@@ -136,7 +136,7 @@ func receiverConsistencyFindings(groups map[string]*receiverGroup, inspectName b
 	return findings
 }
 
-// receiverGroupFindings reports each method in a group whose receiver name or form does not match the dominant choice.
+// receiverGroupFindings reports methods differing from the dominant receiver name or form, exempting unnamed receivers from name checks.
 //
 // typeName is the receiver type looked up in allowMixed to exempt form checks; group holds the methods and their name and form tallies.
 // inspectName and inspectPointer enable the name and form checks, and the result is nil when neither axis is mixed.

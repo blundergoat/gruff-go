@@ -464,7 +464,7 @@ func clusterPenalties(findings []finding.Finding) []float64 {
 //
 // Clusters are sorted by file then symbol so two runs over unchanged input publish the same bytes.
 // findings are all reported findings and penalties their clustered weights by index; each cluster's Weight sums its members' penalties.
-// It returns one Cluster per file and symbol shared by two or more correlated findings, and an empty, non-nil list when there is none.
+// It returns one Cluster per file and non-empty symbol shared by at least two correlated findings, or an empty, non-nil list when none qualify.
 func collectClusters(findings []finding.Finding, penalties []float64) []Cluster {
 	groups := map[clusterKey][]int{}
 	for index, item := range findings {

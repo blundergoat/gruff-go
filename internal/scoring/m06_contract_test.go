@@ -223,8 +223,7 @@ func TestRuleAttributionIsKeyedByNativeRuleID(t *testing.T) {
 	}
 }
 
-// TestPublishedDenominatorAndPillarSet proves the two surfaces a reader needs to reproduce the
-// composite without guessing which of the port's file counts it used.
+// TestPublishedDenominatorAndPillarSet checks EvaluatedFiles is 7 and ScoredPillars and PillarDetails match the registered pillar count.
 func TestPublishedDenominatorAndPillarSet(t *testing.T) {
 	pillars := registeredRuleBackedPillars(t)
 	score := Calculate(nil, 7, pillars...)

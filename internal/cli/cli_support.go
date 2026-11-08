@@ -127,7 +127,8 @@ func baselinePathForRun(projectRoot string, values analyseFlagValues) string {
 // Otherwise the result is path rewritten relative to projectRoot, falling back to path joined onto the launch directory when filepath.Rel fails.
 //
 // A re-anchored path stays relative, so the report does not publish a host path, and a file outside the project keeps its ../ form.
-// The machine renderers leave that ../ form out; an absolute input and the filepath.Rel fallback stay absolute and can carry a host path.
+// JSON and summary-json omit baseline path and diagnostic file fields for that ../ form; SARIF and GitHub retain diagnostic paths.
+// An absolute input and the filepath.Rel fallback stay absolute and can carry a host path.
 func rootRelativePath(projectRoot, path string) string {
 	workingDirectory, err := os.Getwd()
 	// Inside the launch directory the root and the typed path already agree, so the path is passed on as typed.

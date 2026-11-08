@@ -370,7 +370,7 @@ func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 
 // signatureDocAsks returns the message suffix that tells the user what a doc comment for this signature should cover.
 //
-// It asks to describe each named parameter, skipping blank parameters and context, HTTP and testing handles.
+// It asks to describe each named parameter, skipping blanks and context, HTTP and testing handles only in their standard package spellings.
 // Returned values are asked for only when a non-error result exists, and when an error is returned only when a result has type error.
 //
 // fnType is the signature of the function being reported, read by undocumentedParameters and undocumentedReturns.

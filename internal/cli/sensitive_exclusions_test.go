@@ -165,7 +165,7 @@ func suppressionAuditLine(t *testing.T, surface, output string) string {
 // TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse verifies the summary text output reports the sensitive exclusion it applied.
 //
 // With one entry configured, summary prints the suppression count on a line byte-identical to the one analyse prints for the same tree.
-// FAMILY-CONTRACT.md section 13a, "Where the audit must appear", requires the line; it must also sit below the Composite block.
+// FAMILY-CONTRACT.md section 13a, "Where the audit must appear", requires the line; the test checks it follows the first "Composite:" marker.
 func TestSummaryTextReportsTheSameSuppressionAuditAsAnalyse(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "fixture.go", sensitiveExclusionFixture())

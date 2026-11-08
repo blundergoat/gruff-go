@@ -432,7 +432,7 @@ func (state *workflowGuardParser) conjunction() workflowGuardTruth {
 	return result
 }
 
-// disjunction preserves warnings whenever an OR branch remains unknown.
+// disjunction combines an OR chain; a branch proven true determines the result even when another branch is unknown.
 //
 // It advances state.position through the || chain even after a true operand, and unary may set state.isValid to false on a bad token.
 // It returns workflowGuardTrue if any || operand is proven true, workflowGuardFalse if all are proven false, else workflowGuardUnknown.

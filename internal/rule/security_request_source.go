@@ -487,6 +487,8 @@ func bodyHasSanitizingCall(body *ast.BlockStmt, valueNames map[string]bool, word
 // This covers the inline shape that carries no intermediate variable; one wrapped input is enough, even beside an unwrapped request value.
 // A call in arg counts when its name matches one of words and exprHasRequest finds request-controlled input inside it.
 // exprHasRequest gets token.NoPos, an invalid sinkPos, so a tainted local counts without its ordering checks.
+//
+// With non-empty words, a call name in arg whose lowercase form is shorter than an original token offset can cause a slice bounds panic.
 func (s *requestTaintScope) argHasInlineSanitizer(arg ast.Expr, words []string) bool {
 	found := false
 	ast.Inspect(arg, func(node ast.Node) bool {

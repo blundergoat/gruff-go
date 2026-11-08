@@ -205,7 +205,7 @@ func hookFindingChanged(currentFinding finding.Finding, changedLines diff.Change
 }
 
 // hookLine returns the start line hook JSON shows for currentFinding, as a pointer to a copy.
-// It is nil, written as null, when the finding has no location or a non-positive line, so the agent navigates by file or project scope.
+// It is nil, written as null, when the finding has no location or a non-positive line.
 func hookLine(currentFinding finding.Finding) *int {
 	// A nil or non-positive location is serialized as JSON null for the user.
 	if currentFinding.Location == nil || currentFinding.Location.Line <= 0 {

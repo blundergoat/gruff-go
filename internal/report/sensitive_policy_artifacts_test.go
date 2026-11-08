@@ -57,7 +57,7 @@ type sensitiveArtifactFixture struct {
 
 // sensitiveArtifactFixtureData builds one file that trips each sensitive-data rule assertSensitiveArtifactMarkers tracks.
 //
-// Credentials are assembled at runtime from split pieces, so this test source never stores a complete reusable credential.
+// Credential text uses split literals or computed pieces, so no single literal contains a complete credential.
 //
 // It returns a fixture whose source is the assignment lines joined and terminated by newlines, and whose forbidden list is never empty.
 // Forbidden holds the private-key header and its first six characters, then sensitiveArtifactFragments chunks for every secrets entry.
@@ -197,7 +197,7 @@ func assertSensitiveArtifactMarkers(t *testing.T, findings []finding.Finding) {
 	}
 }
 
-// sensitiveArtifactApprovedMarker maps rule/category metadata to the closed marker vocabulary section 5 ratifies.
+// sensitiveArtifactApprovedMarker derives the fixture's expected marker from a rule ID or the category metadata.
 //
 // The item argument is the finding to mark; a known RuleID picks its fixed marker, and other rules get a marker naming their category.
 // It returns that marker string, or the plain redacted marker when the rule is unknown and the category metadata is not a non-empty string.

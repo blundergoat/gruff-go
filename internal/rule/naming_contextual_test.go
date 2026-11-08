@@ -49,7 +49,7 @@ func Render(users []string) {
 	}
 }
 
-// TestContextualGenericHonoursConfiguredGenericNames verifies user-supplied generic name lists override defaults.
+// TestContextualGenericHonoursConfiguredGenericNames checks that record is flagged when configured and unflagged with the default names.
 func TestContextualGenericHonoursConfiguredGenericNames(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -73,8 +73,8 @@ func Render(records []string) {
 	}
 }
 
-// TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass exercises both the function-length and require-multiple gates.
-// By default only Build, with two accumulators, reports; with RequireMultiple false, the lone out in Single reports as well.
+// TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass checks that out and result are the only reported symbols with MinFunctionLines set to 3.
+// With RequireMultiple false, it checks for three findings.
 func TestContextualGenericFlagsAccumulatorsOnlyWhenGatesPass(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 

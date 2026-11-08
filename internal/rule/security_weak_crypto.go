@@ -338,11 +338,11 @@ func bucketDigestIndex(body *ast.BlockStmt, hasher *ast.Ident, parents map[ast.N
 	return bucketIndex
 }
 
-// bucketInputHasNonsecretOrigin follows single-use local aliases to a neutral parameter or literal.
+// bucketInputHasNonsecretOrigin follows single-use local aliases to a neutral parameter or literal, ignoring unshadowed built-in len reads.
 //
 // Rebinding, borrowing, unknown transformations and security-named origins fail the proof, leaving the digest to the security-context check.
 // The body is searched for alias definitions, input is the expression written to the hasher, and depth counts steps followed, capped at 8.
-// It reports true for a string literal or a once-used parameter or alias, through parentheses and byte-slice conversions, and false otherwise.
+// It reports true for a string literal or a once-used parameter or alias, ignoring those len reads, through parentheses and byte-slice conversions.
 func bucketInputHasNonsecretOrigin(body *ast.BlockStmt, input ast.Expr, depth int) bool {
 	// Security-shaped input or an alias chain beyond the bounded proof keeps the digest reportable.
 	if _, securityInput := exprTextContext(input, weakDigestContextWord); securityInput || depth > 8 {

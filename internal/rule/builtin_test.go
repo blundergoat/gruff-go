@@ -214,8 +214,8 @@ const syntheticSecretValue = "abcdefghijklmnop" + "qrstuvwxyz123456"
 
 // TestSensitiveDataRule verifies the rule flags common secret-like assignment lines.
 //
-// Each line in config.env must give exactly one finding with a non-empty preview in its metadata.
-// A failure means a user with such a key or token in a config file gets no finding, a duplicate, or one without its preview.
+// Each line in config.env must give exactly one finding, and its preview metadata must not compare equal to the empty string.
+// Missing preview metadata is not rejected by this assertion.
 func TestSensitiveDataRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -275,8 +275,7 @@ func TestSensitiveDataRuleIgnoresInnocuousKeyShapedConfig(t *testing.T) {
 	}
 }
 
-// TestSensitiveDataRuleSkipsGoCommentOnlyLines aligns the generic secret-pattern
-// rule with the exact sensitive-data rules' Go comment boundary.
+// TestSensitiveDataRuleSkipsGoCommentOnlyLines expects no findings for its Go line-comment and block-comment fixtures.
 func TestSensitiveDataRuleSkipsGoCommentOnlyLines(t *testing.T) {
 	tokenValue := secretPatternFixtureValue()
 	cases := map[string]string{
@@ -295,7 +294,7 @@ func TestSensitiveDataRuleSkipsGoCommentOnlyLines(t *testing.T) {
 
 // TestSensitiveDataRuleStillFlagsCodeBearingAssignments keeps the generic rule strict on real source and config assignments.
 //
-// The fixture's raw literal docs must stay silent, while both interpreted-string constants, one with a trailing comment, still flag.
+// The Go fixture contains two interpreted-string constants and a raw-string doc literal and must yield two findings.
 // The YAML auth_token line must still flag once.
 func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 	tokenValue := secretPatternFixtureValue()
@@ -317,8 +316,7 @@ func TestSensitiveDataRuleStillFlagsCodeBearingAssignments(t *testing.T) {
 	}
 }
 
-// TestSensitiveDataRuleSkipsGoGeneratedSecretValues avoids treating calls that
-// produce credentials at runtime as embedded literals.
+// TestSensitiveDataRuleSkipsGoGeneratedSecretValues expects no findings for its two runtime-call assignment examples.
 func TestSensitiveDataRuleSkipsGoGeneratedSecretValues(t *testing.T) {
 	unit := parseOne(t, "pkg/secrets.go", `package pkg
 
@@ -334,8 +332,7 @@ func Run(randomBytes []byte) {
 	}
 }
 
-// TestSensitiveDataRuleSkipsPlaceholderExamples confirms OpenAPI-style
-// placeholders are documentation, while adjacent raw token values still fire.
+// TestSensitiveDataRuleSkipsPlaceholderExamples expects zero findings for its OpenAPI placeholder example and one for its raw token example.
 func TestSensitiveDataRuleSkipsPlaceholderExamples(t *testing.T) {
 	placeholder := parser.Unit{
 		File:   source.File{Path: "openapi.yaml", Type: source.FileTypeText},

@@ -90,7 +90,7 @@ func TestDiagnosticExitContractAcrossStagesCommandsAndThresholds(t *testing.T) {
 	}
 }
 
-// TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput pins exit 2 before analysis for an invalid --fail-on value or config file.
+// TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput checks exit 2 for an invalid --fail-on value or config file.
 // It covers analyse, summary and report; bad-config.yaml declares the unsupported schemaVersion gruff-go.config.v9.
 func TestDiagnosticExitContractRejectsInvalidCLIAndConfigInput(t *testing.T) {
 	root := t.TempDir()

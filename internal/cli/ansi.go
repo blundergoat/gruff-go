@@ -111,8 +111,7 @@ func (s ansiStyler) yellow(text string) string {
 	return ansiYellow + text + ansiReset
 }
 
-// green wraps text in the green ANSI escape, or returns it unchanged when
-// styling is off. See yellow for the rationale behind the no-op fallback.
+// green wraps text in the green ANSI escape, or returns it unchanged when styling is off. See yellow for the rationale behind the no-op fallback.
 func (s ansiStyler) green(text string) string {
 	if !s.enabled {
 		return text
@@ -120,8 +119,7 @@ func (s ansiStyler) green(text string) string {
 	return ansiGreen + text + ansiReset
 }
 
-// bold wraps text in the bold ANSI escape, or returns it unchanged when
-// styling is off. See yellow for the rationale behind the no-op fallback.
+// bold wraps text in the bold ANSI escape, or returns it unchanged when styling is off. See yellow for the rationale behind the no-op fallback.
 func (s ansiStyler) bold(text string) string {
 	if !s.enabled {
 		return text

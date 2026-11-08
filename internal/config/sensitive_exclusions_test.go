@@ -93,8 +93,8 @@ func TestSensitiveExclusionsNormalizesPathToDisplayForm(t *testing.T) {
 
 // TestSensitiveExclusionsRejectsUnreviewableEntries covers every numbered rejection in section 13a.
 //
-// Each is fatal, and each diagnostic must name the entry index and the offending key, so a reviewer finds the entry without counting list items.
-// A failure means such an entry was accepted, or its diagnostic omits the offending key or the sensitiveExclusions index.
+// Each case must return an error containing its expected diagnostic fragment and the sensitiveExclusions list prefix.
+// A failure means an entry was accepted or one of those fragments is missing.
 func TestSensitiveExclusionsRejectsUnreviewableEntries(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -198,8 +198,7 @@ func TestSensitiveExclusionsRejectsUnreviewableEntries(t *testing.T) {
 	}
 }
 
-// TestSensitiveExclusionsNameTheOffendingEntryIndex verifies the index in the
-// diagnostic is the failing entry's own position, not always the first.
+// TestSensitiveExclusionsNameTheOffendingEntryIndex verifies the index in the diagnostic is the failing entry's own position, not always the first.
 func TestSensitiveExclusionsNameTheOffendingEntryIndex(t *testing.T) {
 	body := strings.Join([]string{
 		"schemaVersion: gruff-go.config.v0.1",

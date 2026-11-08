@@ -287,6 +287,7 @@ func (r ignoreRule) match(rel string) bool {
 //
 // pat and seg are the rule parts and path segments, compared from pi and si; an inner ** spans zero or more segments, others use path.Match.
 // It reports true when every part matches and seg is fully consumed, or when a terminal ** is reached with a segment left, and false otherwise.
+// It panics if pi is negative, or if si is negative when an ordinary pattern segment accesses seg.
 func matchSegmentsAt(pat []string, pi int, seg []string, si int) bool {
 	for pi < len(pat) {
 		if pat[pi] == "**" {
@@ -335,6 +336,7 @@ func trimUnescapedTrailingWhitespace(line string) string {
 
 // escaped reports whether the character at index is preceded by an odd number of backslashes.
 // line is the text being scanned and index is a byte offset into it; backslashes are counted backwards from the byte before index.
+// It panics when index is greater than len(line).
 func escaped(line string, index int) bool {
 	backslashes := 0
 	for i := index - 1; i >= 0 && line[i] == '\\'; i-- {

@@ -78,8 +78,7 @@ func TestMatchesContract(t *testing.T) {
 	}
 }
 
-// TestFirstMatchContract verifies ordering, verbatim return values, duplicate
-// handling, empty inputs, and agreement with MatchesAny.
+// TestFirstMatchContract verifies ordering, verbatim return values, duplicate handling, empty inputs, and agreement with MatchesAny.
 func TestFirstMatchContract(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -136,8 +135,7 @@ func FuzzPathfilterNoPanic(f *testing.F) {
 	})
 }
 
-// FuzzFirstMatchAgreement proves that valid candidate lists return the earliest
-// matching pattern and that MatchesAny reports the same boolean.
+// FuzzFirstMatchAgreement proves that valid candidate lists return the earliest matching pattern and that MatchesAny reports the same boolean.
 func FuzzFirstMatchAgreement(f *testing.F) {
 	f.Add("*.go", "docs/**", "main.go")
 	f.Add("ignored/", "ignored/**", "ignored/nested/main.go")

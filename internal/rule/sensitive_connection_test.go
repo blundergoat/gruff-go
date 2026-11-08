@@ -28,8 +28,7 @@ func connectionURL(user, password, host, suffix string) string {
 	return "postgres" + "://" + user + ":" + password + "@" + host + suffix
 }
 
-// connectionCredentialCases returns every required M01 positive and negative
-// boundary as a distinct, grep-friendly subtest.
+// connectionCredentialCases returns every required M01 positive and negative boundary as a distinct, grep-friendly subtest.
 func connectionCredentialCases() []connectionCredentialCase {
 	return []connectionCredentialCase{
 		{name: "raw slash password", url: connectionURL("app", "alpha/slash-42", "localhost:5432", "/orders"), password: "alpha/slash-42", wantFinding: true},
@@ -123,8 +122,8 @@ func TestConnectionStringCredentialMatrix(t *testing.T) {
 	}
 }
 
-// TestConnectionStringRuleChecksEveryCandidateOnLine ensures a username-only
-// URI cannot hide a later password-bearing connection string on the same line.
+// TestConnectionStringRuleChecksEveryCandidateOnLine checks for one finding when a username-only URI precedes a password URI on a line.
+// The finding's JSON must omit the password URI and its raw password.
 func TestConnectionStringRuleChecksEveryCandidateOnLine(t *testing.T) {
 	usernameOnly := "postgres" + "://" + "app@localhost"
 	passwordBearing := connectionURL("svc", "prodsecret", "db.internal", "/orders")

@@ -6,7 +6,7 @@ package rule
 
 import "testing"
 
-// TestFatalInGoroutineRule expects two findings: t.Fatal in a goroutine and t.FailNow in a goroutine inside a subtest; t.Error is accepted.
+// TestFatalInGoroutineRule checks for two findings in a fixture with t.Fatal, t.Error and a subtest's t.FailNow called in goroutines.
 func TestFatalInGoroutineRule(t *testing.T) {
 	unit := parseOne(t, "async_test.go", `package sample
 
@@ -57,8 +57,8 @@ func TestAsync(t *testing.T) {
 	}
 }
 
-// TestTempDirMisuseRule expects two findings: os.MkdirTemp with an empty parent in a test and ioutil.TempDir with one in a testing.TB helper.
-// A temp dir nested under t.TempDir and a function with no testing handle are not reported.
+// TestTempDirMisuseRule checks for two findings in a fixture containing os.MkdirTemp and ioutil.TempDir calls.
+// The fixture includes empty-parent calls, t.TempDir usage, a testing.TB helper and a function without a testing handle.
 func TestTempDirMisuseRule(t *testing.T) {
 	unit := parseOne(t, "tempdir_test.go", `package sample
 

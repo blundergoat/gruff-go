@@ -41,7 +41,7 @@ func (HelperMissingTHelperRule) Definition() Definition {
 // AnalyzeUnit emits findings for assertion-style helpers that omit t.Helper().
 //
 // unit is the parsed file, analysed only when it has an AST, a file set and a _test.go path; runnable test functions are never reported.
-// It returns one finding per helper that takes a testing handle, can fail through it, never calls Helper, and is not a whole test body.
+// It returns one finding per helper that takes a testing handle, has recognised failure evidence, never calls Helper, and is not a whole test body.
 // The slice is empty when no helper qualifies, and nil when unit is not analysed.
 func (HelperMissingTHelperRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !strings.HasSuffix(unit.File.Path, "_test.go") {
@@ -122,7 +122,8 @@ func drivesBenchmark(body *ast.BlockStmt, receivers map[string]bool) bool {
 	return found
 }
 
-// failsThroughOwnHandle reports whether the helper can fail through its own testing handle, the trigger for a missing-Helper finding.
+// failsThroughOwnHandle reports whether body has recognised failure or assertion-shaped calls involving testing handles.
+// Callee bodies are not inspected.
 //
 // A closure parameter that redeclares the handle's name, such as t.Run's func(t *testing.T), is the subtest's handle.
 // Failures there, and the delegation to the subtest, do not need this helper to call Helper.
@@ -410,7 +411,8 @@ func subtestFuncLiteral(call *ast.CallExpr) *ast.FuncLit {
 	return nil
 }
 
-// funcLitCallsParallel reports whether the subtest closure calls t.Parallel.
+// funcLitCallsParallel reports whether a Parallel call anywhere in lit's body uses one of lit's testing-handle parameter names.
+// Nested closures are searched without rescoping those names.
 // lit is the subtest closure and testingPackages the testing import names that identify its handle parameters; a nil lit or body reports false.
 func funcLitCallsParallel(lit *ast.FuncLit, testingPackages map[string]bool) bool {
 	if lit == nil || lit.Body == nil {
@@ -539,7 +541,8 @@ func pathWithinOrEqual(path string, root string) bool {
 // parseGoDirective returns the major/minor version from the first go directive in a go.mod file.
 //
 // A module without that directive has implicit Go 1.16 semantics, so the rule treats it as legacy and can report captures.
-// data is the go.mod content; a go line with no version gives 0, 0 and false, and a module with no go line gives 1, 16 and true.
+// data is the go.mod content; a missing or unparseable version after go returns 0, 0 and false.
+// A parseable go version returns its major/minor numbers and true; no go directive returns 1, 16 and true.
 func parseGoDirective(data []byte) (int, int, bool) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)

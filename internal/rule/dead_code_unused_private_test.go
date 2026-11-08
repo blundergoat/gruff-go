@@ -82,8 +82,7 @@ func (T) helper() {}
 	}
 }
 
-// TestUnusedPrivateFunctionIgnoresInitAndMain confirms reserved entrypoints
-// are not flagged even when no caller references them syntactically.
+// TestUnusedPrivateFunctionIgnoresInitAndMain confirms reserved entrypoints are not flagged even when no caller references them syntactically.
 func TestUnusedPrivateFunctionIgnoresInitAndMain(t *testing.T) {
 	unit := parseOne(t, "cmd/sample/main.go", `package main
 
