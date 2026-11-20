@@ -195,15 +195,15 @@ func TestBandBoundaryComparesWithoutRounding(t *testing.T) {
 	}
 }
 
-// TestTestFileSizeFindingsStayAdvisoryInBothBands checks advisory severity, medium confidence and the band key for test functions in both bands.
-// A function in a _test.go file stays advisory at medium confidence even at twice the limit, while the band key still names its band.
+// TestTestFileSizeFindingsStayAdvisoryInBothBands checks advisory severity, the rule's high confidence and the band key for test functions in both bands.
+// A function in a _test.go file stays advisory even at twice the limit and keeps its rule's catalogue confidence, while the band key still names its band.
 func TestTestFileSizeFindingsStayAdvisoryInBothBands(t *testing.T) {
 	defaults := Defaults()
 	for value, want := range map[int]string{functionLengthThreshold + 1: limitBandLower, 2 * functionLengthThreshold: limitBandUpper} {
 		unit := parseOne(t, "sample_test.go", functionOfCodeLines(value))
 		item := findingFor(t, defaults.Analyze([]parser.Unit{unit}, Context{}), "size.function-length")
-		if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceMedium {
-			t.Fatalf("%d code lines: severity/confidence = %s/%s, want advisory/medium", value, item.Severity, item.Confidence)
+		if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceHigh {
+			t.Fatalf("%d code lines: severity/confidence = %s/%s, want advisory/high", value, item.Severity, item.Confidence)
 		}
 		if item.Metadata[limitBandKey] != want {
 			t.Fatalf("%d code lines: limitBand = %v, want %s", value, item.Metadata[limitBandKey], want)

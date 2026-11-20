@@ -375,7 +375,8 @@ func addDefinition(definition Definition, seen map[string]struct{}, definitions 
 
 // applyDefinition fills rule metadata, calibrations, and fingerprints on a finding before it reaches the report.
 //
-// Empty fields of item are filled from definition; any finding isLowerBandFinding accepts then becomes advisory.
+// Confidence always comes from definition, so list-rules, the hook gate and the score read one value; other empty
+// fields of item are filled from definition, and any finding isLowerBandFinding accepts then becomes advisory.
 // severityConfigured marks a config-overridden severity, which bypasses test-file calibration just like an explicit finding severity.
 // It returns the updated copy of item with its fingerprint computed.
 func applyDefinition(item finding.Finding, definition Definition, severityConfigured bool) finding.Finding {
@@ -386,9 +387,7 @@ func applyDefinition(item finding.Finding, definition Definition, severityConfig
 	if item.Severity == "" {
 		item.Severity = definition.Severity
 	}
-	if item.Confidence == "" {
-		item.Confidence = definition.Confidence
-	}
+	item.Confidence = definition.Confidence
 	if item.Pillar == "" {
 		item.Pillar = definition.Pillar
 	}
@@ -401,7 +400,6 @@ func applyDefinition(item finding.Finding, definition Definition, severityConfig
 	// Only scanner defaults are softened; explicit rule or project choices stay visible to users.
 	if !findingHasSeverity && !severityConfigured && shouldCalibrateTestSizeFinding(item, definition) {
 		item.Severity = finding.SeverityAdvisory
-		item.Confidence = finding.ConfidenceMedium
 	}
 	// A unit just over its limit gets an advisory notice whatever the default or configured severity.
 	if isLowerBandFinding(item) {

@@ -25,16 +25,17 @@ type SleepInTestRule struct{}
 // It returns the same advisory, high-confidence, parser-capability, default-enabled Definition on every call.
 func (SleepInTestRule) Definition() Definition {
 	return Definition{
-		ID:             "test-quality.sleep-in-test",
-		Title:          "Sleep in test",
-		Description:    "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks.",
-		Pillar:         finding.PillarTestQuality,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceHigh,
-		Capability:     CapabilityParser,
-		DefaultEnabled: true,
-		Tags:           []string{"tests", "flake"},
-		Remediation:    "Replace time.Sleep with channel/WaitGroup synchronisation, polling against an observable condition, or a fake clock that advances deterministically.",
+		ID:                  "test-quality.sleep-in-test",
+		Title:               "Sleep in test",
+		Description:         "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks.",
+		Pillar:              finding.PillarTestQuality,
+		Severity:            finding.SeverityAdvisory,
+		Confidence:          finding.ConfidenceMedium,
+		FalsePositiveShapes: []FalsePositiveShape{{Shape: "A `time.Sleep` that crosses a deadline or supplies measured latency can still be reported, and the measured-sleep exemption requires a standalone sleep after a `time.Now()` assignment in the same block, with a later statement in that block containing a `time.Since` call whose sole argument matches the assigned identifier by name, even if that name is shadowed in a nested block or closure.", Mitigation: "When measuring the delay, put `start := time.Now()` before the standalone `time.Sleep(delay)` and use `time.Since(start)` in the elapsed-time assertion that follows in the same block."}, {Shape: "A `time.Sleep` that backs off a retry, throttles a workload, or models device latency can still be reported when it falls outside the rule's syntactic exemptions for polling and test-double delays.", Mitigation: "Document what the delay paces and keep any readiness check or completion channel explicit."}},
+		Capability:          CapabilityParser,
+		DefaultEnabled:      true,
+		Tags:                []string{"tests", "flake"},
+		Remediation:         "Replace time.Sleep with channel/WaitGroup synchronisation, polling against an observable condition, or a fake clock that advances deterministically.",
 	}
 }
 

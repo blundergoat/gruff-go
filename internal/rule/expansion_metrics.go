@@ -295,7 +295,7 @@ func (ExportedSymbolCommentRule) Definition() Definition {
 		Description:    "Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.",
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
+		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Options:        map[string]any{"ignoreInternalPackages": true},
 		Remediation:    "Add a Go-style doc comment that begins with the symbol name.",

@@ -23,7 +23,7 @@
               "properties": {
                 "pillar": "complexity",
                 "defaultSeverity": "warning",
-                "confidence": "high",
+                "confidence": "low",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -320,7 +320,7 @@
               "properties": {
                 "pillar": "design",
                 "defaultSeverity": "advisory",
-                "confidence": "medium",
+                "confidence": "low",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -426,7 +426,7 @@
               "properties": {
                 "pillar": "documentation",
                 "defaultSeverity": "advisory",
-                "confidence": "medium",
+                "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "options": {
@@ -521,7 +521,7 @@
               "properties": {
                 "pillar": "documentation",
                 "defaultSeverity": "advisory",
-                "confidence": "medium",
+                "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -679,7 +679,7 @@
               "properties": {
                 "pillar": "maintainability",
                 "defaultSeverity": "advisory",
-                "confidence": "medium",
+                "confidence": "low",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -866,7 +866,7 @@
               "properties": {
                 "pillar": "naming",
                 "defaultSeverity": "advisory",
-                "confidence": "medium",
+                "confidence": "high",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -1192,7 +1192,7 @@
               "properties": {
                 "pillar": "security",
                 "defaultSeverity": "advisory",
-                "confidence": "high",
+                "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -1468,7 +1468,7 @@
               "properties": {
                 "pillar": "security",
                 "defaultSeverity": "warning",
-                "confidence": "high",
+                "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -2174,7 +2174,7 @@
               "properties": {
                 "pillar": "test-quality",
                 "defaultSeverity": "advisory",
-                "confidence": "high",
+                "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -2228,7 +2228,7 @@
               "properties": {
                 "pillar": "test-quality",
                 "defaultSeverity": "advisory",
-                "confidence": "high",
+                "confidence": "medium",
                 "capability": "parser",
                 "defaultEnabled": true,
                 "tags": [
@@ -2267,7 +2267,7 @@
             "gruffFingerprint": "dee8b1327b17112c"
           },
           "properties": {
-            "confidence": "high",
+            "confidence": "low",
             "fingerprint": "e227dd0435d09963",
             "metadata": {
               "complexity": 26,
@@ -2283,7 +2283,7 @@
       ],
       "properties": {
         "gruffSchemaVersion": "gruff.analysis.v3",
-        "score": 95.87,
+        "score": 96.21,
         "grade": "A"
       }
     }

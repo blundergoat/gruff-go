@@ -22,15 +22,16 @@ type HTTPClientNoTimeoutRule struct{}
 // It returns the same metadata on every call: an advisory, high-confidence security rule enabled by default.
 func (HTTPClientNoTimeoutRule) Definition() Definition {
 	return Definition{
-		ID:             "security.http-client-no-timeout",
-		Title:          "HTTP client without timeout",
-		Description:    "Flags http.Client composite literals in production files that do not set Timeout.",
-		Pillar:         finding.PillarSecurity,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
-		Tags:           []string{"http", "security"},
-		Remediation:    "Set http.Client.Timeout or use a shared client whose timeout ownership is explicit.",
+		ID:                  "security.http-client-no-timeout",
+		Title:               "HTTP client without timeout",
+		Description:         "Flags http.Client composite literals in production files that do not set Timeout.",
+		Pillar:              finding.PillarSecurity,
+		Severity:            finding.SeverityAdvisory,
+		Confidence:          finding.ConfidenceMedium,
+		FalsePositiveShapes: []FalsePositiveShape{{Shape: "The rule reports an `http.Client` literal without a `Timeout` field even when one constructor option supplies the client and a later option sets `Timeout` on that same client.", Mitigation: "Apply the option that sets `Timeout` after the option that supplies the `http.Client`, and document that the later option sets the timeout on the supplied client."}, {Shape: "The rule reports an `http.Client` literal without a `Timeout` field even when its custom transport's `RoundTrip` method returns an error immediately without network I/O.", Mitigation: "Document beside the literal that the transport returns an error before any network I/O."}},
+		DefaultEnabled:      true,
+		Tags:                []string{"http", "security"},
+		Remediation:         "Set http.Client.Timeout or use a shared client whose timeout ownership is explicit.",
 	}
 }
 

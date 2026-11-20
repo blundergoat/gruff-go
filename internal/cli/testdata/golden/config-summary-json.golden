@@ -10,7 +10,7 @@
             "description": "Flags functions outside test files whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
             "pillar": "complexity",
             "severity": "warning",
-            "confidence": "high",
+            "confidence": "low",
             "capability": "parser",
             "defaultEnabled": true,
             "thresholds": {
@@ -175,7 +175,7 @@
             "description": "Emits score-neutral composite triage when a file has findings across multiple quality pillars.",
             "pillar": "design",
             "severity": "advisory",
-            "confidence": "medium",
+            "confidence": "low",
             "capability": "parser",
             "defaultEnabled": true,
             "thresholds": {
@@ -245,7 +245,7 @@
             "description": "Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.",
             "pillar": "documentation",
             "severity": "advisory",
-            "confidence": "medium",
+            "confidence": "high",
             "capability": "parser",
             "defaultEnabled": true,
             "options": {
@@ -292,7 +292,7 @@
             "description": "Flags nolint and nosec suppression comments that do not explain why the suppression is intentional.",
             "pillar": "documentation",
             "severity": "advisory",
-            "confidence": "medium",
+            "confidence": "high",
             "capability": "parser",
             "defaultEnabled": true,
             "tags": [
@@ -378,7 +378,7 @@
             "description": "Flags direct literal panic calls in non-test, non-main production code.",
             "pillar": "maintainability",
             "severity": "advisory",
-            "confidence": "medium",
+            "confidence": "low",
             "capability": "parser",
             "defaultEnabled": true,
             "tags": [
@@ -505,7 +505,7 @@
             "description": "Flags local variables and constants whose names match a list of placeholder tokens that rarely survive a careful review.",
             "pillar": "naming",
             "severity": "advisory",
-            "confidence": "medium",
+            "confidence": "high",
             "capability": "parser",
             "defaultEnabled": true,
             "options": {
@@ -699,7 +699,7 @@
             "description": "Flags http.Client composite literals in production files that do not set Timeout.",
             "pillar": "security",
             "severity": "advisory",
-            "confidence": "high",
+            "confidence": "medium",
             "capability": "parser",
             "defaultEnabled": true,
             "tags": [
@@ -855,7 +855,7 @@
             "description": "Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.",
             "pillar": "security",
             "severity": "warning",
-            "confidence": "high",
+            "confidence": "medium",
             "capability": "parser",
             "defaultEnabled": true,
             "tags": [
@@ -1237,7 +1237,7 @@
             "description": "Flags time.Sleep calls in _test.go files. Sleeps are the dominant source of test flakiness; prefer explicit synchronisation primitives or fake clocks.",
             "pillar": "test-quality",
             "severity": "advisory",
-            "confidence": "high",
+            "confidence": "medium",
             "capability": "parser",
             "defaultEnabled": true,
             "tags": [
@@ -1267,7 +1267,7 @@
             "description": "Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.",
             "pillar": "test-quality",
             "severity": "advisory",
-            "confidence": "high",
+            "confidence": "medium",
             "capability": "parser",
             "defaultEnabled": true,
             "tags": [

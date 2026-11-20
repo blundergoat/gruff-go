@@ -141,7 +141,7 @@ func (ProductionPanicRule) Definition() Definition {
 		Description:    "Flags direct literal panic calls in non-test, non-main production code.",
 		Pillar:         finding.PillarMaintain,
 		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
+		Confidence:     finding.ConfidenceLow,
 		DefaultEnabled: true,
 		Tags:           []string{"errors"},
 		Remediation:    "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code.",

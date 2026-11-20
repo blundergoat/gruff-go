@@ -338,8 +338,8 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 		}
 	}
 	// Update these pinned counts when the catalogue total changes or a rule moves into or out of medium or low confidence.
-	if len(catalogue.Rules) != 80 || precisionRuleCount != 43 {
-		t.Fatalf("list-rules counts = %d total, %d medium/low; want 80 and 43", len(catalogue.Rules), precisionRuleCount)
+	if len(catalogue.Rules) != 80 || precisionRuleCount != 45 {
+		t.Fatalf("list-rules counts = %d total, %d medium/low; want 80 and 45", len(catalogue.Rules), precisionRuleCount)
 	}
 
 	// A path that does not exist, such as a typo on the command line, makes analyse exit 2.

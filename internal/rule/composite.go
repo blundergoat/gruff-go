@@ -63,7 +63,7 @@ func (r DesignHotspotFileRule) Definition() Definition {
 		Description:    "Emits score-neutral composite triage when a file has findings across multiple quality pillars.",
 		Pillar:         finding.PillarDesign,
 		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
+		Confidence:     finding.ConfidenceLow,
 		DefaultEnabled: true,
 		Thresholds: map[string]float64{
 			"minFindings": float64(minFindings),

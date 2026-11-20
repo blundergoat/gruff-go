@@ -72,15 +72,16 @@ type TempDirMisuseRule struct{}
 // It returns the same fixed metadata on every call: an advisory, high-confidence, default-enabled test-quality rule with its remediation text.
 func (TempDirMisuseRule) Definition() Definition {
 	return Definition{
-		ID:             "test-quality.tempdir-misuse",
-		Title:          "Test temp dir misuse",
-		Description:    "Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.",
-		Pillar:         finding.PillarTestQuality,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
-		Tags:           []string{"tests"},
-		Remediation:    "Use t.TempDir() for per-test isolation and automatic cleanup.",
+		ID:                  "test-quality.tempdir-misuse",
+		Title:               "Test temp dir misuse",
+		Description:         "Flags os.MkdirTemp and ioutil.TempDir calls in tests when t.TempDir is available.",
+		Pillar:              finding.PillarTestQuality,
+		Severity:            finding.SeverityAdvisory,
+		Confidence:          finding.ConfidenceMedium,
+		FalsePositiveShapes: []FalsePositiveShape{{Shape: "The rule reports `os.MkdirTemp` or `ioutil.TempDir` with an empty parent when a test handle is in scope, even when `t.TempDir()` could make the Unix socket path too long.", Mitigation: "Keep the short directory, document the socket path limit at the call site, and make cleanup explicit with `os.RemoveAll`."}},
+		DefaultEnabled:      true,
+		Tags:                []string{"tests"},
+		Remediation:         "Use t.TempDir() for per-test isolation and automatic cleanup.",
 	}
 }
 

@@ -28,7 +28,7 @@ func (SuppressionWithoutRationaleRule) Definition() Definition {
 		Description:    "Flags nolint and nosec suppression comments that do not explain why the suppression is intentional.",
 		Pillar:         finding.PillarDocumentation,
 		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
+		Confidence:     finding.ConfidenceHigh,
 		DefaultEnabled: true,
 		Tags:           []string{"comments", "documentation"},
 		Remediation:    "Add a short reason after the suppression, such as `-- false positive because ...` or `// tracked in ISSUE-123`.",

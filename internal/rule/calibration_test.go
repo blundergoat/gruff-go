@@ -78,8 +78,9 @@ func assertCalibratedTestSizeFinding(t *testing.T, ruleID string, item finding.F
 	if item.RuleID == "" {
 		t.Fatalf("missing %s finding", ruleID)
 	}
-	if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceMedium {
-		t.Fatalf("%s severity/confidence = %s/%s, want advisory/medium", ruleID, item.Severity, item.Confidence)
+	// The calibration softens severity only; confidence stays the rule's catalogue value, high for both size rules.
+	if item.Severity != finding.SeverityAdvisory || item.Confidence != finding.ConfidenceHigh {
+		t.Fatalf("%s severity/confidence = %s/%s, want advisory/high", ruleID, item.Severity, item.Confidence)
 	}
 	if item.Metadata["testFile"] != true {
 		t.Fatalf("%s missing testFile metadata: %#v", ruleID, item.Metadata)

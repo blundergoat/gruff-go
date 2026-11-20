@@ -28,15 +28,16 @@ type TLSInsecureConfigRule struct{}
 // It returns the same populated Definition on every call: security pillar, warning severity, high confidence, enabled by default.
 func (TLSInsecureConfigRule) Definition() Definition {
 	return Definition{
-		ID:             "security.tls-insecure-config",
-		Title:          "TLS insecure config",
-		Description:    "Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.",
-		Pillar:         finding.PillarSecurity,
-		Severity:       finding.SeverityWarning,
-		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
-		Tags:           []string{"security", "tls"},
-		Remediation:    "Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.",
+		ID:                  "security.tls-insecure-config",
+		Title:               "TLS insecure config",
+		Description:         "Flags tls.Config literals that disable certificate verification or allow obsolete TLS protocol versions.",
+		Pillar:              finding.PillarSecurity,
+		Severity:            finding.SeverityWarning,
+		Confidence:          finding.ConfidenceMedium,
+		FalsePositiveShapes: []FalsePositiveShape{{Shape: "The rule reports `InsecureSkipVerify: true` in a `tls.Config` literal even when the same literal supplies a `VerifyConnection` callback for ACME TLS-ALPN verification.", Mitigation: "Document beside the flag that `VerifyConnection` handles hostname verification, and confirm that the callback checks the self-signed certificate's signature, negotiated protocol, certificate count, and critical extensions."}},
+		DefaultEnabled:      true,
+		Tags:                []string{"security", "tls"},
+		Remediation:         "Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.",
 	}
 }
 

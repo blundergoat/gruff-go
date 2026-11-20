@@ -2,6 +2,8 @@
 
 ## v0.6.0 - Unreleased
 
+- **BREAKING: rule confidence follows measured precision, and every finding carries its rule's confidence** - 10 rules change confidence (`complexity.cognitive` high to low; `design.hotspot-file` medium to low; `docs.exported-symbol-comment` medium to high; `docs.suppression-without-rationale` medium to high; `maintainability.production-panic` medium to low; `naming.identifier-quality` medium to high; `security.http-client-no-timeout` high to medium; `security.tls-insecure-config` high to medium; `test-quality.sleep-in-test` high to medium; `test-quality.tempdir-misuse` high to medium), so their findings weigh differently in every score. Confidence is high at an error-adjusted score of 0.85 or more, medium from 0.70 and low below. Test-file size findings keep their rule's confidence; only their severity is softened. 5 rules that drop from high now publish reviewed false-positive guidance. Rules without a measurement keep their confidence and are listed under Confidence evidence in docs/rules.md.
+
 - **Duplicate test groups are enabled by default** - `test-quality.duplicate-test-body` reports one finding per group of four or more runnable tests in the same file whose bodies of at least four statements differ only in eligible literal values. It preserves keys, indices, whitespace strings and types declared in the test body, skips visible table-driven tests, and lists every group member for review. Set `rules.test-quality.duplicate-test-body.enabled: false` to opt out.
 
 - **Built with Go 1.26.10** - The module toolchain moves from Go 1.26.9 to 1.26.10, which fixes GO-2026-6809

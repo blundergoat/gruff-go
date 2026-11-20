@@ -127,7 +127,7 @@ The `--fail-on` flag sets the threshold at which findings flip the exit code fro
 - **Default severity:** warning
 - **Default-enabled:** yes
 - **Threshold:** `maxComplexity` (default `25`)
-- **Confidence:** high
+- **Confidence:** low
 - **Capability:** parser
 - **Tags:** `metric`
 
@@ -136,6 +136,10 @@ Flags Go functions whose parser-only cognitive complexity exceeds the configured
 This is intentionally separate from `complexity.cyclomatic`: cyclomatic counts independent branch paths, while cognitive complexity emphasizes nesting and review difficulty.
 
 **Remediation.** In the upper band: simplify the execution path - return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow. In the lower band: do not add to this function; put new code in a new function.
+
+**Known precision limit.** Loops and independent `if` checks can push a function over the score limit even when the steps are easy to follow. Early `return` and `continue` guards still add to the score. Keep each guard beside the work it protects and keep related lifecycle steps together so their order is visible.
+
+**Known precision limit.** Guards and loops inside a `switch` or type switch add to the function's score even when each case is easy to follow on its own. Keep each case's checks and actions together when readers can verify them directly at the dispatch.
 
 ### `complexity.cyclomatic`
 
@@ -296,7 +300,7 @@ Each finding's metadata carries the replacement target.
 - **Default severity:** advisory
 - **Default-enabled:** yes
 - **Threshold:** `minFindings` (default `3`), `minPillars` (default `2`)
-- **Confidence:** medium
+- **Confidence:** low
 - **Capability:** parser
 - **Tags:** `composite`
 
@@ -380,7 +384,7 @@ rules:
 - **Pillar:** documentation
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
 
 Flags exported top-level Go declarations (functions, methods on exported types, types, vars, consts) that have no doc comment.
@@ -442,7 +446,7 @@ Flags Go packages that have no package-level comment in any file. Package commen
 - **Pillar:** documentation
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
 - **Tags:** `comments`, `documentation`
 
@@ -532,7 +536,7 @@ Taking an indexed element address such as `&slice[i]` remains accepted, as does 
 - **Pillar:** maintainability
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** low
 - **Capability:** parser
 - **Tags:** `errors`
 
@@ -651,7 +655,7 @@ rules:
 - **Pillar:** naming
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** medium
+- **Confidence:** high
 - **Capability:** parser
 - **Tags:** `naming`
 
@@ -859,13 +863,17 @@ Flags third-party GitHub Actions referenced by a mutable branch ref (for example
 - **Pillar:** security
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** high
+- **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `http`, `security`
 
 Flags `http.Client` composite literals in production files that do not set the `Timeout` field. Test files and example paths are skipped. The rule reports literal construction evidence only; it does not infer timeout ownership through wrapper factories or later assignments.
 
 **Remediation.** Set `http.Client.Timeout` or use a shared client whose timeout ownership is explicit.
+
+**Known precision limit.** The rule reports an `http.Client` literal without a `Timeout` field even when one constructor option supplies the client and a later option sets `Timeout` on that same client. Apply the option that sets `Timeout` after the option that supplies the `http.Client`, and document that the later option sets the timeout on the supplied client.
+
+**Known precision limit.** The rule reports an `http.Client` literal without a `Timeout` field even when its custom transport's `RoundTrip` method returns an error immediately without network I/O. Document beside the literal that the transport returns an error before any network I/O.
 
 ### `security.http-server-no-timeout`
 
@@ -1023,7 +1031,7 @@ Each finding's metadata carries the reason (`text-template-response`, `raw-html-
 - **Pillar:** security
 - **Default severity:** warning
 - **Default-enabled:** yes
-- **Confidence:** high
+- **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `security`, `tls`
 
@@ -1032,6 +1040,8 @@ Flags `tls.Config` composite literals that explicitly disable certificate verifi
 Each finding's metadata carries the unsafe `field` and `value`.
 
 **Remediation.** Keep certificate verification enabled and require TLS 1.2 or newer for minimum protocol versions.
+
+**Known precision limit.** The rule reports `InsecureSkipVerify: true` in a `tls.Config` literal even when the same literal supplies a `VerifyConnection` callback for ACME TLS-ALPN verification. Document beside the flag that `VerifyConnection` handles hostname verification, and confirm that the callback checks the self-signed certificate's signature, negotiated protocol, certificate count, and critical extensions.
 
 ### `security.unsafe-deserialization`
 
@@ -1461,7 +1471,7 @@ The rule recognises the common `tc := tc` pattern as the local evidence that cap
 - **Pillar:** test-quality
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** high
+- **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `flake`, `tests`
 
@@ -1470,6 +1480,10 @@ Flags `time.Sleep` calls inside `_test.go` files. Sleeps make tests slower and u
 Deliberate sleeps are not reported either: a sleep inside a function passed to `synctest.Test` or `synctest.Run`, where time is a fake clock; a test double method sleeping for its own receiver's field, such as `time.Sleep(m.delay)` (a suite's `Test` method stays reported); and a sleep between `start := time.Now()` and a later `time.Since(start)` in the same block, which the test times. A sleep whose effect the test observes some other way, such as two log timestamps or an expiry, is still reported, because the parser cannot tell it from a wait standing in for synchronisation. Random jitter is still reported too, because a randomly timed test is worth making deterministic.
 
 **Remediation.** Wait on channels, contexts, condition variables, fake clocks, or explicit readiness signals instead of sleeping for an assumed duration.
+
+**Known precision limit.** A `time.Sleep` that crosses a deadline or supplies measured latency can still be reported, and the measured-sleep exemption requires a standalone sleep after a `time.Now()` assignment in the same block, with a later statement in that block containing a `time.Since` call whose sole argument matches the assigned identifier by name, even if that name is shadowed in a nested block or closure. When measuring the delay, put `start := time.Now()` before the standalone `time.Sleep(delay)` and use `time.Since(start)` in the elapsed-time assertion that follows in the same block.
+
+**Known precision limit.** A `time.Sleep` that backs off a retry, throttles a workload, or models device latency can still be reported when it falls outside the rule's syntactic exemptions for polling and test-double delays. Document what the delay paces and keep any readiness check or completion channel explicit.
 
 ### `test-quality.static-analysis-redundant-test`
 
@@ -1491,13 +1505,56 @@ The rule is opt-in while calibration proves precision. It does not execute refle
 - **Pillar:** test-quality
 - **Default severity:** advisory
 - **Default-enabled:** yes
-- **Confidence:** high
+- **Confidence:** medium
 - **Capability:** parser
 - **Tags:** `tests`
 
 Flags `os.MkdirTemp("", ...)` and `ioutil.TempDir("", ...)` in tests when a `*testing.T`, `*testing.B`, `*testing.F`, or `testing.TB` handle is in scope. `t.TempDir()` provides automatic cleanup and per-test isolation.
 
 **Remediation.** Replace process-wide temporary directory creation with `t.TempDir()` unless the test deliberately needs a non-test-owned parent directory.
+
+## Confidence evidence
+
+A rule's confidence follows its measured precision: high at an error-adjusted score of 0.85 or more, medium from 0.70, low below, and a raise needs the lower bound of its 95% interval to clear the new band. Every finding carries its rule's confidence. These default-on rules have no measurement that sets their confidence, so the value below is inherited, not measured:
+
+| Rule | Confidence | Measurement |
+|---|---|---|
+| `dead-code.empty-block` | medium | unmeasured |
+| `dead-code.unreachable-code` | high | unmeasured |
+| `dependency.go-mod-remote-replace` | high | too-few |
+| `docs.comment-rubric` | medium | unmeasured |
+| `docs.config-field-comment` | medium | unmeasured |
+| `docs.missing-param-doc` | medium | pass, held: an added rule has no re-review route yet |
+| `maintainability.context-todo-production` | high | unmeasured |
+| `maintainability.defer-in-loop` | high | insufficient |
+| `maintainability.ignored-error` | medium | unmeasured |
+| `maintainability.log-fatal-library` | high | unmeasured |
+| `maintainability.loop-variable-address` | medium | unmeasured |
+| `naming.contextual-generic` | medium | insufficient |
+| `naming.misspelling` | medium | unmeasured |
+| `security.archive-path-traversal` | medium | unmeasured |
+| `security.github-actions-broad-permissions` | high | too-few |
+| `security.github-actions-pull-request-target` | medium | too-few |
+| `security.github-actions-remote-shell` | high | unmeasured |
+| `security.github-actions-secrets-in-pr` | medium | too-few |
+| `security.github-actions-unpinned-action` | high | too-few |
+| `security.path-traversal-file-access` | medium | unmeasured |
+| `security.request-controlled-url` | medium | unmeasured |
+| `security.shell-command` | medium | too-few |
+| `security.template-injection-xss` | medium | unmeasured |
+| `security.unsafe-deserialization` | medium | unmeasured |
+| `security.xxe-candidate` | medium | unmeasured |
+| `sensitive-data.anthropic-api-key` | high | unmeasured |
+| `sensitive-data.gitlab-token` | high | unmeasured |
+| `sensitive-data.jwt-token` | medium | unmeasured |
+| `sensitive-data.npm-token` | high | unmeasured |
+| `sensitive-data.private-key` | high | too-few |
+| `sensitive-data.secret-pattern` | medium | unmeasured |
+| `sensitive-data.slack-token` | high | unmeasured |
+| `sensitive-data.stripe-key` | high | unmeasured |
+| `test-quality.empty-test` | high | too-few |
+| `test-quality.fatal-in-goroutine` | high | unmeasured |
+| `test-quality.parallel-range-capture` | medium | unmeasured |
 
 ## Configuring rules
 
@@ -1523,3 +1580,6 @@ rules:
     enabled: true
     severity: error
 ```
+
+**Known precision limit.** The rule reports `os.MkdirTemp` or `ioutil.TempDir` with an empty parent when a test handle is in scope, even when `t.TempDir()` could make the Unix socket path too long. Keep the short directory, document the socket path limit at the call site, and make cleanup explicit with `os.RemoveAll`.
+

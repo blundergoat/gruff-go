@@ -183,8 +183,8 @@ func TestDefaultsPrecisionGuidance(t *testing.T) {
 			}
 		}
 	}
-	if precisionRuleCount != 43 {
-		t.Fatalf("medium/low-confidence rules = %d, want 43", precisionRuleCount)
+	if precisionRuleCount != 45 {
+		t.Fatalf("medium/low-confidence rules = %d, want 45", precisionRuleCount)
 	}
 }
 

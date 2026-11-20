@@ -41,16 +41,17 @@ func (r CognitiveComplexityRule) maxComplexity() int {
 func (r CognitiveComplexityRule) Definition() Definition {
 	threshold := r.maxComplexity()
 	return Definition{
-		ID:             "complexity.cognitive",
-		Title:          "Cognitive complexity",
-		Description:    "Flags functions outside test files whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
-		Pillar:         finding.PillarComplexity,
-		Severity:       finding.SeverityWarning,
-		Confidence:     finding.ConfidenceHigh,
-		DefaultEnabled: true,
-		Thresholds:     map[string]float64{"maxComplexity": float64(threshold)},
-		Tags:           []string{"metric"},
-		Remediation:    simplifyExecutionPathAdvice,
+		ID:                  "complexity.cognitive",
+		Title:               "Cognitive complexity",
+		Description:         "Flags functions outside test files whose nested control flow and boolean decisions exceed the configured cognitive complexity threshold.",
+		Pillar:              finding.PillarComplexity,
+		Severity:            finding.SeverityWarning,
+		Confidence:          finding.ConfidenceLow,
+		FalsePositiveShapes: []FalsePositiveShape{{Shape: "Loops and independent `if` checks can push a function over the score limit even when the steps are easy to follow. Early `return` and `continue` guards still add to the score.", Mitigation: "Keep each guard beside the work it protects and keep related lifecycle steps together so their order is visible."}, {Shape: "Guards and loops inside a `switch` or type switch add to the function's score even when each case is easy to follow on its own.", Mitigation: "Keep each case's checks and actions together when readers can verify them directly at the dispatch."}},
+		DefaultEnabled:      true,
+		Thresholds:          map[string]float64{"maxComplexity": float64(threshold)},
+		Tags:                []string{"metric"},
+		Remediation:         simplifyExecutionPathAdvice,
 	}
 }
 
