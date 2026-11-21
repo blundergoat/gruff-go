@@ -6,8 +6,9 @@
 
 - **Duplicate test groups are enabled by default** - `test-quality.duplicate-test-body` reports one finding per group of four or more runnable tests in the same file whose bodies of at least four statements differ only in eligible literal values. It preserves keys, indices, whitespace strings and types declared in the test body, skips visible table-driven tests, and lists every group member for review. Set `rules.test-quality.duplicate-test-body.enabled: false` to opt out.
 
-- **Built with Go 1.26.10** - The module toolchain moves from Go 1.26.9 to 1.26.10, which fixes GO-2026-6809
-  (`crypto/x509` distrusting compromised intermediate certificates), reachable through the dashboard's HTTP server.
+- **Built with Go 1.26.11** - The module toolchain moves from Go 1.26.9 to 1.26.11, which fixes GO-2026-6809
+  (`crypto/x509` distrusting compromised intermediate certificates) and GO-2026-6859 (an HTTP/1 server crash from a
+  `MaxBytesReader` header race in `net/http`), both reachable through the dashboard's HTTP server.
 - **A newly warning method no longer inherits a same-named method's baseline review** - The baseline ordinal now
   counts every parsed function a finding's symbol names, not only the ones with a finding. This matters where a rule
   reports a bare method name, such as the opt-in `naming.get-prefix` on `A.GetValue` and `B.GetValue`: before, when
