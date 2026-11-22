@@ -182,10 +182,15 @@ run_step() {
 repo_files() {
     local pattern="$1"
     if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        # An unstaged deletion stays in the index with nothing on disk to check.
         {
             git -C "$REPO_ROOT" ls-files -- "$pattern"
             git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "$pattern"
-        } | sort -u
+        } | sort -u | while IFS= read -r file; do
+            if [[ -e "$REPO_ROOT/$file" ]]; then
+                printf '%s\n' "$file"
+            fi
+        done
     else
         (cd "$REPO_ROOT" && find . -type f -name "$pattern" -print | sed 's#^\./##')
     fi
@@ -408,29 +413,54 @@ check_shell_syntax() {
     printf '%d files' "${#files[@]}"
 }
 
+# Scan repository $2 with post-turn hook $1 under nonnumeric and leading-zero
+# limits. The invocation copies the hook's own self-test (an internal goat-flow
+# interface), so a renamed entry point or variable fails the check loudly.
+post_turn_scan_hostile() {
+    GOAT_FLOW_HOOK_RESULT_PROTOCOL='' GOAT_FLOW_POST_TURN_CONTROLLER_CHILD=1 \
+        GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES=invalid \
+        GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS=08 \
+        GOAT_FLOW_POST_TURN_SAFETY_MAX_SECONDS=08 \
+        node "$1" --root "$2" </dev/null 2>&1
+}
+
 check_post_turn_limit_hardening() {
-    local hook='.goat-flow/hooks/post-turn-safety.sh' output
+    local hook=".goat-flow/hooks/post-turn-safety.mjs" repo output status
     if [[ ! -f "$hook" ]]; then
         printf 'post-turn-safety hook not installed'
         return "$SKIP_EXIT"
     fi
-    # The hook gates every file on MAX_FILE_BYTES. Unvalidated, a nonnumeric
-    # limit evaluates to 0 and the scanner silently skips everything while still
-    # reporting clean - a safety hook that does nothing and says it passed.
-    # Running the self-test under hostile limits distinguishes a hardened hook
-    # from one that has been reverted: the hardened hook returns 0, the
-    # unhardened upstream template returns 2 ("clean case failed on scanner 0").
+    # The hook gates every file on GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES. A
+    # nonnumeric limit read as 0 marks every file oversized: a clean change
+    # fails as "scan incomplete" and a leaked key is never named. The 1.15.x
+    # Bash template had that gap; goat-flow 1.19.0 falls back to the default.
     #
-    # This lives here rather than inside the hook because the hook is a managed
-    # goat-flow file: a `goat-flow install` that restores the upstream template
-    # would revert the hardening AND the in-file self-test cases together, so
-    # only a project-owned check outside that file can notice.
-    if ! output=$(
-        GOAT_FLOW_POST_TURN_SAFETY_MAX_BYTES=invalid \
-            GOAT_FLOW_POST_TURN_SAFETY_MAX_FINDINGS=08 \
-            bash "$hook" --self-test 2>&1
-    ); then
-        printf 'post-turn-safety limit hardening reverted (%s); re-apply before shipping' "${output:-no output}"
+    # The hook's own --self-test cannot catch a revert: since 1.19.0 it pins the
+    # scan limits for each case, so hostile values passed to it never reach the
+    # scanner. This scans a disposable repository under hostile limits instead:
+    # the clean file must pass and the synthetic key must be named. It lives
+    # here rather than in the hook because the hook is a managed goat-flow file
+    # that an install restores. The fixture name avoids *.env, which a global
+    # gitignore may hide from the scan.
+    repo=$(mktemp -d "${TMPDIR:-/tmp}/gruff-go-post-turn.XXXXXX") || return 1
+    if ! git -C "$repo" init -q; then
+        printf 'post-turn-safety fixture: git init failed'
+        rm -rf -- "$repo"
+        return 1
+    fi
+    printf 'API_KEY=your_api_key_here\n' >"$repo/fixture.txt"
+    if ! output=$(post_turn_scan_hostile "$hook" "$repo"); then
+        printf 'post-turn-safety limit hardening reverted: clean change failed under hostile limits (%s)' "${output:-no output}"
+        rm -rf -- "$repo"
+        return 1
+    fi
+    # Assemble the synthetic key at runtime so this file never holds the literal.
+    printf 'AWS_ACCESS_KEY_ID=%s%s\n' 'AKIA' '1234567890ABCDEF' >"$repo/fixture.txt"
+    output=$(post_turn_scan_hostile "$hook" "$repo")
+    status=$?
+    rm -rf -- "$repo"
+    if ((status != 2)) || [[ "$output" != *'blocked AWS access key'* ]]; then
+        printf 'post-turn-safety limit hardening reverted: synthetic key not reported under hostile limits (exit %d: %s)' "$status" "${output:-no output}"
         return 1
     fi
     printf 'nonnumeric and leading-zero limits fall back'

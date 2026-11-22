@@ -48,6 +48,7 @@ Conventional commits (`type(scope): subject` or `type: subject`); observed types
 
 ### READ
 MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go` and any fixture under `internal/rule/testdata/`. For policy decisions, grep `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, and `.goat-flow/learning-loop/decisions/` first. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-docs/playbooks/` (e.g. `browser-use.md`, `page-capture.md`) and run that doc's "Availability Check" section verbatim — project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
+Before creating, changing, reviewing, consolidating, moving, or pruning tests, read `.goat-flow/skill-docs/playbooks/test-selection.md`.
 
 ### SCOPE
 Declare mode, files allowed to change, non-goals, and max blast radius before writes. Stop and re-scope before crossing into schema versions, the rule registry's default policy, CLI flag surface, or vendored dependencies.

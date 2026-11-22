@@ -45,13 +45,14 @@ Use conventional commits (`type(scope): subject` or `type: subject`); no ticket 
 - `go run ./cmd/gruff-go analyse .` — dogfood scan; must return grade A with zero findings on `main`.
 - `UPDATE_GOLDEN=1 go test ./internal/cli/...` — regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
 - `scripts/bump-version.sh <new-version>` — update every in-tree version literal in one shot and regenerate goldens.
-- `bash .goat-flow/hooks/deny-dangerous.sh --self-test && bash .goat-flow/hooks/gruff-code-quality.sh --self-test=smoke` — verify installed safety and code-quality hooks.
+- `node .goat-flow/hooks/deny-dangerous.mjs --self-test && node .goat-flow/hooks/gruff-code-quality.mjs --self-test=smoke` — verify installed safety and code-quality hooks.
 - `node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent codex` — GOAT Flow setup audit.
 
 ## Execution Loop: READ → SCOPE → ACT → VERIFY
 
 ### READ
 MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go`; rule fixtures are inline Go sources, and golden snapshots live under `internal/cli/testdata/`. For policy decisions, derive 2-4 search terms, read matching rows in each learning-loop `INDEX.md`, then open candidate entries; grep an individual bucket only after an index miss, and reword once before recording no hit. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-docs/playbooks/` (e.g. `browser-use.md`, `page-capture.md`) and run that doc's "Availability Check" section verbatim — project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
+Before creating, changing, reviewing, consolidating, moving, or pruning tests, read `.goat-flow/skill-docs/playbooks/test-selection.md`.
 
 ### SCOPE
 Declare mode, files allowed to change, non-goals, and max blast radius before writes. Stop and re-scope before crossing into schema versions, the rule registry's default policy, CLI flag surface, or vendored dependencies.
