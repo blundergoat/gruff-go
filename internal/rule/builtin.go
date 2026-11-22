@@ -103,7 +103,7 @@ func (r FileLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 // substantiveLineNumbers returns the 1-based line number of every line carrying code, in source order.
 //
 // Blank lines and comment-only lines outside a cgo preamble are omitted, so callers get the count through len and where each counted line sits.
-// Comment ranges come from the parsed AST, so a string holding comment markers stays code; with no AST, every non-blank raw line counts.
+// Comment ranges come from the AST or the Go lexer, so quoted comment markers still count as code.
 //
 // The unit supplies the source text and, when its AST and FileSet are both set, the comment positions to mask.
 // The result is empty, not nil, when the source has no code line.
@@ -112,6 +112,13 @@ func substantiveLineNumbers(unit parser.Unit) []int {
 	// Parsed comment positions keep quoted comment markers visible as user code.
 	if unit.AST != nil && unit.FileSet != nil {
 		maskParsedComments(sourceWithoutComments, unit)
+	} else if unit.File.Type == source.FileTypeGo {
+		parser.ScanGoTokens(unit.Source, func(kind token.Token, start int, literal string) {
+			// Mark real Go comments so documentation cannot inflate the reported executable file size.
+			if kind == token.COMMENT {
+				maskSourceRange(sourceWithoutComments, start, start+len(literal))
+			}
+		})
 	}
 	lineNumbers := []int{}
 	// Every remaining non-empty line represents code the user must review.
@@ -163,8 +170,7 @@ func cgoPreambleComment(file *ast.File) *ast.CommentGroup {
 			if !isImport || importSpec.Path == nil || importSpec.Path.Value != `"C"` {
 				continue
 			}
-			// A grouped import carries the preamble on the spec; the single-import
-			// form cgo requires for a preamble carries it on the declaration.
+			// A grouped import carries the preamble on the spec; the single-import form cgo requires for a preamble carries it on the declaration.
 			if importSpec.Doc != nil {
 				return importSpec.Doc
 			}
@@ -227,10 +233,12 @@ func (r FunctionLengthRule) Definition() Definition {
 // AnalyzeUnit emits a finding for each function whose adjusted code-line count over its recorded span exceeds the threshold.
 //
 // The span starts at the func keyword, or at the var name for a package-level function literal, and ends where the declaration ends.
+//
 // A //nolint:funlen, //nolint:all or bare //nolint on that start line, or alone on the line above, suppresses the finding.
 // analysis.ApplyInlineSuppressions honours and counts it after the rules run, so this method still emits the finding.
 //
 // In a test file, table-fixture lines are subtracted; in any file, a keyed literal passed directly to a call counts as one line.
+//
 // The unit is the scanned file; it returns one finding per function still over the limit after those discounts.
 // A non-Go unit, or one with no function whose raw line span exceeds the limit, yields nil; otherwise the result is non-nil and may be empty.
 func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
@@ -433,9 +441,8 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []fin
 		if state.file == "" || unit.File.Path < state.file {
 			state.file = unit.File.Path
 		}
-		// Prefer a reportable file as the anchor so an explicit-file scan still
-		// reports a genuine package-comment violation instead of dropping a
-		// finding anchored to a context-only sibling.
+		// Prefer a reportable file as the anchor so an explicit-file scan still reports a genuine package-comment violation instead of dropping a finding
+		// anchored to a context-only sibling.
 		if ctx.isReportable(unit.File.Path) && (state.primaryFile == "" || unit.File.Path < state.primaryFile) {
 			state.primaryFile = unit.File.Path
 		}
@@ -479,31 +486,37 @@ type SensitiveDataRule struct {
 	previews sensitivePreviewPolicy
 }
 
-// goRawStringLines reports every 1-based line that lies inside a Go raw-string literal, mapping each to true.
-//
-// The opening and closing lines are included, and a one-line raw string marks its own line too.
-// The whole line is marked, so ordinary code sharing a line with a raw string is skipped by the secret rule as well.
-//
-// The unit must carry its parsed AST and FileSet for any exclusion; when either is nil the result is an empty, non-nil map.
-// Such a unit's raw-string lines then go through the secret scan like any other line and can be reported.
-func goRawStringLines(unit parser.Unit) map[int]bool {
-	lines := map[int]bool{}
+// maskGoRawStrings returns unit source with Go raw string tokens blanked out before the generic secret rule checks assignments.
+// The result keeps the original byte positions and any code beside the literal. Source without raw strings needs no masking.
+func maskGoRawStrings(unit parser.Unit) string {
+	// A file without backticks needs no masking before its assignments are checked.
+	if !strings.ContainsRune(unit.Source, '`') {
+		return unit.Source
+	}
+	masked := []byte(unit.Source)
+	mask := func(start int) {
+		// When the token closes, leave the code after its final backtick available to the rule.
+		if end := strings.IndexByte(unit.Source[start+1:], '`'); end >= 0 {
+			maskSourceRange(masked, start, start+end+2)
+		}
+	}
 	if unit.AST == nil || unit.FileSet == nil {
-		return lines
+		parser.ScanGoTokens(unit.Source, func(kind token.Token, start int, literal string) {
+			// A budget-limited file can still supply raw-string tokens to the text-level rule.
+			if kind == token.STRING && literal[0] == '`' {
+				mask(start)
+			}
+		})
+		return string(masked)
 	}
 	ast.Inspect(unit.AST, func(node ast.Node) bool {
-		literal, ok := node.(*ast.BasicLit)
-		if !ok || literal.Kind != token.STRING || !strings.HasPrefix(literal.Value, "`") {
-			return true
-		}
-		start := unit.FileSet.Position(literal.Pos()).Line
-		end := unit.FileSet.Position(literal.End()).Line
-		for line := start; line <= end; line++ {
-			lines[line] = true
+		// In a parsed file, use the literal's source offset to protect precisely that raw string.
+		if literal, ok := node.(*ast.BasicLit); ok && literal.Kind == token.STRING && literal.Value[0] == '`' {
+			mask(unit.FileSet.Position(literal.Pos()).Offset)
 		}
 		return true
 	})
-	return lines
+	return string(masked)
 }
 
 // Definition declares the sensitive-data.secret-pattern rule that flags secret-like key/value assignments with warning severity.
@@ -523,21 +536,23 @@ func (SensitiveDataRule) Definition() Definition {
 
 // AnalyzeUnit emits findings for every code-bearing line that matches the secret-assignment pattern.
 //
-// With a Go AST and FileSet, every line inside a raw-string literal is skipped, so a real credential inside a backtick string is missed too.
+// Go raw-string spans are skipped, while ordinary code on the same line remains eligible.
 // Backtick strings commonly hold documentation, templates and sample payloads, such as gosec's g101_samples fixture.
-// The exclusion comes from the syntax tree and is applied here, not in lineIsCodeBearing, so other rules sharing that guard are unaffected.
 //
 // For a Go unit, only code-bearing lines whose value starts with a quote or backtick count; any other unit skips comment lines.
+//
 // It returns at most one finding per line, dropping a whole match that isPlaceholderSecretAssignment or isDocumentedSample accepts.
 // The result is empty, not nil, when nothing matches.
 func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	findings := []finding.Finding{}
 	inBlockComment := false
-	rawStringLines := goRawStringLines(unit)
-	for lineNumber, line := range strings.Split(unit.Source, "\n") {
-		if unit.File.Type == source.FileTypeGo && rawStringLines[lineNumber+1] {
-			continue
-		}
+	text := unit.Source
+	// Only Go raw strings get this treatment. Config assignments go through the text rules as written.
+	if unit.File.Type == source.FileTypeGo {
+		text = maskGoRawStrings(unit)
+	}
+	// Keep the original line numbers so a developer can jump from a finding to its assignment.
+	for lineNumber, line := range strings.Split(text, "\n") {
 		if unit.File.Type == source.FileTypeGo && !lineIsCodeBearing(line, &inBlockComment) {
 			continue
 		}
@@ -554,7 +569,7 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 			continue
 		}
 		// A placeholder, or a vendor-documented sample such as AWS's example key pasted from its docs, is not a credential.
-		if isPlaceholderSecretAssignment(match) || isDocumentedSample(match) {
+		if isPlaceholderSecretAssignment(match) || isDocumentedSample(secretAssignmentValue(match)) {
 			continue
 		}
 		metadata := map[string]any{
@@ -573,6 +588,7 @@ func (r SensitiveDataRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 // goSecretAssignmentLooksLiteral keeps the generic secret rule focused on literals in Go code.
 //
 // A call such as password := generateToken() is skipped even when the name is secret-shaped, so a credential inside a call is missed too.
+//
 // It reports true when the value in match after its separator, tried as := then = then :, starts with a double quote, single quote or backtick.
 // It reports false for any other value, or when match holds none of those separators.
 func goSecretAssignmentLooksLiteral(match string) bool {
@@ -610,6 +626,7 @@ var placeholderSecretTokens = []string{
 // isPlaceholderSecretAssignment reports whether a generic key/value match holds a documentation placeholder instead of a real-looking value.
 //
 // It reports true when match's value is a ${VAR} reference or starts with your-, your_ or a placeholderSecretTokens entry, in any letter case.
+//
 // It reports false for any other value, or when match has no value after a separator, leaving the match to the caller's other checks.
 // The check reads spelling only, so a real credential that starts with a placeholder marker is skipped too.
 func isPlaceholderSecretAssignment(match string) bool {

@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/rule"
@@ -22,7 +24,7 @@ import (
 // RenderOptions controls how Render layers project-specific overrides onto the default template.
 //
 // A zero-value RenderOptions reproduces the original fresh-from-defaults output.
-// Setting Existing writes the listed tuning back out, though option values can change type; selection lists are always reset to empty.
+// Setting Existing writes the loaded tuning and selection back out.
 type RenderOptions struct {
 	// Existing carries previously-tuned config to splice into the new file.
 	// When nil, scaffolds use their defaults, including the accepted-abbreviation seed list, and rule blocks use registry defaults.
@@ -31,11 +33,7 @@ type RenderOptions struct {
 
 // Render returns a default .gruff-go.yaml body that mirrors the registry's per-rule enablement, severity, and threshold defaults.
 //
-// Rule blocks are sorted by rule ID; a list value yamlQuoteIfNeeded leaves bare, such as true, can read back through Load as another type.
-// definitions is copied before sorting, so the caller's slice keeps its order; opts carries the optional Existing config to merge.
-//
-// When opts.Existing is non-nil, its supported scaffolds and per-rule overrides are layered in; selection lists are always written empty.
-// Overrides are looked up by exact rule ID, so one kept under a legacy alias is dropped and that rule is written with its default.
+// The output lists definitions in rule ID order. opts carries any existing overrides, which are layered onto the defaults.
 func Render(definitions []rule.Definition, opts RenderOptions) []byte {
 	sorted := append([]rule.Definition(nil), definitions...)
 	slices.SortFunc(sorted, func(a, b rule.Definition) int { return strings.Compare(a.ID, b.ID) })
@@ -135,6 +133,7 @@ func writeRenderHeader(buf *bytes.Buffer) {
 // writeRenderScaffolds writes to buf the paths, allowlists, sensitiveExclusions and selection sections, in that order.
 //
 // When opts.Existing is set, its paths.ignore and acceptedAbbreviations replace the defaults of no ignore paths and the seed abbreviations.
+//
 // That keeps project-wide allowlists through a regenerate-with-merge; selection lists are always written empty.
 // A non-nil Existing in opts is used even when its lists are empty, so a config that cleared acceptedAbbreviations stays cleared.
 func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
@@ -157,16 +156,22 @@ func writeRenderScaffolds(buf *bytes.Buffer, opts RenderOptions) {
 	fmt.Fprintln(buf, "# Selection narrows the active rule set. Empty lists keep the default")
 	fmt.Fprintln(buf, "# selection (every rule below whose `enabled` is true).")
 	fmt.Fprintln(buf, "selection:")
-	fmt.Fprintln(buf, "  rules: []")
-	fmt.Fprintln(buf, "  excludeRules: []")
-	fmt.Fprintln(buf, "  pillars: []")
-	fmt.Fprintln(buf, "  excludePillars: []")
+	var cfg Config
+	// A regeneration keeps the developer's selectors in the template alongside any per-rule overrides.
+	if opts.Existing != nil {
+		cfg = *opts.Existing
+	}
+	writeRenderStringList(buf, "  rules", cfg.Select)
+	writeRenderStringList(buf, "  excludeRules", cfg.ExcludeRules)
+	writeRenderStringList(buf, "  pillars", cfg.Selection.Pillars)
+	writeRenderStringList(buf, "  excludePillars", cfg.Selection.ExcludePillars)
 	fmt.Fprintln(buf)
 }
 
 // writeRenderSensitiveExclusionsSection emits the sensitiveExclusions block with a commented worked example so a user can discover it.
 //
 // Entries are authored by hand on purpose, as FAMILY-CONTRACT.md section 13a requires.
+//
 // No reported marker, preview, or matched value is ever converted into one.
 // It writes the commented guidance and example, then the entries preserved in opts, to buf, followed by a blank line.
 func writeRenderSensitiveExclusionsSection(buf *bytes.Buffer, opts RenderOptions) {
@@ -226,6 +231,7 @@ func preservedIgnorePaths(opts RenderOptions) []string {
 // defaultAcceptedAbbreviations seeds new configs with the cross-port universal-vocabulary list every port shares verbatim.
 //
 // naming.acronym-case lowercases entries for matching, through lowerStringSet in internal/rule/naming_acronym.go.
+//
 // The case of the seed therefore only changes how the rendered .gruff-go.yaml reads.
 // Project-specific acronyms should be appended in the user's config.
 var defaultAcceptedAbbreviations = []string{
@@ -296,6 +302,7 @@ func ruleOverrideFor(opts RenderOptions, id string) RuleConfig {
 // writeRenderRuleBlock writes one rule entry with enabled and severity, plus any description, thresholds and options that are present.
 //
 // Each knob prefers the override value when set and otherwise falls back to the rule's registry default.
+//
 // It writes to buf under the ID of definition, leaving out the description comment when its Description is empty.
 // An override severity that tryParseSeverity rejects is ignored, so the severity of definition is written instead.
 func writeRenderRuleBlock(buf *bytes.Buffer, definition rule.Definition, override RuleConfig) {
@@ -335,6 +342,7 @@ func writeRenderThresholdsWithOverride(buf *bytes.Buffer, defaults map[string]fl
 // writeRenderOverrideThresholds emits threshold values from an override kept from the existing config.
 //
 // A rule with at most one default knob whose override sets only the singular Threshold keeps the singular threshold key.
+//
 // Otherwise override.Thresholds is merged over defaults and written to buf through writeRenderThresholds.
 // A set Threshold replaces the sole value of a one-knob merge and is not written when the merge holds two or more knobs.
 func writeRenderOverrideThresholds(buf *bytes.Buffer, defaults map[string]float64, override RuleConfig) {
@@ -379,6 +387,7 @@ func writeRenderOptionsBlock(buf *bytes.Buffer, options map[string]any) {
 // writeRenderOptionEntry renders one option key and value under the options key of a rule block.
 //
 // Unsupported value types fall through to their fmt.Sprint form, so the entry is always emitted rather than silently dropped.
+//
 // Load may reject that text form or read it back as a different value.
 // It writes key and value to buf at options depth; a slice of any becomes a string list of each item's fmt.Sprint form.
 func writeRenderOptionEntry(buf *bytes.Buffer, key string, value any) {
@@ -432,6 +441,7 @@ func writeRenderThresholds(buf *bytes.Buffer, thresholds map[string]float64) {
 // renderSeverityAlias emits the canonical three-bucket severity name for the rendered config file.
 //
 // After ADR-009 the rendered name equals the Severity value verbatim; the helper stays so a future output alias changes one place.
+//
 // It pairs with parseConfigSeverity, which also uses finding.ParseSeverity, so emitted severity names keep their meaning when read back.
 // It returns the string form of severity unchanged, so an empty severity gives an empty string.
 func renderSeverityAlias(severity finding.Severity) string {
@@ -459,16 +469,15 @@ func renderThresholdValue(value float64) string {
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", value), "0"), ".")
 }
 
-// yamlQuoteIfNeeded quotes an empty string and a string holding selected YAML punctuation or leading or trailing whitespace.
-//
-// Other words stay bare, including a word such as true that Load reads back as a boolean rather than a string.
-// It returns value in single quotes, each inner single quote doubled, when quoting is needed, and value unchanged otherwise.
-// An empty value gives two single quotes, the YAML empty string.
+// yamlQuoteIfNeeded returns a scalar that the config loader reads as value.
 func yamlQuoteIfNeeded(value string) string {
-	if value == "" {
-		return "''"
+	// Escape newlines and other control characters so a written rationale remains one valid YAML value.
+	if strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return strconv.Quote(value)
 	}
-	if strings.ContainsAny(value, "*?[]{}:#&!|>'\",%@`") || strings.TrimSpace(value) != value {
+	_, remainsString := parseYAMLScalar(value).(string)
+	// Quote values YAML could read as another type or syntax. For example, a reason of true must stay a string.
+	if value == "" || !remainsString || strings.ContainsAny(value, "*?[]{}:#&!|>'\",%@`") || strings.TrimSpace(value) != value {
 		escaped := strings.ReplaceAll(value, "'", "''")
 		return "'" + escaped + "'"
 	}

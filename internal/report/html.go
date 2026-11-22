@@ -27,8 +27,7 @@ type HTMLOptions struct {
 	// ProjectRoot is the absolute project root joined to relative report paths in editor links.
 	// When empty, the reporter uses the report's recorded WorkingDirectory; if that is also empty, relative file paths stay relative.
 	ProjectRoot string
-	// Interactive toggles the inline filter UI and the supporting script
-	// inside the rendered report.
+	// Interactive toggles the inline filter UI and the supporting script inside the rendered report.
 	Interactive bool
 }
 
@@ -43,8 +42,8 @@ const (
 
 // WriteHTML renders the analysis report as a self-contained HTML document.
 //
-// The whole document goes to writer in one write. opts chooses the editor-link scheme, with empty meaning none,
-// the root used to resolve relative paths in those links, and whether the interactive filter UI is embedded.
+// The whole document goes to writer in one write. opts chooses the editor-link scheme, with empty meaning none, the root used to resolve relative
+// paths in those links, and whether the interactive filter UI is embedded.
 // It returns the error from writing to writer, or nil when the write succeeds.
 func WriteHTML(writer io.Writer, report analysis.Report, opts HTMLOptions) error {
 	if opts.EditorLink == "" {
@@ -226,7 +225,7 @@ func (r htmlRenderer) pillarRow(row PillarSummaryRow) string {
 	builder.WriteString(`<tr>`)
 	fmt.Fprintf(&builder, `<td class="pillar-name">%s</td>`, esc(row.Pillar))
 	fmt.Fprintf(&builder, `<td class="num"><span class="grade-pill %s">%s</span></td>`, esc(tier), esc(row.Grade))
-	fmt.Fprintf(&builder, `<td class="num">%s</td>`, esc(fmt.Sprintf("%.2f", row.Score)))
+	fmt.Fprintf(&builder, `<td class="num">%s</td>`, esc(pillarScoreLabel(row)))
 	fmt.Fprintf(&builder, `<td class="num">%d</td>`, row.Findings)
 	builder.WriteString(severityCountCell(row.Advisory, "note"))
 	builder.WriteString(severityCountCell(row.Warning, "warn"))
@@ -245,7 +244,7 @@ func (r htmlRenderer) offenders() string {
 	builder.WriteString(`<th scope="col">file</th>`)
 	builder.WriteString(`<th scope="col" class="num">cyclo</th>`)
 	builder.WriteString(`<th scope="col" class="num">findings</th>`)
-	builder.WriteString(`<th scope="col" class="num">penalty</th>`)
+	builder.WriteString(`<th scope="col" class="num">score</th>`)
 	builder.WriteString(`<th scope="col" class="num">grade</th>`)
 	builder.WriteString(`</tr></thead><tbody>`)
 	offenders := r.report.Score.TopOffender

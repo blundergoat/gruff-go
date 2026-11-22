@@ -1,6 +1,7 @@
 // Package parser builds parser-only source Units from the files a scan discovered.
 //
 // It uses the standard library go/parser without type-checking or import resolution, so a Go file with type errors still parses.
+//
 // A file that cannot be read, or a Go file that fails to parse, gets no Unit and is reported as a Diagnostic instead.
 // Under a deep-scan budget, an oversized Go file keeps its raw text but no AST, and a non-fatal bounded-deep-scan Diagnostic records the skip.
 package parser
@@ -16,6 +17,23 @@ import (
 
 	"github.com/blundergoat/gruff-go/internal/source"
 )
+
+// ScanGoTokens calls visit for each lexical token in text, passing its byte offset.
+// The scanner includes Go comments and works without building an AST.
+func ScanGoTokens(text string, visit func(token.Token, int, string)) {
+	sourceFile := token.NewFileSet().AddFile("", -1, len(text))
+	var lexer scanner.Scanner
+	lexer.Init(sourceFile, []byte(text), nil, scanner.ScanComments)
+	// Visit source tokens in order so callers can mask strings and comments without shifting reported locations.
+	for {
+		position, kind, literal := lexer.Scan()
+		// At end of source there is no token for the caller to process.
+		if kind == token.EOF {
+			return
+		}
+		visit(kind, sourceFile.Offset(position), literal)
+	}
+}
 
 // Unit is a parsed source file with the data rules need for analysis.
 //
@@ -65,6 +83,9 @@ type Diagnostic struct {
 	NonFatal bool `json:"-"`
 }
 
+// BoundedDeepScanDiagnosticType identifies a Go file analyzed without an AST.
+const BoundedDeepScanDiagnosticType = "bounded-deep-scan"
+
 // DeepScanBudget controls whether expensive Go AST construction runs for one source file.
 //
 // When Enabled is true, a Go file over MaxLines lines or MaxBytes bytes keeps raw text but no AST, and gets a bounded-deep-scan diagnostic.
@@ -87,6 +108,7 @@ func Parse(files []source.File) ([]Unit, []Diagnostic) {
 // ParseWithBudget parses files while degrading over-budget Go sources to raw-text units.
 //
 // When budget is enabled, a Go file over MaxLines lines or MaxBytes bytes keeps no AST and gets a non-fatal bounded-deep-scan Diagnostic.
+//
 // It returns a Unit for every file that was read, except Go files that failed to parse, in input order, with all parsed ASTs sharing one FileSet.
 // The diagnostics hold one entry per unreadable file, per parser error and per over-budget file, and are empty, never nil, when none occurred.
 func ParseWithBudget(files []source.File, budget DeepScanBudget) ([]Unit, []Diagnostic) {
@@ -117,7 +139,7 @@ func ParseWithBudget(files []source.File, budget DeepScanBudget) ([]Unit, []Diag
 		// An oversized Go file, such as a large generated file, skips AST rules; its NonFatal diagnostic does not invalidate the run.
 		if budget.Enabled && (unit.LineCount > budget.MaxLines || len(data) > budget.MaxBytes) {
 			diagnostics = append(diagnostics, Diagnostic{
-				Type:     "bounded-deep-scan",
+				Type:     BoundedDeepScanDiagnosticType,
 				File:     file.Path,
 				Line:     1,
 				NonFatal: true,
@@ -144,6 +166,7 @@ func ParseWithBudget(files []source.File, budget DeepScanBudget) ([]Unit, []Diag
 // parseDiagnostics converts a parser error or error list into per-file diagnostics.
 //
 // Every Diagnostic carries path unchanged from the discovered file and is built from err, the error the Go parser returned for that file.
+//
 // It returns one Diagnostic per entry, with its line and column, when err is a scanner.ErrorList, and an empty slice for an empty list.
 // Any other err gives a single Diagnostic with no position whose message is the err text with every occurrence of path plus a colon removed.
 func parseDiagnostics(path string, err error) []Diagnostic {
@@ -169,6 +192,7 @@ func parseDiagnostics(path string, err error) []Diagnostic {
 // functions extracts top-level function metadata from a parsed AST file, including the function literals selected by PackageVarFuncs.
 //
 // Each such literal's findings take their identity from the var's span, and symbol-scope changed-region filtering uses that span too.
+//
 // ParseWithBudget stores the result as Unit.Functions.
 // fset is the FileSet file was parsed with; it turns each declaration's start and end positions into 1-based lines.
 //
@@ -209,6 +233,7 @@ type VarFunc struct {
 // PackageVarFuncs lists unparenthesised function literals assigned by name to package-level vars, in source order.
 //
 // file is the parsed source to scan, and a nil file gives no entries.
+//
 // Blank names, and specs whose names and values do not pair one to one, are skipped.
 // It returns one VarFunc per literal, holding the var name, its doc comment and the literal, and an empty slice, never nil, when there is none.
 func PackageVarFuncs(file *ast.File) []VarFunc {
@@ -250,6 +275,7 @@ func PackageVarFuncs(file *ast.File) []VarFunc {
 // So a Push method on the generic *Stack renders as Stack.Push, exactly as one on *Plain renders as Plain.Push.
 //
 // fn is the declaration to render, read only for its name and its first receiver field.
+//
 // It returns the rendered symbol, or receiver.Method when the base type cannot be resolved, which valid Go never produces.
 // The symbol is never empty for a declaration the Go parser produced.
 func FuncDeclSymbol(fn *ast.FuncDecl) string {
@@ -266,6 +292,7 @@ func FuncDeclSymbol(fn *ast.FuncDecl) string {
 // ReceiverTypeName returns the declared base type of a method receiver, unwrapping parentheses, pointers and generic type arguments.
 //
 // Type arguments arrive as IndexExpr for one and IndexListExpr for several, and both unwrap to the base type name.
+//
 // It returns an empty string for any other shape, and FuncDeclSymbol then falls back to receiver.Method.
 // field is a method's receiver entry, and only its Type expression is inspected.
 func ReceiverTypeName(field *ast.Field) string {

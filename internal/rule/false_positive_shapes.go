@@ -1,3 +1,7 @@
+// Store review guidance for known false-positive shapes in the rule catalogue.
+//
+// A developer can use these descriptions to recognize a match and check whether a documented rule option applies.
+// Keep cited rule IDs and configuration keys aligned with the active registry.
 package rule
 
 // reviewedFalsePositiveShapes supplies catalogue guidance for recognising and handling possible false positives, keyed by rule ID.
@@ -32,7 +36,7 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	},
 	"docs.comment-rubric": {
 		Shape:      "A concise but substantive comment can miss the configured line or token threshold.",
-		Mitigation: "Tune minLines or minTokens for the selected paths, or remove the path from this rule's scope.",
+		Mitigation: "Tune threshold or minWordsBeyondSymbol for the selected paths, or remove the path from this rule's scope.",
 	},
 	"docs.config-field-comment": {
 		Shape:      "An obvious configuration field, or one documented by its containing schema, can lack a field-local comment in an included path.",
@@ -52,9 +56,8 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 		Mitigation: "Say what the callable returns in plain words, or keep this opt-in rule disabled for the reviewed path.",
 	},
 	"docs.suppression-without-rationale": {
-		Shape: "A suppression with its explanation in a non-adjacent comment, or without a reason:, rationale:, or because: prefix, " +
-			"is not recognised as justified.",
-		Mitigation: "Put an adjacent comment with one recognised rationale prefix immediately before the suppression.",
+		Shape:      "A suppression separated from its explanation by a blank line, another directive or a declaration doc comment can be reported.",
+		Mitigation: "Put the rationale directly above the directive in a standalone comment, or explain it inline.",
 	},
 	"maintainability.ignored-error": {
 		Shape:      "A deliberately discarded value whose name or constructor marks it as an error is indistinguishable from an accidental discard.",

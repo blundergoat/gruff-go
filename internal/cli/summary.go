@@ -34,8 +34,7 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
-	// Default comes from DefaultFailThresholdFor("summary"); precedence below
-	// lets failOn.summary in .gruff-go.yaml override it.
+	// Default comes from DefaultFailThresholdFor("summary"); precedence below lets failOn.summary in .gruff-go.yaml override it.
 	failOnSeverity := string(finding.DefaultFailThresholdFor("summary"))
 	flags.StringVar(&failOnSeverity, "min-severity", failOnSeverity, "minimum severity that causes exit 1")
 	flags.StringVar(&failOnSeverity, "fail-on", failOnSeverity, "alias for --min-severity")
@@ -91,6 +90,8 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	floor, _ := cfg.MinimumSeverity.Severity()
+	analysis.ApplyDisplayFilter(&analysisReport, analysis.DisplayFilter{MinimumSeverity: floor})
 	scanDuration := time.Since(started)
 	switch *format {
 	case "json":

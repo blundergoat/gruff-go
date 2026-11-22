@@ -70,6 +70,7 @@ type SkippedPath struct {
 // IgnoreDecision is the result of the shared ignore engine for a single path.
 //
 // Discovery skip records and the check-ignore command both come from this engine, but their outcomes can differ.
+//
 // check-ignore judges a file as if the user named it directly, so only config globs and VCS internals can exclude it.
 // Discovery also skips generated Go files, which check-ignore never reports.
 type IgnoreDecision struct {
@@ -94,13 +95,13 @@ func (d IgnoreDecision) skippedPath(rel string) SkippedPath {
 // CheckIgnore reports whether the repository-relative path rel would be excluded from analysis under options, for the check-ignore command.
 //
 // It uses the same decideIgnore engine as Discover; isDir selects directory-pattern semantics and rootAbs anchors the .gitignore matcher.
-// A file is judged as if the user had named it as an input, so only config globs and VCS internals can exclude it.
+// A file is judged as it would be during directory discovery.
 //
 // It may read repository .gitignore files but never the candidate file, so generated-file detection is never reported here.
 // The result carries Reason, Source and, for a config glob, Pattern; a zero IgnoreDecision means no ignore rule excludes the path.
 func CheckIgnore(rootAbs, rel string, isDir bool, options Options) IgnoreDecision {
 	walker := newDiscoveryWalker(context.Background(), rootAbs, options)
-	return walker.decideIgnore(rel, isDir, !isDir)
+	return walker.decideIgnore(rel, isDir, false)
 }
 
 // Result is the discovery output containing files, missing inputs, and skipped paths.
@@ -130,6 +131,7 @@ type Options struct {
 // Discover walks the configured paths and returns classified source files and skips.
 //
 // options sets the context, root (default the working directory), input paths (default the whole root), ignore patterns and IncludeIgnored.
+//
 // On success it returns sorted files, missing inputs and skipped paths, and an absent input is recorded as missing.
 // The error is non-nil, with an empty Result, when the context is done, the root cannot be made absolute, or a stat or directory walk fails.
 func Discover(options Options) (Result, error) {
@@ -218,6 +220,7 @@ func parentSlashDir(rel string) string {
 // visitInput processes a single user-provided input path, file or directory.
 //
 // A relative input is joined to rootAbs; a missing one is recorded in Missing, and a file is visited as explicit.
+//
 // An ignored non-root directory is recorded in Skipped and returns nil without walking; other directories are walked.
 // The error is non-nil when the context is done, os.Stat fails with anything but not-exist, or the directory walk fails.
 func (w *discoveryWalker) visitInput(input string) error {
@@ -288,6 +291,7 @@ func (w *discoveryWalker) visitDir(current string) error {
 // visitFile records supported files and reportable skips for a discovered or named file, leaving other unsupported files unreported.
 //
 // path is the absolute file path; explicit marks a directly named input, exempt from path ignores after VCS internals but not generated-Go checks.
+//
 // A default minified-name skip is recorded only when classify accepts the file, so unsupported minified assets stay silent.
 // Any other unsupported file, such as notes.md, is listed in Skipped only if an ignore rule excludes it; otherwise addFile drops it silently.
 func (w *discoveryWalker) visitFile(path string, explicit bool) {
@@ -381,6 +385,7 @@ func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) Ig
 // addFile adds a file that passed decideIgnore to Result.Files, unless its type is unsupported or it is a generated Go file.
 //
 // path is the absolute file path, and its display form becomes File.Path.
+//
 // An unsupported file is dropped without a record; a generated Go file is recorded in Skipped as generated unless IncludeIgnored is set.
 // Generated-file detection reads the file outside check-ignore's path-only engine; a read failure leaves the Go file in Result.Files.
 func (w *discoveryWalker) addFile(path string) {
@@ -428,6 +433,7 @@ func hasWindowsDrivePrefix(path string) bool {
 // classify returns the FileType for a path from its extension or base name, with true when gruff-go analyses that type.
 //
 // Ignoring extension case, .go is Go; .json, .yaml, .yml, .toml, .ini, .xml, .env and .txt are text, as are remaining names starting with .env.
+//
 // go.mod and go.sum are matched by base name as text, so the dependency-posture rules can read go.mod.
 // Any other file, such as README.md or app.js, gives an empty type and false and is never analysed.
 func classify(path string) (FileType, bool) {

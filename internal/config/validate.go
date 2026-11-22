@@ -84,6 +84,7 @@ func validateDeepScanBudget(budget DeepScanBudgetConfig) error {
 // validateRuleConfig validates every per-rule override entry from the config file.
 //
 // Each entry in rules maps a configured rule ID to its override and goes through validateOneRuleConfig with definitions.
+//
 // It returns the first error found, or nil when every entry is valid or rules is empty.
 // With two bad overrides, map iteration order picks which error the user sees, so it can differ between runs.
 func validateRuleConfig(rules map[string]RuleConfig, definitions map[string]rule.Definition) error {
@@ -176,6 +177,7 @@ func validateOptions(id string, ruleConfig RuleConfig, definition rule.Definitio
 // minimumSeverityCommands is the set of CLI command names valid as failOn keys in the config file.
 //
 // Despite its name it does not key minimumSeverity, which is one scalar display floor.
+//
 // It mirrors the keyed-default map in finding.DefaultFailThresholdFor, under the lockstep contract documented in ADR-010.
 // Any new gating command must be added in both places.
 //
@@ -281,6 +283,7 @@ func validateSensitiveExclusions(entries []SensitiveExclusion, definitions map[s
 // validateOneSensitiveExclusion checks the closed key set, the rule, the path, and the rationale of a single entry, in that order.
 //
 // The index is the entry's list position used in each message, entry is the parsed item, and definitions is the rule registry for the rule check.
+//
 // It returns an error for an unsupported key, an invalid rule or path, or a blank reason, and nil when the entry passes every check.
 // The symbol field is not validated here.
 func validateOneSensitiveExclusion(index int, entry SensitiveExclusion, definitions map[string]rule.Definition) error {
@@ -304,6 +307,7 @@ func validateOneSensitiveExclusion(index int, entry SensitiveExclusion, definiti
 // validateSensitiveExclusionRule rejects a sensitiveExclusions rule value that is not one exact sensitive-data rule ID.
 //
 // It rejects a blank, a pattern, a pillar selector, an unknown ID, or a known ID from another pillar, in that order.
+//
 // The index names the entry in messages, id is the configured rule value, and definitions is looked up by exact key with no alias resolution.
 // It returns an error for the first failed check, or nil when id is a known sensitive-data rule ID.
 func validateSensitiveExclusionRule(index int, id string, definitions map[string]rule.Definition) error {
@@ -332,16 +336,22 @@ func validateSensitiveExclusionRule(index int, id string, definitions map[string
 // validateSensitiveExclusionPath rejects a sensitiveExclusions path that is not one project-relative file.
 //
 // It rejects a blank, an absolute path, a parent traversal, or a glob, in that order.
+//
 // The index names the entry in messages and path is the configured file; a parent traversal is any slash-separated segment equal to two dots.
 // It returns an error for the first failed check, or nil when path passes them all.
 func validateSensitiveExclusionPath(index int, path string) error {
 	label := fmt.Sprintf("sensitiveExclusions[%d].path", index)
-	if strings.TrimSpace(path) == "" {
+	// An empty entry or the project directory cannot identify the one file whose finding the user accepts.
+	if strings.TrimSpace(path) == "" || path == "." {
 		return fmt.Errorf("%s must name exactly one project-relative file", label)
 	}
 	// The leading-slash test catches /etc/app.env on Windows too, where filepath.IsAbs alone would accept it as relative.
 	if strings.HasPrefix(path, "/") || filepath.IsAbs(path) {
 		return fmt.Errorf("%s must be project-relative, not the absolute path %q", label, path)
+	}
+	// A drive name or backslash is rejected here so the machine-readable suppression audit can always publish the path.
+	if strings.Contains(path, "\\") || (len(path) >= 2 && path[1] == ':') {
+		return fmt.Errorf("%s must be a portable project-relative slash path, got %q", label, path)
 	}
 	// Any .. segment fails, even one that stays inside the project such as config/../app.env.
 	if slices.Contains(strings.Split(path, "/"), "..") {

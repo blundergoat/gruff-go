@@ -36,10 +36,10 @@ var errConfigExists = errors.New("config file already exists")
 // runInit handles gruff-go init: it parses --force and --reset, then writes .gruff-go.yaml in the working directory.
 //
 // args holds the command-line arguments, parsed as the --force and --reset flags with any positional argument rejected.
-// stdout receives the success line and the baseline setup hint; stderr receives flag errors, the preserved-tuning notice, and parse warnings.
+// stdout receives the success line and setup hint. stderr receives errors and the preserved-tuning notice.
 //
-// Returns the process exit code: 0 on success, 1 when the config already exists without --force or writing it fails,
-// and 2 for any other failure, such as a flag error, --reset without --force, a positional argument, or an unreadable working directory.
+// Returns the process exit code: 0 on success, 1 when the config already exists without --force or writing it fails, and 2 for any other failure,
+// such as a flag error, --reset without --force, a positional argument, or an unreadable working directory.
 func runInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -85,10 +85,6 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	if result.preservedNotice != "" {
 		fmt.Fprintln(stderr, result.preservedNotice)
 	}
-	// Running init --force over a .gruff-go.yaml with invalid YAML lands here: fresh defaults are already written and the old tuning is lost.
-	if result.parseError != nil {
-		fmt.Fprintf(stderr, "warning: existing %s could not be parsed (%v); fresh defaults were written and prior tuning was lost\n", defaultConfigFileName, result.parseError)
-	}
 	if err := writeFreshStartSetupHint(stdout); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
@@ -96,25 +92,20 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// writeDefaultConfigResult reports what happened during a write so the caller
-// can render an accurate user-facing notice.
+// writeDefaultConfigResult reports what happened during a write so the caller can render an accurate user-facing notice.
 type writeDefaultConfigResult struct {
 	// ruleCount is the number of rule blocks in the rendered output.
 	ruleCount int
 	// preservedNotice names the tuning categories counted in the loaded config; it can count rule overrides that exact-ID rendering then drops.
 	preservedNotice string
-	// parseError is set when an existing file was present but could not be loaded.
-	// Fresh defaults are already written by then; runInit only warns the user that the old tuning was lost.
-	parseError error
 }
 
 // writeDefaultConfig renders the default config from the live rule registry and writes it to path, for init and the first-run prompt.
 //
 // With force false an existing file is never touched and errConfigExists comes back; with force true it is overwritten.
-// Unless reset is true, part of a parsed config's tuning carries over; selection lists and legacy-ID overrides reset, and map options become text.
+// Unless reset is true, an existing config must load successfully before the new file is rendered.
+// Returns the rendered rule count and any notice about preserved settings.
 //
-// Returns a result holding the rendered rule count, a notice that is empty unless summarisePreserved counts a setting, and parseError,
-// which is set when an existing file could not be loaded and fresh defaults were written instead.
 // The error is errConfigExists for an existing file without force, otherwise any stat, create, write or close failure, with a zero result.
 func writeDefaultConfig(path string, force, reset bool) (writeDefaultConfigResult, error) {
 	existed := false
@@ -132,21 +123,24 @@ func writeDefaultConfig(path string, force, reset bool) (writeDefaultConfigResul
 	definitions := defaults.Definitions()
 	opts := cfgpkg.RenderOptions{}
 	result := writeDefaultConfigResult{ruleCount: len(definitions)}
-	// init --force writes back paths.ignore, allowlists, sensitiveExclusions, deepScanBudget, failOn and minimumSeverity from a loaded config.
-	//
-	// Rule overrides are matched by exact registry rule ID and map-valued options are written as text; selection lists are not carried over.
-	// --force --reset skips this read so plain registry defaults are written.
+	// A developer refreshing the template with --force can keep rule choices, ignore paths, audit exclusions, scan budget, and report settings.
 	if existed && force && !reset {
-		preserved, parseErr := loadExistingForPreserve(path, definitions)
-		// A config neither parse accepts, such as invalid YAML, lands here: the regenerate still writes fresh defaults and runInit warns.
+		preserved, parseErr := loadConfigForRegeneration(path, definitions)
+		// An unknown key or unreadable config makes its tuning unsafe to copy. Leave the original file in place and show the recovery options.
 		if parseErr != nil {
-			result.parseError = parseErr
-		} else {
-			opts.Existing = preserved
-			result.preservedNotice = summarisePreserved(*preserved)
+			return writeDefaultConfigResult{}, fmt.Errorf("cannot preserve %s: %w (original kept; use migrate-config for a legacy file or --force --reset to discard it)", path, parseErr)
 		}
+		opts.Existing = preserved
+		result.preservedNotice = summarisePreserved(*preserved)
 	}
 	body := cfgpkg.Render(definitions, opts)
+	// Reload the rendered settings before a forced write so a preserved value cannot leave the user with an unusable config.
+	if opts.Existing != nil {
+		// If a quoted exclusion reason fails to round-trip, report the error while the original is still on disk.
+		if _, err := cfgpkg.Parse(body, definitions); err != nil {
+			return writeDefaultConfigResult{}, fmt.Errorf("cannot regenerate %s: %w (original kept)", path, err)
+		}
+	}
 	// --force truncates and rewrites any existing file; without it, the exclusive create below refuses to replace one.
 	if force {
 		if err := os.WriteFile(path, body, 0o644); err != nil {
@@ -172,22 +166,19 @@ func writeDefaultConfig(path string, force, reset bool) (writeDefaultConfigResul
 	return result, nil
 }
 
-// loadExistingForPreserve reads the existing config at path so init --force can layer its tuning into the regenerated file.
+// loadConfigForRegeneration reads the config at path before init --force writes a refreshed template.
 //
-// The permissive fallback clears every per-rule severity it cannot parse, legacy 5-bucket names and typos alike, so that rule renders its default.
-// Other parsed settings stay in the returned config.
-// Without it, init --force on a pre-0.2 config would warn and write fresh defaults, losing paths.ignore, allowlists, thresholds and options.
-//
-// definitions holds the live registry's rule definitions and is handed to both the strict and the permissive parse.
-// Returns the parsed config from the strict load, or from the permissive parse when the strict one fails; it is nil only alongside an error.
-// The error is the strict load's, returned only when both parses fail, such as for an unreadable file or invalid YAML.
-func loadExistingForPreserve(path string, definitions []rule.Definition) (*cfgpkg.Config, error) {
+// definitions validates rules in both reads. The fallback accepts a missing schema and uses rule defaults for unrecognized per-rule severities.
+// Returns the loaded settings, or nil with the strict error if both reads fail, for example when invalid YAML prevents preserving the file.
+func loadConfigForRegeneration(path string, definitions []rule.Definition) (*cfgpkg.Config, error) {
 	cfg, err := cfgpkg.Load(path, definitions)
+	// Current valid configs supply the settings as written.
 	if err == nil {
 		return &cfg, nil
 	}
 	// A pre-0.2 config with legacy severity names lands here, so init --force can still recover its other supported settings.
 	permissive, permissiveErr := cfgpkg.LoadPermissive(path, definitions)
+	// If both reads fail, the strict error tells the user what normally blocks a scan with the same file.
 	if permissiveErr != nil {
 		return nil, err
 	}
@@ -196,11 +187,11 @@ func loadExistingForPreserve(path string, definitions []rule.Definition) (*cfgpk
 
 // summarisePreserved builds the one-line stderr notice init --force prints about tuning carried over from the existing config.
 //
-// cfg is the existing config being preserved; the notice counts its IgnorePaths, AcceptedAbbreviations, Rules and FailOn entries,
-// and mentions MinimumSeverity when its value is non-empty.
+// cfg is the existing config being preserved; the notice counts its IgnorePaths, AcceptedAbbreviations, Rules and FailOn entries, and mentions
+// MinimumSeverity when its value is non-empty.
 //
-// Returns the notice, which ends by suggesting --reset, or the empty string when none of those values is set,
-// even if DeepScanBudget or SensitiveExclusions carried over, in which case init prints no notice.
+// Returns the notice, which ends by suggesting --reset, or the empty string when none of those values is set, even if DeepScanBudget or
+// SensitiveExclusions carried over, in which case init prints no notice.
 func summarisePreserved(cfg cfgpkg.Config) string {
 	parts := []string{}
 	if n := len(cfg.IgnorePaths); n > 0 {

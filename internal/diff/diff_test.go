@@ -9,10 +9,46 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
+
+// TestParseStdinDistinguishesEmptyChangesFromInvalidInput protects the result developers see after piping a patch into Gruff.
+// An empty Git diff can pass. Unrelated text and unusable hunk headers must stop the changed-code scan.
+func TestParseStdinDistinguishesEmptyChangesFromInvalidInput(t *testing.T) {
+	const headers = "--- a/main.go\n+++ b/main.go\n"
+	cases := []struct {
+		name      string
+		patch     string
+		wantPaths []string
+		wantError bool
+	}{
+		{name: "empty pipe"},
+		{name: "file change", patch: headers + "@@ -1 +1 @@\n-old\n+new\n", wantPaths: []string{"main.go"}},
+		{name: "rename", patch: "diff --git a/a.go b/b.go\nsimilarity index 100%\nrename from a.go\nrename to b.go\n"},
+		{name: "deleted file", patch: "--- a/gone.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n"},
+		{name: "unrelated text", patch: "git: could not read input\n", wantError: true},
+		{name: "truncated headers", patch: headers, wantError: true},
+		{name: "bad hunk header", patch: headers + "@@ missing range @@\n", wantError: true},
+		{name: "range longer than patch", patch: headers + "@@ -1 +1,100 @@\n-old\n+new\n", wantError: true},
+	}
+	// Run valid and failing comparisons through the same entry point to protect the empty-input contract.
+	for _, comparison := range cases {
+		t.Run(comparison.name, func(t *testing.T) {
+			changed, err := ParseStdin([]byte(comparison.patch))
+			// A false success would let CI interpret an invalid comparison as an empty patch.
+			if (err != nil) != comparison.wantError {
+				t.Fatalf("ParseStdin error = %v, want error %t", err, comparison.wantError)
+			}
+			// A valid comparison must retain the source paths the user asked to check.
+			if !slices.Equal(changed.ChangedFiles, comparison.wantPaths) {
+				t.Fatalf("changed paths = %v, want %v", changed.ChangedFiles, comparison.wantPaths)
+			}
+		})
+	}
+}
 
 // TestParseAndFilterChangedLines verifies hunk parsing and filtering against changed lines.
 // It expects sorted a.go and b.go paths, one kept finding and two filtered findings.

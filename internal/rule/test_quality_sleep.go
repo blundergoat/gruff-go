@@ -44,6 +44,7 @@ func (SleepInTestRule) Definition() Definition {
 // It walks each declared function's body, closures included, so Symbol names the enclosing test or helper, faster to triage than file:line alone.
 //
 // unit is the parsed file, analysed only when it is a Go test file with an AST and a file set, and ctx decides whether a generated unit is skipped.
+//
 // It returns one finding per reported time.Sleep call, and an empty slice when none is reported.
 // It returns nil when unit is skipped or imports time only through a dot or blank import, or not at all.
 func (SleepInTestRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
@@ -59,6 +60,8 @@ func (SleepInTestRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Find
 		testing:   testingPackageNames(unit.AST),
 		assertion: assertionPackageNames(unit.AST),
 		synctest:  packageImportNames(unit.AST, "testing/synctest", "synctest"),
+		errors:    packageImportNames(unit.AST, "errors", "errors"),
+		fmt:       packageImportNames(unit.AST, "fmt", "fmt"),
 	}
 	findings := []finding.Finding{}
 	for _, decl := range unit.AST.Decls {
@@ -97,6 +100,8 @@ type sleepPackages struct {
 	testing   map[string]bool
 	assertion map[string]bool
 	synctest  map[string]bool
+	errors    map[string]bool
+	fmt       map[string]bool
 }
 
 // skippedSleepPositions returns the sleeps in fn this rule does not report, so the user sees no finding for them.
@@ -257,6 +262,7 @@ func receiverIdentName(fn *ast.FuncDecl) string {
 // acceptedPollingSleepPositions returns the backoff sleeps of polling loops whose syntax reads as bounded, observed and failing on timeout.
 //
 // The match is syntactic: a recognised bound, a state-observing if that returns or breaks, and failure or timeout-return syntax after the loop.
+//
 // A nested loop can qualify on its own under a loop that does not; inside an accepted loop, nested loops and closures get no polling exemption.
 // fn is the function to search and packages its import names; the map is empty, never nil, when fn is nil, has no body, or has no accepted loop.
 func acceptedPollingSleepPositions(fn *ast.FuncDecl, packages sleepPackages) map[token.Pos]bool {
@@ -270,26 +276,28 @@ func acceptedPollingSleepPositions(fn *ast.FuncDecl, packages sleepPackages) map
 		assertionPackages: packages.assertion,
 		receivers:         testingHandlesForFunc(fn, packages.testing),
 		results:           fn.Type.Results,
+		nonNilError:       packages.nonNilError,
 		accepted:          accepted,
 	}
 	collectAcceptedPollingSleeps(fn.Body, ctx)
 	return accepted
 }
 
-// pollingLoopContext carries the parser-only evidence sets used while accepting
-// bounded polling sleeps.
+// pollingLoopContext carries the parser-only evidence sets used while accepting bounded polling sleeps.
 type pollingLoopContext struct {
 	timePackages      map[string]bool
 	testingPackages   map[string]bool
 	assertionPackages map[string]bool
 	receivers         map[string]bool
 	results           *ast.FieldList
+	nonNilError       func(ast.Expr) bool
 	accepted          map[token.Pos]bool
 }
 
 // collectAcceptedPollingSleeps records the backoff sleeps of accepted polling loops under block; other sleeps stay eligible for other exemptions.
 //
 // It descends into if bodies, plain else blocks and non-qualifying loops; case bodies, else-if chains, bare blocks and closures are skipped.
+//
 // block is the statement list searched, nil for none, and ctx carries the import names, testing handles and result types the checks use.
 // ctx's accepted map receives each backoff sleep position.
 func collectAcceptedPollingSleeps(block *ast.BlockStmt, ctx pollingLoopContext) {
@@ -333,6 +341,7 @@ func collectAcceptedPollingSleeps(block *ast.BlockStmt, ctx pollingLoopContext) 
 // isAcceptedPollingLoop applies the bounded-polling contract to one for loop.
 //
 // loop is the for statement, following the statements after it in the same block, and ctx the import names, handles and results the checks read.
+//
 // It reports true when loop passes loopHasFiniteBound, its body passes loopHasObservableExitCondition and following passes timeoutIsReported.
 // These are syntax matches: a deadline call anywhere in the condition counts, and the matched return or break may sit in a nested loop or closure.
 func isAcceptedPollingLoop(loop *ast.ForStmt, following []ast.Stmt, ctx pollingLoopContext) bool {
@@ -344,6 +353,7 @@ func isAcceptedPollingLoop(loop *ast.ForStmt, following []ast.Stmt, ctx pollingL
 // isAcceptedPollingRange applies the same contract to for range N over an integer literal, whose literal count is the finite bound.
 //
 // loop is the range statement, following the statements after it in the same block, and ctx the evidence the timeout check reads.
+//
 // It reports true when loop ranges over an integer literal, its body passes loopHasObservableExitCondition and following passes timeoutIsReported.
 // These are syntax matches: the matched return or break may sit in a nested loop or closure, so it need not leave loop.
 func isAcceptedPollingRange(loop *ast.RangeStmt, following []ast.Stmt, ctx pollingLoopContext) bool {
@@ -354,19 +364,18 @@ func isAcceptedPollingRange(loop *ast.RangeStmt, following []ast.Stmt, ctx polli
 // timeoutIsReported accepts failure syntax after the loop, or a return that hands a timeout back to a polling helper's caller.
 //
 // following is the statements after the loop, and ctx supplies the testing and assertion import names, the testing handles and the result list.
-// It reports true when statementsHaveFailureCall finds a recognised failure call in following, a syntax match that need not run,
-// or when following starts with a return of false from a lone bool result or of any final error result but the bare nil identifier; else false.
+//
+// It reports true when statementsHaveFailureCall finds a recognised failure call in following, a syntax match that need not run, or when following
+// starts with a return of false from a lone bool result or of a known non-nil error construction; else false.
 func timeoutIsReported(following []ast.Stmt, ctx pollingLoopContext) bool {
 	return statementsHaveFailureCall(following, ctx.testingPackages, ctx.assertionPackages, ctx.receivers) ||
-		returnsTimeoutToCaller(following, ctx.results)
+		returnsTimeoutToCaller(following, ctx.results, ctx.nonNilError)
 }
 
 // returnsTimeoutToCaller accepts a polling helper whose first statement after the loop is a return shaped like a timeout.
 //
-// It reports true for a return of false from a lone bool result, or a final error expression other than the bare predeclared nil identifier.
-// The value is not evaluated, so a variable holding nil or an unrelated error also counts; any other first statement reports false.
-// following is the statements after the loop, only the first of them read, and results is the enclosing function's result list, nil for none.
-func returnsTimeoutToCaller(following []ast.Stmt, results *ast.FieldList) bool {
+// It returns true when following begins with a return of false for a bool, or of a nonNilError for the final error in results.
+func returnsTimeoutToCaller(following []ast.Stmt, results *ast.FieldList, nonNilError func(ast.Expr) bool) bool {
 	if len(following) == 0 || results == nil {
 		return false
 	}
@@ -383,16 +392,23 @@ func returnsTimeoutToCaller(following []ast.Stmt, results *ast.FieldList) bool {
 	}
 	last := len(resultTypes) - 1
 	if isErrorType(resultTypes[last]) {
-		return !isNilIdentifier(ret.Results[last])
+		return nonNilError(ret.Results[last])
 	}
 	resultType, isIdent := resultTypes[0].(*ast.Ident)
 	value, isValue := ret.Results[0].(*ast.Ident)
 	return len(resultTypes) == 1 && isIdent && resultType.Name == "bool" && isValue && value.Name == "false"
 }
 
+// nonNilError reports whether expr constructs an error through a known standard-library call.
+func (p sleepPackages) nonNilError(expr ast.Expr) bool {
+	call, ok := ast.Unparen(expr).(*ast.CallExpr)
+	return ok && (selectorCallMatches(call, p.errors, "New") || selectorCallMatches(call, p.fmt, "Errorf"))
+}
+
 // loopHasFiniteBound recognises deadline and explicit attempt-count loop conditions, the bound a polling loop needs.
 //
 // loop is the for statement and timePackages the time import names a deadline check must use.
+//
 // It reports true for a recognised deadline call shape in the condition, or for the counter shape loopHasAttemptBound matches.
 // A nil loop or condition reports false, and the match is syntactic, so a deadline check || true still counts.
 func loopHasFiniteBound(loop *ast.ForStmt, timePackages map[string]bool) bool {

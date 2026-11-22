@@ -1,11 +1,13 @@
 // Package rule defines gruff-go's rule registry and analysers.
 //
 // This file builds a parser-only package reference index for private-symbol dead-code checks.
+//
 // It counts name spellings per directory and package; an eligible private declaration whose name occurs once becomes a dead-code candidate.
 // A vendored file, a reflect import or a unit that shouldSkipGeneratedUnit skips marks the whole package skipForPrecision.
 package rule
 
 import (
+	"github.com/blundergoat/gruff-go/internal/source"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -50,14 +52,19 @@ type packageSymbolDecl struct {
 
 // newPackageReferenceIndex groups units by package and records parser-only declarations and references.
 //
-// units are the parsed files, and a unit without an AST or package name is ignored; ctx is passed to shouldSkipGeneratedUnit.
+// units are the parsed inputs. A Go unit missing syntax prevents absence-based checks in its directory. ctx controls generated-file handling.
+//
 // A group is marked skipForPrecision when that check skips any of its units, or one of them is a vendor path or imports reflect.
 // Returns the index with groups keyed by directory and package name, ordered by those two fields; it has no groups when every unit is ignored.
 func newPackageReferenceIndex(units []parser.Unit, ctx Context) packageReferenceIndex {
 	index := packageReferenceIndex{groups: map[packageReferenceKey]*packageReferenceGroup{}}
+	incompleteDirs := map[string]bool{}
 	for _, unit := range units {
-		// A unit with no AST is left out, so a private name used only in that file can still look unreferenced to the dead-code checks.
 		if unit.AST == nil || unit.AST.Name == nil {
+			// A budget-skipped Go file may contain references that keep nearby private declarations in use.
+			if unit.File.Type == source.FileTypeGo {
+				incompleteDirs[filepath.Dir(unit.File.Path)] = true
+			}
 			continue
 		}
 		key := packageReferenceKey{dir: filepath.Dir(unit.File.Path), packageName: unit.AST.Name.Name}
@@ -69,6 +76,10 @@ func newPackageReferenceIndex(units []parser.Unit, ctx Context) packageReference
 		}
 		group.countIdentifiers(unit.AST)
 		group.collectPrivateDeclarations(unit)
+	}
+	// Each package scan notes whether all directory references were available for unused-declaration checks.
+	for _, group := range index.ordered {
+		group.skipForPrecision = group.skipForPrecision || incompleteDirs[group.key.dir]
 	}
 	index.sortGroups()
 	return index
@@ -126,6 +137,7 @@ func (g *packageReferenceGroup) collectPrivateDeclarations(unit parser.Unit) {
 // collectPrivateFunc records parser-visible package-private top-level functions.
 //
 // unit is the file holding fn and is stored with the record, and fn is skipped when it is a method, has no name, or does not start lowercase.
+//
 // A name that isReservedFuncName reserves is skipped as well.
 // Unlike private types, vars and consts, functions declared in Go test files are recorded too.
 func (g *packageReferenceGroup) collectPrivateFunc(unit parser.Unit, fn *ast.FuncDecl) {
@@ -220,6 +232,7 @@ func (g *packageReferenceGroup) unreferenced(decl packageSymbolDecl) bool {
 // isRegistrationValueSpec excludes map/slice registration tables whose use is often declarative.
 //
 // spec is one var spec; the result is true when any name passes isRegistrationName or a composite literal spells out a map, slice or array type.
+//
 // It reports false for every other spec, such as one whose values are struct literals, named-type literals, pointers to literals, or calls.
 // So collectPrivateVars skips a var whose literal spells out a map, slice or array type, even when nothing uses it.
 func isRegistrationValueSpec(spec *ast.ValueSpec) bool {

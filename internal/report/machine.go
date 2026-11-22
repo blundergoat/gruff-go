@@ -31,6 +31,7 @@ func WriteSummaryJSON(writer io.Writer, report analysis.Report) error {
 // WriteSARIF writes the report as a SARIF 2.1.0 log including rule definitions, results, and run properties.
 //
 // Findings in report come first in the results, followed by its suppressed findings, each marked with an inSource suppression.
+//
 // Any runtime diagnostics go into a single invocation, and the log is encoded as JSON onto writer.
 // It returns an error only when WriteJSON fails.
 func WriteSARIF(writer io.Writer, report analysis.Report) error {
@@ -275,11 +276,10 @@ type sarifResult struct {
 	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
 	// Properties carries gruff-specific finding metadata.
 	Properties map[string]any `json:"properties"`
-	// BaselineState is the SARIF 2.1.0 baselineState ("new") set only when a
-	// baseline was applied; omitted otherwise so non-baseline runs are unchanged.
+	// BaselineState is the SARIF 2.1.0 baselineState ("new") set only when a baseline was applied; omitted otherwise so non-baseline runs are unchanged.
 	BaselineState string `json:"baselineState,omitempty"`
-	// Suppressions marks a result another tool's comment suppressed, so a code-scanning tool shows it as
-	// suppressed rather than fixed (SARIF 2.1.0 §3.27.23, FAMILY-CONTRACT.md section 13c).
+	// Suppressions marks a result another tool's comment suppressed, so a code-scanning tool shows it as suppressed rather than fixed (SARIF 2.1.0
+	// §3.27.23, FAMILY-CONTRACT.md section 13c).
 	Suppressions []sarifSuppression `json:"suppressions,omitempty"`
 }
 
@@ -299,6 +299,8 @@ type sarifRunProperties struct {
 	Score *float64 `json:"score"`
 	// Grade is the letter grade derived from Score, null whenever Score is.
 	Grade *string `json:"grade"`
+	// Suppressions records configured and in-source exclusions for audit consumers.
+	Suppressions []analysis.SuppressionSummary `json:"suppressions,omitempty"`
 }
 
 // sarifLocation wraps a physical location reference for a SARIF result.
@@ -364,8 +366,9 @@ func sarifRules(definitions []rule.Definition) []sarifRule {
 // sarifPartialFingerprints projects one finding into the fingerprints GitHub code scanning groups alerts by.
 //
 // gruffFingerprint separates same-named declarations with distinct ordinals; a line move preserves an alert only if its ordinal stays unchanged.
-// A sensitive finding has no identity at all and therefore
-// contributes no fingerprints: publishing one would give a secret a stable name in a system gruff does not control.
+//
+// A sensitive finding has no identity at all and therefore contributes no fingerprints: publishing one would give a secret a stable name in a system
+// gruff does not control.
 //
 // It returns a map holding only the gruffFingerprint key for findingItem, or nil when the finding has no baseline identity or computing it fails.
 func sarifPartialFingerprints(findingItem finding.Finding) map[string]string {
@@ -425,6 +428,7 @@ func sarifSuppressedResults(suppressed []analysis.SuppressedFinding, definitions
 // sarifResultFor projects one finding into the SARIF result a code-scanning reader sees.
 //
 // It returns a result holding the rule ID, level, message, and file location of findingItem, plus fingerprints and properties from its helpers.
+//
 // The ruleIndex is set only when ruleIndices holds that rule ID, and the region is omitted when the finding's line is unknown.
 // BaselineState is "new" only when baselineApplied is true and the finding's BaselineStatus is "new".
 func sarifResultFor(findingItem finding.Finding, ruleIndices map[string]int, baselineApplied bool) sarifResult {
@@ -456,6 +460,7 @@ func sarifResultFor(findingItem finding.Finding, ruleIndices map[string]int, bas
 // sarifResultProperties carries the gruff-owned fields a reader needs beside the SARIF-standard ones.
 //
 // A sensitive finding carries no fingerprint here either: a code-scanning system keeps every property it is sent.
+//
 // It returns a map that always holds the confidence, pillar, and severity of findingItem, plus its fingerprint when it is baseline-eligible.
 // Secondary pillars, symbol, remediation, and metadata are added only when non-empty, so the map is never nil.
 func sarifResultProperties(findingItem finding.Finding) map[string]any {
@@ -513,6 +518,7 @@ func sarifRunPropertiesFromReport(report analysis.Report) sarifRunProperties {
 		GruffSchemaVersion: report.SchemaVersion,
 		Score:              report.Score.Composite,
 		Grade:              report.Score.Grade,
+		Suppressions:       report.Suppressions,
 	}
 }
 

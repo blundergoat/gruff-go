@@ -173,13 +173,14 @@ gosec `#nosec G112`, `G402` or `G204`, gosec `G101` for every sensitive-data
 rule, golangci-lint `//nolint:funlen`, zizmor
 `# zizmor: ignore[unpinned-uses]` or `ignore[dangerous-triggers]`, and a bare
 `#nosec`, `//nolint`, `//nolint:all` or `//nolint:gosec` for every security and
-sensitive-data rule. The comment must be on the reported line or alone on the
-line above it; a `#nosec` naming only other checks, such as `G304`, suppresses
-nothing. Each suppression is counted in one row per file and rule,
+sensitive-data rule. Gruff checks comment syntax in Go, YAML, and dotenv files,
+including dotenv variants such as `.env.local`. The comment must be on the
+reported line or alone on the line above it. A `#nosec` naming only other checks,
+such as `G304`, leaves the finding visible. Each suppression is counted in one row per file and rule,
 after the built-in rows and numbered on from them, with `source: "inline"` and
 the reason "Another tool's suppression comment names this check, so the finding
 is suppressed where it was written." Text output labels these rows
-`inline[<path>]`, and SARIF keeps each suppressed finding as a result carrying
+`inline[<path>]`, and SARIF keeps each in-scope suppressed finding as a result carrying
 `"suppressions": [{"kind": "inSource", "justification": <reason>}]`.
 
 ### Migrating v2 consumers
@@ -214,6 +215,8 @@ Counts, scores, diagnostics, paths, suppressions, baseline, diff, and extensions
 therefore retain the analysis values for the same run.
 
 ## `sarif`
+
+Configured exclusion audit rows appear in Markdown under **Suppressions** and in SARIF under `runs[].properties.suppressions`.
 
 SARIF 2.1.0. Compatible with [GitHub Code Scanning](https://docs.github.com/en/code-security/code-scanning), [GitLab SAST integration](https://docs.gitlab.com/ee/user/application_security/sast/), and any other SARIF consumer.
 

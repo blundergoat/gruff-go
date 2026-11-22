@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/parser"
 	"github.com/blundergoat/gruff-go/internal/rule"
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
@@ -70,8 +71,7 @@ type Report struct {
 	SuppressedCount *int `json:"suppressedCount,omitempty"`
 	// DisplayFilter records presentation-only filters that hid findings.
 	DisplayFilter DisplayFilterSummary `json:"displayFilter"`
-	// Suppressions is the sensitive-exclusion audit: one row per configured
-	// entry, including entries that matched nothing.
+	// Suppressions is the sensitive-exclusion audit: one row per configured entry, including entries that matched nothing.
 	Suppressions []SuppressionSummary `json:"suppressions"`
 	// Score holds the grade and pillar breakdown produced by the scoring engine.
 	Score scoring.Score `json:"score"`
@@ -84,8 +84,8 @@ type Report struct {
 	Diagnostics []Diagnostic `json:"diagnostics"`
 	// Findings is the sorted list of rule findings produced by the run.
 	Findings []finding.Finding `json:"findings"`
-	// Suppressed holds the findings another tool's comment suppressed. The JSON envelope counts them only in
-	// Suppressions; SARIF keeps each as a result marked suppressed (FAMILY-CONTRACT.md section 13c).
+	// Suppressed holds the findings another tool's comment suppressed. The JSON envelope counts them only in Suppressions; SARIF keeps each as a result
+	// marked suppressed (FAMILY-CONTRACT.md section 13c).
 	Suppressed []SuppressedFinding `json:"-"`
 }
 
@@ -166,8 +166,8 @@ type BaselineSummary struct {
 	Show bool `json:"-"`
 }
 
-// BaselineEntry is a report-shaped resolved baseline entry: a reviewed identity
-// with no live location whose recorded count exceeds what the run found.
+// BaselineEntry is a report-shaped resolved baseline entry: a reviewed identity with no live location whose recorded count exceeds what the run
+// found.
 type BaselineEntry struct {
 	// RuleID is the rule whose finding was resolved.
 	RuleID string `json:"ruleId"`
@@ -209,6 +209,8 @@ type DisplayFilterSummary struct {
 	ExcludePillars []string `json:"excludePillars"`
 	// HiddenFindings counts how many real findings the display filter suppressed from output.
 	HiddenFindings int `json:"hiddenFindings"`
+	// MinimumSeverity records the configured display floor.
+	MinimumSeverity finding.Severity `json:"minimumSeverity,omitempty"`
 	// Caveat carries any user-facing note when the filter changed the rendered totals.
 	Caveat string `json:"caveat,omitempty"`
 }
@@ -248,12 +250,11 @@ type ReportInput struct {
 	Inputs []string
 	// Format is the rendered output format requested on the CLI.
 	Format string
-	// FailOn is the resolved threshold that maps to exit code 1. FailThreshold
-	// rather than Severity so None ("never fail on findings") is representable.
+	// FailOn is the resolved threshold that maps to exit code 1. FailThreshold rather than Severity so None ("never fail on findings") is representable.
 	FailOn finding.FailThreshold
-	// MinConfidence is the confidence floor the caller resolved; NewReport's exit code does not apply it.
+	// MinConfidence is the minimum confidence for the severity gate.
 	MinConfidence finding.Confidence
-	// FailOnNew asks for exit 1 on any finding the baseline classifies as new; NewReport's exit code does not apply it.
+	// FailOnNew fails on any finding that remains after a baseline comparison.
 	FailOnNew bool
 	// IncludeIgnored records whether the run opted into crossing .gitignore boundaries, copied into Run.IncludeIgnored.
 	IncludeIgnored bool
@@ -298,6 +299,7 @@ const TargetErrorDiagnosticType = "target-error"
 // Printing only to stderr would leave a JSON consumer with no diagnostic, no type and no run block, where every other port publishes all three.
 //
 // root is the working directory the report records, format is the requested output format, and message is the diagnostic's text.
+//
 // diagnosticType names the diagnostic's type; TargetErrorDiagnosticType sets its stage to discovery, and any other type sets it to config.
 // It returns a Report holding only that diagnostic, no findings and no paths, with the default advisory fail-on threshold and an exit code of 2.
 func FailedRunReport(root, format, diagnosticType, message string) Report {
@@ -309,8 +311,7 @@ func FailedRunReport(root, format, diagnosticType, message string) Report {
 	return NewReport(ReportInput{
 		Root:   root,
 		Format: format,
-		// The run never reached its gate, so the envelope names the default threshold rather than leaving the
-		// contract-required field empty.
+		// The run never reached its gate, so the envelope names the default threshold rather than leaving the contract-required field empty.
 		FailOn: finding.FailThresholdAdvisory,
 		// InvalidatesRun stays nil, which counts as run-invalidating, so the caller sees exit code 2.
 		Diagnostics: []Diagnostic{{
@@ -327,8 +328,8 @@ func FailedRunReport(root, format, diagnosticType, message string) Report {
 // input carries the run settings, discovered paths, diagnostics, findings, rule definitions, and the baseline, diff and suppression summaries.
 // It returns a sorted Report whose nil path, diagnostic, finding and rule lists become empty.
 //
-// Its score counts every scanned .go path that no parse-stage diagnostic names, including Go files the deep-scan budget left without an AST.
-// Its exit code applies input.FailOn alone through ResolveExitCode, so input.MinConfidence and input.FailOnNew do not affect it.
+// Its score uses scanned Go paths that parsed successfully.
+// The exit code applies the configured severity, confidence, and baseline gates.
 func NewReport(input ReportInput) Report {
 	scanned := nonNilStrings(input.Scanned)
 	skipped := nonNilSkipped(input.Skipped)
@@ -338,7 +339,9 @@ func NewReport(input ReportInput) Report {
 	findings := nonNilFindings(input.Findings)
 	definitions := nonNilDefinitions(input.Definitions)
 	input.Diff.ChangedFiles = nonNilStrings(input.Diff.ChangedFiles)
-	exitCode := ResolveExitCode(diagnostics, findings, input.FailOn)
+	exitCode := ResolveGatedExitCode(diagnostics, findings, ExitGate{
+		FailOn: input.FailOn, MinConfidence: input.MinConfidence, FailOnNew: input.FailOnNew,
+	})
 	report := Report{
 		SchemaVersion: SchemaVersion,
 		Tool: Tool{
@@ -399,13 +402,15 @@ func nonNilSuppressions(summaries []SuppressionSummary) []SuppressionSummary {
 // This is deliberately not len(Paths.Scanned), which also counts raw-text inputs such as go.mod or a YAML file.
 //
 // scanned is the discovered file list, and diagnostics excludes every file that a parse-stage diagnostic names.
+//
 // Only paths whose extension is .go in any letter case count, and a scan with no such path returns 0.
-// A Go file the deep-scan budget left without an AST carries an analysis-stage diagnostic, so it still counts.
+// A Go file the deep-scan budget left without an AST is excluded.
 func evaluatedFileCount(scanned []string, diagnostics []Diagnostic) int {
 	parseFailedFiles := map[string]struct{}{}
 	// One file can emit several parse diagnostics, so path identity keeps the exclusion file-based.
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Stage == "parse" && diagnostic.File != "" {
+		// A parser error or AST budget skip leaves that file outside the evaluated Go coverage shown beside the score.
+		if (diagnostic.Stage == "parse" || diagnostic.DiagnosticType == parser.BoundedDeepScanDiagnosticType) && diagnostic.File != "" {
 			parseFailedFiles[diagnostic.File] = struct{}{}
 		}
 	}
@@ -497,17 +502,17 @@ type ExitGate struct {
 	FailOn finding.FailThreshold
 	// MinConfidence is the lowest confidence that reaches it, independent of severity.
 	MinConfidence finding.Confidence
-	// FailOnNew exits 1 for any finding the applied baseline classifies as new, whatever its severity.
+	// FailOnNew exits 1 for findings that remain after baseline classification.
 	FailOnNew bool
 }
 
 // ResolveGatedExitCode decides the exit code under the full family gate.
 //
-// A run that could not complete still outranks everything: a diagnostic that invalidates the run exits 2 before any
-// finding is weighed, because a partial scan's verdict is not a verdict.
+// A run that could not complete still outranks everything: a diagnostic that invalidates the run exits 2 before any finding is weighed, because a
+// partial scan's verdict is not a verdict.
 //
 // It returns 2 when an entry in diagnostics has InvalidatesRun nil or true, otherwise 1 when an entry in findings reaches the gate, else 0.
-// A finding reaches gate when gate.FailOnNew is set and its baseline status is new, or when it clears both gate.FailOn and gate.MinConfidence.
+// Findings clear gate by surviving a baseline comparison under FailOnNew or by meeting both the severity and confidence floors.
 func ResolveGatedExitCode(diagnostics []Diagnostic, findings []finding.Finding, gate ExitGate) int {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
@@ -515,9 +520,13 @@ func ResolveGatedExitCode(diagnostics []Diagnostic, findings []finding.Finding, 
 		}
 	}
 
+	// An omitted confidence floor lets even low-confidence findings reach the caller's severity gate.
+	if gate.MinConfidence == "" {
+		gate.MinConfidence = finding.ConfidenceLow
+	}
 	for _, item := range findings {
-		// The baseline dimension is independent of both floors: a new finding gates whatever its severity.
-		if gate.FailOnNew && item.BaselineStatus == "new" {
+		// A finding the baseline cannot review still reaches this gate.
+		if gate.FailOnNew && item.BaselineStatus != "" && item.BaselineStatus != "unchanged" {
 			return 1
 		}
 
@@ -643,6 +652,7 @@ func countPillar(findings []finding.Finding) map[string]int {
 // MarshalJSON exposes only the canonical v3 machine envelope whenever a Report is encoded as JSON.
 //
 // Internal report fields remain available to human, SARIF, hook and scoring code without becoming accidental top-level JSON aliases.
+//
 // It returns the JSON encoding of the MachineEnvelope payload.
 // When building the envelope or encoding it fails, it returns nil bytes and that error.
 func (report Report) MarshalJSON() ([]byte, error) {
@@ -669,8 +679,7 @@ func (report Report) MachineEnvelope() (map[string]any, error) {
 	return payload, nil
 }
 
-// machineEnvelopeParts groups normalized path-bearing sections until the
-// canonical payload is ready to assemble.
+// machineEnvelopeParts groups normalized path-bearing sections until the canonical payload is ready to assemble.
 type machineEnvelopeParts struct {
 	inputs       []string
 	findings     []finding.Finding
@@ -808,6 +817,10 @@ func (report Report) addMachineOptionalSections(payload map[string]any) error {
 			"includePillars": nonNilStrings(report.DisplayFilter.IncludePillars),
 			"includeRules":   nonNilStrings(report.DisplayFilter.IncludeRules),
 		}
+		// Publish the chosen floor when it explains why a finding is missing from this view.
+		if report.DisplayFilter.MinimumSeverity != "" {
+			displayFilter["minimumSeverity"] = report.DisplayFilter.MinimumSeverity
+		}
 		if report.DisplayFilter.Caveat != "" {
 			displayFilter["caveat"] = report.DisplayFilter.Caveat
 		}
@@ -885,6 +898,7 @@ func (report Report) machinePathPayload() (map[string]any, error) {
 // Every applied baseline carries the same fixed status and count keys, the staleEntries count included, so consumers need not recompute matches.
 //
 // It returns nil and false when no baseline was applied, otherwise the payload and true; the unchanged and resolved lists appear only under Show.
+//
 // The path key is left out when the baseline file lies outside the project root.
 // It fails with an error when the baseline path cannot be normalized for any other reason, or when a shown finding or resolved entry path cannot.
 func (report Report) machineBaseline() (map[string]any, bool, error) {
@@ -904,8 +918,8 @@ func (report Report) machineBaseline() (map[string]any, bool, error) {
 	}
 	if report.Baseline.Path != "" {
 		path, err := machinePath(report.Run.WorkingDirectory, report.Baseline.Path)
-		// A baseline kept outside the project has no project-relative form and a host path may not be published, so
-		// the optional key is left out, as the other ports leave it out, rather than failing the whole report.
+		// A baseline kept outside the project has no project-relative form and a host path may not be published, so the optional key is left out, as the
+		// other ports leave it out, rather than failing the whole report.
 		if err != nil && !errors.Is(err, errOutsideProjectRoot) {
 			return nil, false, fmt.Errorf("baseline path: %w", err)
 		}
@@ -961,6 +975,7 @@ func (report Report) machineDiff() (map[string]any, bool, error) {
 // machineFindings copies findings and normalizes only their serialized paths, preserving every native identity field.
 //
 // root is the report's working directory and values the findings to copy; values itself is not modified.
+//
 // It returns a new slice of the same length, empty when values is empty, with each File in project-relative POSIX form.
 // It fails with a nil slice and an error when a finding's File cannot be made project-relative, an empty File included.
 func machineFindings(root string, values []finding.Finding) ([]finding.Finding, error) {
@@ -979,6 +994,7 @@ func machineFindings(root string, values []finding.Finding) ([]finding.Finding, 
 // machineDiagnostics projects native run diagnostics in their existing order.
 //
 // root is the report's working directory and values the diagnostics to project, each through machineDiagnostic.
+//
 // It returns one map per diagnostic in the same order, and an empty slice when values is empty.
 // It fails with a nil slice and the first error machineDiagnostic returns.
 func machineDiagnostics(root string, values []Diagnostic) ([]map[string]any, error) {
@@ -996,6 +1012,7 @@ func machineDiagnostics(root string, values []Diagnostic) ([]map[string]any, err
 // machineDiagnostic projects one diagnostic and keeps native-only location detail under the Go extension namespace.
 //
 // root is the report's working directory and diagnostic the run diagnostic to project; an empty DiagnosticType falls back to Stage, then to analysis.
+//
 // It returns a map with type, message and invalidatesRun, plus file, stage, severity and line keys when set; a file outside root is left out.
 // It fails with a nil map and an error when the diagnostic's File cannot be normalized for a reason other than lying outside root.
 func machineDiagnostic(root string, diagnostic Diagnostic) (map[string]any, error) {
@@ -1063,6 +1080,7 @@ func addMachineDiagnosticLocation(payload map[string]any, source *finding.Locati
 // machineSuppressions normalizes suppression scopes while preserving audit counts and user-supplied reasons.
 //
 // root is the report's working directory and values the suppression audit rows to project.
+//
 // It returns one map per row in order, empty when values is empty, with symbol and source keys only when they are non-empty.
 // It fails with a nil slice and an error when a row's Paths entry cannot be made project-relative.
 func machineSuppressions(root string, values []SuppressionSummary) ([]map[string]any, error) {
@@ -1096,6 +1114,7 @@ func machineSuppressions(root string, values []SuppressionSummary) ([]map[string
 // Clusters, attribution, pillars and coverage pass through exactly as the scoring engine built them.
 //
 // root is the report's working directory and score the native result, whose TopOffender files are copied and then normalized.
+//
 // It returns the composite grade and score with the evaluated files, pillars, clusters, attribution, offenders, coverage and complexity sections.
 // It fails with a nil map and an error when a top offender's File cannot be made project-relative.
 func machineScore(root string, score scoring.Score) (map[string]any, error) {
@@ -1133,6 +1152,7 @@ var errOutsideProjectRoot = errors.New("outside the project root")
 // One that reads as outside the root is measured again from the launch directory before it is refused; one inside is only cleaned.
 //
 // root is the project root and values the operands in the order they were typed.
+//
 // It returns their portable forms in the same order, and an empty slice when values is empty.
 // It fails with a nil slice and an error when an operand cannot be made project-relative, such as one outside root from both starting points.
 func machineInputs(root string, values []string) ([]string, error) {
@@ -1155,6 +1175,7 @@ func machineInputs(root string, values []string) ([]string, error) {
 // machinePaths converts an ordered path list to project-relative POSIX form.
 //
 // root is the directory the paths are made relative to and values the paths to convert, each through machinePath.
+//
 // It returns the converted paths in the same order, and an empty slice when values is empty.
 // It fails with a nil slice and the first machinePath error, such as for a path outside root.
 func machinePaths(root string, values []string) ([]string, error) {
@@ -1172,6 +1193,7 @@ func machinePaths(root string, values []string) ([]string, error) {
 // machinePath converts one path to project-relative POSIX form and rejects values outside the report root.
 //
 // root is the directory an absolute value is made relative to, and value is the path to convert after filepath.Clean.
+//
 // It returns the cleaned slash-separated path, or an empty string and an error if value is empty or a Windows drive path.
 // An absolute value returns an empty string and an error when root is empty or filepath.Rel cannot make it relative to root.
 //

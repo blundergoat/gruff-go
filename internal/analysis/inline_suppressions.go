@@ -1,6 +1,12 @@
+// Read suppression comments before findings reach the score, gate, and report.
+//
+// The filter recognizes supported checks in Go, YAML, and dotenv comments. It keeps their removal visible in the suppression audit.
+// Use this path for directives written beside a finding or alone on the preceding line.
 package analysis
 
 import (
+	"go/token"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -19,10 +25,10 @@ const SuppressionSourceInline = "inline"
 // It is also the justification on each suppressed finding, which a SARIF reader sees on the suppressed result.
 const InlineSuppressionReason = "Another tool's suppression comment names this check, so the finding is suppressed where it was written."
 
-// SuppressedFinding is a finding another tool's comment suppressed.
+// SuppressedFinding holds a finding and the reason its source comment suppressed it.
 //
-// It is dropped from the findings list and does not count toward the score.
-// SARIF keeps it as a result marked suppressed, so a code-scanning tool shows it as suppressed rather than fixed.
+// The ordinary findings list and score omit it.
+// SARIF keeps it as a suppressed result so code scanning can distinguish it from a fix.
 type SuppressedFinding struct {
 	// Finding is the suppressed finding as the rule reported it.
 	Finding finding.Finding
@@ -54,7 +60,7 @@ const gosecCredentialCheck = "G101"
 const functionLengthRule = "size.function-length"
 
 // gosecDirective matches `#nosec` and its optional check list, e.g. `#nosec G204 -- fixed git arguments`.
-var gosecDirective = regexp.MustCompile(`#nosec((?:[ \t]*,?[ \t]*G\d+)*)`)
+var gosecDirective = regexp.MustCompile(`#nosec\b((?:[ \t]*,?[ \t]*G\d+)*)`)
 
 // gosecCode matches one gosec check in a `#nosec` list.
 var gosecCode = regexp.MustCompile(`G\d+`)
@@ -65,28 +71,27 @@ var nolintDirective = regexp.MustCompile(`//nolint(?::([\w,-]+))?(?:[^\w:,-]|$)`
 // zizmorDirective matches zizmor's # zizmor: ignore comment and captures the comma-separated audits inside its brackets, such as unpinned-uses.
 var zizmorDirective = regexp.MustCompile(`#\s*zizmor:\s*ignore\[([^\]]*)\]`)
 
-// ApplyInlineSuppressions removes each finding another tool's suppression comment covers and counts it in one inline audit row per file and rule.
+// ApplyInlineSuppressions honors supported comments beside a finding or alone on the preceding line.
 //
-// A mapped check or a supported bare directive counts on the reported line, or on the line above when it starts with //, # or /*.
-// For example, #nosec G204 above exec.Command("sh", "-c", script) suppresses security.shell-command there and nothing else.
-// The rows follow the built-in rows and continue their numbering.
-//
-// The sources map holds each file's text by the path findings carry; a finding whose file is absent from sources is kept.
-// It returns the kept findings in order, summaries with the inline rows appended in path then rule order, and the suppressed findings.
-// Each suppressed finding carries InlineSuppressionReason as its justification; when nothing is suppressed, summaries comes back unchanged.
+// sources holds source text by finding path. Without text for a path, its findings stay visible.
+// Returns visible findings in order, summaries with one row per path and rule after built-in rows, and suppressed findings with their justification.
+// When no directive matches, summaries keeps its original rows.
 func ApplyInlineSuppressions(findings []finding.Finding, summaries []SuppressionSummary, sources map[string]string) ([]finding.Finding, []SuppressionSummary, []SuppressedFinding) {
 	type fileAndRule struct{ file, rule string }
 	countByFileAndRule := map[fileAndRule]int{}
-	linesByFile := map[string][]string{}
+	commentsByFile := map[string]map[int][]inlineComment{}
 	kept := make([]finding.Finding, 0, len(findings))
 	suppressed := []SuppressedFinding{}
+	// Each finding gets its own decision, even when another finding on the same line has a covered rule.
 	for _, item := range findings {
-		lines, read := linesByFile[item.File]
+		comments, read := commentsByFile[item.File]
+		// A file can have several findings. Read its comments once so all of its findings use the same line lookup.
 		if !read {
-			lines = strings.Split(sources[item.File], "\n")
-			linesByFile[item.File] = lines
+			comments = suppressionCommentsByLine(item.File, sources[item.File])
+			commentsByFile[item.File] = comments
 		}
-		if !isSuppressedInline(lines, item) {
+		// Findings without a matching directive still reach the score, exit gate, and report.
+		if !isSuppressedInline(comments, item) {
 			kept = append(kept, item)
 			continue
 		}
@@ -133,29 +138,158 @@ func sourcesByFile(units []parser.Unit) map[string]string {
 	return sources
 }
 
-// isSuppressedInline reports whether a matching directive sits on the finding's line, or on the line above when it starts with //, # or /*.
+// inlineComment holds source comment text and whether it stands alone on its line.
 //
-// The finding's line is matched as raw text, so a directive inside a string literal there also counts.
-// A file-level finding has no line to carry one, and leading spaces on the line above are ignored.
-// The lines are the file's text split on newlines, and item is the finding; it is false when item has no location or its line is outside lines.
-func isSuppressedInline(lines []string, item finding.Finding) bool {
-	if item.Location == nil || item.Location.Line < 1 || item.Location.Line > len(lines) {
+// A standalone comment can cover a finding on the following line.
+// Any matching comment can cover a finding on its own line.
+type inlineComment struct {
+	text       string
+	standalone bool
+}
+
+// suppressionCommentsByLine indexes comments in text by line for the source syntax identified by path.
+// A nil or empty result means the file supplies no suppression comments for the findings.
+func suppressionCommentsByLine(path, text string) map[int][]inlineComment {
+	// Most files contain no directive text, so they need no comment scan.
+	if !strings.Contains(text, "#nosec") && !strings.Contains(text, "nolint") && !strings.Contains(text, "zizmor") {
+		return nil
+	}
+	comments := map[int][]inlineComment{}
+	extension := strings.ToLower(filepath.Ext(path))
+	switch {
+	case extension == ".go":
+		line, lastCommentOffset := 1, 0
+		parser.ScanGoTokens(text, func(kind token.Token, offset int, literal string) {
+			// Directive text inside a Go string stays visible to the rule that flagged the code.
+			if kind != token.COMMENT {
+				return
+			}
+			line += strings.Count(text[lastCommentOffset:offset], "\n")
+			lastCommentOffset = offset
+			start := strings.LastIndexByte(text[:offset], '\n') + 1
+			standalone := strings.TrimSpace(text[start:offset]) == "" && !strings.Contains(literal, "\n")
+			comments[line] = append(comments[line], inlineComment{literal, standalone})
+		})
+	case extension == ".yaml" || extension == ".yml":
+		return hashSuppressionComments(text, true)
+	case extension == ".env" || strings.HasPrefix(filepath.Base(path), ".env"):
+		return hashSuppressionComments(text, false)
+	}
+	return comments
+}
+
+// yamlBlockMarker recognizes literal and folded YAML block indicators.
+var yamlBlockMarker = regexp.MustCompile(`(?:^|:\s+|-\s+)[|>]([1-9+-]{0,2})\s*$`)
+
+// hashSuppressionComments returns the comments in text for YAML or dotenv findings.
+// Set yaml to protect literal and folded blocks as data. A file with no comments gives an empty map.
+func hashSuppressionComments(text string, yaml bool) map[int][]inlineComment {
+	comments, blockParent, blockContent := map[int][]inlineComment{}, -1, -1
+	var quote byte
+	// A workflow block or quoted value can span lines, so carry its state across the whole file.
+	for number, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		indent := len(line) - len(trimmed)
+		// Blank lines inside a block carry no comment and leave the block open.
+		if strings.TrimSpace(trimmed) == "" {
+			continue
+		}
+		// A YAML author who omits the indentation indicator sets the content column with the first indented line.
+		if blockParent >= 0 && blockContent < 0 && indent > blockParent {
+			blockContent = indent
+		}
+		// An indented shell command or sample in a YAML block cannot turn into a suppression.
+		if blockContent >= 0 && indent >= blockContent {
+			continue
+		}
+		blockParent, blockContent = -1, -1
+		offset := hashCommentOffset(line, &quote)
+		// Only a hash outside the value can start a comment for the rule or the next line.
+		if offset >= 0 {
+			comments[number+1] = []inlineComment{{line[offset:], offset == indent}}
+			line = line[:offset]
+		}
+		// A quoted pipe is part of the value. A YAML block header can protect later lines from being read as directives.
+		if yaml && quote == 0 {
+			blockParent, blockContent = yamlBlockColumns(line, indent)
+		}
+	}
+	return comments
+}
+
+// yamlBlockColumns returns the parent and explicit content columns of a YAML block header.
+//
+// indent is the number of leading spaces or tabs on line.
+// A missing header yields two negative columns. An implicit content column stays negative until the first content line.
+func yamlBlockColumns(line string, indent int) (int, int) {
+	marker := yamlBlockMarker.FindStringSubmatch(line)
+	// An ordinary YAML line starts no block, so later suppression comments are still eligible.
+	if marker == nil {
+		return -1, -1
+	}
+	// In a list item like "- run: |2", indentation is measured from the key so the whole script stays protected.
+	if line[indent] == '-' && strings.HasPrefix(marker[0], ":") {
+		start := line[indent+1:]
+		indent += 1 + len(start) - len(strings.TrimLeft(start, " \t"))
+	}
+	// An explicit digit fixes the content column even when the first script line is more deeply indented.
+	if digit := strings.IndexAny(marker[1], "123456789"); digit >= 0 {
+		return indent, indent + int(marker[1][digit]-'0')
+	}
+	return indent, -1
+}
+
+// hashCommentOffset updates quote state for line and returns the hash offset, or -1 when the line has no comment outside a scalar.
+func hashCommentOffset(line string, quote *byte) int {
+	// Read quotes and escapes in order so a hash typed inside a config value stays part of that value.
+	for i := 0; i < len(line); i++ {
+		b := line[i]
+		atBoundary := i == 0 || strings.ContainsRune(" \t:[{,=", rune(line[i-1]))
+		switch {
+		case *quote == '"' && b == '\\':
+			i++
+		case *quote == '\'' && b == '\'' && i+1 < len(line) && line[i+1] == '\'':
+			i++
+		case *quote != 0 && b == *quote:
+			*quote = 0
+		case *quote == 0 && atBoundary && (b == '"' || b == '\''):
+			*quote = b
+		case *quote == 0 && b == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			return i
+		}
+	}
+	return -1
+}
+
+// isSuppressedInline reports whether comments on or immediately above item cover it, using the line index in comments.
+// A finding without a line or matching comment stays visible.
+func isSuppressedInline(comments map[int][]inlineComment, item finding.Finding) bool {
+	// A file-wide finding has no line to which an inline directive can attach.
+	if item.Location == nil || item.Location.Line < 1 {
 		return false
 	}
-	if inlineCommentCovers(lines[item.Location.Line-1], item) {
-		return true
+	line := item.Location.Line
+	// A directive beside a reported line can cover that finding, even after executable code.
+	for _, comment := range comments[line] {
+		// An unrelated directive leaves the finding visible, even when it suppresses a different check on the same line.
+		if inlineCommentCovers(comment.text, item) {
+			return true
+		}
 	}
-	if item.Location.Line < 2 {
-		return false
+	// A directive beside a different line of code belongs to that line, so only a standalone comment can carry forward.
+	for _, comment := range comments[line-1] {
+		// A matching directive above this line carries over only when it stands alone.
+		if comment.standalone && inlineCommentCovers(comment.text, item) {
+			return true
+		}
 	}
-	above := strings.TrimSpace(lines[item.Location.Line-2])
-	startsWithCommentMarker := strings.HasPrefix(above, "//") || strings.HasPrefix(above, "#") || strings.HasPrefix(above, "/*")
-	return startsWithCommentMarker && inlineCommentCovers(above, item)
+	return false
 }
 
 // inlineCommentCovers reports whether one line names a check section 13c maps to the finding's rule.
 //
 // A bare #nosec, //nolint, //nolint:all or //nolint:gosec covers every security and sensitive-data rule, as gosec and golangci-lint read them.
+//
 // A bare //nolint or //nolint:all also covers size.function-length, the funlen rule.
 // A #nosec naming checks covers only those the table lists, so #nosec G304 covers nothing and #nosec G101 covers every sensitive-data rule.
 //

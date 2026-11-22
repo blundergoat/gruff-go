@@ -18,6 +18,7 @@ import (
 // runReport handles gruff-go report: it parses report flags, runs analysis once, and writes the selected report format.
 //
 // args holds the report flags and target paths; with no target paths, the current working directory is scanned.
+//
 // interactive allows the first-run config prompt through configuredRegistryInteractive.
 // stdout receives the report unless --output names a file, and stderr receives diagnostics and any config prompt.
 //
@@ -95,6 +96,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	displayFilter.MinimumSeverity, _ = cfg.MinimumSeverity.Severity()
 	analysis.ApplyDisplayFilter(&analysisReport, displayFilter)
 
 	htmlOpts := report.HTMLOptions{EditorLink: *editorLink, Interactive: *reportInteractive}
@@ -143,6 +145,7 @@ func emitReport(stdout io.Writer, path string, analysisReport analysis.Report, f
 // openReportWriter selects stdout or a created file as the report writer.
 //
 // An empty path selects stdout with a no-op closer; any other path is created or truncated with os.Create.
+//
 // Returns the writer and a never-nil closer func, which closes a created file and drops its close error.
 // The error is non-nil only when os.Create fails, and the writer is then nil with a no-op closer.
 func openReportWriter(stdout io.Writer, path string) (io.Writer, func(), error) {

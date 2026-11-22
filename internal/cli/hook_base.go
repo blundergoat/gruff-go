@@ -1,13 +1,16 @@
 // Package cli prepares prior findings for agent-hook new-only filtering.
 //
 // This file turns a baseline file or git history into prior findings for the shared one-to-one matcher.
+//
 // Hook users therefore see the same duplicate and line-shift behavior as analyse.
 // Reached when the user runs gruff-go hook with a baseline path or a git diff mode.
 package cli
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/baseline"
@@ -30,7 +33,7 @@ type hookFindingBaseline struct {
 // runBaseline reports the baseline the user selected, for the audit block a consumer reads before trusting the run.
 //
 // A consumer can identify an applied baseline by its schema and, for a file-based baseline, its user-supplied path.
-// Applied follows enabled alone, so it stays true even when newFindings could not apply the baseline and kept every finding.
+// This is rendered only after classification succeeds.
 //
 // It returns the zero value, with Applied false and nil SchemaVersion and Path, when no baseline is enabled.
 // Otherwise the result has Applied true, the baseline schema version, and a Path only for a file-based baseline.
@@ -52,30 +55,29 @@ func (hookBaseline hookFindingBaseline) runBaseline() hookRunBaseline {
 	return applied
 }
 
-// newFindings classifies the complete current slice through baseline.Apply.
+// newFindings classifies currentFindings through baseline.Apply.
 //
-// Disabled input returns every finding because the user selected no prior base.
-// currentFindings is this run's complete slice, returned whole when baseline.Apply fails, so a baseline that cannot apply hides nothing.
-// Otherwise the result holds only the findings the baseline left visible, each stamped with its baseline status.
-func (hookBaseline hookFindingBaseline) newFindings(currentFindings []finding.Finding) []finding.Finding {
+// With no baseline it returns every finding. With a baseline it returns the visible findings and their statuses, or an error if classification fails.
+func (hookBaseline hookFindingBaseline) newFindings(currentFindings []finding.Finding) ([]finding.Finding, error) {
 	// Without a baseline or git base, every current finding remains hook-visible and none carries a status.
 	if !hookBaseline.enabled {
-		return currentFindings
+		return currentFindings, nil
 	}
 	result, err := baseline.Apply(currentFindings, hookBaseline.file)
-	// A baseline that cannot be applied hides nothing; a hook shows every finding rather than guess at what was reviewed.
+	// A baseline from another language may load but cannot classify Go findings, so the caller publishes a fatal diagnostic.
 	if err != nil {
-		return currentFindings
+		return nil, err
 	}
-	return stampHookBaselineStatuses(currentFindings, result)
+	return stampHookBaselineStatuses(currentFindings, result), nil
 }
 
 // stampHookBaselineStatuses records on each surviving finding what the baseline made of it.
 //
-// A consumer that cannot see why a finding survived cannot tell a genuinely new problem from one the baseline could not
-// identify, so the status travels with the finding rather than only in a count.
+// A consumer that cannot see why a finding survived cannot tell a genuinely new problem from one the baseline could not identify, so the status
+// travels with the finding rather than only in a count.
 //
 // currentFindings is the slice passed to baseline.Apply, and result is its output; result.Statuses is read by index against currentFindings.
+//
 // It returns a copy of result.Findings with each BaselineStatus set from the status of the current finding sharing its Fingerprint.
 // A survivor with no matching fingerprint gets an empty status, and an empty result.Findings gives an empty, non-nil slice.
 func stampHookBaselineStatuses(currentFindings []finding.Finding, result baseline.ApplyResult) []finding.Finding {
@@ -98,22 +100,18 @@ func stampHookBaselineStatuses(currentFindings []finding.Finding, result baselin
 	return stamped
 }
 
-// resolveHookChanged computes changed lines used for hook location attribution.
+// resolveHookChanged returns the lines eligible for hook findings. hookFlags gives explicit ranges for scannedPaths priority over stdin and Git.
+// scanContext can cancel Git in projectRoot before the hook publishes its report.
 //
-// Disabled output means the user requested no changed-region filtering.
-//
-// scanContext is passed to the git diff, and projectRoot is the repository a git diff mode is resolved in.
-// hookFlags picks the source in order: explicit ranges for scannedPaths, a stdin patch, or a git diff mode.
-//
-// It returns the changed lines and true when a source is selected and resolves, and empty lines with false when none is selected.
-// The error is returned, with false, when the explicit ranges or the git diff mode fail to resolve; a stdin patch never fails.
+// Returns true when a comparison resolved, false with empty lines when none was requested, or false and an error when a comparison fails.
 func resolveHookChanged(scanContext context.Context, projectRoot string, scannedPaths []string, hookFlags hookFlagValues) (diff.ChangedLines, bool, error) {
 	switch {
 	case hookFlags.changedRangesSet || hookFlags.changedRanges != "":
 		changedLines, err := diff.ExplicitRanges("explicit", hookFlags.changedRanges, scannedPaths)
 		return changedLines, err == nil, err
 	case hookFlags.diffMode == "-":
-		return diff.Parse("stdin", hookFlags.diffPatch), true, nil
+		changedLines, err := diff.ParseStdin(hookFlags.diffPatch)
+		return changedLines, err == nil, err
 	case hookFlags.diffMode != "":
 		changedLines, err := diff.FromMode(scanContext, projectRoot, hookFlags.diffMode, hookFlags.paths)
 		return changedLines, err == nil, err
@@ -137,17 +135,11 @@ type hookBaseScan struct {
 	deepScanBudget analysis.DeepScanBudget
 }
 
-// resolveHookFindingBaseline loads the user's new-only base from a baseline file or from a git base tree.
+// resolveHookFindingBaseline loads the baseline file or scans the Git base chosen in hookFlags before a new-only hook run.
+// scanContext controls Git resolution and export in projectRoot. scan reuses the edited tree's rules, ignores, exclusions, and scan budget.
 //
-// No base is requested when there is no baseline path and the diff mode is empty or stdin; errors go to the hook's existing handling.
-//
-// scanContext is passed to the git base resolution and export, not to the base analysis.
-// projectRoot is the scanned project, and hookFlags supplies the baseline path, diff mode, paths and include-ignored choice.
-// scan carries the registry, ignore patterns, sensitive exclusions and deep-scan budget the git-base analysis reuses.
-//
-// It returns an enabled baseline from the file or the git base, or a disabled zero value when neither is requested.
-// An error is returned when baseline loading, git base resolution or export, analysis.Analyze, or baseline entry creation returns an error.
-// Base-analysis diagnostics are ignored and do not prevent baseline creation.
+// Returns an enabled comparison, a disabled one if none was requested, or an error if the base cannot be loaded, scanned, or turned into reviews.
+// A file missing from the base is expected for a new edit. Other fatal base diagnostics prevent a trustworthy comparison.
 func resolveHookFindingBaseline(scanContext context.Context, projectRoot string, hookFlags hookFlagValues, scan hookBaseScan) (hookFindingBaseline, error) {
 	// An explicit baseline takes precedence over any git-derived hook base.
 	if hookFlags.baselinePath != "" {
@@ -179,20 +171,46 @@ func resolveHookFindingBaseline(scanContext context.Context, projectRoot string,
 		DeepScanBudget:      scan.deepScanBudget,
 		IncludeIgnored:      hookFlags.includeIgnored,
 	})
-	// A returned analysis error aborts baseline preparation; diagnostics in baseAnalysisReport are not checked here.
 	if err != nil {
 		return hookFindingBaseline{}, err
+	}
+	// Only a usable base scan can tell a hook which findings the developer already had.
+	for _, diagnostic := range baseAnalysisReport.Diagnostics {
+		// A new file is absent in the base by design, so there is no older finding to review for it.
+		if diagnostic.Stage == "discovery" && slices.Contains(baseAnalysisReport.Paths.Missing, diagnostic.File) {
+			continue
+		}
+		// A syntax error in the base can hide references. Stop instead of deriving reviewed findings from that partial scan.
+		if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
+			return hookFindingBaseline{}, fmt.Errorf("cannot build a baseline from %s: %s: %s", baseRevision, diagnostic.File, diagnostic.Message)
+		}
 	}
 	return hookFindingBaselineFromFindings(baseAnalysisReport.Findings)
 }
 
-// hookFindingBaselineFromFile loads a validated gruff.baseline.v3 file; any other schema, such as a 0.5 file, is refused with a migration hint.
+// pathsRelativeToProject keeps the hook operands usable in both root and its exported Git base.
+// It returns paths outside root as absolute names so discovery can report the original input.
+func pathsRelativeToProject(root string, paths []string) []string {
+	resolved := targetsForRoot(root, paths)
+	relative := make([]string, len(resolved))
+	// Express files inside the project relative to its root so the same hook inputs work in the exported comparison tree.
+	for index, path := range resolved {
+		relative[index] = path
+		// Keep paths outside the chosen project absolute so discovery can explain the original request.
+		if filepath.IsAbs(path) && isSameOrDescendant(path, root) {
+			// A relative path inside the project selects the same file in the current tree and the exported base.
+			if inside, err := filepath.Rel(root, path); err == nil {
+				relative[index] = inside
+			}
+		}
+	}
+	return relative
+}
+
+// hookFindingBaselineFromFile loads baselinePath for the agent hook and resolves a relative path against projectRoot.
 //
-// baseline.Apply later spends each stable identity's reviewed count against the current findings.
-//
-// baselinePath is the user's path, joined to projectRoot when relative; the stored path keeps the user's spelling with forward slashes.
-// It returns an enabled baseline holding the loaded file and that path.
-// The error is returned, with a zero baseline, when baseline.Load cannot read the file or rejects it as malformed, non-v3 or invalid.
+// Returns an enabled comparison with a project-relative report path when available. An external file leaves that optional path empty.
+// Returns a zero baseline and an error for a missing, unreadable, malformed, or incompatible file.
 func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingBaseline, error) {
 	resolvedBaselinePath := baselinePath
 	// Relative paths are resolved from the project the user asked hook to scan.
@@ -204,7 +222,13 @@ func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingB
 	if err != nil {
 		return hookFindingBaseline{}, err
 	}
-	return hookFindingBaseline{enabled: true, file: baselineFile, path: filepath.ToSlash(baselinePath)}, nil
+	displayPath := ""
+	// Only publish a project-relative name. A baseline stored outside the repo can still be used.
+	if relative, err := filepath.Rel(projectRoot, resolvedBaselinePath); err == nil &&
+		isSameOrDescendant(resolvedBaselinePath, projectRoot) {
+		displayPath = filepath.ToSlash(relative)
+	}
+	return hookFindingBaseline{enabled: true, file: baselineFile, path: displayPath}, nil
 }
 
 // hookFindingBaselineFromFindings converts a git-base scan to baseline entries.
@@ -212,6 +236,7 @@ func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingB
 // FromFindings supplies deterministic ordering and the ratified line-free identity.
 //
 // priorFindings are the findings from scanning the git base tree, which baseline.FromFindings converts to entries.
+//
 // It returns an enabled baseline with an empty path, since a git-derived base has no file the user can open.
 // The error is returned, with a zero baseline, when baseline.FromFindings fails, as when a prior finding cannot be identified.
 func hookFindingBaselineFromFindings(priorFindings []finding.Finding) (hookFindingBaseline, error) {
@@ -229,6 +254,7 @@ func hookFindingBaselineFromFindings(priorFindings []finding.Finding) (hookFindi
 // Empty or stdin modes intentionally have no base.
 //
 // diffMode is the hook's diff mode; scanContext and projectRoot go to gitWriteTree, which writes the index tree for unstaged mode.
+//
 // It returns the treeish and true when a base applies, and an empty string with false for an empty or stdin mode.
 // The error is returned, with an empty string and false, when git fails to write the index tree for unstaged mode.
 func hookBaseTreeish(scanContext context.Context, projectRoot, diffMode string) (string, bool, error) {

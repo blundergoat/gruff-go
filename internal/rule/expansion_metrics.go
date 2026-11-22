@@ -352,6 +352,7 @@ func exportedDeclFindings(unit parser.Unit, decl ast.Decl) []finding.Finding {
 // exportedFuncFinding emits a finding when an exported function or method has no doc comment.
 //
 // The message adds the doc requests signatureDocAsks builds from the signature, or no suffix when it finds none.
+//
 // unit supplies the file path and position, and fn is the declaration checked.
 // It returns one finding at the line fn starts on, and nil when fn is unexported, a method on an unexported type, or already documented.
 func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
@@ -360,7 +361,7 @@ func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	}
 	position := unit.FileSet.Position(fn.Pos())
 	return []finding.Finding{{
-		Message:  fmt.Sprintf("exported %s %q has no doc comment", funcKind(fn), fn.Name.Name) + signatureDocAsks(fn.Type),
+		Message:  fmt.Sprintf("exported %s %q has no doc comment", funcKind(fn), fn.Name.Name) + signatureDocAsks(fn.Type, unit.AST),
 		File:     unit.File.Path,
 		Location: &finding.Location{Line: position.Line},
 		Symbol:   functionName(fn),
@@ -370,14 +371,15 @@ func exportedFuncFinding(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 
 // signatureDocAsks returns the message suffix that tells the user what a doc comment for this signature should cover.
 //
-// It asks to describe each named parameter, skipping blanks and context, HTTP and testing handles only in their standard package spellings.
+// It asks to describe each named parameter, skipping blanks and context, HTTP and testing handles including aliased standard-library imports.
 // Returned values are asked for only when a non-error result exists, and when an error is returned only when a result has type error.
 //
-// fnType is the signature of the function being reported, read by undocumentedParameters and undocumentedReturns.
+// fnType is the signature being reported, and file identifies its standard-library imports.
 // It returns "" when the signature asks for none of these.
-func signatureDocAsks(fnType *ast.FuncType) string {
+func signatureDocAsks(fnType *ast.FuncType, file *ast.File) string {
 	asks := []string{}
-	if params := undocumentedParameters(fnType, nil); len(params) > 0 {
+	// Only callable-specific inputs need a parameter-doc reminder after the standard handles are accounted for.
+	if params := undocumentedParameters(fnType, nil, handleParameterImports(file)); len(params) > 0 {
 		asks = append(asks, "describe "+parameterPhrase(params))
 	}
 	gap := undocumentedReturns(fnType, nil)

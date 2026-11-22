@@ -1,3 +1,7 @@
+// Exercise inline suppression as a developer sees it in a scan.
+//
+// A matching comment should remove the finding and record a reason. A directive inside a string or literal block should leave the finding visible.
+// The fixtures cover Go, YAML, and dotenv, including cases where only one supported check should be suppressed.
 package analysis
 
 import (
@@ -14,6 +18,25 @@ import (
 // Other fields remain zero.
 func inlineFinding(ruleID string, pillar finding.Pillar, line int) finding.Finding {
 	return finding.Finding{RuleID: ruleID, File: "main.go", Pillar: pillar, Location: &finding.Location{Line: line}}
+}
+
+// TestDotenvVariantSuppressions checks that discovered dotenv variants recognize real comments.
+func TestDotenvVariantSuppressions(t *testing.T) {
+	comments := suppressionCommentsByLine(".env.local", "NOTE=\" #nosec\"\nKEY=sample #nosec G101\n")
+	// A dotenv value and an actual directive share the same text, but only the directive can hide a finding.
+	if len(comments[1]) != 0 || len(comments[2]) != 1 {
+		t.Fatalf("comments = %#v, want only the directive on line 2", comments)
+	}
+}
+
+// TestYAMLBlockTextDoesNotSuppressFindings preserves the declared block indentation after a deeper first line.
+func TestYAMLBlockTextDoesNotSuppressFindings(t *testing.T) {
+	source := "steps:\r\n  - run: |2\r\n\r\n        echo sample\r\n      # zizmor: ignore[unpinned-uses]\r\n  - uses: actions/checkout@v4 # zizmor: ignore[unpinned-uses]\r\n"
+	comments := suppressionCommentsByLine(".github/workflows/ci.yml", source)
+	// The YAML script is data even with explicit indentation. The comment beside the action can suppress it.
+	if len(comments[5]) != 0 || len(comments[6]) != 1 {
+		t.Fatalf("comments = %#v, want only the directive on line 6", comments)
+	}
 }
 
 // TestInlineCommentsSuppressOnlyTheChecksSection13cNames walks each comment form section 13c decides for gruff-go.
@@ -33,6 +56,7 @@ func TestInlineCommentsSuppressOnlyTheChecksSection13cNames(t *testing.T) {
 		{"gosec G101 covers sensitive data", `url := "postgres://app:secret@db/orders" // #nosec G101 -- fixture`, inlineFinding("sensitive-data.connection-string", finding.PillarSensitiveData, 1), true},
 		{"gosec G101 leaves security rules", "// #nosec G101\nrun()", inlineFinding("security.shell-command", finding.PillarSecurity, 2), false},
 		{"bare nosec covers sensitive data", `url := "postgres://app:secret@db/orders" // #nosec -- fixture`, inlineFinding("sensitive-data.connection-string", finding.PillarSensitiveData, 1), true},
+		{"directive in a Go string", `run("#nosec G204")`, inlineFinding("security.shell-command", finding.PillarSecurity, 1), false},
 		{"bare nosec leaves function length", "// #nosec\nfunc long() {", inlineFinding("size.function-length", finding.PillarSize, 2), false},
 		{"nolint gosec in a list", `url := "postgres://app:secret@db/orders" //nolint:gosec,goconst`, inlineFinding("sensitive-data.connection-string", finding.PillarSensitiveData, 1), true},
 		{"nolint funlen above the function", "//nolint:funlen // setup stays linear\nfunc long() {", inlineFinding("size.function-length", finding.PillarSize, 2), true},
@@ -46,7 +70,12 @@ func TestInlineCommentsSuppressOnlyTheChecksSection13cNames(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			kept, summaries, suppressed := ApplyInlineSuppressions([]finding.Finding{testCase.finding}, nil, map[string]string{"main.go": testCase.source})
+			item := testCase.finding
+			// The workflow fixture needs YAML comment syntax, while the other examples exercise Go comments.
+			if item.RuleID == "security.github-actions-unpinned-action" {
+				item.File = ".github/workflows/ci.yml"
+			}
+			kept, summaries, suppressed := ApplyInlineSuppressions([]finding.Finding{item}, nil, map[string]string{item.File: testCase.source})
 			if got := len(suppressed) == 1; got != testCase.suppress {
 				t.Fatalf("suppressed = %v, want %v (kept %#v, rows %#v)", got, testCase.suppress, kept, summaries)
 			}

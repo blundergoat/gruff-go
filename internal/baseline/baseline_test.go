@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,8 +213,8 @@ func TestCollisionSuppressesNothingAndIsNamed(t *testing.T) {
 	}
 }
 
-// TestMessageRewordingOnlyMattersWithoutASymbol records the asymmetry
-// deliberately: a symbol-bearing finding keeps its entry, a file-level one does not.
+// TestMessageRewordingOnlyMattersWithoutASymbol records the asymmetry deliberately: a symbol-bearing finding keeps its entry, a file-level one does
+// not.
 func TestMessageRewordingOnlyMattersWithoutASymbol(t *testing.T) {
 	reworded := ordinary("process", 10)
 	reworded.Message = "This function has no documentation comment"
@@ -352,17 +353,19 @@ func TestParseRejectsEveryWayAFileCouldExpireLeakOrReorder(t *testing.T) {
 	}
 }
 
-// TestMigrationPreservesTheRetreatPath refuses in-place targets, keeps the 0.5
-// input byte-identical, writes a valid v3 file, and translates no 0.5 digest.
+// TestMigrationPreservesTheRetreatPath refuses in-place targets, keeps the 0.5 input byte-identical, writes a valid v3 file, and translates no 0.5
+// digest.
 func TestMigrationPreservesTheRetreatPath(t *testing.T) {
 	root := t.TempDir()
 	inputPath := filepath.Join(root, "legacy.json")
-	legacyBytes := "{\n  \"schemaVersion\": \"gruff-go.baseline.v0.1\",\n  \"findings\": [{\"ruleId\": \"docs.missing-package-comment\", \"file\": \"internal/widget/widget.go\", \"fingerprint\": \"0e2f6d4b9a1c7e35\", \"stableIdentity\": \"77c1a4e6b0d3f912\"}]\n}\n"
+	reviewed := ordinary("process", 10)
+	legacyBytes := fmt.Sprintf(`{"schemaVersion":"%s","findings":[{"ruleId":"%s","file":"%s","fingerprint":"%s","stableIdentity":"%s"}]}`,
+		LegacySchemaVersion, reviewed.RuleID, reviewed.File, reviewed.ComputeFingerprint(), reviewed.ComputeStableIdentity())
 	if err := os.WriteFile(inputPath, []byte(legacyBytes), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := []finding.Finding{ordinary("process", 10), ordinary("unreviewed", 90)}
-	run[1].RuleID = "naming.generic-function"
+	moved := ordinary("process", 30)
+	run := []finding.Finding{moved, ordinary("unreviewed", 90)}
 	if _, err := Migrate(inputPath, inputPath, run, stamp); err == nil || !strings.Contains(err.Error(), "same file") {
 		t.Fatalf("same-path migration = %v, want refusal", err)
 	}
@@ -390,7 +393,8 @@ func TestMigrationPreservesTheRetreatPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrated output must load as v3: %v", err)
 	}
-	if written.Occurrences[0].Identity == "0e2f6d4b9a1c7e35" || written.Occurrences[0].Identity == "77c1a4e6b0d3f912" {
+	// A migrated review must apply under the current stable identity, even when the old digests still identify the original occurrence.
+	if written.Occurrences[0].Identity == reviewed.ComputeFingerprint() || written.Occurrences[0].Identity == reviewed.ComputeStableIdentity() {
 		t.Fatal("migration translated a 0.5 digest instead of rebuilding the identity")
 	}
 	if _, err := ParseLegacy(mustRead(t, outputPath)); err == nil {
@@ -409,8 +413,8 @@ func mustRead(t *testing.T, path string) []byte {
 	return raw
 }
 
-// TestMeasuredValuesNeverEnterASymbolLessIdentity keeps a file that grew behind
-// its reviewed entry: the message names the finding, its numbers do not.
+// TestMeasuredValuesNeverEnterASymbolLessIdentity keeps a file that grew behind its reviewed entry: the message names the finding, its numbers do
+// not.
 func TestMeasuredValuesNeverEnterASymbolLessIdentity(t *testing.T) {
 	reviewed := finding.Finding{RuleID: "size.file-length", File: "src/widget.go", Message: "File has 1010 lines (limit 1000)"}
 	grown := reviewed

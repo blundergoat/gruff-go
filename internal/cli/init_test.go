@@ -73,27 +73,24 @@ func TestInitRefusesToOverwriteWithoutForce(t *testing.T) {
 	}
 }
 
-// TestInitForceOverwritesExistingConfig confirms --force replaces an existing config and that the new file parses cleanly.
-func TestInitForceOverwritesExistingConfig(t *testing.T) {
+// TestInitForcePreservesInvalidInput guards the rollback copy when preservation is impossible.
+func TestInitForcePreservesInvalidInput(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	if err := os.WriteFile(filepath.Join(root, ".gruff-go.yaml"), []byte("custom: yes\n"), 0o644); err != nil {
+	path := filepath.Join(root, ".gruff-go.yaml")
+	// Set up a config the developer cannot safely regenerate because it has an unknown key.
+	if err := os.WriteFile(path, []byte("custom: yes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	var stdout, stderr bytes.Buffer
-	if code := Main([]string{"init", "--force"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("force init exit = %d, stderr = %s", code, stderr.String())
+	code, _, stderr := captureCLIResult([]string{"init", "--force"})
+	// The developer needs a failure and a reason before deciding how to recover the file.
+	if code != 1 || !strings.Contains(stderr, "cannot preserve") {
+		t.Fatalf("init --force = %d, stderr = %q, want a refusal", code, stderr)
 	}
-	body, err := os.ReadFile(filepath.Join(root, ".gruff-go.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(body) == "custom: yes\n" {
-		t.Fatalf("--force did not replace the file")
-	}
-	if _, err := cfgpkg.Parse(body, ruleDefinitionsForTest()); err != nil {
-		t.Fatalf("forced config did not parse: %v", err)
+	body, err := os.ReadFile(path)
+	// The original bytes must still be available after the command refuses the rewrite.
+	if err != nil || string(body) != "custom: yes\n" {
+		t.Fatalf("original = %q, error = %v", body, err)
 	}
 }
 

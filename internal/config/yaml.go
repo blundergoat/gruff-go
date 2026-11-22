@@ -23,6 +23,7 @@ type yamlLine struct {
 // parseYAML converts the YAML body into a validated Config value.
 //
 // data is the raw configuration file content, and definitions is the rule definition list passed to decodeConfigPayload with the payload.
+//
 // Returns the decoded Config, or the zero Config and a nil error when data has no line left after blank and comment-only lines are dropped.
 // The error is non-nil when encodeYAMLAsJSON rejects the YAML structure or decodeConfigPayload fails on the payload.
 func parseYAML(data []byte, definitions []rule.Definition) (Config, error) {
@@ -43,6 +44,7 @@ func parseYAML(data []byte, definitions []rule.Definition) (Config, error) {
 // That lets a pre-0.2 config with legacy 5-bucket severity names still flow through the init --force preserve path.
 //
 // data is the raw configuration file content, and definitions is the rule definition list passed to decodeConfigPayloadPermissive.
+//
 // Returns the decoded Config, or the zero Config and a nil error when data has no line left after blank and comment-only lines are dropped.
 // The error is non-nil when encodeYAMLAsJSON rejects the YAML structure or decodeConfigPayloadPermissive fails on the payload.
 func parseYAMLPermissive(data []byte, definitions []rule.Definition) (Config, error) {
@@ -59,6 +61,7 @@ func parseYAMLPermissive(data []byte, definitions []rule.Definition) (Config, er
 // encodeYAMLAsJSON parses the YAML body into the canonical JSON payload the decoders consume; parseYAML and parseYAMLPermissive both call it.
 //
 // data is the raw YAML file content; blank and comment-only lines are dropped before parsing.
+//
 // Returns the encoded mapping, or nil bytes when no line is left, so callers can tell an empty or comment-only config from a structural error.
 // It fails when the root block is a list, a line sits shallower than the root block, or parseYAMLBlock or json.Marshal rejects the content.
 func encodeYAMLAsJSON(data []byte) ([]byte, error) {
@@ -85,6 +88,7 @@ func encodeYAMLAsJSON(data []byte) ([]byte, error) {
 // yamlLines splits the config text into trimmed, non-blank lines that keep their source line number and indentation.
 //
 // input is the whole file text; each line loses trailing spaces, tabs and carriage returns before its comment is stripped.
+//
 // Returns one yamlLine per line that still has text after stripYAMLComment, with its 1-based line number and count of leading spaces.
 // The result is an empty, non-nil slice when every line of input is blank or a comment.
 func yamlLines(input string) []yamlLine {
@@ -108,6 +112,7 @@ func yamlLines(input string) []yamlLine {
 // parseYAMLBlock parses either a list or map block depending on the next line.
 //
 // lines is the normalised input, index is the cursor of the block's first line, and indent is the indentation its entries must sit at.
+//
 // Returns the parsed list or map and the cursor after the block, or an empty map with index unchanged when index is already past the end.
 // The error comes from parseYAMLList or parseYAMLMap when a line breaks the block shape.
 func parseYAMLBlock(lines []yamlLine, index int, indent int) (any, int, error) {
@@ -185,6 +190,7 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 // That map shape is what sensitiveExclusions needs, per FAMILY-CONTRACT.md section 13a.
 //
 // lines is the normalised input, index is the cursor of the first dash entry, and indent is the indentation every dash must sit at.
+//
 // Returns the parsed items and the cursor of the first line indented less than indent, or len(lines) when the input runs out.
 // It fails on a deeper-indented or dash-less line, a flow mapping item, or an error from parseYAMLListItemMap.
 func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) {
@@ -222,6 +228,7 @@ func parseYAMLList(lines []yamlLine, index int, indent int) ([]any, int, error) 
 // Without it, a flow mapping fell through parseYAMLScalar as a string and failed at unmarshal time on a Go struct field name the user never wrote.
 //
 // subject names the offending key or list item in the message, valueText is the trimmed value, and lineNumber is its 1-based source line.
+//
 // Returns nil when valueText does not start with an opening brace, so callers can check every value.
 // Otherwise the error quotes valueText and tells the user to write the entries as an indented block or omit the value.
 func yamlFlowMappingError(subject string, valueText string, lineNumber int) error {
@@ -250,13 +257,14 @@ func yamlListItemOpensMap(text string) bool {
 // parseYAMLListItemMap parses one dash-introduced mapping item: its first key/value plus every following line indented deeper than the dash.
 //
 // lines is the normalised input, index is the cursor of the dash line, indent is the dash's indentation, and firstText is the text after the dash.
-// Continuation keys must sit two spaces deeper than the dash, the column firstText is treated as starting at.
+// Continuation keys align with the first key after the dash.
 //
 // Returns the item map and the cursor of the first line indented no deeper than the dash, or len(lines) when the input runs out.
+//
 // That cursor may sit on the next list item or on a key of an enclosing block.
 // It fails when parseYAMLMap rejects the item or a continuation line sits shallower than that key column; the cursor then stays at index.
 func parseYAMLListItemMap(lines []yamlLine, index int, indent int, firstText string) (map[string]any, int, error) {
-	itemIndent := indent + 2
+	itemIndent := indent + len(lines[index].text) - len(firstText)
 	itemLines := []yamlLine{{number: lines[index].number, indent: itemIndent, text: firstText}}
 	next := index + 1
 	for next < len(lines) && lines[next].indent > indent {
@@ -277,6 +285,7 @@ func parseYAMLListItemMap(lines []yamlLine, index int, indent int, firstText str
 // parseYAMLScalar converts a raw token into a string, bool, number, null, or inline list.
 //
 // input is a raw value token from a key, list item or inline-list part, and surrounding spaces are trimmed first.
+//
 // Returns a list for bracketed text, a bool for true or false, nil for null or a tilde, the unquoted string, or a float64 for numeric text.
 // Any other token, including a double-quoted one strconv.Unquote rejects, comes back as the trimmed input string.
 func parseYAMLScalar(input string) any {
@@ -326,6 +335,7 @@ func parseYAMLInlineList(input string) []any {
 // unquoteYAML strips matching single or double quotes from a scalar token and reports whether it did.
 //
 // input is a trimmed scalar token; a single-quoted body has doubled single quotes collapsed, and a double-quoted one goes through strconv.Unquote.
+//
 // Returns the unquoted text and true for a quoted token, which is how a value written as 'true' or '10' stays a string.
 // Returns an empty string and false when input is shorter than two characters, lacks matching outer quotes, or strconv.Unquote rejects it.
 func unquoteYAML(input string) (string, bool) {
@@ -344,24 +354,24 @@ func unquoteYAML(input string) (string, bool) {
 
 // stripYAMLComment removes a trailing hash comment that sits outside quoted text.
 //
-// input is one config line; a single or double quote opens quoted state until the same quote character recurs, with no escape handling.
+// input is one config line. Escaped double quotes and doubled single quotes stay inside their scalar.
 // Returns the text before the first hash outside quotes with trailing spaces trimmed, or input unchanged when there is no such hash.
 func stripYAMLComment(input string) string {
-	var quote rune
-	for index, current := range input {
-		switch current {
-		// An apostrophe in unquoted text also opens quoted state, so a later hash comment on that line stays in the value.
-		case '\'', '"':
-			if quote == 0 {
-				quote = current
-			} else if quote == current {
-				quote = 0
-			}
-		// An unquoted hash starts a comment even with no space before it, so a value written as a#b keeps only a.
-		case '#':
-			if quote == 0 {
-				return strings.TrimRight(input[:index], " ")
-			}
+	var quote byte
+	// Read through escaped quotes before looking for the hash that begins an actual YAML comment.
+	for index := 0; index < len(input); index++ {
+		current := input[index]
+		switch {
+		case quote == '"' && current == '\\':
+			index++
+		case quote == '\'' && current == '\'' && index+1 < len(input) && input[index+1] == '\'':
+			index++
+		case quote != 0 && current == quote:
+			quote = 0
+		case quote == 0 && (current == '\'' || current == '"'):
+			quote = current
+		case quote == 0 && current == '#':
+			return strings.TrimRight(input[:index], " ")
 		}
 	}
 	return input

@@ -1,6 +1,7 @@
 // Package analysis tests cover report assembly and exit-code resolution.
 //
 // These tests call NewReport and ResolveExitCode directly to check report scores and exit codes for diagnostics and findings.
+// A confidence floor controls the severity gate, while a finding marked new can still fail the baseline gate.
 package analysis
 
 import (
@@ -32,8 +33,23 @@ func TestResolveExitCode(t *testing.T) {
 	}
 }
 
-// TestNewReportScoresCleanRegisteredPillars verifies the CLI headline includes clean catalogue areas,
-// while Pillars stays limited to areas with findings.
+// TestNewReportAppliesBothFindingGates catches a report that uses the severity-only resolver.
+func TestNewReportAppliesBothFindingGates(t *testing.T) {
+	item := finding.Finding{Severity: finding.SeverityWarning, Confidence: finding.ConfidenceLow, BaselineStatus: "notEligible"}
+	input := ReportInput{Findings: []finding.Finding{item}, FailOn: finding.FailThresholdWarning, MinConfidence: finding.ConfidenceHigh}
+	// A finding below the confidence floor must leave a severity-only CI step green.
+	if got := NewReport(input).Summary.ExitCode; got != 0 {
+		t.Fatalf("below-floor finding exit = %d, want 0", got)
+	}
+	input.FailOn, input.FailOnNew = finding.FailThresholdNone, true
+	// Once the baseline identifies that finding as new, it must fail the independent novelty gate.
+	if got := NewReport(input).Summary.ExitCode; got != 1 {
+		t.Fatalf("baseline-ineligible finding exit = %d, want 1", got)
+	}
+}
+
+// TestNewReportScoresCleanRegisteredPillars verifies the CLI headline includes clean catalogue areas, while Pillars stays limited to areas with
+// findings.
 func TestNewReportScoresCleanRegisteredPillars(t *testing.T) {
 	report := NewReport(ReportInput{
 		Findings: []finding.Finding{
@@ -49,9 +65,8 @@ func TestNewReportScoresCleanRegisteredPillars(t *testing.T) {
 		Scanned: []string{"size.go", "complex.go"},
 	})
 
-	// Two evaluated files: size carries a high-confidence warning (weight 4, density 2.00, score
-	// 52.38), complexity a medium-confidence error (weight 9, density 4.50, score 51.09), and clean
-	// documentation scores 100. The ratified mean of the three is 67.82.
+	// Two evaluated files: size carries a high-confidence warning (weight 4, density 2.00, score 52.38), complexity a medium-confidence error (weight 9,
+	// density 4.50, score 51.09), and clean documentation scores 100. The ratified mean of the three is 67.82.
 	const wantComposite = 67.82
 	// A wrong evaluated-file count changes the densities of the pillars with findings, and so the expected composite score.
 	if report.Score.EvaluatedFiles == nil || *report.Score.EvaluatedFiles != 2 {

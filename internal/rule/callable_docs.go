@@ -1,6 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
 //
 // This file holds the docs.missing-param-doc and docs.missing-return-doc rules, which read a callable's doc comment as natural prose.
+//
 // They ask it to name each named, non-blank parameter other than context, HTTP, and testing handles.
 // They also ask it to explain the returned values and to say when an error is returned.
 //
@@ -21,6 +22,7 @@ import (
 // MissingParamDocRule flags documented callables whose doc comment leaves a named, non-blank parameter unmentioned.
 //
 // A name counts wherever it appears, in any letter case, in plain prose, backticks, or brackets, so no tag format is needed.
+//
 // Context, HTTP request and response, and testing handles are exempt, as are local closures.
 // Callables whose doc comment fails hasUsefulDeclarationComment are skipped.
 type MissingParamDocRule struct{}
@@ -47,8 +49,9 @@ func (MissingParamDocRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Fi
 		return nil
 	}
 	findings := []finding.Finding{}
+	handles := handleParameterImports(unit.AST)
 	for _, callable := range documentedCallables(unit.AST) {
-		missing := undocumentedParameters(callable.fnType, callable.doc)
+		missing := undocumentedParameters(callable.fnType, callable.doc, handles)
 		if len(missing) == 0 {
 			continue
 		}
@@ -128,16 +131,18 @@ func funcLiteralVars(decl *ast.GenDecl) []documentedCallable {
 // undocumentedParameters returns, in signature order, the named parameters the doc comment never mentions.
 //
 // Blank and unnamed parameters and context, HTTP request and response, and testing handles are skipped.
+//
 // fnType supplies the parameter list; a nil fnType or nil Params yields nil, else a non-nil slice that is empty when none are missing.
-// A nil doc mentions nothing, so every eligible parameter is missing; signatureDocAsks passes nil to list them all.
-func undocumentedParameters(fnType *ast.FuncType, doc *ast.CommentGroup) []string {
+// A nil doc mentions nothing. handles maps local standard-library import names to their package names.
+func undocumentedParameters(fnType *ast.FuncType, doc *ast.CommentGroup, handles map[string]string) []string {
 	if fnType == nil || fnType.Params == nil {
 		return nil
 	}
 	words := docWordSet(doc)
 	missing := []string{}
 	for _, field := range fnType.Params.List {
-		if isHandleParameter(field.Type) {
+		// Callers already know how standard handles are passed. Require prose for the callable's own inputs.
+		if isHandleParameter(field.Type, handles) {
 			continue
 		}
 		for _, name := range field.Names {
@@ -167,11 +172,21 @@ func proseWords(text string) []string {
 	return strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' })
 }
 
-// isHandleParameter reports whether expr names a context, HTTP request or response, or testing handle, which need no doc prose.
-//
-// It reads the type expression alone because the parser has no type information, so a renamed import such as stdctx.Context still needs doc prose.
-// expr is unwrapped from one pointer and must then be a selector spelled as the standard package name and type, such as testing.T.
-func isHandleParameter(expr ast.Expr) bool {
+// handleParameterImports returns the names under which file imports standard handle packages.
+func handleParameterImports(file *ast.File) map[string]string {
+	names := map[string]string{}
+	// Use standard package paths to recognize their usual handles even when developers import them under a different name.
+	for _, pkg := range []struct{ path, name string }{{"context", "context"}, {"net/http", "http"}, {"testing", "testing"}} {
+		// Record the local import name the signature actually spells.
+		for alias := range packageImportNames(file, pkg.path, pkg.name) {
+			names[alias] = pkg.name
+		}
+	}
+	return names
+}
+
+// isHandleParameter reports whether expr names a context, HTTP or testing handle through one of handles' imports.
+func isHandleParameter(expr ast.Expr, handles map[string]string) bool {
 	if star, ok := expr.(*ast.StarExpr); ok {
 		expr = star.X
 	}
@@ -180,10 +195,11 @@ func isHandleParameter(expr ast.Expr) bool {
 		return false
 	}
 	pkg, ok := selector.X.(*ast.Ident)
-	if !ok {
+	// A package-looking selector can name a local value. Keep its parameter in the documentation check.
+	if !ok || pkg.Obj != nil {
 		return false
 	}
-	switch pkg.Name + "." + selector.Sel.Name {
+	switch handles[pkg.Name] + "." + selector.Sel.Name {
 	case "context.Context", "http.Request", "http.ResponseWriter",
 		"testing.T", "testing.B", "testing.F", "testing.M", "testing.TB", "testing.PB":
 		return true
@@ -289,13 +305,14 @@ var failureWords = map[string]bool{
 	"failure": true, "failures": true,
 }
 
-// returnLeadWords are skipped between a return word and its object, so "returns a non-nil error" reads as
-// error prose and "returns the count" reads as value prose.
+// returnLeadWords are skipped between a return word and its object, so "returns a non-nil error" reads as error prose and "returns the count" reads
+// as value prose.
 var returnLeadWords = map[string]bool{"a": true, "an": true, "any": true, "the": true, "non": true, "nil": true}
 
 // undocumentedReturns compares a callable's results with its doc comment and reports which halves are unexplained.
 //
 // A callable that returns nothing needs no return prose, and error prose is asked for only when a result has the type error.
+//
 // fnType supplies the results; a nil fnType or nil Results gives a zero gap, and naming a result in doc also covers its half of the gap.
 // A nil doc, as signatureDocAsks passes, flags the value half when a non-error result exists and the error half when an error result exists.
 func undocumentedReturns(fnType *ast.FuncType, doc *ast.CommentGroup) returnDocGap {

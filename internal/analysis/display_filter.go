@@ -37,13 +37,12 @@ func (filter DisplayFilter) Empty() bool {
 		filter.MinimumSeverity == ""
 }
 
-// ApplyDisplayFilter hides findings that do not match the supplied filter.
+// ApplyDisplayFilter updates report before the CLI or dashboard renders it. Counts, score, and exit code still describe the full scan.
 //
-// report is changed in place: Findings keeps only matching findings, and DisplayFilter records the sorted rule and pillar lists and hidden count.
-// filter holds the rule, pillar and severity selections; an empty filter keeps every finding and records an unapplied summary with empty lists.
-//
-// A non-empty filter also records a caveat that summary counts, score and exit code are unchanged by the filter.
+// filter selects visible rules, pillars, and severities in the findings, baseline details, and SARIF results.
+// An empty filter keeps every finding and publishes empty selection lists. An active filter records sorted selections and a hidden count.
 func ApplyDisplayFilter(report *Report, filter DisplayFilter) {
+	// With no display preferences, the user sees the complete findings list and an unapplied filter summary.
 	if filter.Empty() {
 		report.DisplayFilter = DisplayFilterSummary{
 			IncludeRules:   []string{},
@@ -53,24 +52,25 @@ func ApplyDisplayFilter(report *Report, filter DisplayFilter) {
 		}
 		return
 	}
-	kept := report.Findings[:0]
-	hidden := 0
-	for _, item := range report.Findings {
-		if displayFilterKeeps(item, filter) {
-			kept = append(kept, item)
-			continue
-		}
-		hidden++
-	}
-	report.Findings = kept
+	previousCount := len(report.Findings)
+	report.Findings = slices.DeleteFunc(report.Findings, func(item finding.Finding) bool {
+		return !displayFilterKeeps(item, filter)
+	})
+	report.Baseline.Unchanged = slices.DeleteFunc(report.Baseline.Unchanged, func(item finding.Finding) bool {
+		return !displayFilterKeeps(item, filter)
+	})
+	report.Suppressed = slices.DeleteFunc(report.Suppressed, func(item SuppressedFinding) bool {
+		return !displayFilterKeeps(item.Finding, filter)
+	})
 	report.DisplayFilter = DisplayFilterSummary{
-		Applied:        true,
-		IncludeRules:   sortedStrings(filter.IncludeRules),
-		ExcludeRules:   sortedStrings(filter.ExcludeRules),
-		IncludePillars: sortedPillars(filter.IncludePillars),
-		ExcludePillars: sortedPillars(filter.ExcludePillars),
-		HiddenFindings: hidden,
-		Caveat:         "display filters do not change summary counts, score, or exit code",
+		Applied:         true,
+		IncludeRules:    sortedStrings(filter.IncludeRules),
+		ExcludeRules:    sortedStrings(filter.ExcludeRules),
+		IncludePillars:  sortedPillars(filter.IncludePillars),
+		ExcludePillars:  sortedPillars(filter.ExcludePillars),
+		HiddenFindings:  previousCount - len(report.Findings),
+		MinimumSeverity: filter.MinimumSeverity,
+		Caveat:          "display filters do not change summary counts, score, or exit code",
 	}
 }
 

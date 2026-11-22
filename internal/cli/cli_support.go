@@ -20,17 +20,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// projectRootFromTargets picks the directory that every reported path is written relative to.
+// projectRootFromTargets finds the directory that owns the scan paths the user passed, so report paths and policy resolve together.
 //
-// Run `gruff-go analyse .` from inside a project and the answer is that directory.
-// Run `gruff-go analyse /srv/checkout` from a home directory, as CI and scripted scans do, and the answer is
-// /srv/checkout, so the report still reads `internal/api/handler.go` rather than an absolute path.
-//
-// Returns an error when targets sit under different filesystem roots, leaving no single project to report against.
-//
-// paths are the targets as typed, relative ones read from the launch directory; a file target, or one that does not exist, counts as its folder.
-// It returns the launch directory when paths is empty or every target sits inside it, otherwise the deepest directory holding all of them.
-// The error is also returned when the launch directory itself cannot be read.
+// Returns the launch directory for empty paths or paths inside it. A single external file uses its nearest enclosing project marker.
+// Other external paths use their deepest common directory. It returns an error if the launch directory or a shared filesystem root is unavailable.
 func projectRootFromTargets(paths []string) (string, error) {
 	workingDirectory, err := os.Getwd()
 	if err != nil {
@@ -73,12 +66,43 @@ func projectRootFromTargets(paths []string) (string, error) {
 		}
 	}
 
-	// The targets are inside the directory the command was run from, so that stays the project root. Moving it
-	// down to a target's own folder would re-anchor config discovery, ignore patterns, and baseline paths.
+	// The targets are inside the directory the command was run from, so that stays the project root. Moving it down to a target's own folder would
+	// re-anchor config discovery, ignore patterns, and baseline paths.
 	if isSameOrDescendant(common, workingDirectory) {
 		return workingDirectory, nil
 	}
+	// A single external file can borrow its project's config and report paths. Several operands need a common root.
+	if len(paths) == 1 {
+		target := paths[0]
+		// Resolve a relative file from the directory where the user typed the command before looking for its project.
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(workingDirectory, target)
+		}
+		// An external directory is already the selected root. A file uses its nearest project marker above it.
+		if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
+			return enclosingProjectRoot(common), nil
+		}
+	}
 	return common, nil
+}
+
+// enclosingProjectRoot returns the nearest parent of dir with a Gruff config, Go module, or Git marker.
+// An external file with no enclosing project uses dir so its report paths still have a local anchor.
+func enclosingProjectRoot(dir string) string {
+	// Walk upward from an external file so a nested path can still inherit the enclosing policy.
+	for candidate := dir; ; candidate = filepath.Dir(candidate) {
+		// A Gruff config, Go module, or Git marker can establish the project whose paths the user expects in the report.
+		for _, marker := range []string{defaultConfigFileName, "go.mod", ".git"} {
+			// The nearest marker owns the scan, even when a parent directory also contains a project.
+			if _, err := os.Stat(filepath.Join(candidate, marker)); err == nil {
+				return candidate
+			}
+		}
+		// A file outside any project keeps its own directory as the report root.
+		if filepath.Dir(candidate) == candidate {
+			return dir
+		}
+	}
 }
 
 // targetsForRoot rewrites each relative target as an absolute path from the launch directory when the project root is somewhere else.
@@ -109,6 +133,7 @@ func targetsForRoot(projectRoot string, paths []string) []string {
 // This follows ADR-006 and FAMILY-CONTRACT.md section 13c; --no-baseline declines it.
 //
 // values holds the parsed analyse flags: once baselinePath, noBaseline or generateBaselinePath is set, no default file is looked up.
+//
 // It returns the --baseline path passed through rootRelativePath, which keeps an absolute path absolute, or the default file's bare name.
 // The result is an empty string when no baseline applies, such as --no-baseline alone or a project without the default file.
 func baselinePathForRun(projectRoot string, values analyseFlagValues) string {
@@ -127,6 +152,7 @@ func baselinePathForRun(projectRoot string, values analyseFlagValues) string {
 // Otherwise the result is path rewritten relative to projectRoot, falling back to path joined onto the launch directory when filepath.Rel fails.
 //
 // A re-anchored path stays relative, so the report does not publish a host path, and a file outside the project keeps its ../ form.
+//
 // JSON and summary-json omit baseline path and diagnostic file fields for that ../ form; SARIF and GitHub retain diagnostic paths.
 // An absolute input and the filepath.Rel fallback stay absolute and can carry a host path.
 func rootRelativePath(projectRoot, path string) string {
@@ -174,6 +200,7 @@ func analyseFromTargets(options analysis.Options, stderr io.Writer) (analysis.Re
 // The analyse caller refuses a run with several targets when any lies outside the launch directory, and this helper names the first one.
 //
 // paths are the targets as typed, relative ones read from the launch directory.
+//
 // It returns that target as typed and true.
 // It gives an empty string and false with fewer than two targets, when none is outside, or when the launch directory cannot be read.
 func targetOutsideLaunchDirectory(paths []string) (string, bool) {
@@ -233,6 +260,7 @@ func configDiscoveryRoot(configPath string, targets []string) (string, error) {
 // With no config file the returned Config is zero-valued, so a MinimumSeverity lookup yields an empty string, which callers read as no value set.
 //
 // configPath and noConfig are passed to the config loader as given, and targets decide the discovery root through configDiscoveryRoot.
+//
 // The string slice holds the config's IgnorePaths; it is nil when no config file is in use, and the registry is then rule.Defaults().
 // It fails, returning zero values, when the launch directory cannot be read, the config does not load, or its rule options are rejected.
 func configuredRegistry(configPath string, noConfig bool, targets []string) (rule.Registry, []string, cfgpkg.Config, error) {
@@ -259,6 +287,7 @@ func configuredRegistry(configPath string, noConfig bool, targets []string) (rul
 // sensitiveExclusionsFor converts the loaded config's validated section 13a entries into the analysis-side scopes.
 //
 // The config package owns every rule, path, key, and rationale check, so this is a shape change only.
+//
 // cfg is the loaded config; it returns one entry per SensitiveExclusions item, in order, copying Rule, Path, Symbol and Reason.
 // The slice is empty, not nil, when cfg has no sensitive exclusions.
 func sensitiveExclusionsFor(cfg cfgpkg.Config) []analysis.SensitiveExclusion {
@@ -320,6 +349,7 @@ func validateAnalyseEnums(format, editorLink, changedScope string, stderr io.Wri
 // parseDisplayFilter validates the rule and pillar filter flags into a DisplayFilter.
 //
 // includeRules and excludeRules are comma-separated rule IDs, and every one must match the ID of an entry in definitions.
+//
 // includePillars and excludePillars are comma-separated pillar names; an empty string leaves that part of the filter empty.
 // It returns the filled DisplayFilter, or a zero DisplayFilter and an error naming the first unknown rule or invalid pillar.
 func parseDisplayFilter(includeRules, excludeRules, includePillars, excludePillars string, definitions []rule.Definition) (analysis.DisplayFilter, error) {

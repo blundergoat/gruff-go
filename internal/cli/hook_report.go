@@ -1,6 +1,7 @@
 // Package cli builds the JSON payload consumed by coding-agent hooks.
 //
 // This file keeps findings, changed-scope counts, ignored paths and config status in one stable, user-facing gruff.hook.v2 response.
+// A fatal diagnostic tells the agent why it cannot trust a scan result or its comparison.
 package cli
 
 import (
@@ -153,13 +154,15 @@ type hookReportInput struct {
 	hookFlags hookFlagValues
 }
 
-// buildHookReport applies the baseline and changed-region filters to the analysis findings and wraps them in hook metadata.
-//
-// input carries the analysis report, rule definitions, changed lines, changed-scope flag, baseline and hook flags of one hook run.
-// It returns the complete JSON response for the user's agent; Config always reports schemaOk true and a null error from this builder.
-func buildHookReport(input hookReportInput) hookReport {
+// buildHookReport builds the JSON a coding agent reads after the hook applies the baseline and changed-region filters in input.
+// Returns the report with findings and comparison metadata, or a zero report and an error when baseline classification fails.
+func buildHookReport(input hookReportInput) (hookReport, error) {
 	analysisReport := input.analysisReport
-	visibleFindings, changedScopeSuppressed := hookFindings(analysisReport.Findings, input.ruleDefinitions, input.changedLines, input.changedScopeEnabled, input.hookBaseline)
+	visibleFindings, changedScopeSuppressed, err := hookFindings(analysisReport.Findings, input.ruleDefinitions, input.changedLines, input.changedScopeEnabled, input.hookBaseline)
+	// Return the classification failure so the agent never receives a report that claims the baseline was applied.
+	if err != nil {
+		return hookReport{}, err
+	}
 	return hookReport{
 		ContractVersion: hookContractVersion,
 		Analyzer:        hookAnalyzer{Name: analysisReport.Tool.Name, Version: analysisReport.Tool.Version},
@@ -170,13 +173,14 @@ func buildHookReport(input hookReportInput) hookReport {
 		Suppressions:    hookSuppressions(analysisReport.Suppressions),
 		Ignored:         hookIgnored{Paths: hookIgnoredPaths(analysisReport.Paths.Skipped)},
 		Config:          hookConfigState{SchemaOK: true, Error: nil},
-	}
+	}, nil
 }
 
 // hookDiagnostics copies every analysis diagnostic into the payload, so non-fatal budget notes reach the agent in-band.
 //
 // It returns one row per entry of diagnostics, in order, typed by DiagnosticType or else Stage, with line zero when there is no location.
-// The result is an empty, non-nil slice when diagnostics is empty; only an entry whose InvalidatesRun is explicitly true gets fatal severity.
+//
+// The result is empty when diagnostics is empty. A nil invalidation flag means fatal.
 // The projection leaves hook exit semantics unchanged.
 func hookDiagnostics(diagnostics []analysis.Diagnostic) []hookDiagnostic {
 	out := make([]hookDiagnostic, 0, len(diagnostics))
@@ -189,13 +193,14 @@ func hookDiagnostics(diagnostics []analysis.Diagnostic) []hookDiagnostic {
 		if diagnostic.Location != nil {
 			line = diagnostic.Location.Line
 		}
+		invalidatesRun := diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun
 		out = append(out, hookDiagnostic{
 			Type:           label,
 			Severity:       hookDiagnosticSeverity(diagnostic),
 			Message:        diagnostic.Message,
 			File:           diagnostic.File,
 			Line:           line,
-			InvalidatesRun: diagnostic.InvalidatesRun,
+			InvalidatesRun: &invalidatesRun,
 		})
 	}
 	return out
@@ -216,10 +221,10 @@ func hookIgnoredPaths(skippedPaths []analysis.SkippedPath) []hookIgnoredPath {
 
 // hookDiagnosticSeverity names what a diagnostic means for the run; neither the analysis exit code nor hookExitCode reads the label.
 //
-// It returns the string fatal when the diagnostic's InvalidatesRun is set to true, and warning when it is nil or false.
-// A nil InvalidatesRun still makes the hook exit 2, so a warning can accompany exit 2; under --fail-on-diagnostics a warning can cause exit 1.
+// It returns fatal when diagnostic invalidates the scan, and warning otherwise.
 func hookDiagnosticSeverity(diagnostic analysis.Diagnostic) string {
-	if diagnostic.InvalidatesRun != nil && *diagnostic.InvalidatesRun {
+	// A diagnostic without an explicit override is fatal, matching the exit code an agent observes.
+	if diagnostic.InvalidatesRun == nil || *diagnostic.InvalidatesRun {
 		return "fatal"
 	}
 

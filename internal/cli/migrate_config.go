@@ -1,8 +1,7 @@
 // Package cli's migrate-config command carries a 0.5 configuration forward to the 0.6 schema, out of place.
 //
-// Two keys moved in 0.6.0: the per-command exit gate left minimumSeverity for failOn, and allowlists.secretPreviews was removed outright.
-// The second went because FAMILY-CONTRACT.md section 5 makes category markers unconditional.
-// A file carrying either is refused by the loader, so a user upgrading needs a way across that does not mean re-typing their configuration.
+// In 0.6.0 the per-command exit gate moved from minimumSeverity to failOn. Preview allowlists and retired rule blocks were removed.
+// This command rewrites those keys so the loader can accept the rest of the user's configuration.
 //
 // The rewrite is line-oriented rather than a parse-and-re-render, so every line it does not touch passes through verbatim.
 // Removed spans, a header the removal empties, and a rewritten schemaVersion line lose any comment or value they carried.
@@ -13,31 +12,31 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/config"
+	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// configMigration is what one migration produced: the destination's text, and one readable line per rewrite.
-// An empty changes slice means no rewrite matched and text is the input byte for byte; nothing checks that the loader accepts it.
+// configMigration holds the candidate configuration and a list of changes a developer can review.
+//
+// A dry run prints the changes without writing a file.
+// A successful write uses the candidate text. An empty change list means the input was already current.
 type configMigration struct {
 	text    string
 	changes []string
 }
 
-// runMigrateConfig runs gruff-go migrate-config: it reads the named config, rewrites it, and puts the result where the user asked.
+// runMigrateConfig validates a 0.5 config and prepares a separate file when a developer upgrades with gruff-go migrate-config.
+// args accepts -config, -output, and -dry-run. Positional paths are refused because the flags identify the source and destination.
 //
-// The input is only read here; writeMigratedConfig refuses an output with the same absolute path, but not a symlink or hard link to the input.
-// args holds the migrate-config arguments, parsed as the -config, -output and -dry-run flags; a positional operand is refused.
-//
-// Change lists and confirmations go to stdout; the flag parser's output and every refusal or failure message go to stderr.
-// It returns the exit code: 0 after a dry run or a written file, and 2 for unusable arguments, an unreadable input, or a refused or failed write.
+// stdout receives changes and confirmation. stderr receives flag, read, validation, or write errors.
+// Returns 0 after a valid dry run or write, and 2 if the requested migration cannot be completed.
 func runMigrateConfig(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("migrate-config", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	inputPath := flags.String("config", "", "the 0.5 config to read; it is never modified")
-	outputPath := flags.String("output", "", "where to write the migrated config; required unless -dry-run")
+	outputPath := flags.String("output", "", "new file for the migrated config; required unless -dry-run")
 	dryRun := flags.Bool("dry-run", false, "print what would change and write nothing")
 	// An unknown or malformed flag, such as -ouput typed for -output, lands here and the run exits 2.
 	if err := parseCommandArguments(flags, args); err != nil {
@@ -62,11 +61,18 @@ func runMigrateConfig(args []string, stdout, stderr io.Writer) int {
 	}
 
 	migration := migrateConfigText(string(original))
+	defaults := rule.Defaults()
+	// A field the current CLI still cannot load stops both the dry run and the write, leaving the source file in place.
+	if _, err := config.Parse([]byte(migration.text), defaults.Definitions()); err != nil {
+		fmt.Fprintf(stderr, "cannot migrate %s: %v (original kept)\n", *inputPath, err)
+		return 2
+	}
 	// An already-current file is still copied byte for byte to -output unless -dry-run is set.
 	if len(migration.changes) == 0 {
 		fmt.Fprintf(stdout, "%s is already current; no changes.\n", *inputPath)
 	} else {
 		fmt.Fprintln(stdout, "Migration changes:")
+		// List each rewrite so the developer can review the migration before replacing their project config.
 		for _, change := range migration.changes {
 			fmt.Fprintf(stdout, "  - %s\n", change)
 		}
@@ -80,145 +86,141 @@ func runMigrateConfig(args []string, stdout, stderr io.Writer) int {
 	return writeMigratedConfig(*inputPath, *outputPath, migration.text, stdout, stderr)
 }
 
-// writeMigratedConfig writes the migrated text to the destination the user named, refusing an output whose absolute path matches the input.
+// writeMigratedConfig publishes migrated at a new outputPath while keeping inputPath available as the rollback copy.
 //
-// A symlink or hard link to the input passes that check, so the write can still replace the input's contents.
-// inputPath names the config that was read, outputPath the destination file, and migrated the text written there with mode 0600 for a new file.
-//
-// The confirmation goes to stdout and each refusal or write failure goes to stderr.
-// It returns 0 once the file is written, and 2 when outputPath is empty, has the same absolute path as inputPath, or cannot be written.
+// An empty outputPath or any existing destination is refused. stdout confirms success and stderr explains a failed write.
+// Returns 0 once the file is closed, or 2 if it cannot be safely created or written.
 func writeMigratedConfig(inputPath, outputPath, migrated string, stdout, stderr io.Writer) int {
-	// Reached when the user runs migrate-config without -output or -dry-run; the run exits 2 rather than pick a destination the user did not name.
+	// Only a dry run can omit a destination.
 	if outputPath == "" {
 		fmt.Fprintln(stderr, "migrate-config needs -output <path>, or -dry-run to print the changes")
 		return 2
 	}
-	// Only identical absolute path strings are refused; a symlink or hard link can still point -output at the -config file and overwrite it.
-	if sameConfigFile(inputPath, outputPath) {
-		fmt.Fprintf(stderr, "-output must name a different file from -config; %s is the copy you may want back\n", inputPath)
+	// #nosec G304 -- The destination is the CLI's explicit output operand.
+	output, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	// A destination already linked to the source, or a directory the developer cannot write, leaves the original available.
+	if err != nil {
+		fmt.Fprintf(stderr, "unable to create %s: %v; choose a new output file\n", outputPath, err)
 		return 2
 	}
-
-	// A destination gruff cannot write is reported rather than swallowed, so the user does not believe it migrated.
-	if err := os.WriteFile(outputPath, []byte(migrated), 0o600); err != nil {
-		fmt.Fprintf(stderr, "unable to write %s: %v\n", outputPath, err)
+	_, writeErr := io.WriteString(output, migrated)
+	closeErr := output.Close()
+	// If storage fills during the write, remove the incomplete destination so it cannot be mistaken for valid output.
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(outputPath)
+		fmt.Fprintf(stderr, "unable to finish writing %s: write=%v close=%v\n", outputPath, writeErr, closeErr)
 		return 2
 	}
 	fmt.Fprintf(stdout, "Wrote %s; %s is unchanged.\n", outputPath, inputPath)
 	return 0
 }
 
-// sameConfigFile reports whether two paths have the same absolute form, the check that refuses a migration output naming its own input path.
-//
-// left and right are made absolute with filepath.Abs and compared as strings, so a symlink or hard link to the same file is not detected.
-// It reports false when either path cannot be made absolute.
-func sameConfigFile(left, right string) bool {
-	resolvedLeft, leftErr := filepath.Abs(left)
-	resolvedRight, rightErr := filepath.Abs(right)
-	if leftErr != nil || rightErr != nil {
-		return false
-	}
-	return resolvedLeft == resolvedRight
-}
-
-// migrateConfigText rewrites one configuration's text for the current schema, leaving alone every line the migration does not recognise.
-//
-// A comment inside a removed block or on a rewritten schemaVersion line is lost, as is a header the removal empties.
-// original is the whole file text; an indented secretPreviews key and its contiguous deeper lines are dropped, so a blank line ends the removal.
-// A minimumSeverity key becomes failOn only when nothing follows its colon and the next line is nonblank and deeper.
-//
-// It returns the migrated text with a change line per removed key, renamed key, or schemaVersion fix.
-// When nothing changed, changes is empty and text is original byte for byte.
+// migrateConfigText returns original with the legacy keys rewritten before migrate-config validates it.
+// The result includes the changes a developer sees in a dry run. An empty change list means the original bytes can be copied.
 func migrateConfigText(original string) configMigration {
 	lines := strings.Split(original, "\n")
-	migrated := make([]string, 0, len(lines))
-	changes := []string{}
-
+	root := firstConfigLine(lines, 0)
+	rootIndent := 0
+	// Use the first setting's column so comments above it do not change the structure of the rewritten config.
+	if root < len(lines) {
+		rootIndent = lineIndent(lines[root])
+	}
+	migrated, changes := []string{}, []string{}
+	// Copy supported settings in place so the developer can compare the migrated text with the original.
 	for index := 0; index < len(lines); {
-		// Removing secretPreviews drops its contiguous deeper lines; a blank line ends the span, so later children stay in the output without their key.
-		if skipped := removedKeyBlockLength(lines, index); skipped > 0 {
-			changes = append(changes, fmt.Sprintf("line %d: allowlists.secretPreviews removed; section 5 makes category markers unconditional", index+1))
-			index += skipped
-			migrated = dropEmptiedParent(migrated, lines, index)
+		line := lines[index]
+		switch {
+		case lineIndent(line) == rootIndent && keyIs(line, "minimumSeverity") && opensConfigBlock(lines, index):
+			_, tail, _ := strings.Cut(line, ":")
+			migrated = append(migrated, line[:rootIndent]+"failOn:"+tail)
+			changes = append(changes, "minimumSeverity map renamed to failOn")
+		case lineIndent(line) == rootIndent && opensConfigBlock(lines, index) &&
+			(keyIs(line, "allowlists") || keyIs(line, "sensitiveData") || keyIs(line, "rules")):
+			end := configBlockEnd(lines, index)
+			block, removedKeys := migrateConfigBlock(lines[index:end])
+			migrated = append(migrated, block...)
+			changes = append(changes, removedKeys...)
+			index = end
 			continue
+		default:
+			migrated = append(migrated, line)
 		}
-		// A per-command map under the old key is the exit gate, which now has its own name.
-		if renamed, ok := renamedGateLine(lines, index); ok {
-			changes = append(changes, fmt.Sprintf("line %d: minimumSeverity: renamed to failOn:, the key that gates the exit code in 0.6", index+1))
-			migrated = append(migrated, renamed)
-			index++
-			continue
-		}
-		migrated = append(migrated, lines[index])
 		index++
 	}
 	return withSchemaVersion(migrated, changes, original)
 }
 
-// removedKeyBlockLength reports how many lines the removed redaction key occupies, counting the contiguous deeper lines under it.
-//
-// lines is the config split into lines and index the line to test; only an indented secretPreviews key matches, not a root-level one.
-// The count includes the key line and stops at the first blank line or line no deeper than the key; it is 0 when index is not that key.
-func removedKeyBlockLength(lines []string, index int) int {
-	indent := lineIndent(lines[index])
-	// Any indented secretPreviews key is removed without checking its parent; a root-level key is left for the loader to refuse.
-	if indent == 0 || !keyIs(lines[index], "secretPreviews") {
-		return 0
+// migrateConfigBlock returns block with retired preview and rule entries removed while keeping supported settings.
+// The second result names what was removed so the developer can inspect the dry run. An empty list means the block needed no changes.
+func migrateConfigBlock(block []string) ([]string, []string) {
+	header, keptLines, removedKeys := block[0], []string{block[0]}, []string{}
+	child := firstConfigLine(block, 1)
+	childIndent := lineIndent(block[child])
+	// Keep other entries in the same order when a retired setting shares their section.
+	for index := 1; index < len(block); {
+		line := block[index]
+		// Remove a retired entry and its child values together so none can attach to the next setting.
+		if lineIndent(line) == childIndent && retiredConfigKey(header, line) {
+			key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
+			removedKeys = append(removedKeys, "removed "+key)
+			index = configBlockEnd(block, index)
+			continue
+		}
+		keptLines = append(keptLines, line)
+		index++
 	}
-	length := 1
-	for index+length < len(lines) && isDeeperThan(lines[index+length], indent) {
-		length++
+	// If only removed settings used the section, drop its header so the current loader sees no empty legacy section.
+	if firstConfigLine(keptLines, 1) == len(keptLines) && len(removedKeys) > 0 {
+		return keptLines[1:], removedKeys
 	}
-	return length
+	return keptLines, removedKeys
 }
 
-// renamedGateLine rewrites the old gate key when it introduces a per-command block, leaving the scalar floor alone.
-//
-// lines is the config split into lines and index the line to test; any nonblank deeper next line opens a block, even an indented comment.
-// It returns the failOn: line at the same indent and true, or an empty string and false for a scalar, another key, or no deeper next line.
-func renamedGateLine(lines []string, index int) (string, bool) {
-	if !keyIs(lines[index], "minimumSeverity") {
-		return "", false
+// retiredConfigKey reports whether line names a retired direct child of header.
+func retiredConfigKey(header, line string) bool {
+	switch {
+	case keyIs(header, "allowlists"):
+		return keyIs(line, "secretPreviews")
+	case keyIs(header, "sensitiveData"):
+		return keyIs(line, "previewAllowlist")
+	case keyIs(header, "rules"):
+		key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
+		switch strings.TrimSpace(key) {
+		case "design.hotspot-file", "maintainability.production-panic", "naming.negated-boolean", "security.sensitive-data-logging", "security.sql-string-query", "sensitive-data.high-entropy-string", "test-quality.no-failure-path", "test-quality.skipped-test":
+			return true
+		}
 	}
-	// A key with a value on the same line is the 0.6 display floor and keeps its name.
-	// A trailing comment counts as text after the colon too, so a commented gate header is not migrated.
-	_, tail, _ := strings.Cut(strings.TrimSpace(lines[index]), ":")
-	if strings.TrimSpace(tail) != "" {
-		return "", false
-	}
-	indent := lineIndent(lines[index])
-	// An empty block would be a key with nothing under it, which the loader reads as neither shape.
-	// A block whose first child follows a blank line also keeps the old name, since a blank next line does not count as deeper.
-	if index+1 >= len(lines) || !isDeeperThan(lines[index+1], indent) {
-		return "", false
-	}
-	return lines[index][:indent] + "failOn:", true
+	return false
 }
 
-// dropEmptiedParent removes a header line left just before a removed block when the line at index is absent, blank, or no deeper than it.
-//
-// Only that line is checked, so a child that follows a blank line does not keep the header.
-// The candidate header is just the previous output line ending in a colon, so an empty sibling key right before the removed key is dropped too.
-//
-// migrated is the output built so far, whose last line is the candidate header, and it is returned unchanged unless that header is dropped.
-// lines is the input split into lines and index the first line after the removed block, checked for a child deeper than the header.
-// It returns migrated without its last line when that line ends in a colon, is not a bare colon or a comment, and has no deeper line at index.
-func dropEmptiedParent(migrated, lines []string, index int) []string {
-	if len(migrated) == 0 {
-		return migrated
+// opensConfigBlock reports whether lines has an indented block after index, ignoring comments and blank lines.
+func opensConfigBlock(lines []string, index int) bool {
+	_, _, tailPresent := strings.Cut(lines[index], ":")
+	next := firstConfigLine(lines, index+1)
+	return tailPresent && next < len(lines) && lineIndent(lines[next]) > lineIndent(lines[index])
+}
+
+// configBlockEnd returns the index past the children of lines[index], leaving trailing comments outside the block.
+func configBlockEnd(lines []string, index int) int {
+	indent, end := lineIndent(lines[index]), index+1
+	// Take the retired setting's indented values with it while leaving comments that lead into the next section.
+	for next := firstConfigLine(lines, end); next < len(lines) && lineIndent(lines[next]) > indent; next = firstConfigLine(lines, end) {
+		end = next + 1
 	}
-	header := migrated[len(migrated)-1]
-	trimmed := strings.TrimSpace(header)
-	// A comment, blank line or bare colon is kept; any other line ending in a colon is treated as an empty header.
-	// So a value line that happens to end in a colon can be removed as well.
-	if len(trimmed) < 2 || strings.HasPrefix(trimmed, "#") || !strings.HasSuffix(trimmed, ":") {
-		return migrated
+	return end
+}
+
+// firstConfigLine returns the index of the first value line at or after start, or len(lines).
+func firstConfigLine(lines []string, start int) int {
+	// Skip whitespace and notes to find the next setting that determines the block's structure.
+	for index := start; index < len(lines); index++ {
+		text := strings.TrimSpace(lines[index])
+		// An actual setting can start or end a block. A blank line or comment cannot.
+		if text != "" && !strings.HasPrefix(text, "#") {
+			return index
+		}
 	}
-	// Only the line right after the removed span is checked, so a child after a blank line does not save the header.
-	if index < len(lines) && isDeeperThan(lines[index], lineIndent(header)) {
-		return migrated
-	}
-	return migrated[:len(migrated)-1]
+	return len(lines)
 }
 
 // keyIs reports whether a line is exactly the named key followed by a colon, so a comment or longer name is not it.
@@ -233,12 +235,6 @@ func lineIndent(line string) int {
 	return len(line) - len(strings.TrimLeft(line, " \t"))
 }
 
-// isDeeperThan reports whether line is nonblank and indented deeper than indent, meaning it sits inside a block opened at indent.
-// A blank line gives false: it ends a removed key's span, and it never counts as a child that keeps a header or opens a gate block.
-func isDeeperThan(line string, indent int) bool {
-	return strings.TrimSpace(line) != "" && lineIndent(line) > indent
-}
-
 // withSchemaVersion pins the schema version, inserting it at the top when the 0.5 file never named one.
 //
 // Only a root-level schemaVersion key counts; unless it already matches the pinned line, it is replaced whole, trailing comment included.
@@ -247,10 +243,16 @@ func isDeeperThan(line string, indent int) bool {
 // lines is the migrated text split into lines, changes the rewrites so far, and original the input text kept when nothing changed.
 // It returns the newline-joined lines and changes, plus an entry when schemaVersion was added or rewritten; with no changes, text is original.
 func withSchemaVersion(lines, changes []string, original string) configMigration {
-	pinned := fmt.Sprintf("schemaVersion: %q", config.SchemaVersion)
 	existing := -1
+	rootIndent := 0
+	// Match the existing indentation so a new schema line belongs to the same config.
+	if first := firstConfigLine(lines, 0); first < len(lines) {
+		rootIndent = lineIndent(lines[first])
+	}
+	pinned := strings.Repeat(" ", rootIndent) + fmt.Sprintf("schemaVersion: %q", config.SchemaVersion)
 	for position, line := range lines {
-		if lineIndent(line) == 0 && keyIs(line, "schemaVersion") {
+		// Use only the top-level version. A nested setting with the same name belongs to its own section.
+		if lineIndent(line) == rootIndent && keyIs(line, "schemaVersion") {
 			existing = position
 			break
 		}
@@ -261,7 +263,7 @@ func withSchemaVersion(lines, changes []string, original string) configMigration
 		changes = append(changes, fmt.Sprintf("line 1: schemaVersion added as %s; every 0.6 loader requires it", config.SchemaVersion))
 		lines = append([]string{pinned}, lines...)
 	// The reported line number counts lines of the migrated output, so it is off from the input when lines above it were removed.
-	case strings.TrimSpace(lines[existing]) != pinned:
+	case lines[existing] != pinned:
 		changes = append(changes, fmt.Sprintf("line %d: schemaVersion pinned to %s", existing+1, config.SchemaVersion))
 		lines[existing] = pinned
 	}

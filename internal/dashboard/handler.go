@@ -1,6 +1,7 @@
 // Package dashboard holds the HTTP handlers behind the gruff-go dashboard page.
 //
 // They translate the form's query parameters into analysis options, run the scan, and render the HTML report.
+//
 // An expired scan timeout shows an error page with exit code 124, and a returned scan error or render failure shows one with exit code 2.
 // Findings that fail the exit gate still render the normal report.
 package dashboard
@@ -56,6 +57,7 @@ func NewHandler(opts Options) http.Handler {
 // handleScan reads the /scan query parameters from request, runs the analysis, and writes the HTML report or an error page to writer.
 //
 // opts supplies the form defaults, the ScanTimeout that bounds the scan when positive, and the EditorLink for the rendered report.
+//
 // A timeout writes an error page with exit code 124, and a returned scan error or render failure writes one with exit code 2.
 // Findings that fail the exit gate still get the normal report, with their exit code in its metadata.
 func handleScan(writer http.ResponseWriter, request *http.Request, opts Options) {
@@ -214,24 +216,31 @@ func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, err
 	if err != nil {
 		return analysis.Report{}, err
 	}
-	registry, ignorePaths, sensitiveExclusions, deepScanBudget, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig, scanOpts.deepScanBudget)
+	registry, cfg, deepScanBudget, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig, scanOpts.deepScanBudget)
 	if err != nil {
 		return analysis.Report{}, fmt.Errorf("config: %w", err)
 	}
-	return analysis.Analyze(analysis.Options{
+	result, err := analysis.Analyze(analysis.Options{
 		Context:             ctx,
 		Root:                root,
 		Paths:               scanOpts.paths,
 		Format:              "html",
 		FailOn:              scanOpts.failOn,
 		Registry:            registry,
-		IgnorePaths:         ignorePaths,
-		SensitiveExclusions: sensitiveExclusions,
+		IgnorePaths:         cfg.IgnorePaths,
+		SensitiveExclusions: dashboardSensitiveExclusions(cfg),
 		DeepScanBudget:      deepScanBudget,
 		BaselinePath:        scanOpts.baselinePath,
 		DiffBase:            scanOpts.diffBase,
 		IncludeIgnored:      scanOpts.includeIgnored,
 	})
+	// A failed scan goes back to the request handler so the browser can show its diagnostic.
+	if err != nil {
+		return analysis.Report{}, err
+	}
+	floor, _ := cfg.MinimumSeverity.Severity()
+	analysis.ApplyDisplayFilter(&result, analysis.DisplayFilter{MinimumSeverity: floor})
+	return result, nil
 }
 
 // dashboardRoot resolves the requested project root to an absolute path or empty string.
@@ -245,32 +254,29 @@ func dashboardRoot(root string) (string, error) {
 	return filepath.Abs(root)
 }
 
-// dashboardRegistry loads project config and returns the rule registry, discovery ignore patterns and sensitive exclusions the scan must honour.
+// dashboardRegistry loads the rules and scan budget when a user runs a scan from the dashboard.
 //
-// root and configPath tell cfgpkg.LoadAuto where to find the config, and noConfig asks it to skip loading one.
-// override is the requested deep-scan budget, either empty for no override, off, or LINES:BYTES, and wins over the config's own budget.
-// It also returns that deep-scan budget; with no config file loaded it returns the default registry and nil ignore patterns and exclusions.
-//
-// It fails with zero values when the config fails to load, override is malformed, or the configured rule options are rejected.
-func dashboardRegistry(root, configPath string, noConfig bool, override string) (rule.Registry, []string, []analysis.SensitiveExclusion, analysis.DeepScanBudget, error) {
+// root and configPath locate the config unless noConfig is set. An empty override uses the project's budget.
+// Returns the registry, config, and budget. Missing config uses defaults, and invalid config or budget returns the error with zero values.
+func dashboardRegistry(root, configPath string, noConfig bool, override string) (rule.Registry, cfgpkg.Config, analysis.DeepScanBudget, error) {
 	defaults := rule.Defaults()
 	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
 	if err != nil {
-		return rule.Registry{}, nil, nil, analysis.DeepScanBudget{}, err
+		return rule.Registry{}, cfgpkg.Config{}, analysis.DeepScanBudget{}, err
 	}
 	deepScanBudget, err := dashboardDeepScanBudget(loaded.Config, override)
 	if err != nil {
-		return rule.Registry{}, nil, nil, analysis.DeepScanBudget{}, err
+		return rule.Registry{}, cfgpkg.Config{}, analysis.DeepScanBudget{}, err
 	}
 	// With no config file in use, the scan runs the default rule set and no config ignore patterns or sensitive exclusions apply.
 	if loaded.Path == "" {
-		return defaults, nil, nil, deepScanBudget, nil
+		return defaults, cfgpkg.Config{}, deepScanBudget, nil
 	}
 	registry, err := rule.DefaultsConfigured(loaded.Config.RuleOptions())
 	if err != nil {
-		return rule.Registry{}, nil, nil, analysis.DeepScanBudget{}, err
+		return rule.Registry{}, cfgpkg.Config{}, analysis.DeepScanBudget{}, err
 	}
-	return registry, loaded.Config.IgnorePaths, dashboardSensitiveExclusions(loaded.Config), deepScanBudget, nil
+	return registry, loaded.Config, deepScanBudget, nil
 }
 
 // dashboardDeepScanBudget mirrors CLI-over-config precedence for dashboard requests.
@@ -356,6 +362,10 @@ func displayCommand(state report.DashboardState, opts Options) string {
 	args := []string{"gruff-go", "analyse", "--format", "html"}
 	if state.ReportInteractive == "1" {
 		args = append(args, "--report-interactive")
+	}
+	// Include a requested budget in the dashboard's displayed command so a user can repeat the scan from the CLI.
+	if opts.DeepScanBudget != "" {
+		args = append(args, "--deep-scan-budget", opts.DeepScanBudget)
 	}
 	if opts.EditorLink != "" && opts.EditorLink != "none" {
 		args = append(args, "--report-editor-link", opts.EditorLink)

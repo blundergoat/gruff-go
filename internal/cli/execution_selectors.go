@@ -1,6 +1,7 @@
 // Package cli resolves the family's execution selectors: the flags that choose what runs, not what is shown.
 //
 // Execution selectors and display selectors affect different parts of the run.
+//
 // The --show-rule and --hide-rule flags filter a finished report, so the score and the exit code are the same with or without them.
 // The --include-rule and --exclude-rule flags change which rules execute, so they can move the score and what a baseline records.
 //
@@ -9,6 +10,7 @@ package cli
 
 import (
 	"fmt"
+	"slices"
 
 	cfgpkg "github.com/blundergoat/gruff-go/internal/config"
 	"github.com/blundergoat/gruff-go/internal/rule"
@@ -19,11 +21,11 @@ import (
 // Each field holds a comma-separated list; applyExecutionSelectors validates it and folds it into the loaded configuration.
 // When all four are empty, no selector was given and the configured registry runs unchanged.
 type executionSelectors struct {
-	// includeRules adds rule IDs to the configured allowlist; empty adds none and leaves the configured selection as it is.
+	// includeRules restricts the run to matching rules and pillars when an include is present.
 	includeRules string
 	// excludeRules names rules not to run, applied after any inclusion.
 	excludeRules string
-	// includePillars adds pillar names to the configured pillar allowlist, in the same additive sense as includeRules.
+	// includePillars includes rules in those pillars alongside any explicit rule IDs.
 	includePillars string
 	// excludePillars names pillars not to run.
 	excludePillars string
@@ -36,17 +38,11 @@ func (selectors executionSelectors) requested() bool {
 		selectors.includePillars != "" || selectors.excludePillars != ""
 }
 
-// applyExecutionSelectors rebuilds the rule registry so only the rules the user asked for actually run.
+// applyExecutionSelectors combines CLI selectors with cfg before analysis, so the selected rules determine the score and any generated baseline.
 //
-// The selectors are folded into the loaded configuration rather than filtered afterwards, so a command line and a
-// configuration file that name the same rules produce one registry and one score.
-//
-// Rule ids in selectors must appear in definitions, and pillar names must belong to the ratified vocabulary.
-// The validated values are appended to copies of the rule and pillar selection and exclusion lists taken from cfg.
-//
-// With no selector requested it returns a zero Registry, cfg unchanged and a nil error, since the configured registry already applies.
-// Otherwise it returns the registry rule.DefaultsConfigured builds from the merged configuration, together with that merged configuration.
-// It fails, with a zero Registry and the original cfg, when either validator refuses a value or rule.DefaultsConfigured cannot build the registry.
+// CLI inclusions replace config inclusions. Both sets of exclusions still apply. definitions validates the rule IDs and pillar names.
+// Returns the rebuilt registry and merged config. With no selectors it returns a zero registry so the caller keeps the configured one.
+// An unknown selector or failed registry build returns the error, a zero registry, and the original config.
 func applyExecutionSelectors(cfg cfgpkg.Config, selectors executionSelectors, definitions []rule.Definition) (rule.Registry, cfgpkg.Config, error) {
 	// Without a selector the configured registry already answers the question, and rebuilding it would only risk drift.
 	if !selectors.requested() {
@@ -74,14 +70,28 @@ func applyExecutionSelectors(cfg cfgpkg.Config, selectors executionSelectors, de
 		return rule.Registry{}, cfg, err
 	}
 
-	// Selectors extend the configured lists rather than replace them, so the configured entries stay in the merged selection.
 	selected := cfg
-	selected.Select = append(append([]string{}, cfg.Select...), includeRules...)
-	selected.ExcludeRules = append(append([]string{}, cfg.ExcludeRules...), excludeRules...)
-	selected.Selection.Pillars = append(append([]string{}, cfg.Selection.Pillars...), includePillars...)
-	selected.Selection.ExcludePillars = append(append([]string{}, cfg.Selection.ExcludePillars...), excludePillars...)
-
-	registry, err := rule.DefaultsConfigured(selected.RuleOptions())
+	hasIncludes := len(includeRules)+len(includePillars) != 0
+	// An explicit include starts a focused CLI scan, replacing the configured rule and pillar inclusions.
+	if hasIncludes {
+		selected.Select = includeRules
+		selected.Selection.Rules = nil
+		selected.Selection.Pillars = includePillars
+	}
+	selected.ExcludeRules = append(slices.Clone(cfg.ExcludeRules), excludeRules...)
+	selected.Selection.ExcludePillars = append(slices.Clone(cfg.Selection.ExcludePillars), excludePillars...)
+	options := selected.RuleOptions()
+	// Per-rule config can enable extra rules. A focused CLI scan must still enforce its include boundary.
+	if hasIncludes {
+		// Check each registered rule against the user's requested rule IDs and pillars.
+		for _, definition := range definitions {
+			// A rule outside both include lists cannot affect the score or a baseline written from this focused scan.
+			if !slices.Contains(includeRules, definition.ID) && !slices.Contains(includePillars, string(definition.Pillar)) {
+				options.Enabled[definition.ID] = false
+			}
+		}
+	}
+	registry, err := rule.DefaultsConfigured(options)
 	// Only registry construction errors land here; a merged selection that leaves no rule active is not refused.
 	if err != nil {
 		return rule.Registry{}, cfg, err
@@ -96,6 +106,7 @@ func applyExecutionSelectors(cfg cfgpkg.Config, selectors executionSelectors, de
 // Refusing it keeps the user from believing they chose the rules when they did not.
 //
 // Each id that splitCSV takes from input must equal the ID of an entry in definitions.
+//
 // It returns the ids as splitCSV yields them, each known to definitions, and no ids when splitCSV finds none in input.
 // It fails with a nil slice and an unknown rule error naming the first id that matches no definition.
 func validatedRuleIDs(input string, definitions []rule.Definition) ([]string, error) {

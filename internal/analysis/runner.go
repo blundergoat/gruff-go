@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/baseline"
@@ -36,9 +37,9 @@ type Options struct {
 	// FailOn is the threshold at or above which a finding triggers exit code 1.
 	// It is a FailThreshold, not a Severity, so finding.FailThresholdNone can say "never fail on findings".
 	FailOn finding.FailThreshold
-	// MinConfidence is the confidence floor for the exit gate; Analyze passes it to NewReport, whose summary exit code ignores it.
+	// MinConfidence is the confidence floor for the finding gate.
 	MinConfidence finding.Confidence
-	// FailOnNew asks the exit gate to fail on any finding the baseline classifies as new; NewReport's summary exit code ignores it.
+	// FailOnNew gates every finding that remains after baseline classification.
 	FailOnNew bool
 	// Registry supplies the rules invoked against parsed units.
 	Registry rule.Registry
@@ -51,11 +52,13 @@ type Options struct {
 	DeepScanBudget DeepScanBudget
 	// IncludeIgnored disables gitignore and metadata directory pruning when true; .git, .hg and .svn directories below the analysis root stay skipped.
 	IncludeIgnored bool
-	// ReportAllSkippedInputs reports explicit input paths that are all skipped as
-	// fatal diagnostics. Advisory hook mode intentionally leaves this disabled.
+	// ReportAllSkippedInputs reports explicit input paths that are all skipped as fatal diagnostics. Advisory hook mode intentionally leaves this
+	// disabled.
 	ReportAllSkippedInputs bool
 	// BaselinePath points at an optional baseline file used to suppress previously accepted findings.
 	BaselinePath string
+	// BaselineDiscovered records that the caller found the default file automatically.
+	BaselineDiscovered bool
 	// DiffBase enables changed-lines-only mode against this git revision when non-empty.
 	DiffBase string
 	// DiffMode enables changed-region filtering from working-tree, staged, unstaged, a base ref, or "-".
@@ -69,14 +72,14 @@ type Options struct {
 	ChangedRangesProvided bool
 	// ChangedScope selects "symbol" (default) or "hunk" changed-region filtering.
 	ChangedScope string
-	// BaselineShow renders the unchanged/resolved baseline detail arrays and the
-	// human-readable baseline-status section; counts are reported regardless.
+	// BaselineShow renders the unchanged/resolved baseline detail arrays and the human-readable baseline-status section; counts are reported regardless.
 	BaselineShow bool
 }
 
 // DeepScanBudget is the effective paired limit after defaults, config, and CLI precedence.
 //
 // The user sets it in the deepScanBudget block of .gruff-go.yaml.
+//
 // When Enabled is true, a file above either bound keeps its text-level rules but skips AST-backed deep analysis.
 // An empty Override makes Analyze substitute the enabled default bounds and set Override to "default".
 type DeepScanBudget struct {
@@ -101,6 +104,7 @@ func Analyze(opts Options) (Report, error) {
 	}
 	opts = normalizeOptions(opts)
 	ctx := opts.Context
+	// A direct CLI call without a supplied context uses a background scan. The dashboard can provide a request deadline.
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -143,16 +147,15 @@ func Analyze(opts Options) (Report, error) {
 	registry := opts.Registry
 	findings := registry.AnalyzeWithProjectContext(units, projectUnits, rule.Context{Root: root, IncludeIgnored: opts.IncludeIgnored, ReportableFiles: reportableFileSet(discovery.Files)})
 	findings = filterFindingsToFiles(findings, reportableFileSet(discovery.Files))
-	// A scope the run could not read leaves nothing scoped to report. Publishing the unscoped findings beside the
-	// diagnostic would read as a successful narrow scan at a scope the run never applied.
+	// A scope the run could not read leaves nothing scoped to report. Publishing the unscoped findings beside the diagnostic would read as a successful
+	// narrow scan at a scope the run never applied.
 	if hasUnreadableChangedScope(diagnostics) {
 		findings = nil
 	}
-	// The baseline identity separates same-named declarations by ordinal, which
-	// only the parsed units can rank; assigning here reaches analyse and hook alike.
+	// The baseline identity separates same-named declarations by ordinal, which only the parsed units can rank; assigning here reaches analyse and hook
+	// alike.
 	findings = finding.AssignSymbolOrdinalsFromInventory(findings, declarationPositionFor(units), sameNamedDeclarationLinesFor(units))
-	// Excluded before baseline and diff so a suppressed finding is absent from
-	// scoring, exit codes, and baseline classification alike.
+	// Excluded before baseline and diff so a suppressed finding is absent from scoring, exit codes, and baseline classification alike.
 	findings, suppressions := ApplySensitiveExclusions(findings, opts.SensitiveExclusions)
 	// A configured entry claims its findings first, so its count stays what the user wrote it for.
 	findings, suppressions = ApplyBuiltInTestPathSkip(findings, suppressions)
@@ -162,10 +165,27 @@ func Analyze(opts Options) (Report, error) {
 		return Report{}, err
 	}
 	findings, baselineSummary, diagnostics := applyBaseline(root, findings, diagnostics, opts.BaselinePath, opts.BaselineShow)
+	// An automatically discovered baseline is labeled so the report tells the developer how the comparison was chosen.
+	if baselineSummary.Applied && opts.BaselineDiscovered {
+		baselineSummary.Source = "default"
+	}
+	// A developer gating on new findings needs a comparison even if the ordinary severity gate is disabled.
+	if opts.FailOnNew && opts.BaselinePath == "" {
+		diagnostics = append(diagnostics, Diagnostic{
+			Stage: "baseline", Message: "--fail-on-new requires an applicable baseline", Severity: finding.SeverityError,
+		})
+	}
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
 	findings, diffSummary = applyChangedFilter(findings, units, changed, diffSummary, opts.ChangedScope)
+	// A scoped scan publishes SARIF suppression results only where the developer asked it to look.
+	if diffSummary.Enabled && len(suppressedFindings) != 0 {
+		matches := changedScopePredicate(changed, units, opts.ChangedScope)
+		suppressedFindings = slices.DeleteFunc(suppressedFindings, func(item SuppressedFinding) bool {
+			return !matches(item.Finding)
+		})
+	}
 
 	displayRoot := filepath.ToSlash(root)
 	return NewReport(ReportInput{
@@ -217,6 +237,7 @@ func analysisRoot(root string) (string, error) {
 // normalizeOptions fills defaults for empty Options fields before Analyze uses them.
 //
 // Empty FailOn resolves to the canonical "analyse" default, so programmatic callers get the same gate as gruff-go analyse.
+//
 // It returns opts with an empty FailOn, Format ("text") or ChangedScope ("symbol") set to its default.
 // A DeepScanBudget with an empty Override is replaced whole by the enabled default line and byte bounds, with Override "default".
 func normalizeOptions(opts Options) Options {
@@ -269,6 +290,7 @@ func diagnosticsFromDiscovery(paths []string) []Diagnostic {
 // diagnosticsFromParser lifts each parser-stage diagnostic into the unified analysis Diagnostic shape.
 //
 // An entry without NonFatal gets stage "parse" and error severity, so a file that fails to parse shows as an error diagnostic.
+//
 // A NonFatal one gets stage "analysis", advisory severity and InvalidatesRun set to false.
 // It returns one Diagnostic per entry of parseDiagnostics, in order, or an empty non-nil slice when parseDiagnostics is empty.
 func diagnosticsFromParser(parseDiagnostics []parser.Diagnostic) []Diagnostic {
@@ -315,7 +337,7 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	}
 	baselineSummary.Path = displayPath
 	// The report labels the baseline by file name: gruff-baseline.json reads "default" even when the user passed that path themselves.
-	baselineSummary.Source = baselineSource(baselinePath)
+	baselineSummary.Source = "explicit"
 	file, err := baseline.Load(loadPath)
 	// A missing or invalid baseline file lands here; the run goes on with every finding unsuppressed and an error diagnostic.
 	if err != nil {
@@ -333,8 +355,8 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 	// It is set only after Load and Apply succeed, so a missing or invalid baseline never labels every result baselineState "new".
 	// That failure already shows as an error diagnostic instead.
 	result, err := baseline.Apply(findings, file)
-	// A foreign baseline or an unidentifiable finding is refused before matching;
-	// applying it would report every entry resolved and invite a destructive regenerate.
+	// A foreign baseline or an unidentifiable finding is refused before matching; applying it would report every entry resolved and invite a destructive
+	// regenerate.
 	if err != nil {
 		diagnostics = append(diagnostics, Diagnostic{
 			Stage:    "baseline",
@@ -375,9 +397,8 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 
 // stampBaselineStatuses labels each surviving finding with what the baseline made of it.
 //
-// SARIF publishes baselineState "new" for a genuinely new finding only: a collision and a sensitive
-// finding are permanently unsuppressable rather than freshly introduced, and stamping them "new" would
-// tell a code-scanning reader that a long-standing secret had just appeared.
+// SARIF publishes baselineState "new" for a genuinely new finding only: a collision and a sensitive finding are permanently unsuppressable rather
+// than freshly introduced, and stamping them "new" would tell a code-scanning reader that a long-standing secret had just appeared.
 //
 // Statuses in result are matched to currentFindings by index and keyed by Fingerprint; a status past the end of currentFindings is dropped.
 // It returns a new slice of the findings in result, each with BaselineStatus set; one whose Fingerprint has no status gets an empty one.
@@ -400,17 +421,6 @@ func stampBaselineStatuses(currentFindings []finding.Finding, result baseline.Ap
 //
 // baselineSource reports any baseline with this base name as "default" in the report, whether it was auto-discovered or named by the user.
 const DefaultBaselineFileName = "gruff-baseline.json"
-
-// baselineSource labels the report's baseline by its file name, not by how the user chose the path.
-//
-// It returns "default" when the base name of baselinePath is DefaultBaselineFileName, and "explicit" otherwise.
-// It judges by file name alone, so a path the user named that ends in that file name also reads "default".
-func baselineSource(baselinePath string) string {
-	if filepath.Base(baselinePath) == DefaultBaselineFileName {
-		return "default"
-	}
-	return "explicit"
-}
 
 // reportBaselineEntries projects baseline resolved entries onto the report shape.
 // It returns one BaselineEntry per entry, in order, copying RuleID, Path as File, Identity, Subject and Count; no entries gives an empty slice.
@@ -505,9 +515,13 @@ func resolveChangedScope(ctx context.Context, root string, files []source.File, 
 		diffSummary.Base = "explicit"
 		diffSummary.ChangedFiles = changed.ChangedFiles
 		return changed, diffSummary, diagnostics
-	// With --diff=-, the patch read from stdin alone decides the changed regions and git is not run.
-	case opts.DiffMode == "-":
-		changed := diff.Parse("stdin", opts.DiffPatch)
+	// An explicit stdin diff or a programmatic patch supplies the changed regions without running Git.
+	case opts.DiffMode == "-" || (opts.DiffMode == "" && len(opts.DiffPatch) > 0):
+		changed, err := diff.ParseStdin(opts.DiffPatch)
+		// Unrecognized input cannot stand in for an empty comparison, so CI receives a fatal changed-region diagnostic.
+		if err != nil {
+			return diff.ChangedLines{}, diffSummary, appendDiffDiagnostic(diagnostics, err)
+		}
 		diffSummary.Enabled = true
 		diffSummary.Base = "stdin"
 		diffSummary.ChangedFiles = changed.ChangedFiles
@@ -520,12 +534,6 @@ func resolveChangedScope(ctx context.Context, root string, files []source.File, 
 		}
 		diffSummary.Enabled = true
 		diffSummary.Base = opts.DiffMode
-		diffSummary.ChangedFiles = changed.ChangedFiles
-		return changed, diffSummary, diagnostics
-	case len(opts.DiffPatch) > 0:
-		changed := diff.Parse("stdin", opts.DiffPatch)
-		diffSummary.Enabled = true
-		diffSummary.Base = "stdin"
 		diffSummary.ChangedFiles = changed.ChangedFiles
 		return changed, diffSummary, diagnostics
 	case opts.DiffBase != "":
@@ -546,6 +554,7 @@ func resolveChangedScope(ctx context.Context, root string, files []source.File, 
 // ChangedRegionDiagnosticType is the one type every port publishes when it cannot read the changed-region scope it was asked to analyse.
 //
 // It covers a scope from --changed-ranges, --diff or --since alike, as FAMILY-CONTRACT.md section 6 requires.
+//
 // A consumer reading a scoped run's failure therefore need not know which analyser produced it.
 // In gruff-go such a diagnostic also clears every finding from the run, since nothing scoped could be read.
 const ChangedRegionDiagnosticType = "changed-region"
@@ -553,6 +562,7 @@ const ChangedRegionDiagnosticType = "changed-region"
 // appendDiffDiagnostic records a diff-stage failure as a fatal, error-severity Diagnostic.
 //
 // Analyze then reports no findings, because a scope the run could not read leaves nothing scoped to report, and ResolveExitCode returns 2.
+//
 // Nonfatal diff limitations use DiffSummary.Caveat instead.
 // It returns diagnostics with one changed-region Diagnostic appended, at stage "diff" and with the text of err as its message.
 func appendDiffDiagnostic(diagnostics []Diagnostic, err error) []Diagnostic {
@@ -588,10 +598,12 @@ func sourcePaths(files []source.File) []string {
 // applyChangedFilter narrows findings to the changed regions, then drops composites whose underlying evidence did not survive.
 //
 // Composite findings are line-stable by design, so baseline matching survives shifts in the code beneath them.
+//
 // The changed-line filter therefore treats them as having no location and keeps them whenever their file has any changed line.
 // Without the pruning, --diff-base scans would surface composites for code the diff did not touch.
 //
 // When diffSummary is not Enabled it returns findings and diffSummary unchanged.
+//
 // Otherwise it filters by the lines in changed at the changedScope granularity, using units for function spans, then prunes orphaned composites.
 // It returns the kept findings and diffSummary with FilteredFindings counting both removals and the project-level Caveat set.
 func applyChangedFilter(findings []finding.Finding, units []parser.Unit, changed diff.ChangedLines, diffSummary DiffSummary, changedScope string) ([]finding.Finding, DiffSummary) {
@@ -613,23 +625,33 @@ func applyChangedFilter(findings []finding.Finding, units []parser.Unit, changed
 // Any changedScope other than "hunk" takes the symbol path, which checks the lines in changed against function spans read from units.
 // It returns a diff.FilterResult with the kept findings and FilteredFindings counting the findings dropped.
 func filterFindingsByChangedScope(findings []finding.Finding, changed diff.ChangedLines, units []parser.Unit, changedScope string) diff.FilterResult {
-	if changedScope == "hunk" {
-		return diff.Filter(findings, changed)
-	}
-	functionsByFile := map[string][]parser.Function{}
-	for _, unit := range units {
-		functionsByFile[unit.File.Path] = unit.Functions
-	}
+	matches := changedScopePredicate(changed, units, changedScope)
 	kept := make([]finding.Finding, 0, len(findings))
 	filtered := 0
 	for _, item := range findings {
-		if changedScopeMatches(item, changed, functionsByFile[item.File]) {
+		// A suppressed finding must satisfy the same location rule as the visible findings in that report.
+		if matches(item) {
 			kept = append(kept, item)
 			continue
 		}
 		filtered++
 	}
 	return diff.FilterResult{Findings: kept, FilteredFindings: filtered}
+}
+
+// changedScopePredicate prepares the same changed-file test for visible findings and SARIF suppressions.
+// It returns a function that checks changed hunk lines or widens them to functions in units according to scope.
+func changedScopePredicate(changed diff.ChangedLines, units []parser.Unit, scope string) func(finding.Finding) bool {
+	// With --changed-scope=hunk, only findings overlapping the patch are in scope.
+	if scope == "hunk" {
+		return func(item finding.Finding) bool { return diff.MatchesFinding(item, changed) }
+	}
+	functions := make(map[string][]parser.Function, len(units))
+	// In symbol scope, an edit can expose a finding elsewhere in the same function. Index each parsed file's function ranges.
+	for _, unit := range units {
+		functions[unit.File.Path] = unit.Functions
+	}
+	return func(item finding.Finding) bool { return changedScopeMatches(item, changed, functions[item.File]) }
 }
 
 // changedScopeMatches reports whether one finding survives the symbol-scope diff filter; false drops it from the scoped report.
@@ -639,24 +661,34 @@ func filterFindingsByChangedScope(findings []finding.Finding, changed diff.Chang
 //
 // item is the finding under test, changed holds the changed lines, and functions lists the parsed functions of its file for enclosingFunction.
 func changedScopeMatches(item finding.Finding, changed diff.ChangedLines, functions []parser.Function) bool {
-	if item.Location == nil || item.Location.Line == 0 {
-		return diff.FileChanged(changed, item.File)
-	}
-	start := item.Location.Line
-	end := item.Location.EndLine
-	if end == 0 || end < start {
-		end = start
-	}
-	if diff.RangeChanged(changed, item.File, start, end) {
+	// An exact overlap is enough, including edits in a file too large for function parsing.
+	if diff.MatchesFinding(item, changed) {
 		return true
 	}
-	function, ok := enclosingFunction(start, item.Symbol, functions)
-	return ok && diff.RangeChanged(changed, item.File, function.Line, function.EndLine)
+	// File-wide findings have already been checked. Without a line there is no enclosing function to inspect.
+	if item.Location == nil || item.Location.Line == 0 {
+		return false
+	}
+	// A finding can belong to the changed function even when its own line was left alone.
+	if function, ok := enclosingFunction(item.Location.Line, item.Symbol, functions); ok &&
+		diff.RangeChanged(changed, item.File, function.Line, function.EndLine) {
+		return true
+	}
+	// A duplicate-test group can be created by editing a member other than the test where the finding is anchored.
+	for _, line := range item.GroupMemberLines() {
+		// An edit anywhere in this member's function keeps the group visible for the reviewer.
+		if function, ok := enclosingFunction(line, "", functions); ok &&
+			diff.RangeChanged(changed, item.File, function.Line, function.EndLine) {
+			return true
+		}
+	}
+	return false
 }
 
 // enclosingFunction finds the function containing line, preferring the tightest one whose name matches the finding's symbol.
 //
 // It falls back to any function covering the line, so nested or method-receiver symbols still resolve to something.
+//
 // functions is the parsed function list of the finding's file; an empty symbol lets every covering function match, so the tightest wins.
 // It returns the chosen function and true, or a zero parser.Function and false when no function in functions covers line.
 func enclosingFunction(line int, symbol string, functions []parser.Function) (parser.Function, bool) {
@@ -743,10 +775,11 @@ func parserLocation(item parser.Diagnostic) *finding.Location {
 
 // parseWithProjectContext parses the discovered files, plus any package siblings a project rule needs to be right.
 //
-// The two unit sets are returned separately because only the discovered files are reportable: a sibling is read to
-// prove a symbol is used, never to be scanned in its own right.
+// The two unit sets are returned separately because only the discovered files are reportable: a sibling is read to prove a symbol is used, never to
+// be scanned in its own right.
 //
 // discovery holds the reportable files, root and opts go to projectContextFiles to pick siblings, and opts.DeepScanBudget bounds each parse.
+//
 // It returns the discovered units, the project units (the same slice when no sibling is added), and parse diagnostics plus sibling-only ones.
 // It returns an error with nil slices when projectContextFiles fails or ctx is done after the discovered files are parsed.
 func parseWithProjectContext(ctx context.Context, root string, opts Options, discovery source.Result) ([]parser.Unit, []parser.Unit, []parser.Diagnostic, error) {

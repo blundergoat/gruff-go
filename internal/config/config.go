@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -126,6 +127,7 @@ type SelectionConfig struct {
 // It names one rule, one project-relative path, an optional symbol narrowing, and the rationale a reviewer reads in place of the finding.
 //
 // The four fields below are the whole key set an entry may carry.
+//
 // Any other key, such as message_contains, messageContains, value or preview, is a fatal configuration error (FAMILY-CONTRACT.md section 13a).
 // That keeps value-based suppression from re-entering this section under a new name.
 type SensitiveExclusion struct {
@@ -207,6 +209,7 @@ func LoadAuto(root string, explicitPath string, noConfig bool, definitions []rul
 // ResolvePath finds the explicit or auto-discovered config path for a root.
 //
 // An empty root means the current directory; a relative explicitPath is joined to the absolute root, and an empty one triggers discovery.
+//
 // It returns an absolute path and true for a file, or an empty path, false and nil if discovery finds none, skipping directories and stat errors.
 // It returns an error when the explicit file is missing, is a directory, or cannot be checked, or when root cannot be made absolute.
 func ResolvePath(root string, explicitPath string) (string, bool, error) {
@@ -248,6 +251,7 @@ func ResolvePath(root string, explicitPath string) (string, bool, error) {
 // Load reads and parses a config file from disk.
 //
 // The file at path is read and passed to ParseFile, which requires a .yaml extension and checks rule references against definitions.
+//
 // It returns the parsed Config, or a zero Config without validation when the file is empty or holds only blank and comment lines.
 // It returns an error when the file cannot be read, is not .yaml, or fails parsing or validation.
 func Load(path string, definitions []rule.Definition) (Config, error) {
@@ -265,6 +269,7 @@ func Load(path string, definitions []rule.Definition) (Config, error) {
 // Do NOT use this for runtime scans - it would silently weaken severity gates.
 //
 // The file at path is read and parsed with definitions, the known rules the cleaned config is still validated against.
+//
 // Empty or comment-only content gives a zero Config without that validation.
 // It returns an error when the file cannot be read or the remaining config fails parsing or validation.
 func LoadPermissive(path string, definitions []rule.Definition) (Config, error) {
@@ -279,6 +284,7 @@ func LoadPermissive(path string, definitions []rule.Definition) (Config, error) 
 // Parse parses config bytes using the supported strict YAML subset.
 //
 // The data bytes are the config file contents and definitions are the known rules its rule references are checked against.
+//
 // It returns the parsed Config, or a zero Config without validation when data is empty or holds only blank and comment lines.
 // It returns an error when data falls outside the supported YAML subset or fails validation.
 func Parse(data []byte, definitions []rule.Definition) (Config, error) {
@@ -288,6 +294,7 @@ func Parse(data []byte, definitions []rule.Definition) (Config, error) {
 // ParseFile parses config bytes after validating the file extension.
 //
 // Only the extension of path matters and must match .yaml case-insensitively; definitions are the known rules the config is checked against.
+//
 // For a .yaml path it returns the Config parsed from data, or a zero Config without validation when data is empty or comment-only.
 // It returns an error when the extension is not .yaml or data does not parse or validate.
 func ParseFile(path string, data []byte, definitions []rule.Definition) (Config, error) {
@@ -325,6 +332,10 @@ func decodeConfigPayloadPermissive(data []byte, definitions []rule.Definition) (
 	if err != nil {
 		return Config{}, err
 	}
+	// An older config without a version can be refreshed if the caller selected the permissive init path.
+	if cfg.SchemaVersion == "" {
+		cfg.SchemaVersion = SchemaVersion
+	}
 	for id, rc := range cfg.Rules {
 		if rc.Severity == "" {
 			continue
@@ -343,13 +354,14 @@ func decodeConfigPayloadPermissive(data []byte, definitions []rule.Definition) (
 // decodeConfigUnvalidated decodes the canonical JSON payload into a normalised Config without running structural validation.
 //
 // Shared by the strict and permissive load paths so the two cannot drift on decode behaviour.
+//
 // The data bytes must hold exactly one canonical JSON value with no removed preview keys.
 // Unknown fields are rejected except inside sensitiveExclusions entries, where UnsupportedKeys records them for Validate.
 //
 // It returns the Normalized Config, or a zero Config and an error when any of those checks or the decode fails.
 func decodeConfigUnvalidated(data []byte) (Config, error) {
-	// The removed preview key is refused before the strict decoder sees it, so a 0.5 user reads the section 5
-	// explanation rather than an unknown-field error that looks like a typo.
+	// The removed preview key is refused before the strict decoder sees it, so a 0.5 user reads the section 5 explanation rather than an unknown-field
+	// error that looks like a typo.
 	if err := refuseRemovedPreviewKeys(data); err != nil {
 		return Config{}, err
 	}
@@ -404,6 +416,7 @@ func (cfg Config) Validate(definitions []rule.Definition) error {
 // RuleOptions converts parsed config into registry enablement and overrides for the scan.
 //
 // It returns a rule.Config built against rule.Defaults whose maps hold only the selections, overrides and exclusions this config makes.
+//
 // A config with none of those yields empty maps plus its AcceptedAbbreviations, so every rule keeps its registry default.
 // Exclusions apply last, so excludeRules or excludePillars beats both select and a rule's enabled: true.
 func (cfg Config) RuleOptions() rule.Config {
@@ -435,6 +448,7 @@ func newRuleOptions(cfg Config) rule.Config {
 // applySelectedRules converts selection allowlists into explicit enablement.
 //
 // When cfg lists Select rules or Selection.Pillars, every rule in definitions gets an explicit options.Enabled entry, true only if selected.
+//
 // With no pillar selected, listing one rule under select turns every unlisted rule off here; a later enabled: true can turn one back on.
 // Select IDs resolve through byID, the definitions keyed by ID, and unknown IDs are skipped; with no selection, options is left unchanged.
 func applySelectedRules(options *rule.Config, cfg Config, definitions []rule.Definition, byID map[string]rule.Definition) {
@@ -518,6 +532,7 @@ func copyThresholds(input map[string]float64) map[string]float64 {
 // Normalized folds legacy and gruff-family fields into canonical locations.
 //
 // It returns a copy with each non-empty alias list merged, without duplicates, into its top-level field.
+//
 // Select, ExcludeRules, IgnorePaths and AcceptedAbbreviations are then sorted, and any of them with no entries comes back nil.
 // The nested alias fields keep their values, and SensitiveExclusions paths are cleaned by normalizedSensitiveExclusions.
 func (cfg Config) Normalized() Config {
@@ -543,18 +558,20 @@ func (cfg Config) Normalized() Config {
 
 // normalizedSensitiveExclusions rewrites each entry's path into the project-relative display form a finding carries.
 //
-// Removing a leading ./ lets an entry match a finding whose display path omits that prefix.
-// Order is preserved: the entry index is user-visible in both diagnostics and audit rows.
-//
-// The entries slice is not modified; each Path is trimmed of whitespace, converted to forward slashes, and stripped of one leading ./ prefix.
-// It returns a new slice with those paths, or entries itself when it is nil or empty.
+// It returns a copy of entries in audit order, with valid path spellings cleaned the same way as discovery. Invalid spellings stay visible to
+// validation.
 func normalizedSensitiveExclusions(entries []SensitiveExclusion) []SensitiveExclusion {
 	if len(entries) == 0 {
 		return entries
 	}
 	out := append([]SensitiveExclusion(nil), entries...)
 	for index := range out {
-		out[index].Path = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(out[index].Path)), "./")
+		raw := strings.TrimSpace(out[index].Path)
+		out[index].Path = raw
+		// Normalize valid paths so their audit entries match discovery. Keep invalid paths for a clear validation message.
+		if validateSensitiveExclusionPath(index, raw) == nil {
+			out[index].Path = path.Clean(raw)
+		}
 	}
 	return out
 }

@@ -1,12 +1,11 @@
 // Package rule tests the raw-string exclusion for sensitive-data.secret-pattern.
 //
-// A backtick literal holds documentation, templates and sample payloads. gosec's own
-// g101_samples fixture is exactly that: a raw string full of secret-shaped lines, none of which
-// is a credential. The exclusion is confined to this one rule because the shared line guard it
-// would otherwise live in is reached by sixteen rules, measured 2026-09-07.
+// A backtick literal holds documentation, templates and sample payloads. gosec's own g101_samples fixture is exactly that: a raw string full of
+// secret-shaped lines, none of which is a credential. The exclusion is confined to this one rule because the shared line guard it would otherwise
+// live in is reached by sixteen rules, measured 2026-09-07.
 //
-// Every fixture below uses secretPatternFixtureValue, which is secret-shaped but matches no
-// vendor detector, so gruff-go's own self-scan stays clean on this file.
+// Every fixture below uses secretPatternFixtureValue, which is secret-shaped but matches no vendor detector, so gruff-go's own self-scan stays clean
+// on this file.
 package rule
 
 import "testing"
@@ -67,4 +66,14 @@ func TestSecretPatternStillReportsAnInterpretedString(t *testing.T) {
 func TestSecretPatternResumesAfterARawStringCloses(t *testing.T) {
 	value := secretPatternFixtureValue()
 	requireSecretPatternCount(t, "package pkg\n\nconst doc = `\npassword = \""+value+"\"\n`\n\nfunc connect() {\n\tauthToken := \""+value+"\"\n\t_ = authToken\n}\n", 1)
+}
+
+// TestSecretPatternChecksCodeBesideRawStrings keeps ordinary code visible on a literal's line.
+func TestSecretPatternChecksCodeBesideRawStrings(t *testing.T) {
+	value := secretPatternFixtureValue()
+	source := "package fixture\nvar password = \"" + value + "\"; var example = " + string(rune(96)) + "ordinary text" + string(rune(96)) + "\n"
+	// The assignment beside the raw string must still appear on its original source line.
+	if got := secretPatternLines(t, source); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("secret lines = %v, want [2]", got)
+	}
 }

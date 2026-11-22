@@ -25,8 +25,8 @@ type hookFlagValues struct {
 	configPath    string
 	noConfig      bool
 	changedRanges string
-	// changedRangesSet records that the caller passed --changed-ranges, so an empty value is refused as an
-	// unreadable scope rather than read as no filter at all.
+	// changedRangesSet records that the caller passed --changed-ranges, so an empty value is refused as an unreadable scope rather than read as no
+	// filter at all.
 	changedRangesSet bool
 	diffMode         string
 	diffPatch        []byte
@@ -47,6 +47,7 @@ type hookFlagValues struct {
 // commandArguments holds the hook's flags and paths; stdout gets help, capability or report JSON, and stderr gets errors and warnings.
 //
 // It returns 0 for help, capabilities or an unblocked report, 1 when hookExitCode blocks, and 2 when analysis reports exit code 2.
+//
 // It also returns 2 for flag, format, config, budget or analysis failures and for failed capability or report JSON writes.
 // Non-degradable changed-region or baseline errors also return 2, after writeHookFatal emits the fatal payload.
 func runHook(commandArguments []string, stdout, stderr io.Writer) int {
@@ -75,7 +76,7 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	ruleRegistry, ignoredPathPatterns, hookConfig, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig, nil)
+	ruleRegistry, ignoredPathPatterns, hookConfig, err := configuredRegistry(hookFlags.configPath, hookFlags.noConfig, hookFlags.paths)
 	// Invalid project config is returned in-band so the agent can explain it.
 	if err != nil {
 		// A secondary JSON write failure leaves no usable hook contract for the user.
@@ -96,16 +97,31 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		sensitiveExclusions: sensitiveExclusionsFor(hookConfig),
 		deepScanBudget:      deepScanBudget,
 	}
-	analysisReport, err := analyzeHook(hookFlags, hookScan)
+	return runHookScan(hookFlags, hookScan, stdout, stderr)
+}
+
+// runHookScan runs the configured checks and comparison after a developer or agent invokes gruff-go hook.
+// hookFlags selects the project and findings scope. hookScan holds the rules and scan policy for both versions.
+//
+// Returns the gate exit code, sends hook JSON to stdout, and writes command or comparison errors to stderr.
+func runHookScan(hookFlags hookFlagValues, hookScan hookBaseScan, stdout, stderr io.Writer) int {
+	projectRoot, err := projectRootFromTargets(hookFlags.paths)
+	// An agent naming paths across filesystem roots gets one discovery diagnostic instead of an ambiguous report.
+	if err != nil {
+		return writeHookFatal("discovery", err, stdout, stderr)
+	}
+	scanFlags := hookFlags
+	scanFlags.paths = pathsRelativeToProject(projectRoot, hookFlags.paths)
+	scanFlags.baselinePath = rootRelativePath(projectRoot, hookFlags.baselinePath)
+	analysisReport, err := analyzeHook(projectRoot, scanFlags, hookScan)
 	// Pipeline failures mean the user's requested project could not be analyzed.
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	projectRoot := analysisReport.Run.WorkingDirectory
 	scanContext := context.Background()
 	gitBaseWarningWritten := false
-	changedLines, changedScopeEnabled, err := resolveHookChanged(scanContext, projectRoot, analysisReport.Paths.Scanned, hookFlags)
+	changedLines, changedScopeEnabled, err := resolveHookChanged(scanContext, projectRoot, analysisReport.Paths.Scanned, scanFlags)
 	// In HEAD, working-tree or staged mode, matching git-base error text disables changed-region filtering here; other errors stay fatal.
 	if err != nil {
 		// Non-degradable diff errors cannot produce trustworthy changed-region results.
@@ -116,7 +132,7 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
 		changedScopeEnabled = false
 	}
-	findingBaseline, err := resolveHookFindingBaseline(scanContext, projectRoot, hookFlags, hookScan)
+	findingBaseline, err := resolveHookFindingBaseline(scanContext, projectRoot, scanFlags, hookScan)
 	// In HEAD, working-tree or staged mode, matching git-base error text disables baseline filtering here; other baseline errors stay fatal.
 	if err != nil {
 		// Non-git baseline failures cannot produce a trustworthy new-only result.
@@ -127,14 +143,22 @@ func runHook(commandArguments []string, stdout, stderr io.Writer) int {
 		writeHookGitBaseWarning(stderr, err, &gitBaseWarningWritten)
 		findingBaseline = hookFindingBaseline{}
 	}
-	payload := buildHookReport(hookReportInput{
+	// If an agent asks for only new findings without a usable comparison, exit 2 so its checks cannot pass on an unknown result.
+	if hookFlags.gates.failOnNew && !findingBaseline.enabled {
+		return writeHookFatal("baseline", fmt.Errorf("--fail-on-new requires an applicable baseline or Git comparison"), stdout, stderr)
+	}
+	payload, err := buildHookReport(hookReportInput{
 		analysisReport:      analysisReport,
-		ruleDefinitions:     ruleRegistry.Definitions(),
+		ruleDefinitions:     hookScan.registry.Definitions(),
 		changedLines:        changedLines,
 		changedScopeEnabled: changedScopeEnabled,
 		hookBaseline:        findingBaseline,
 		hookFlags:           hookFlags,
 	})
+	// For example, a baseline from another port can decode but fail Go classification. Publish that failure before showing any results.
+	if err != nil {
+		return writeHookFatal("baseline", err, stdout, stderr)
+	}
 	// The user-facing hook contract must be emitted as valid JSON.
 	if err := report.WriteJSON(stdout, payload); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -162,7 +186,7 @@ func hookExitCode(payload hookReport, hookFlags hookFlagValues) int {
 
 	for _, published := range payload.Findings {
 		// The baseline dimension is independent of both floors: an unreviewed finding blocks whatever its severity.
-		if hookFlags.gates.failOnNew && published.BaselineStatus != nil && *published.BaselineStatus == "new" {
+		if hookFlags.gates.failOnNew && published.BaselineStatus != nil && *published.BaselineStatus != "unchanged" {
 			return 1
 		}
 
@@ -177,8 +201,8 @@ func hookExitCode(payload hookReport, hookFlags hookFlagValues) int {
 
 // writeHookFatal reports a run that could not be completed through the contract the consumer is already parsing.
 //
-// A hook that printed only to stderr left an agent with an exit code and no machine-readable reason, so a malformed
-// range and an unreadable baseline were indistinguishable from a crash.
+// A hook that printed only to stderr left an agent with an exit code and no machine-readable reason, so a malformed range and an unreadable baseline
+// were indistinguishable from a crash.
 //
 // diagnosticType labels the fatal diagnostic and hookError supplies its message.
 // stdout gets the fatal JSON payload, stderr always gets hookError plus any write error, and the result is always 2.
@@ -194,11 +218,14 @@ func writeHookFatal(diagnosticType string, hookError error, stdout, stderr io.Wr
 
 // analyzeHook runs the primary tree with the same scan policy used for a git-base comparison.
 //
-// hookFlags supplies paths and includeIgnored; scan supplies the registry, ignore patterns, sensitive exclusions and deep-scan budget.
+// root anchors discovery. hookFlags supplies paths and includeIgnored; scan supplies the registry, ignore patterns, sensitive exclusions and
+// deep-scan budget.
 // It returns the analysis.Report built with JSON format and a fail threshold of none, leaving exit gates to the hook.
+//
 // Any error comes back unchanged from analysis.Analyze when the scan fails.
-func analyzeHook(hookFlags hookFlagValues, scan hookBaseScan) (analysis.Report, error) {
+func analyzeHook(root string, hookFlags hookFlagValues, scan hookBaseScan) (analysis.Report, error) {
 	return analysis.Analyze(analysis.Options{
+		Root:                root,
 		Paths:               hookFlags.paths,
 		Format:              "json",
 		FailOn:              finding.FailThresholdNone,
@@ -213,6 +240,7 @@ func analyzeHook(hookFlags hookFlagValues, scan hookBaseScan) (analysis.Report, 
 // parseHookFlags validates hook options and keeps positional scan paths for the run.
 //
 // commandArguments is the raw hook argument list, run through normalizeAnalyseDiffArgs first; usage errors are written to stderr.
+//
 // With --diff -, it also reads the unified diff from stdin before analysis starts.
 // It returns the parsed values and true, or the zero hookFlagValues and false, which makes runHook exit 2 before analysis.
 func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues, bool) {
@@ -279,6 +307,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 // hookHelpRequested recognises help anywhere before an explicit parsing terminator.
 //
 // Run it before FlagSet parsing so help returns the hook's command guidance instead of a scan.
+//
 // commandArguments is normalized as in parseHookFlags, and hookFlagHasSeparateValue keeps flag values from counting as help.
 // It returns true when the user asked for help, as in gruff-go hook --help, and false otherwise.
 func hookHelpRequested(commandArguments []string) bool {
@@ -308,6 +337,7 @@ func hookFlagHasSeparateValue(flagArgument string) bool {
 // hookConfigErrorReport builds the in-band config failure payload required by B8.
 //
 // Reached when gruff-go hook finds the project config invalid, such as a malformed .gruff-go.yaml; the run then exits 2.
+//
 // configError supplies the message for the fatal config diagnostic and the config error, whose remediation names .gruff-go.yaml and --no-config.
 // It returns the hookFatalReport payload with Config.SchemaOK false and that error attached.
 func hookConfigErrorReport(configError error) hookReport {
@@ -349,6 +379,7 @@ func hookFatalReport(diagnosticType, message string) hookReport {
 // isDegradableHookGitBaseError spots git-base failures that let the hook continue with the affected filter disabled.
 //
 // For example, gruff-go hook --diff staged in a repository with no commits yet degrades instead of failing.
+//
 // diffMode must be HEAD, working-tree or staged and hookError must match a missing-revision or no-commits git message; a nil hookError is false.
 // It reports true when the caller may warn and disable only the failing stage's filter, and false when the failure stays fatal.
 func isDegradableHookGitBaseError(diffMode string, hookError error) bool {

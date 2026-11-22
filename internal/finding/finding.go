@@ -1,6 +1,7 @@
 // Package finding defines the Finding payload and fingerprint helpers.
 //
 // Findings carry rule output, location, severity, and identity hash data.
+//
 // A Finding that the report keeps becomes a line in the analyse text report or, through MarshalJSON, a JSON object.
 // Fingerprint is line-sensitive, while StableIdentity leaves the line out so external diff tooling can follow a finding that moved.
 package finding
@@ -56,8 +57,8 @@ type Finding struct {
 	// BaselineStatus is what an applied baseline made of this finding: "new", "collision" or "notEligible".
 	// It is empty when no baseline ran, and it never reaches the JSON envelope.
 	BaselineStatus string `json:"-"`
-	// DeclarationPosition is the line the ordinal was derived from. Two findings
-	// sharing an identity but not a position are a collision the baseline reports.
+	// DeclarationPosition is the line the ordinal was derived from. Two findings sharing an identity but not a position are a collision the baseline
+	// reports.
 	DeclarationPosition int `json:"-"`
 }
 
@@ -130,6 +131,7 @@ func (f Finding) ComputeStableIdentity() string {
 // MarshalJSON emits the canonical v3 finding shape.
 //
 // Unknown optional spans are omitted; a nil Location or a start line of 0 or less uses line 1 as the JSON anchor.
+//
 // It returns the encoded object; secondaryPillars and metadata are always present, and an unset tier or stableIdentity is filled in.
 // It fails with the json.Marshal error and nil bytes when any field cannot be encoded, such as a channel or NaN float in Metadata.
 func (f Finding) MarshalJSON() ([]byte, error) {
@@ -245,4 +247,23 @@ func canonicalMetadata(values map[string]any, location *Location) map[string]any
 		out["locationPrecision"] = "scanner-pinpointed"
 	}
 	return out
+}
+
+// GroupMemberLines returns duplicate-test member lines so a changed-code scan can check edits outside the group's first test.
+// A nil or empty result leaves the scan using the finding's own location.
+func (f Finding) GroupMemberLines() []int {
+	// Ordinary findings need only their own reported location.
+	if f.RuleID != "test-quality.duplicate-test-body" {
+		return nil
+	}
+	members, _ := f.Metadata["members"].([]map[string]any)
+	lines := make([]int, 0, len(members))
+	// Each test named in the group can make the finding relevant to a user's patch.
+	for _, member := range members {
+		// A member with no valid source line cannot expand the changed-code scope.
+		if line, ok := member["line"].(int); ok && line > 0 {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }

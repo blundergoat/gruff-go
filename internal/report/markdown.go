@@ -1,6 +1,7 @@
 // Package report renders gruff-go analysis results into output formats.
 //
 // Markdown output is tuned for CI logs and GitHub PR comments.
+//
 // It holds a short header, severity counts, any diagnostics, the canonical Pillars table and a compact top-rules block.
 // A run with no diagnostics skips the Diagnostics section, and one with no findings skips Top rules, so the output stays short.
 package report
@@ -19,6 +20,7 @@ const markdownTopRules = 5
 // WriteMarkdown renders the analysis report as CommonMark-flavoured markdown with the canonical Pillars table.
 //
 // Output is consumable in CI logs and as a GitHub PR comment body.
+//
 // It writes the header, severity counts, diagnostics, Pillars table and top rules for report to writer, in that order.
 // It returns the first error a write to writer fails with, leaving any sections already written in place, and nil once every section is written.
 func WriteMarkdown(writer io.Writer, report analysis.Report) error {
@@ -31,6 +33,10 @@ func WriteMarkdown(writer io.Writer, report analysis.Report) error {
 	if err := writeMarkdownDiagnostics(writer, report.Diagnostics); err != nil {
 		return err
 	}
+	// If the destination stops accepting the audit, report the write failure instead of treating a partial artifact as complete.
+	if err := writeMarkdownSuppressions(writer, report.Suppressions); err != nil {
+		return err
+	}
 	if err := writeMarkdownPillarsTable(writer, BuildPillarSummaryRows(report)); err != nil {
 		return err
 	}
@@ -38,6 +44,34 @@ func WriteMarkdown(writer io.Writer, report analysis.Report) error {
 		return err
 	}
 	return nil
+}
+
+// writeMarkdownSuppressions writes summaries to writer so a Markdown reviewer can see what the scan suppressed and why.
+// An empty list omits the section. Configured exclusions with zero matches still appear, and a failed write returns an error.
+func writeMarkdownSuppressions(writer io.Writer, summaries []analysis.SuppressionSummary) error {
+	// Omit an empty section when the scan has no suppression rows to audit.
+	if len(summaries) == 0 {
+		return nil
+	}
+	// A closed report file prevents even the heading from reaching the reviewer.
+	if _, err := fmt.Fprintln(writer, "\n## Suppressions"); err != nil {
+		return err
+	}
+	// Show the reason for every configured exclusion, even if the scan found nothing for it to suppress.
+	for _, row := range summaries {
+		// If the writer fails while publishing an exclusion, stop so the caller can flag the incomplete report.
+		if _, err := fmt.Fprintf(writer, "- %s in %s (%d): %s\n", escapeMarkdownText(row.Rule),
+			escapeMarkdownText(strings.Join(row.Paths, ", ")), row.Suppressed, escapeMarkdownText(row.Reason)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// escapeMarkdownText returns text safe to render inline in a report.
+func escapeMarkdownText(text string) string {
+	escaped := strings.NewReplacer("\\", "\\\\", "&", "&amp;", "<", "&lt;", ">", "&gt;", "`", "\\`", "*", "\\*", "_", "\\_", "[", "\\[", "]", "\\]")
+	return escaped.Replace(singleLineReportText(text))
 }
 
 // writeMarkdownDiagnostics keeps degradation and failure messages visible in PR-comment output.
@@ -52,7 +86,8 @@ func writeMarkdownDiagnostics(writer io.Writer, diagnostics []analysis.Diagnosti
 		return err
 	}
 	for _, diagnostic := range diagnostics {
-		if _, err := fmt.Fprintf(writer, "\n- `%s` `%s` - %s\n", escapeMarkdownCell(diagnosticLabel(diagnostic)), escapeMarkdownCell(diagnostic.File), diagnostic.Message); err != nil {
+		// Return a failure when a closed destination drops the diagnostic a Markdown reader needs to see.
+		if _, err := fmt.Fprintf(writer, "\n- %s %s - %s\n", escapeMarkdownText(diagnosticLabel(diagnostic)), escapeMarkdownText(diagnostic.File), escapeMarkdownText(diagnostic.Message)); err != nil {
 			return err
 		}
 	}
@@ -125,7 +160,7 @@ func writeMarkdownPillarsTable(writer io.Writer, rows []PillarSummaryRow) error 
 			"| %s | %s | %s | %d | %d | %d | %d |\n",
 			escapeMarkdownCell(row.Pillar),
 			escapeMarkdownCell(row.Grade),
-			fmt.Sprintf("%.2f", row.Score),
+			pillarScoreLabel(row),
 			row.Findings,
 			row.Advisory,
 			row.Warning,

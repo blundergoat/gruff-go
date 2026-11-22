@@ -64,8 +64,7 @@ func TestHookBaselineConsumesIdentityPairsOneToOne(t *testing.T) {
 			expectedVisibleFinding: 0,
 		},
 		{
-			// A file-level finding is named by its message with the measurement
-			// stripped, so the file growing from 510 to 820 lines stays hidden.
+			// A file-level finding is named by its message with the measurement stripped, so the file growing from 510 to 820 lines stays hidden.
 			journeyName:            "a file-level metric change stays hidden",
 			priorFindings:          []finding.Finding{metricBaselineFinding},
 			currentFindings:        []finding.Finding{metricCurrentFinding},
@@ -86,7 +85,11 @@ func TestHookBaselineConsumesIdentityPairsOneToOne(t *testing.T) {
 			if err != nil {
 				t.Fatalf("prior base: %v", err)
 			}
-			visibleFindings, _ := hookFindings(testCase.currentFindings, nil, diff.ChangedLines{}, false, hookBaseline)
+			visibleFindings, _, err := hookFindings(testCase.currentFindings, nil, diff.ChangedLines{}, false, hookBaseline)
+			// The hook must complete classification before the user can inspect duplicate findings.
+			if err != nil {
+				t.Fatal(err)
+			}
 			// Only occurrences beyond the reviewed count may stay visible in gruff-go hook output.
 			if len(visibleFindings) != testCase.expectedVisibleFinding {
 				t.Fatalf("visible findings = %d, want %d: %#v", len(visibleFindings), testCase.expectedVisibleFinding, visibleFindings)
@@ -108,7 +111,11 @@ func TestHookNeverHidesASensitiveFinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	visibleFindings, _ := hookFindings([]finding.Finding{secret}, nil, diff.ChangedLines{}, false, hookBaseline)
+	visibleFindings, _, err := hookFindings([]finding.Finding{secret}, nil, diff.ChangedLines{}, false, hookBaseline)
+	// An ineligible finding stays visible in a successful hook response.
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(visibleFindings) != 1 {
 		t.Fatalf("visible findings = %d, want the sensitive finding to stay visible", len(visibleFindings))
 	}

@@ -38,6 +38,7 @@ func (SuppressionWithoutRationaleRule) Definition() Definition {
 // AnalyzeUnit emits findings for suppression directives that contain no rationale.
 //
 // When unit has a parsed AST and FileSet, only real Go comments are checked; otherwise only trimmed lines starting with nolint or #nosec are checked.
+//
 // ctx is passed to shouldSkipGeneratedUnit, which decides whether a generated unit is skipped.
 // It returns one finding per checked directive lacking a rationale, and nil for an empty source, a skipped generated unit or a vendored path.
 func (SuppressionWithoutRationaleRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
@@ -106,6 +107,7 @@ type parsedComment struct {
 // parsedComments turns each comment in the file into a parsedComment, keeping its position and whether it documents a declaration.
 //
 // The unit must carry a parsed AST and FileSet.
+//
 // It returns one parsedComment per comment in file order, carrying its cleaned text, line, column, InDocGroup and FreeStanding flags.
 // The result is an empty slice when the file has no comments.
 func parsedComments(unit parser.Unit) []parsedComment {
@@ -132,6 +134,7 @@ func parsedComments(unit parser.Unit) []parsedComment {
 // A doc group sits where a rationale would but explains the declaration, so "Execute runs the command." cannot excuse a nolint below it.
 //
 // It reads the package doc and the Doc of every FuncDecl, GenDecl, TypeSpec, ValueSpec and Field in unit, whose AST and FileSet must be set.
+//
 // It returns a set keyed by the line each such comment starts on, and an empty map when unit has no such comments.
 // A multi-line block comment therefore marks only its first line.
 func declarationDocLines(unit parser.Unit) map[int]bool {
@@ -227,6 +230,7 @@ func suppressionHasRationale(rest string) bool {
 // nearbyCommentHasRationale accepts an immediately adjacent explicit rationale comment.
 //
 // comments holds the file's parsed comments in order and index is the directive's position in it, which must be in range.
+//
 // It reports true when the comment just before or after, within one line, starts with reason:, rationale: or because: plus a reason word.
 // Otherwise the result comes from contiguousCommentBlockExplains, so false means neither check found a rationale.
 func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
@@ -249,6 +253,7 @@ func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
 // Free-standing directives in between are skipped, so one prose block can explain several directives stacked under it.
 //
 // comments holds the file's parsed comments in order, and index is the directive's position in it, which must be in range.
+//
 // Directives and comments with no reason word are passed over; a line gap, a doc-group line or a trailing comment stops the search with false.
 // It reports true at the first comment above holding a word hasReasonWord accepts, and false when it runs out of comments.
 func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
@@ -263,7 +268,7 @@ func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
 			return false
 		}
 		if _, _, isDirective := suppressionDirectiveTail(candidate.Text); isDirective {
-			continue
+			return false
 		}
 		if hasReasonWord(candidate.Text) {
 			return true
@@ -275,6 +280,7 @@ func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
 // nearbyLineHasRationale accepts an immediately adjacent explicit rationale line in text units.
 //
 // lines holds the unit source split on newlines and index is the directive line's 0-based position in it.
+//
 // It reports true when the line above or below, minus a leading // or # marker, starts with reason:, rationale: or because: plus a reason word.
 // It reports false when neither neighbour exists or qualifies.
 func nearbyLineHasRationale(lines []string, index int) bool {
@@ -331,6 +337,7 @@ func trimSuppressionRuleList(rest string) string {
 // trimNoSecCodes removes leading gosec rule codes such as G101 or G204.
 //
 // rest is the suppression text after the directive, with any colon rule list already removed.
+//
 // It returns rest unchanged when its first word is not a gosec code, and otherwise the words after the codes joined by single spaces.
 // The result is empty when rest holds nothing but codes.
 func trimNoSecCodes(rest string) string {

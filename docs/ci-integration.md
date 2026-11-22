@@ -51,6 +51,9 @@ gruff-go analyse --since origin/main .
 
 Diff mode records a `"diff mode is changed-line scoped"` caveat in the report so consumers know the scan wasn't full-project.
 
+Use `git diff --unified=0 origin/main | gruff-go analyse --diff=- .` when the pipeline supplies the patch on standard input.
+An empty Git diff is valid. Unrecognized input, such as a piped error message, produces a changed-region diagnostic and exit code `2`.
+
 ## GitHub Actions
 
 ### Inline annotations + summary
@@ -230,7 +233,9 @@ With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are
 
 The below-error invariant is enforced, not just documented: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches error, naming this section in its failure message. Verify the live numbers yourself with `gruff-go list-rules --no-config --format json` - without `--no-config` you get the effective severities after your own `.gruff-go.yaml` overrides, which is a different question.
 
-Use the advisory floor when CI is intended to gate on all detected security issues. `analyse` and `summary` default to it, so the recipes above already gate. `report` and `dashboard` default to `none` and have **no** finding gate, so a pipeline whose failing step is one of those needs an explicit `--fail-on advisory` or a `failOn` entry - an artifact generator reports security findings and still exits `0`. For an existing codebase, reduce initial scope with a baseline or `--since` rather than raising the severity floor and silently excluding detected classes.
+Use `--fail-on advisory` to gate CI on every reported security finding. `analyse` uses this gate by default.
+`summary`, `report`, and `dashboard` need an explicit flag or a `failOn` entry such as `failOn.summary: advisory`.
+For an existing codebase, use a baseline or `--since` to limit the initial scope while keeping every severity eligible for the gate.
 
 ### Open family decision: security findings and grade A
 

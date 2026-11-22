@@ -1,6 +1,7 @@
 // Package baseline reads, writes, applies, and migrates the reviewed-finding baseline a user keeps beside their code.
 //
 // A developer runs gruff-go baseline --out gruff-baseline.json after reviewing a scan, then gruff-go analyse --baseline gruff-baseline.json later.
+//
 // Each current finding is new, unchanged, collision, or not eligible; reviewed surplus counts as resolved unless its identity collided.
 // Matching uses line-free identities and reviewed counts, so code movement keeps a match and surplus occurrences stay visible.
 package baseline
@@ -27,8 +28,7 @@ const SchemaVersion = "gruff.baseline.v3"
 // Version 0.5 never reads v3 and v3 never writes 0.5; a dual writer would keep two identity rules alive and defer the break forever.
 const LegacySchemaVersion = "gruff-go.baseline.v0.1"
 
-// sensitiveReason is stored beside the sensitive counts so a reader of the file
-// learns why no sensitive occurrence has an entry.
+// sensitiveReason is stored beside the sensitive counts so a reader of the file learns why no sensitive occurrence has an entry.
 const sensitiveReason = "Sensitive findings are never baseline-eligible; a stored identity would be a durable suppression of a secret."
 
 // identityPattern is the sixteen lowercase hex characters the identity contract yields.
@@ -47,8 +47,7 @@ const (
 	StatusNew Status = "new"
 	// StatusUnchanged marks a finding within its identity's reviewed count.
 	StatusUnchanged Status = "unchanged"
-	// StatusCollision marks findings on distinct declarations that share one
-	// identity, so the identity cannot separate them. Never suppressed.
+	// StatusCollision marks findings on distinct declarations that share one identity, so the identity cannot separate them. Never suppressed.
 	StatusCollision Status = "collision"
 	// StatusNotEligible marks a finding with no identity: a sensitive one, or one whose symbol carries the ordinal separator.
 	//
@@ -56,13 +55,12 @@ const (
 	StatusNotEligible Status = "notEligible"
 )
 
-// File is the JSON document containing findings a user has reviewed, in the
-// shape contracts/core/baseline.v3.json ratifies.
+// File is the JSON document containing findings a user has reviewed, in the shape contracts/core/baseline.v3.json ratifies.
 type File struct {
 	// SchemaVersion identifies the on-disk baseline schema; must match SchemaVersion.
 	SchemaVersion string `json:"schemaVersion"`
-	// ToolLanguage names the one port whose findings this file records. A run by
-	// another port refuses the file rather than reporting every entry resolved.
+	// ToolLanguage names the one port whose findings this file records. A run by another port refuses the file rather than reporting every entry
+	// resolved.
 	ToolLanguage string `json:"toolLanguage"`
 	// GeneratedAt is an RFC 3339 timestamp for human review only; it never enters identity or matching.
 	// Regenerating with no code change keeps the occurrences array unchanged, but this timestamp can still differ.
@@ -93,8 +91,7 @@ type Occurrence struct {
 //
 // It carries no identity, path, line, message, or symbol, because each of those is an occurrence-level record.
 type SensitiveSummary struct {
-	// Eligible is always false; it is stored rather than assumed so a file
-	// claiming otherwise fails loudly instead of being trusted.
+	// Eligible is always false; it is stored rather than assumed so a file claiming otherwise fails loudly instead of being trusted.
 	Eligible bool `json:"eligible"`
 	// Reason explains to a reader why sensitive findings have no entries.
 	Reason string `json:"reason"`
@@ -292,6 +289,7 @@ func Parse(baselineJSON []byte) (File, error) {
 // Validate checks one parsed file against the contract; every rule here is a way a stored baseline could expire, leak, or reorder.
 //
 // The baselineFile needs the v3 SchemaVersion, one of the five port toolLanguage values, a non-empty generatedAt, and sensitive.eligible false.
+//
 // Occurrences must have lowercase 16-hex identities in strictly ascending order with positive counts, and byRule must sum to the sensitive total.
 // It returns an error describing the first violation found, and nil when the file meets the contract.
 func Validate(baselineFile File) error {
@@ -386,11 +384,11 @@ type identityGroups struct {
 // Explicit section 13 exclusions are removed before this point, so the precedence left is not-eligible, then collision, then new, then unchanged.
 //
 // The currentFindings are one run's findings in scan order; with none, every reviewed occurrence in baselineFile is reported resolved.
+//
 // It returns the ApplyResult holding one status per finding, the surviving and unchanged findings, resolved entries, collisions and counts.
 // It fails with an error, and a zero ApplyResult, when baselineFile names another toolLanguage or a finding's identity cannot be computed.
 func Apply(currentFindings []finding.Finding, baselineFile File) (ApplyResult, error) {
-	// A foreign baseline is refused before matching: reporting every entry
-	// resolved and every finding new would invite a destructive regenerate.
+	// A foreign baseline is refused before matching: reporting every entry resolved and every finding new would invite a destructive regenerate.
 	if baselineFile.ToolLanguage != finding.BaselineToolLanguage {
 		return ApplyResult{}, fmt.Errorf("baseline was written by %s and this run is %s; baselines are not shared across languages", baselineFile.ToolLanguage, finding.BaselineToolLanguage)
 	}
@@ -412,8 +410,8 @@ func Apply(currentFindings []finding.Finding, baselineFile File) (ApplyResult, e
 // Ineligibility is decided before any lookup, so no baseline entry can reach a secret.
 // Findings without an identity are sensitive ones and ones whose symbol carries the ordinal separator.
 //
-// The statuses slice must have one slot per entry in currentFindings; each finding without an identity gets StatusNotEligible in its slot,
-// and that write panics when the slot is missing.
+// The statuses slice must have one slot per entry in currentFindings; each finding without an identity gets StatusNotEligible in its slot, and that
+// write panics when the slot is missing.
 // It returns the identity groups in first-seen order, empty when no finding has an identity, or an error when one cannot be computed.
 func groupEligibleFindings(currentFindings []finding.Finding, statuses []Status) (identityGroups, error) {
 	groups := identityGroups{byIdentity: map[string]*identityGroup{}}
@@ -458,8 +456,7 @@ func classifyGroups(currentFindings []finding.Finding, groups identityGroups, ba
 	collided := map[string]bool{}
 	for _, identity := range groups.order {
 		group := groups.byIdentity[identity]
-		// One identity over two declarations cannot separate them, so neither is
-		// suppressed and the run says so by name.
+		// One identity over two declarations cannot separate them, so neither is suppressed and the run says so by name.
 		if len(group.positions) > 1 {
 			collided[identity] = true
 			for _, index := range group.indexes {
@@ -468,8 +465,8 @@ func classifyGroups(currentFindings []finding.Finding, groups identityGroups, ba
 			result.Collisions = append(result.Collisions, Collision{Identity: identity, RuleID: group.ruleID, Path: group.path, Subjects: group.subjects})
 			continue
 		}
-		// The reviewed count is spent by line then column, so two ports classify
-		// the same occurrences for identical input rather than merely the same number.
+		// The reviewed count is spent by line then column, so two ports classify the same occurrences for identical input rather than merely the same
+		// number.
 		spendOrder := slices.Clone(group.indexes)
 		slices.SortStableFunc(spendOrder, func(left, right int) int {
 			return comparePosition(currentFindings[left], currentFindings[right])
@@ -510,6 +507,7 @@ func resolveSurplus(groups identityGroups, baselineFile File, collided map[strin
 // assembleResult splits current findings in scan order, increments their status counts, and sets the suppression and stale-count aliases.
 //
 // It copies the ResolvedFindings that resolveSurplus already counted into StaleEntries, keeping the ADR-012 aliases in step.
+//
 // The statuses slice holds one Status per entry of currentFindings, and a shorter slice panics with an index error.
 // result receives non-nil Findings, Unchanged and Resolved lists.
 func assembleResult(currentFindings []finding.Finding, statuses []Status, result *ApplyResult) {
@@ -554,6 +552,7 @@ func declarationKey(currentFinding finding.Finding) string {
 // comparePosition orders two occurrences of one identity by their position in the file.
 //
 // Only the spend order depends on it; no position enters an identity.
+//
 // It returns a negative number when left comes before right by line then column, a positive one when after, and zero for the same position.
 // A finding with no location, or a line below 1, sorts after every located one.
 func comparePosition(left, right finding.Finding) int {
@@ -578,36 +577,38 @@ func positionOf(currentFinding finding.Finding) (int, int) {
 // DefaultFilename is the one baseline name every port writes and auto-discovers.
 const DefaultFilename = "gruff-baseline.json"
 
-// RequireOverwritableDefaultPath refuses to write a baseline over a 0.5 file at the shared default path.
+// RequireOverwritableDefaultPath protects outputPath before a developer regenerates the shared default baseline.
 //
-// All five ports write and auto-discover the same filename, so without this an ordinary upgrade-then-generate
-// destroys the 0.5 baseline that is the user's documented retreat path, before they know they need it.
-// Regenerating v3 over v3 is not destructive, because v3 is what the tool now reads.
-//
-// The check is skipped when force is true or outputPath's base name is not gruff-baseline.json, and a file that cannot be read or decoded passes.
-// It returns an error naming the found schemaVersion when outputPath holds JSON whose schemaVersion is not v3, and nil otherwise.
+// Returns an error if the existing file is unreadable, legacy, or from another port. A missing file or a valid Go v3 file can be written.
+// force lets the developer explicitly replace the file they selected.
 func RequireOverwritableDefaultPath(outputPath string, force bool) error {
+	// An explicit overwrite or a custom filename uses the writer's normal replacement behavior.
 	if force || filepath.Base(outputPath) != DefaultFilename {
 		return nil
 	}
 	// #nosec G304 -- the caller's own explicit output path, read only to classify what is already there.
 	existing, err := os.ReadFile(outputPath)
+	// On first generation the developer has no default baseline to preserve.
+	if os.IsNotExist(err) {
+		return nil
+	}
+	// A permission error leaves the existing reviews in place and explains why generation stopped.
 	if err != nil {
-		// A read failure skips this protection, whether the output is missing, the usual first-generate case, or exists but cannot be read.
+		return fmt.Errorf("cannot inspect existing baseline %s: %w", outputPath, err)
+	}
+	file, err := Parse(existing)
+	// A valid Go v3 file can be refreshed by the same tool that will read it.
+	if err == nil && file.ToolLanguage == finding.BaselineToolLanguage {
 		return nil
 	}
-	var document struct {
-		SchemaVersion string `json:"schemaVersion"`
-	}
-	// A file that is not JSON, or is already v3, passes here and is overwritten.
-	if err := json.Unmarshal(existing, &document); err != nil || document.SchemaVersion == SchemaVersion {
-		return nil
-	}
-	return fmt.Errorf("%s is a %s baseline, not %s; generating over it would destroy the retreat path. Migrate it with `gruff-go baseline --migrate %s --out <new path>`, or pass --force to overwrite it",
-		outputPath, document.SchemaVersion, SchemaVersion, outputPath)
+	return fmt.Errorf("refusing to overwrite %s because it is not a valid Go %s baseline; migrate a 0.5 baseline with `gruff-go baseline --migrate %s --out <new path>`, or pass --force to overwrite it",
+		outputPath, SchemaVersion, outputPath)
 }
 
-// LegacyFile is the 0.5 on-disk shape an explicit migration reads.
+// LegacyFile holds the reviews a developer accepted with the 0.5 CLI.
+//
+// Only an explicit migration reads this format.
+// An empty findings array means the developer carried no reviewed findings into the upgrade.
 type LegacyFile struct {
 	// SchemaVersion must equal LegacySchemaVersion.
 	SchemaVersion string `json:"schemaVersion"`
@@ -615,15 +616,18 @@ type LegacyFile struct {
 	Findings []LegacyEntry `json:"findings"`
 }
 
-// LegacyEntry is one reviewed row of a 0.5 file; its digests are read and discarded, and the identity is rebuilt from the current run.
+// LegacyEntry holds one acceptance from a 0.5 baseline.
+//
+// Its rule, path, and digests identify the reviewed occurrence during migration.
+// A matched finding gets its v3 identity from the current scan.
 type LegacyEntry struct {
 	// RuleID is the rule whose finding was reviewed.
 	RuleID string `json:"ruleId"`
 	// File is the repo-relative path the reviewed finding targeted.
 	File string `json:"file"`
-	// Fingerprint is the 0.5 line-bearing digest, read and discarded.
+	// Fingerprint is the 0.5 line-bearing digest.
 	Fingerprint string `json:"fingerprint"`
-	// StableIdentity is the 0.5 line-free digest, read and discarded.
+	// StableIdentity is the 0.5 line-free digest.
 	StableIdentity string `json:"stableIdentity,omitempty"`
 }
 
@@ -633,24 +637,33 @@ type LegacyEntry struct {
 // A file naming two of them cannot be read the same way twice, so a migration refuses it.
 var legacyRowContainers = []string{"findings", "groups", "entries"}
 
-// ParseLegacy decodes a 0.5 baseline for migration and nothing else.
+// ParseLegacy reads baselineJSON when a developer migrates reviews from version 0.5.
 //
-// The baselineJSON must name at most one row container, carry no unknown field, and use the LegacySchemaVersion.
-// It returns the decoded LegacyFile, or a zero LegacyFile and an error when any check fails or a row lacks its ruleId or file.
+// It requires the legacy schema and an explicit findings array. An empty array means there were no reviews to carry forward.
+// Returns the legacy data or a zero file and an error when a field or row fails validation.
 func ParseLegacy(baselineJSON []byte) (LegacyFile, error) {
+	// A file with two row lists is ambiguous across ports. The developer must supply one legacy baseline.
 	if err := requireOneRowContainer(baselineJSON); err != nil {
 		return LegacyFile{}, err
 	}
 	var legacyFile LegacyFile
 	decoder := json.NewDecoder(bytes.NewReader(baselineJSON))
 	decoder.DisallowUnknownFields()
+	// Truncated JSON or an unfamiliar field stops migration before any destination is written.
 	if err := decoder.Decode(&legacyFile); err != nil {
 		return LegacyFile{}, err
 	}
+	// A current v3 file already uses the active format and cannot serve as a 0.5 migration source.
 	if legacyFile.SchemaVersion != LegacySchemaVersion {
 		return LegacyFile{}, fmt.Errorf("baseline schemaVersion %q is not readable as a 0.5 baseline; expected %q", legacyFile.SchemaVersion, LegacySchemaVersion)
 	}
+	// An explicit empty array represents zero reviews. A missing array could silently drop reviews.
+	if legacyFile.Findings == nil {
+		return LegacyFile{}, fmt.Errorf("a 0.5 Go baseline must contain a findings array")
+	}
+	// Each legacy acceptance needs enough information to identify its rule and file in the current scan.
 	for index, entry := range legacyFile.Findings {
+		// Point the developer to the incomplete row before building an upgraded baseline.
 		if entry.RuleID == "" || entry.File == "" {
 			return LegacyFile{}, fmt.Errorf("findings[%d] must include ruleId and file", index)
 		}
@@ -660,8 +673,8 @@ func ParseLegacy(baselineJSON []byte) (LegacyFile, error) {
 
 // requireOneRowContainer refuses a 0.5 input naming more than one recognised row container.
 //
-// The five 0.5 writers used three container keys, so a file carrying two of them migrates
-// differently in different ports; refusing it is the only reading that is the same everywhere.
+// The five 0.5 writers used three container keys, so a file carrying two of them migrates differently in different ports; refusing it is the only
+// reading that is the same everywhere.
 //
 // The baselineJSON is decoded as a top-level object and checked for the findings, groups and entries keys.
 // It returns an error when decoding baselineJSON fails or it names two or more of those keys, and nil otherwise.
@@ -682,17 +695,53 @@ func requireOneRowContainer(baselineJSON []byte) error {
 	return nil
 }
 
-// Accepts reports whether a 0.5 row has the same rule and path as currentFinding; Fingerprint and StableIdentity are ignored.
-//
-// A shape that recorded less is not made to mean more, so one row covers every finding of that rule in that file.
-// The currentFinding is covered when any row's ruleId and file equal its RuleID and File exactly; with no rows the result is false.
-func (legacyFile LegacyFile) Accepts(currentFinding finding.Finding) bool {
-	for _, entry := range legacyFile.Findings {
-		if entry.RuleID == currentFinding.RuleID && entry.File == currentFinding.File {
-			return true
+// matchLegacyFindings returns the findings from current that the legacy rows identify one-to-one.
+// It recovers a moved finding only when its line-free identity is unique in both scans. An empty result carries no reviews forward.
+func matchLegacyFindings(rows []LegacyEntry, current []finding.Finding) []finding.Finding {
+	type key struct{ rule, path, digest string }
+	fingerprints := map[key][]int{}
+	currentIdentities := map[key][]int{}
+	// Index both identities so a review can follow an unchanged or unambiguously moved finding.
+	for index, item := range current {
+		exact := key{item.RuleID, item.File, item.ComputeFingerprint()}
+		stable := key{item.RuleID, item.File, item.ComputeStableIdentity()}
+		fingerprints[exact] = append(fingerprints[exact], index)
+		currentIdentities[stable] = append(currentIdentities[stable], index)
+	}
+	reviewedIdentities := map[key]int{}
+	matched := make([]bool, len(current))
+	unmatched := []LegacyEntry{}
+	// Spend one reviewed row on one exact occurrence before trying a line-free match.
+	for _, row := range rows {
+		reviewedIdentities[key{row.RuleID, row.File, row.StableIdentity}]++
+		exact := key{row.RuleID, row.File, row.Fingerprint}
+		indices := fingerprints[exact]
+		// If the source moved or changed, defer the legacy row until exact matches have used their occurrences.
+		if len(indices) == 0 {
+			unmatched = append(unmatched, row)
+			continue
+		}
+		matched[indices[0]] = true
+		fingerprints[exact] = indices[1:]
+	}
+	// Try to recover reviews whose original positions no longer identify them.
+	for _, row := range unmatched {
+		stable := key{row.RuleID, row.File, row.StableIdentity}
+		indices := currentIdentities[stable]
+		// A duplicate on either side prevents guessing which finding the developer reviewed.
+		if reviewedIdentities[stable] == 1 && len(indices) == 1 {
+			matched[indices[0]] = true
 		}
 	}
-	return false
+	accepted := []finding.Finding{}
+	// Return the matched reviews in scan order for deterministic baseline output.
+	for index, item := range current {
+		// A newly introduced sibling stays visible unless a specific legacy acceptance identified it.
+		if matched[index] {
+			accepted = append(accepted, item)
+		}
+	}
+	return accepted
 }
 
 // MigrationResult reports what an explicit migration wrote.
@@ -707,18 +756,11 @@ type MigrationResult struct {
 	File File
 }
 
-// Migrate carries a 0.5 baseline's reviews into a separate v3 file, for `gruff-go baseline --migrate old.json --out new.json`.
+// Migrate carries identifiable 0.5 reviews from inputPath into a separate v3 file at outputPath for gruff-go baseline --migrate.
+// It matches currentFindings to legacy rows, rebuilds v3 identities, and stamps the output with generatedAt.
 //
-// The reviewed findings are re-identified from the current run, never translated from 0.5 digests.
-// The input is never written to, renamed, or deleted, and an output that is the input by spelling, link, or inode is refused.
-//
-// The 0.5 rows at inputPath select currentFindings for outputPath; FromFindingsAt turns them into the v3 file, stamped with generatedAt.
-// Covered sensitive findings add counts, covered ordinary findings with an identity add entries, and other covered findings are omitted.
-// It returns the accepted, occurrence and sensitive counts with the written File, which has no occurrences when no row covers a current finding.
-//
-// It returns an error when a path is empty or both name the same file, or when the input cannot be read or parsed.
-// It also fails when a covered finding's identity cannot be computed, writing fails, or the input changed during the run.
-// That last check runs after outputPath is written, so a changed input returns an error with the v3 output already in place.
+// Returns the new file and accepted, occurrence, and sensitive counts. Unidentified findings never become v3 entries.
+// An empty path, a destination alias, an invalid input, or a failed write returns an error. A concurrent input change is detected after writing.
 func Migrate(inputPath, outputPath string, currentFindings []finding.Finding, generatedAt time.Time) (MigrationResult, error) {
 	if inputPath == "" || outputPath == "" {
 		return MigrationResult{}, fmt.Errorf("migration needs both a 0.5 input path and a separate output path")
@@ -735,12 +777,7 @@ func Migrate(inputPath, outputPath string, currentFindings []finding.Finding, ge
 	if err != nil {
 		return MigrationResult{}, err
 	}
-	accepted := make([]finding.Finding, 0)
-	for _, currentFinding := range currentFindings {
-		if legacyFile.Accepts(currentFinding) {
-			accepted = append(accepted, currentFinding)
-		}
-	}
+	accepted := matchLegacyFindings(legacyFile.Findings, currentFindings)
 	migrated, err := FromFindingsAt(accepted, generatedAt)
 	if err != nil {
 		return MigrationResult{}, err

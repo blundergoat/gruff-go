@@ -16,12 +16,14 @@ import (
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
+	"github.com/blundergoat/gruff-go/internal/parser"
 	"github.com/blundergoat/gruff-go/internal/scoring"
 )
 
 // SummarySchemaVersion identifies the canonical gruff.summary.v3 projection of the analysis report.
 //
 // The summary JSON publishes scoring PillarDetails within that projection, not the BuildPillarSummaryRows rows the text digest prints.
+//
 // The bare prefix reflects that it is the canonical schema shared by all five gruff-* ports rather than a per-port one.
 // It is distinct from the analysis report schema so the summary digest can evolve independently.
 const SummarySchemaVersion = analysis.SummarySchemaVersion
@@ -81,6 +83,7 @@ type SummaryOptions struct {
 // WriteSummaryText renders the short human-readable digest used by the summary command.
 //
 // The digest for report goes to writer; in opts, Top limits top rules and offenders and defaults to 10 when not positive.
+//
 // Scan time prints only when opts has a positive ScanDuration, and the first write error from writer stops output and is returned.
 // The masthead and composite block always come first, and the digest ends with an exit: line carrying the run's exit code.
 func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOptions) error {
@@ -104,6 +107,10 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 		summaryWorkingDir(report.Run.WorkingDirectory),
 		fileCounts.parsedGoFiles, fileCounts.scannedTextFiles, fileCounts.failedFiles, report.Summary.FilesSkipped,
 	)
+	// Mention budget-limited Go files separately when the reader has less AST coverage than the discovered total suggests.
+	if fileCounts.degradedGoFiles > 0 {
+		scanCard += fmt.Sprintf("  Go files scanned without AST: %d\n", fileCounts.degradedGoFiles)
+	}
 	if _, err := fmt.Fprint(writer, scanCard); err != nil {
 		return err
 	}
@@ -156,6 +163,7 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 // Keeping these counts internal avoids changing the versioned JSON report contract.
 type summaryFileCounts struct {
 	parsedGoFiles    int
+	degradedGoFiles  int
 	scannedTextFiles int
 	failedFiles      int
 }
@@ -163,17 +171,23 @@ type summaryFileCounts struct {
 // countSummaryFiles classifies each discovered input for the files line of the text summary, while JSON stays unchanged.
 //
 // The counts group inputs by extension after setting aside files with a parse-stage diagnostic.
+//
 // It returns counts from analysisReport: failedFiles holds distinct files with a parse-stage diagnostic, even ones absent from Paths.Scanned.
 // Each other scanned path counts as parsed Go when its extension is .go in any case, else as scanned text; an empty report gives all zeros.
 //
-// A Go file over the deep-scan budget still counts as parsed Go, though its AST was skipped.
+// A Go file over budget counts separately from parsed Go.
 func countSummaryFiles(analysisReport analysis.Report) summaryFileCounts {
 	parseFailedPaths := map[string]struct{}{}
+	degraded := map[string]bool{}
 	// One file may emit several diagnostics, so path identity keeps the failure count file-based.
 	for _, diagnostic := range analysisReport.Diagnostics {
 		// Parser-stage diagnostics cover both read failures and Go syntax errors before rule analysis.
 		if diagnostic.Stage == "parse" && diagnostic.File != "" {
 			parseFailedPaths[diagnostic.File] = struct{}{}
+		}
+		// A budget notice means text-level checks could still run, so track it separately from a parse failure.
+		if diagnostic.DiagnosticType == parser.BoundedDeepScanDiagnosticType {
+			degraded[diagnostic.File] = true
 		}
 	}
 
@@ -186,7 +200,11 @@ func countSummaryFiles(analysisReport analysis.Report) summaryFileCounts {
 		if _, failed := parseFailedPaths[scannedPath]; failed {
 			continue
 		}
-		// A Go input without a parse-stage diagnostic counts here, even when the deep-scan budget skipped its AST.
+		// Count a degraded Go file outside the parsed total even though the scanner retained its text findings.
+		if degraded[scannedPath] {
+			fileCounts.degradedGoFiles++
+			continue
+		}
 		if strings.EqualFold(path.Ext(scannedPath), ".go") {
 			fileCounts.parsedGoFiles++
 			continue
@@ -216,6 +234,7 @@ func writeSummaryBaseline(writer io.Writer, summary analysis.BaselineSummary) er
 // WriteSummaryV01JSON writes the canonical v3 analysis projection used by the summary --format=json command.
 //
 // The legacy function name remains internal so callers do not select a second summary implementation.
+//
 // It builds the payload by calling MachineSummary on report and encodes it to writer through WriteJSON.
 // It returns the MachineSummary error before anything is written, or else whatever error WriteJSON returns, which is nil on success.
 func WriteSummaryV01JSON(writer io.Writer, report analysis.Report) error {
@@ -229,6 +248,7 @@ func WriteSummaryV01JSON(writer io.Writer, report analysis.Report) error {
 // writeFreshStartHint gives first-run users a concrete baseline workflow when the summary found existing debt and no baseline was applied.
 //
 // Both hint lines go to writer and repeat the run inputs from report, formatted by summaryCommandInputs.
+//
 // A path holding shell characters such as a dollar sign, or starting with a dash, may need editing before the command runs.
 // It writes nothing and returns nil when report has no findings or a baseline was applied; otherwise it returns the first write error or nil.
 func writeFreshStartHint(writer io.Writer, report analysis.Report) error {
@@ -272,10 +292,12 @@ func writeScoreCoverage(writer io.Writer, score scoring.Score) error {
 // BuildPillarSummaryRows returns the canonical per-pillar rows for the text summary digest's Pillars block.
 //
 // The JSON summary publishes scoring PillarDetails instead, so these rows never reach summary --format=json.
+//
 // Every pillar in summaryPillarOrder is included, clean ones as grade A with zero findings, so the block covers the same rows across runs.
 // Rows are sorted by findings descending, with ties broken by pillar name ascending.
 //
 // Counts, penalty and any non-nil score are copied from the matching PillarDetail in report.
+//
 // A pillar with no PillarDetail in report stays applicable at grade A and score 100 with zero counts and zero penalty.
 // A pillar whose detail has a nil Score is marked not applicable yet keeps the default grade A and score 100 in its row.
 func BuildPillarSummaryRows(report analysis.Report) []PillarSummaryRow {
@@ -293,8 +315,7 @@ func BuildPillarSummaryRows(report analysis.Report) []PillarSummaryRow {
 			Applicable: true,
 		}
 		if detail, ok := details[name]; ok {
-			// A pillar with no score evaluated nothing, so the row is marked not applicable.
-			// Its default grade A and score 100 stay in place, and the text Pillars block still prints them.
+
 			row.Applicable = detail.Applicable && detail.Score != nil
 			if detail.Score != nil {
 				row.Grade = summaryGrade(*detail.Score)
@@ -305,6 +326,14 @@ func BuildPillarSummaryRows(report analysis.Report) []PillarSummaryRow {
 			row.Warning = detail.Warning
 			row.Error = detail.Error
 			row.Penalty = detail.Penalty
+		}
+		// Without a composite score there is no applicable pillar score to show in the digest.
+		if report.Score.Composite == nil {
+			row.Applicable = false
+		}
+		// An inapplicable pillar still gets a row so the reader sees n/a instead of a misleading grade.
+		if !row.Applicable {
+			row.Grade = "n/a"
 		}
 		rows = append(rows, row)
 	}
@@ -345,15 +374,25 @@ func writePillarsBlock(writer io.Writer, rows []PillarSummaryRow) error {
 		}
 	}
 	rowFormat := fmt.Sprintf(
-		"  %%-%ds %%s %%6.2f findings=%%-%dd   advisory=%%-%dd   warning=%%-%dd   error=%%d\n",
+		"  %%-%ds %%s %%6s findings=%%-%dd   advisory=%%-%dd   warning=%%-%dd   error=%%d\n",
 		nameWidth, countWidth, countWidth, countWidth,
 	)
 	for _, row := range rows {
-		if _, err := fmt.Fprintf(writer, rowFormat, row.Pillar, row.Grade, row.Score, row.Findings, row.Advisory, row.Warning, row.Error); err != nil {
+		// If the summary destination closes mid-table, return the error instead of counting the digest as delivered.
+		if _, err := fmt.Fprintf(writer, rowFormat, row.Pillar, row.Grade, pillarScoreLabel(row), row.Findings, row.Advisory, row.Warning, row.Error); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// pillarScoreLabel returns the formatted score for row, or n/a when no evaluation supports it.
+func pillarScoreLabel(row PillarSummaryRow) string {
+	// Show n/a when the scan could not evaluate that pillar.
+	if !row.Applicable {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.2f", row.Score)
 }
 
 // summaryDigitWidth returns the number of decimal digits needed to render value, matching the rust port's digit_width helper.
@@ -480,8 +519,8 @@ func gradeOrNA(grade *string) string {
 // It returns the first write error, or nil once the Findings line is written.
 func writeCompositeBlock(writer io.Writer, report analysis.Report) error {
 	counts := severityCounts(report)
-	// A run that evaluated nothing has no composite to render, and printing 100.00 here is exactly
-	// what let an empty directory read as perfect before the M06 break.
+	// A run that evaluated nothing has no composite to render, and printing 100.00 here is exactly what let an empty directory read as perfect before
+	// the M06 break.
 	if report.Score.Composite == nil {
 		if _, err := fmt.Fprintf(writer, "Composite: n/a (nothing evaluated)\n"); err != nil {
 			return err
@@ -506,6 +545,7 @@ func summaryInputs(inputs []string) string {
 // summaryCommandInputs formats input paths as command arguments for the fresh-start hint lines.
 //
 // It returns the inputs joined by spaces; strconv.Quote wraps any input that starts with a dash or holds a space, tab, newline or quote.
+//
 // The dollar, ampersand, semicolon, pipe, parenthesis, angle bracket and backtick characters also force quoting; empty inputs give a single dot.
 // This Go-style quoting does not stop a shell expanding a dollar sign or backtick, and a quoted leading dash still reaches the command.
 func summaryCommandInputs(inputs []string) string {

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -58,6 +59,7 @@ type patchParseState struct {
 // FromGit runs git diff against base and returns the changed lines under paths, with file paths relative to root.
 //
 // ctx cancels the git subprocess so a hung git does not outlive an aborted scan.
+//
 // root is the directory git runs in, and with no paths the whole of root is diffed; a clean diff gives empty LinesByFile and WholeFiles maps.
 // Untracked files are not included; FromMode adds them only for working-tree and base-revision modes.
 //
@@ -202,6 +204,70 @@ func Parse(base string, patch []byte) ChangedLines {
 	return result
 }
 
+// ParseStdin reads the patch a developer pipes to --diff=- and returns its changed lines without running Git.
+//
+// An empty patch means there is no change to check. Unrecognized input or a bad hunk header returns an error instead of an empty successful scan.
+func ParseStdin(patch []byte) (ChangedLines, error) {
+	// A clean git diff produces no bytes, so an empty pipe is a valid comparison.
+	if len(bytes.TrimSpace(patch)) == 0 {
+		return Parse("stdin", patch), nil
+	}
+
+	lines := bytes.Split(patch, []byte("\n"))
+	hasChangeRecord, hasGitHeader, hasDestination := false, false, false
+	previousLine := ""
+	// A patch can contain several files, including metadata-only changes with no source lines for Gruff to check.
+	for lineIndex, raw := range lines {
+		line := strings.TrimSuffix(string(raw), "\r")
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			hasGitHeader, hasDestination = true, false
+		case strings.HasPrefix(line, "+++ ") && strings.HasPrefix(previousLine, "--- "):
+			hasDestination = strings.TrimSpace(line[4:]) != "" && strings.TrimSpace(previousLine[4:]) != ""
+		case strings.HasPrefix(line, "@@"):
+			// A truncated or unrelated input may contain a hunk marker with no usable file location.
+			if !hasDestination || !validStdinHunk(line, len(lines)) {
+				return ChangedLines{}, fmt.Errorf("stdin patch has an invalid hunk at line %d", lineIndex+1)
+			}
+			hasChangeRecord = true
+		case hasGitHeader && isGitMetadataChange(line):
+			hasChangeRecord = true
+		}
+		previousLine = line
+	}
+	// A log or compiler message accidentally piped in contains no recognizable patch record.
+	if !hasChangeRecord {
+		return ChangedLines{}, fmt.Errorf("stdin did not contain a unified diff")
+	}
+	return Parse("stdin", patch), nil
+}
+
+// validStdinHunk reports whether line gives a usable new-side range for --diff=-.
+// The declared number of lines must fit within patchLineCount, so a bad header cannot expand beyond the supplied patch.
+func validStdinHunk(line string, patchLineCount int) bool {
+	bounds := hunkPattern.FindStringSubmatch(line)
+	// A combined or truncated hunk uses a header this changed-line scan cannot interpret.
+	if bounds == nil || !strings.HasPrefix(line, bounds[0]) {
+		return false
+	}
+	start, startErr := strconv.Atoi(bounds[1])
+	count := 1
+	var countErr error
+	// A user piping a one-line diff gets a header that usually omits the count.
+	if bounds[2] != "" {
+		count, countErr = strconv.Atoi(bounds[2])
+	}
+	return startErr == nil && countErr == nil && count <= patchLineCount && start <= math.MaxInt-count
+}
+
+// isGitMetadataChange reports whether line identifies a valid kind of Git change that can appear without text hunks.
+// It lets an ordinary empty-file, rename, permission, or binary change produce an empty changed-line scope.
+func isGitMetadataChange(line string) bool {
+	return strings.HasPrefix(line, "new file mode ") || strings.HasPrefix(line, "deleted file mode ") ||
+		strings.HasPrefix(line, "new mode ") || strings.HasPrefix(line, "rename to ") || strings.HasPrefix(line, "copy to ") ||
+		strings.HasPrefix(line, "Binary files ") || line == "GIT binary patch"
+}
+
 // parsePatchLine updates result and state from one unified-diff line.
 // A diff --git header resets state, a new-file header marks the next file as added, +++ names it and @@ records hunk lines for it.
 func parsePatchLine(result *ChangedLines, state *patchParseState, line string) {
@@ -280,7 +346,8 @@ func Filter(findings []finding.Finding, changed ChangedLines) FilterResult {
 	kept := make([]finding.Finding, 0, len(findings))
 	filtered := 0
 	for _, item := range findings {
-		if matchesFinding(item, changed) {
+		// Only findings overlapping the requested change belong in this patch report.
+		if MatchesFinding(item, changed) {
 			kept = append(kept, item)
 			continue
 		}
@@ -289,11 +356,11 @@ func Filter(findings []finding.Finding, changed ChangedLines) FilterResult {
 	return FilterResult{Findings: kept, FilteredFindings: filtered}
 }
 
-// matchesFinding reports whether a finding overlaps the changed-line set.
+// MatchesFinding reports whether a finding overlaps the changed-line set.
 //
 // item matches when changed marks its file whole, or lists the file and either item has no line or a line from Line to EndLine is changed.
 // An EndLine of zero or below Line counts as Line, and a file absent from both maps reports false.
-func matchesFinding(item finding.Finding, changed ChangedLines) bool {
+func MatchesFinding(item finding.Finding, changed ChangedLines) bool {
 	if _, ok := changed.WholeFiles[item.File]; ok {
 		return true
 	}
@@ -303,6 +370,13 @@ func matchesFinding(item finding.Finding, changed ChangedLines) bool {
 	}
 	if item.Location == nil || item.Location.Line == 0 {
 		return true
+	}
+	// A developer can touch a later member of a test group while the finding still points at its first member.
+	for _, line := range item.GroupMemberLines() {
+		// Any edited member is enough to keep its duplicate group in scope.
+		if _, changed := lines[line]; changed {
+			return true
+		}
 	}
 	start := item.Location.Line
 	end := item.Location.EndLine

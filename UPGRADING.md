@@ -63,11 +63,14 @@ time, so a project using more than one of them moves once. This port's recorded 
    go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
    ```
 
-3. Regenerate the configuration if you hand-wrote one: `gruff-go init --force` rewrites it
-   with the current schema version and preserves the tuning you already had.
+3. Migrate a 0.5 configuration to a new file with
+   `gruff-go migrate-config --config .gruff-go.yaml --output gruff-0.6.yaml`.
+   Review the reported removals, then use the migrated file with `--config` or
+   install it as the project config after saving the original. A config that
+   only lacks a schema version can still be regenerated with `gruff-go init --force`.
 4. Carry a baseline forward rather than regenerating it, so previously reviewed findings stay
    reviewed. Run `gruff-go baseline --migrate-baseline <old path> --out <new path>`; it writes a separate
-   file and leaves the old one untouched for a retreat. The CHANGELOG entry for the baseline break has the detail.
+   file and leaves the old one untouched for a retreat. Review unmatched findings after migration. Only exact fingerprints and unambiguous legacy stable identities carry forward.
 5. Re-run `gruff-go summary .` and compare the finding count with the one you had. A rule
    whose default changed will move it; a rule whose identity changed will not.
 

@@ -329,7 +329,7 @@ rules:
 
 **Remediation.** Add maintainer-oriented package summaries and directly attached comments for the selected declaration kinds. When `minWordsBeyondSymbol` is set, replace name-restatement summaries with substantive context.
 
-**Known precision limit.** A concise but substantive comment can miss the configured line or token threshold. Tune minLines or minTokens for the selected paths, or remove the path from this rule's scope. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A concise but substantive comment can miss the configured line or token threshold. Tune threshold or minWordsBeyondSymbol for the selected paths, or remove the path from this rule's scope. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `docs.config-field-comment`
 
@@ -434,7 +434,7 @@ Flags `//nolint` and `#nosec` suppression comments that contain only the directi
 
 **Remediation.** Add a short reason that explains why the suppression is intentional, or remove the suppression if it is no longer needed.
 
-**Known precision limit.** A suppression with its explanation in a non-adjacent comment, or without a reason:, rationale:, or because: prefix, is not recognised as justified. Put an adjacent comment with one recognised rationale prefix immediately before the suppression. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A suppression separated from its explanation by a blank line, another directive or a declaration doc comment can be reported. Put the rationale directly above the directive in a standalone comment, or explain it inline. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `maintainability.context-todo-production`
 
@@ -1271,7 +1271,7 @@ Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized
 
 Flags high-risk secret-like literal assignments in Go source and text/config files. Matches assignments like `apiKey := "AKIA…"`, `password = "p@ssw0rd"`, `bearer = "…"`, and `authorization = "Bearer …"`.
 
-All `sensitive-data.*` rules skip Go lines that are entirely comments and honour another tool's suppression comment through the inline filter: a bare `#nosec`, `//nolint`, `//nolint:all` or `//nolint:gosec` on the reported line, or alone on the line above it, suppresses the finding and is counted as an `inline` row in `suppressions` (FAMILY-CONTRACT.md section 13c). `#nosec G101`, gosec's hard-coded-credentials check, also covers every sensitive-data rule; a `#nosec` naming only other checks, such as `#nosec G304`, suppresses nothing. Go raw string literals and same-line code-bearing literal assignments still scan, so test fixtures that embed real secret-shaped values continue to flag. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
+All `sensitive-data.*` rules skip Go lines that are entirely comments and honour another tool's suppression comment through the inline filter: a bare `#nosec`, `//nolint`, `//nolint:all` or `//nolint:gosec` on the reported line, or alone on the line above it, suppresses the finding and is counted as an `inline` row in `suppressions` (FAMILY-CONTRACT.md section 13c). `#nosec G101`, gosec's hard-coded-credentials check, also covers every sensitive-data rule; a `#nosec` naming only other checks, such as `#nosec G304`, suppresses nothing. The generic `sensitive-data.secret-pattern` rule skips the contents of Go raw strings and still checks code outside the literal on the same line. Format-specific sensitive-data rules can still report matches inside raw strings. Go assignments that call helper functions to generate or fetch secret values are not treated as embedded secret literals.
 
 Documentation placeholders such as `${sessionToken}` are skipped when they are not secret values. Generic secret markers remain `[redacted]` for every path, and no configuration suppresses a sensitive-data finding except a reviewed `sensitiveExclusions` entry.
 

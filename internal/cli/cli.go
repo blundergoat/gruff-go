@@ -24,6 +24,7 @@ const toolVersion = "0.6.0"
 // Main is the CLI entrypoint that parses args and dispatches subcommands.
 //
 // args holds the command line without the program name; global quiet, verbosity, no-interaction, and ANSI flags are removed before dispatch.
+//
 // stdout receives command output and is discarded when a quiet flag is given; stderr receives usage text and errors.
 // It returns the exit code, 2 when no command is given or the name is unknown, and otherwise the code of the flag or command that ran.
 func Main(args []string, stdout, stderr io.Writer) int {
@@ -98,6 +99,7 @@ func runScanCommand(args []string, stdout, stderr io.Writer, interactive bool) (
 // A typo such as gruff-go analize prints unknown command "analize" and the usage text to stderr, then exits 2.
 //
 // args holds the command name followed by its arguments and must not be empty; stdout and stderr pass through to the command.
+//
 // stdoutStyle and stderrStyle apply ANSI styling to the usage and help text written to each stream.
 // It returns the command's exit code, 0 after list or help without a topic, and 2 for an unknown name.
 func runSupportCommand(args []string, stdout, stderr io.Writer, stdoutStyle, stderrStyle ansiStyler) int {
@@ -130,6 +132,7 @@ func runSupportCommand(args []string, stdout, stderr io.Writer, stdoutStyle, std
 // extractQuiet removes global quiet flags before command dispatch.
 //
 // Flags may follow paths, but a bare dash or -- protects every later token as positional input.
+//
 // commandArguments is the global argument list, read but never modified.
 // It returns the arguments without the quiet flags, and true when -q, --quiet, or --silent appeared before any terminator.
 func extractQuiet(commandArguments []string) ([]string, bool) {
@@ -157,6 +160,7 @@ func extractQuiet(commandArguments []string) ([]string, bool) {
 // extractVerbose accepts and drops Symfony-style verbosity flags; gruff-go does not currently vary output by verbosity.
 //
 // Accepting these flags keeps the global surface consistent across gruff implementations.
+//
 // commandArguments is the global argument list, read but never modified.
 // It returns a new slice without -v, -vv, -vvv, or --verbose; a bare dash or double dash and every later token are kept unchanged.
 func extractVerbose(commandArguments []string) []string {
@@ -189,6 +193,7 @@ func isVersionFlag(arg string) bool {
 // analyseHelpRequested recognises help anywhere before an explicit parsing terminator.
 //
 // It runs before FlagSet parsing, so gruff-go analyse src --help still writes usage to stdout and exits 0.
+//
 // commandArguments holds the analyse arguments after the command name, passed through normalizeAnalyseDiffArgs before the check.
 // It reports true when help is requested before any terminator, and false otherwise.
 func analyseHelpRequested(commandArguments []string) bool {
@@ -199,6 +204,7 @@ func analyseHelpRequested(commandArguments []string) bool {
 // baselineScan assembles the scan --generate-baseline runs, which reads the same resolved config as the report it replaces.
 //
 // paths are the scan targets, registry holds the rules to run, and ignorePaths the configured ignore paths.
+//
 // cfg supplies the sensitive exclusions and deepScanBudget the resolved budget; values adds the output path, include-ignored, and force flags.
 // It returns the options writeBaselineFromScan consumes, filled field for field without validation.
 func (values analyseFlagValues) baselineScan(paths []string, registry rule.Registry, ignorePaths []string, cfg cfgpkg.Config, deepScanBudget analysis.DeepScanBudget) baselineScanOptions {
@@ -217,6 +223,7 @@ func (values analyseFlagValues) baselineScan(paths []string, registry rule.Regis
 // runAnalyse executes the analyse subcommand and renders the scan report.
 //
 // args follow the command name; stdout receives help and the report, stderr receives errors, and interactive reaches config loading.
+//
 // It returns 0 after help and 2 when flags, selectors, config, targets, analysis, or the report write fail.
 // A baseline run returns the writer's exit code, and a completed scan the report summary's exit code.
 func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
@@ -229,6 +236,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if !ok {
 		return 2
 	}
+	// With several targets, any one outside the launch directory is refused with exit 2; a single outside target is not refused here.
+	// For json, summary-json, or sarif, the refusal also appears in the report envelope rather than as a serialiser failure on stderr.
+	if outside, found := targetOutsideLaunchDirectory(flags.Args()); found {
+		err := fmt.Errorf("target %q is outside the launch directory; gruff-go analyses several targets only from a directory that contains them all", outside)
+		fmt.Fprintf(stderr, "targets: %v\n", err)
+		return writeFailedRunReport(values, analysis.TargetErrorDiagnosticType, err, stdout)
+	}
 	registry, ignorePaths, cfg, err := configuredRegistryInteractive(values.configPath, values.noConfig, interactive, stderr, flags.Args())
 	if err != nil {
 		fmt.Fprintf(stderr, "config: %v\n", err)
@@ -237,8 +251,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		return writeFailedRunReport(values, analysis.ConfigErrorDiagnosticType, err, stdout)
 	}
 	registry, cfg, ok = selectedRegistryFor(values, registry, cfg, stderr)
-	// A selector naming a rule or pillar nobody defines is a usage error; scanning everything would answer a question
-	// the user did not ask.
+	// A selector naming a rule or pillar nobody defines is a usage error; scanning everything would answer a question the user did not ask.
 	if !ok {
 		return 2
 	}
@@ -251,20 +264,13 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	// Reached by gruff-go analyse --generate-baseline FILE: the scan writes a baseline instead of a report, and its exit code is the writer's.
-	if values.generateBaselinePath != "" {
-		return writeBaselineFromScan(values.baselineScan(flags.Args(), registry, ignorePaths, cfg, deepScanBudget), stdout, stderr)
-	}
 	displayFilter, ok := analyseDisplayFilter(values, registry, cfg, stderr)
 	if !ok {
 		return 2
 	}
-	// With several targets, any one outside the launch directory is refused with exit 2; a single outside target is not refused here.
-	// For json, summary-json, or sarif, the refusal also appears in the report envelope rather than as a serialiser failure on stderr.
-	if outside, found := targetOutsideLaunchDirectory(flags.Args()); found {
-		err := fmt.Errorf("target %q is outside the launch directory; gruff-go analyses several targets only from a directory that contains them all", outside)
-		fmt.Fprintf(stderr, "targets: %v\n", err)
-		return writeFailedRunReport(values, analysis.TargetErrorDiagnosticType, err, stdout)
+	// Reached by gruff-go analyse --generate-baseline FILE: the scan writes a baseline instead of a report, and its exit code is the writer's.
+	if values.generateBaselinePath != "" {
+		return writeBaselineFromScan(values.baselineScan(flags.Args(), registry, ignorePaths, cfg, deepScanBudget), stdout, stderr)
 	}
 	projectRoot, err := projectRootFromTargets(flags.Args())
 	// If the launch directory cannot be read, the run exits 2 with a project root error on stderr and no report.
@@ -272,6 +278,7 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintf(stderr, "project root: %v\n", err)
 		return 2
 	}
+	baselinePath := baselinePathForRun(projectRoot, values)
 	analysisReport, err := analysis.Analyze(analysis.Options{
 		Root:                   projectRoot,
 		Paths:                  targetsForRoot(projectRoot, flags.Args()),
@@ -285,7 +292,8 @@ func runAnalyse(args []string, stdout, stderr io.Writer, interactive bool) int {
 		DeepScanBudget:         deepScanBudget,
 		IncludeIgnored:         values.includeIgnored,
 		ReportAllSkippedInputs: true,
-		BaselinePath:           baselinePathForRun(projectRoot, values),
+		BaselinePath:           baselinePath,
+		BaselineDiscovered:     baselinePath != "" && values.baselinePath == "",
 		DiffBase:               values.diffBase,
 		DiffMode:               values.resolvedDiffMode(),
 		DiffPatch:              values.diffPatch,
@@ -333,8 +341,8 @@ func resolveFailOn(rawValue string, flagExplicit bool, cfg cfgpkg.Config, cmd st
 
 // analyseDisplayFilter builds what the report shows, from the four selectors and the configured severity floor.
 //
-// Everything here is presentation: the exit code and the score were decided by the rules that ran, so hiding a finding
-// from the report never changes them.
+// Everything here is presentation: the exit code and the score were decided by the rules that ran, so hiding a finding from the report never changes
+// them.
 //
 // It returns the display filter and true, or a zero filter and false after explaining an unknown rule or pillar on stderr.
 // values carries the show and hide selectors, registry the rule definitions they are checked against, and cfg the configured severity floor.
@@ -517,6 +525,7 @@ func runListRules(args []string, stdout, stderr io.Writer) int {
 // Retagging rule.Definition.Severity would also rename severity in the analysis report's rule metadata, a surface the family never ratified.
 //
 // The suppression is a same-named empty field, not json:"-", because a dash field is removed before encoding/json resolves name conflicts.
+//
 // Such a field never competes with the promoted one, so the inherited severity key would remain in catalogue JSON.
 // A field at depth 0 carrying the same JSON name does win that contest, and left at its zero value omitempty then drops it.
 type ruleListDefinition struct {
@@ -529,6 +538,7 @@ type ruleListDefinition struct {
 // ruleListDefinitions prepares registered rules for users inspecting catalogue JSON.
 //
 // The adapter prevents catalogue guidance from changing analysis-report schemas.
+//
 // definitions keep their given order; each entry copies the definition's Severity into DefaultSeverity and carries its FalsePositiveShapes.
 // It returns a new slice of the same length, empty but non-nil when definitions is empty.
 func ruleListDefinitions(definitions []rule.Definition) []ruleListDefinition {

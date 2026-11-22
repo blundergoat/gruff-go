@@ -84,8 +84,10 @@ func pillarDetail(base scoring.PillarDetail, score float64, grade string) scorin
 // TestBuildPillarSummaryRowsMergesPillarDetails confirms PillarDetail entries override the default zero rows and that rows sort by findings DESC.
 // A failure means a merged grade or raw penalty is wrong, rows are out of findings order, or a pillar without details is not clean.
 func TestBuildPillarSummaryRowsMergesPillarDetails(t *testing.T) {
+	composite := 90.0
 	report := analysis.Report{
 		Score: scoring.Score{
+			Composite: &composite,
 			PillarDetails: []scoring.PillarDetail{
 				pillarDetail(scoring.PillarDetail{Pillar: "complexity", Findings: 2, Warning: 2, Penalty: 30}, 70, "C"),
 				pillarDetail(scoring.PillarDetail{Pillar: "documentation", Findings: 5, Advisory: 4, Warning: 1, Penalty: 200}, 51, "F"),

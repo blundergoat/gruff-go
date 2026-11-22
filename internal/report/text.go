@@ -7,7 +7,9 @@ package report
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -47,6 +49,7 @@ func WriteText(writer io.Writer, report analysis.Report) error {
 // A run with no sensitiveExclusions, built-in or inline suppression rows writes nothing, leaving default output unchanged.
 //
 // writer receives the suppressed findings line; summaries holds one row per suppression, including entries that suppressed nothing.
+//
 // Each row adds its Suppressed count to the total and one clause to the line.
 // Built-in rows are labelled by class and first path, inline rows by the commenting file, and every other row by its sensitiveExclusions index.
 //
@@ -66,23 +69,33 @@ func writeTextSuppressions(writer io.Writer, summaries []analysis.SuppressionSum
 			if analysis.IsBuiltInTestPathReason(summary.Reason) {
 				label = "builtInTestPath"
 			}
-			clauses = append(clauses, fmt.Sprintf("%s[%s] %s: %d (%s)", label, summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			clauses = append(clauses, fmt.Sprintf("%s[%s] %s: %d (%s)", label, singleLineReportText(summary.Paths[0]), summary.Rule, summary.Suppressed, singleLineReportText(summary.Reason)))
 			continue
 		}
 		// An inline row names the file whose comment suppressed the findings, as `inline[main.go] security.shell-command: 1`.
 		if summary.Source == analysis.SuppressionSourceInline && len(summary.Paths) > 0 {
-			clauses = append(clauses, fmt.Sprintf("inline[%s] %s: %d (%s)", summary.Paths[0], summary.Rule, summary.Suppressed, summary.Reason))
+			clauses = append(clauses, fmt.Sprintf("inline[%s] %s: %d (%s)", singleLineReportText(summary.Paths[0]), summary.Rule, summary.Suppressed, singleLineReportText(summary.Reason)))
 			continue
 		}
-		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, summary.Reason))
+		clauses = append(clauses, fmt.Sprintf("sensitiveExclusions[%d] %s: %d (%s)", summary.Index, summary.Rule, summary.Suppressed, singleLineReportText(summary.Reason)))
 	}
 	_, err := fmt.Fprintf(writer, "suppressed findings: %d via %s\n", total, strings.Join(clauses, "; "))
 	return err
 }
 
+// singleLineReportText returns text with control characters quoted so it occupies one output line.
+func singleLineReportText(text string) string {
+	// A multiline reason must stay inside its report row so the reader can tell it belongs to one exclusion.
+	if strings.IndexFunc(text, unicode.IsControl) >= 0 {
+		return strconv.QuoteToGraphic(text)
+	}
+	return text
+}
+
 // writeTextAppliedBaseline names an applied baseline and its source label, so a run that hid accepted findings never reads as a clean scan.
 //
 // A typical line is `baseline: default gruff-baseline.json; suppressed 2 findings` (ADR-006).
+//
 // writer receives the one baseline line, and summary supplies its Source, Path and SuppressedFindings count.
 // When summary.Applied is false it writes nothing and returns nil; otherwise it returns the error from the write, nil when it succeeds.
 func writeTextAppliedBaseline(writer io.Writer, summary analysis.BaselineSummary) error {
@@ -96,6 +109,7 @@ func writeTextAppliedBaseline(writer io.Writer, summary analysis.BaselineSummary
 // writeTextBaselineStatus appends the three-state baseline summary and the unchanged and resolved lists, only when --baseline-show set Show.
 //
 // Without the flag this emits nothing, so default output stays byte-identical (ADR-012).
+//
 // writer receives the counts line, then one unchanged line per finding in summary.Unchanged and one resolved line per entry in summary.Resolved.
 // It returns nil without writing when summary has Show false, and the error of the first write that fails, if any.
 func writeTextBaselineStatus(writer io.Writer, summary analysis.BaselineSummary) error {
