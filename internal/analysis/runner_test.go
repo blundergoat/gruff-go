@@ -134,7 +134,7 @@ func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testi
 		Location:    &finding.Location{Line: 10},
 	}
 	survivingComposite := finding.Finding{
-		RuleID: "design.hotspot-file",
+		RuleID: "design.example-composite",
 		File:   "hot.go",
 		Symbol: "Hot",
 		Metadata: map[string]any{
@@ -142,7 +142,7 @@ func TestPruneOrphanedCompositesDropsCompositesWithoutSurvivingEvidence(t *testi
 		},
 	}
 	orphanComposite := finding.Finding{
-		RuleID: "design.hotspot-file",
+		RuleID: "design.example-composite",
 		File:   "cold.go",
 		Symbol: "Cold",
 		Metadata: map[string]any{

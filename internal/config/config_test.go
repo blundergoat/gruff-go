@@ -331,30 +331,30 @@ func assertExpansionRuleOptions(t *testing.T, options rule.Config) {
 	}
 }
 
-// TestParseAcceptsCompositeRuleConfig verifies composite design rules parse and validate.
-// t checks that design.hotspot-file is enabled with minFindings 4 and minPillars 3, so a user's hotspot thresholds apply.
-func TestParseAcceptsCompositeRuleConfig(t *testing.T) {
+// TestParseAcceptsMultiThresholdRuleConfig verifies a rule with two thresholds parses and validates.
+// t checks that naming.contextual-generic is enabled with minFunctionLines 40 and minBodyLines 12, so both of a user's thresholds apply.
+func TestParseAcceptsMultiThresholdRuleConfig(t *testing.T) {
 	cfg, err := ParseFile(".gruff-go.yaml", []byte(`
 schemaVersion: gruff-go.config.v0.1
 rules:
-  design.hotspot-file:
+  naming.contextual-generic:
     enabled: true
     thresholds:
-      minFindings: 4
-      minPillars: 3
+      minFunctionLines: 40
+      minBodyLines: 12
 `), defaultDefinitions())
 	if err != nil {
 		t.Fatal(err)
 	}
 	options := cfg.RuleOptions()
-	if !options.Enabled["design.hotspot-file"] {
-		t.Fatalf("enabled map = %#v, want composite rule enabled", options.Enabled)
+	if !options.Enabled["naming.contextual-generic"] {
+		t.Fatalf("enabled map = %#v, want naming.contextual-generic enabled", options.Enabled)
 	}
-	if options.Thresholds["design.hotspot-file"]["minFindings"] != 4 {
-		t.Fatalf("thresholds = %#v, want design.hotspot-file minFindings=4", options.Thresholds)
+	if options.Thresholds["naming.contextual-generic"]["minFunctionLines"] != 40 {
+		t.Fatalf("thresholds = %#v, want naming.contextual-generic minFunctionLines=40", options.Thresholds)
 	}
-	if options.Thresholds["design.hotspot-file"]["minPillars"] != 3 {
-		t.Fatalf("thresholds = %#v, want design.hotspot-file minPillars=3", options.Thresholds)
+	if options.Thresholds["naming.contextual-generic"]["minBodyLines"] != 12 {
+		t.Fatalf("thresholds = %#v, want naming.contextual-generic minBodyLines=12", options.Thresholds)
 	}
 }
 
@@ -422,7 +422,7 @@ func TestParseRejectsInvalidConfigAndPathPatterns(t *testing.T) {
 		{name: "blank abbreviation", yaml: "schemaVersion: gruff-go.config.v0.1\nacceptedAbbreviations:\n  - ''\n", want: "must not be blank"},
 		{name: "unknown threshold on parameter-count", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.parameter-count:\n    thresholds:\n      maxArgs: 3\n", want: "unknown threshold"},
 		{name: "invalid threshold on nesting-depth", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  complexity.nesting-depth:\n    thresholds:\n      maxDepth: 0\n", want: "must be positive"},
-		{name: "unknown threshold on hotspot", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  design.hotspot-file:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
+		{name: "unknown threshold on contextual generic", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.contextual-generic:\n    thresholds:\n      maxFindings: 3\n", want: "unknown threshold"},
 		{name: "unknown option on comment rubric", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    options:\n      requireEmoji: true\n", want: "unknown option"},
 		{name: "unknown threshold on comment rubric", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    thresholds:\n      minCommentVibes: 3\n", want: "unknown threshold"},
 		{name: "unknown option on acronym case", yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.acronym-case:\n    options:\n      canonicalOnly: true\n", want: "unknown option"},

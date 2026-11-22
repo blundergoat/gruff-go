@@ -10,6 +10,30 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
+// TestHeldOutRetiredRulesLeaveRegistryAndDispatch covers the two rules precision-floor M09 retired on held-out code:
+// right on 0 of 25 and 12 of 50 judged findings. Neither may stay in the catalogue or emit on code each reported.
+func TestHeldOutRetiredRulesLeaveRegistryAndDispatch(t *testing.T) {
+	retired := map[string]bool{"design.hotspot-file": true, "maintainability.production-panic": true}
+	registry := Defaults()
+	for _, definition := range registry.Definitions() {
+		if retired[definition.ID] {
+			t.Errorf("retired rule %s remains in the catalogue", definition.ID)
+		}
+	}
+	unit := parseOne(t, "service.go", `// Package sample is a test package.
+package sample
+
+func Crash() {
+	panic("boom")
+}
+`)
+	for _, item := range registry.Analyze([]parser.Unit{unit}, Context{}) {
+		if retired[item.RuleID] {
+			t.Errorf("retired rule %s still emits a finding", item.RuleID)
+		}
+	}
+}
+
 // TestRetiredLowPrecisionRulesLeaveRegistryAndDispatch checks that three retired low-precision rules are gone from Defaults.
 //
 // It covers both catalogue membership and runtime execution on code each retired detector reported.
@@ -61,7 +85,6 @@ func defaultRuleIDsThroughNaming() []string {
 		"dead-code.unused-private-var",
 		"dependency.go-mod-local-replace",
 		"dependency.go-mod-remote-replace",
-		"design.hotspot-file",
 		"docs.comment-rubric",
 		"docs.config-field-comment",
 		"docs.exported-symbol-comment",
@@ -74,7 +97,6 @@ func defaultRuleIDsThroughNaming() []string {
 		"maintainability.ignored-error",
 		"maintainability.log-fatal-library",
 		"maintainability.loop-variable-address",
-		"maintainability.production-panic",
 		"modernisation.ioutil-deprecated",
 		"naming.acronym-case",
 		"naming.contextual-generic",

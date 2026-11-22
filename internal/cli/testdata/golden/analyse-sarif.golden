@@ -306,36 +306,6 @@
               }
             },
             {
-              "id": "design.hotspot-file",
-              "name": "Hotspot file",
-              "shortDescription": {
-                "text": "Hotspot file"
-              },
-              "fullDescription": {
-                "text": "Emits score-neutral composite triage when a file has findings across multiple quality pillars."
-              },
-              "help": {
-                "text": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit."
-              },
-              "properties": {
-                "pillar": "design",
-                "defaultSeverity": "advisory",
-                "confidence": "low",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "composite"
-                ],
-                "thresholds": {
-                  "minFindings": 3,
-                  "minPillars": 2
-                }
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
               "id": "docs.comment-rubric",
               "name": "Comment rubric",
               "shortDescription": {
@@ -658,32 +628,6 @@
                 "defaultEnabled": true,
                 "tags": [
                   "loops"
-                ]
-              },
-              "defaultConfiguration": {
-                "level": "note"
-              }
-            },
-            {
-              "id": "maintainability.production-panic",
-              "name": "Production panic",
-              "shortDescription": {
-                "text": "Production panic"
-              },
-              "fullDescription": {
-                "text": "Flags direct literal panic calls in non-test, non-main production code."
-              },
-              "help": {
-                "text": "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code."
-              },
-              "properties": {
-                "pillar": "maintainability",
-                "defaultSeverity": "advisory",
-                "confidence": "low",
-                "capability": "parser",
-                "defaultEnabled": true,
-                "tags": [
-                  "errors"
                 ]
               },
               "defaultConfiguration": {
@@ -2283,7 +2227,7 @@
       ],
       "properties": {
         "gruffSchemaVersion": "gruff.analysis.v3",
-        "score": 96.21,
+        "score": 95.83,
         "grade": "A"
       }
     }

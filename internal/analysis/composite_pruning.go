@@ -1,6 +1,6 @@
 // Composite-finding pruning keeps a composite finding only while its underlying evidence survives the changed-region filter.
 //
-// A composite such as design.hotspot-file records its underlying-evidence fingerprints and stays while at least one of them survives.
+// A composite finding records its underlying-evidence fingerprints and stays while at least one of them survives.
 // So a --diff scan never shows the user a composite for code the diff never touched.
 package analysis
 

@@ -159,12 +159,12 @@ func TestDefaultsCapability(t *testing.T) {
 
 // TestDefaultsPrecisionGuidance ensures every medium- or low-confidence rule tells catalogue users how to spot and mitigate its known context limit.
 //
-// The totals 80 and 43 are pinned, so adding or removing a rule, or moving one across the high-confidence line, fails until they are updated.
+// The totals 78 and 43 are pinned, so adding or removing a rule, or moving one across the high-confidence line, fails until they are updated.
 func TestDefaultsPrecisionGuidance(t *testing.T) {
 	defaults := Defaults()
 	definitions := defaults.Definitions()
-	if len(definitions) != 80 {
-		t.Fatalf("definitions = %d, want 80", len(definitions))
+	if len(definitions) != 78 {
+		t.Fatalf("definitions = %d, want 78", len(definitions))
 	}
 
 	precisionRuleCount := 0
@@ -183,8 +183,8 @@ func TestDefaultsPrecisionGuidance(t *testing.T) {
 			}
 		}
 	}
-	if precisionRuleCount != 45 {
-		t.Fatalf("medium/low-confidence rules = %d, want 45", precisionRuleCount)
+	if precisionRuleCount != 43 {
+		t.Fatalf("medium/low-confidence rules = %d, want 43", precisionRuleCount)
 	}
 }
 

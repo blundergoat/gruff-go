@@ -61,33 +61,3 @@ func sample() {
 		t.Fatalf("test findings = %#v, want none", findings)
 	}
 }
-
-// TestProductionPanicRule expects one finding from a production fixture with literal and variable panics.
-//
-// It expects no findings from a command's package main; a count failure prints the findings that were reported.
-func TestProductionPanicRule(t *testing.T) {
-	production := parseOne(t, "service.go", `// Package sample is a test package.
-package sample
-
-func Crash() {
-	panic("boom")
-}
-
-func Internal(err error) {
-	panic(err)
-}
-`)
-	if findings := analyseProductionPanicUnit(production); len(findings) != 1 {
-		t.Fatalf("production findings = %#v, want one literal panic finding", findings)
-	}
-
-	mainFile := parseOne(t, "cmd/tool/main.go", `package main
-
-func main() {
-	panic("bootstrap")
-}
-`)
-	if findings := analyseProductionPanicUnit(mainFile); len(findings) != 0 {
-		t.Fatalf("main findings = %#v, want none", findings)
-	}
-}

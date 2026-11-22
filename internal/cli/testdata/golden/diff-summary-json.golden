@@ -180,24 +180,6 @@
             "remediation": "Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible."
           },
           {
-            "id": "design.hotspot-file",
-            "title": "Hotspot file",
-            "description": "Emits score-neutral composite triage when a file has findings across multiple quality pillars.",
-            "pillar": "design",
-            "severity": "advisory",
-            "confidence": "low",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "thresholds": {
-              "minFindings": 3,
-              "minPillars": 2
-            },
-            "tags": [
-              "composite"
-            ],
-            "remediation": "Triage the file as a cluster, then fix the underlying findings; the composite is not a separate code edit."
-          },
-          {
             "id": "docs.comment-rubric",
             "title": "Comment rubric",
             "description": "Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply.",
@@ -381,20 +363,6 @@
               "loops"
             ],
             "remediation": "Take the address of the indexed collection element, or copy the value into a deliberately scoped variable before storing its address."
-          },
-          {
-            "id": "maintainability.production-panic",
-            "title": "Production panic",
-            "description": "Flags direct literal panic calls in non-test, non-main production code.",
-            "pillar": "maintainability",
-            "severity": "advisory",
-            "confidence": "low",
-            "capability": "parser",
-            "defaultEnabled": true,
-            "tags": [
-              "errors"
-            ],
-            "remediation": "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code."
           },
           {
             "id": "modernisation.ioutil-deprecated",
@@ -1325,7 +1293,7 @@
     "complexityDistributionScope": "finding-only",
     "composite": {
       "grade": "A",
-      "score": 96.21
+      "score": 95.83
     },
     "coverage": {
       "contributingPillars": [
@@ -1348,17 +1316,6 @@
       },
       {
         "pillar": "dead-code",
-        "applicable": true,
-        "score": 100,
-        "grade": "A",
-        "findings": 0,
-        "advisory": 0,
-        "warning": 0,
-        "error": 0,
-        "penalty": 0
-      },
-      {
-        "pillar": "design",
         "applicable": true,
         "score": 100,
         "grade": "A",
@@ -1467,7 +1424,6 @@
     "scoredPillars": [
       "complexity",
       "dead-code",
-      "design",
       "documentation",
       "maintainability",
       "modernisation",

@@ -372,7 +372,7 @@ func TestCalculateComplexityDistribution(t *testing.T) {
 }
 
 // TestCalculateCompositeDesignFindingsAreScoreNeutral ensures design.* findings do not penalize the score.
-// Adding a design.hotspot-file finding must leave the composite and the top offender's penalty unchanged and add no design pillar.
+// Adding a design-pillar composite finding must leave the composite and the top offender's penalty unchanged and add no design pillar.
 func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	base := []finding.Finding{
 		{File: "hot.go", RuleID: "size.function-length", Severity: finding.SeverityWarning, Confidence: finding.ConfidenceHigh, Pillar: finding.PillarSize},
@@ -380,7 +380,7 @@ func TestCalculateCompositeDesignFindingsAreScoreNeutral(t *testing.T) {
 	}
 	withDesignFinding := append(append([]finding.Finding{}, base...), finding.Finding{
 		File:       "hot.go",
-		RuleID:     "design.hotspot-file",
+		RuleID:     "design.example-composite",
 		Severity:   finding.SeverityAdvisory,
 		Confidence: finding.ConfidenceHigh,
 		Pillar:     finding.PillarDesign,

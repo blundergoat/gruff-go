@@ -189,14 +189,14 @@ func TestRenderPreservesPerRuleOverrides(t *testing.T) {
 
 // TestRenderEmitsSingleThresholdAsScalar checks the singular threshold: form for a rule with exactly one knob, such as size.file-length.
 //
-// A rule with several knobs, such as design.hotspot-file, keeps the plural thresholds: map.
+// A rule with several knobs, such as naming.contextual-generic, keeps the plural thresholds: map.
 // The singular form matches the convention used in the dogfood .gruff-go.yaml and in adopters' configs.
 func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
 	body := string(Render(defaultDefinitions(), RenderOptions{}))
 	if !strings.Contains(body, "size.file-length:\n    enabled: true\n    severity: error\n    threshold: 1000\n") {
 		t.Fatalf("expected singular threshold form for size.file-length; got:\n%s", body)
 	}
-	if !strings.Contains(body, "design.hotspot-file:\n    enabled: true\n    severity: advisory\n    thresholds:\n      minFindings: 3\n      minPillars: 2\n") {
-		t.Fatalf("expected plural thresholds form for design.hotspot-file; got:\n%s", body)
+	if !strings.Contains(body, "naming.contextual-generic:\n    enabled: true\n    severity: advisory\n    thresholds:\n      minBodyLines: 15\n      minFunctionLines: 50\n") {
+		t.Fatalf("expected plural thresholds form for naming.contextual-generic; got:\n%s", body)
 	}
 }

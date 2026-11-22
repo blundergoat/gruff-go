@@ -298,7 +298,7 @@ func TestListRulesListsBuiltInCatalogueUnderAProjectConfig(t *testing.T) {
 }
 
 // TestListRulesAndDiagnostics checks the list-rules JSON catalogue and the exit 2 a user gets for a missing path or an unparsable file.
-// Every medium- or low-confidence rule must ship false-positive guidance, and the catalogue is pinned at 80 rules with 43 medium or low.
+// Every medium- or low-confidence rule must ship false-positive guidance, and the catalogue is pinned at 78 rules with 43 medium or low.
 func TestListRulesAndDiagnostics(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -338,8 +338,8 @@ func TestListRulesAndDiagnostics(t *testing.T) {
 		}
 	}
 	// Update these pinned counts when the catalogue total changes or a rule moves into or out of medium or low confidence.
-	if len(catalogue.Rules) != 80 || precisionRuleCount != 45 {
-		t.Fatalf("list-rules counts = %d total, %d medium/low; want 80 and 45", len(catalogue.Rules), precisionRuleCount)
+	if len(catalogue.Rules) != 78 || precisionRuleCount != 43 {
+		t.Fatalf("list-rules counts = %d total, %d medium/low; want 78 and 43", len(catalogue.Rules), precisionRuleCount)
 	}
 
 	// A path that does not exist, such as a typo on the command line, makes analyse exit 2.

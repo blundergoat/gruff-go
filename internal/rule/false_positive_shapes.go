@@ -30,10 +30,6 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 			"can appear unreferenced to the parser-only package index.",
 		Mitigation: "Keep a parser-visible reference, remove the variable, or leave this opt-in rule disabled for that package.",
 	},
-	"design.hotspot-file": {
-		Shape:      "Several valid findings can be intentionally clustered in one file even though their composite hotspot is not a separate defect.",
-		Mitigation: "Triage the underlying findings; do not make a separate code edit solely to clear the score-neutral composite.",
-	},
 	"docs.comment-rubric": {
 		Shape:      "A concise but substantive comment can miss the configured line or token threshold.",
 		Mitigation: "Tune minLines or minTokens for the selected paths, or remove the path from this rule's scope.",
@@ -67,10 +63,6 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	"maintainability.loop-variable-address": {
 		Shape:      "The nearest go.mod syntax version can differ from the effective build semantics selected by an external toolchain override.",
 		Mitigation: "Index the collection or copy the loop value explicitly, or review the finding against the effective Go version.",
-	},
-	"maintainability.production-panic": {
-		Shape:      "A documented panic paired with recovery at a wider boundary can look like an unhandled production panic.",
-		Mitigation: "Return an error where practical, or disable the rule only after reviewing the matching recovery boundary.",
 	},
 	"naming.contextual-generic": {
 		Shape:      "A domain-meaningful name such as item or result can match the generic-name heuristic in a long function.",

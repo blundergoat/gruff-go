@@ -150,7 +150,6 @@ func hookRemediation(currentFinding finding.Finding, ruleDefinition rule.Definit
 // docs.comment-rubric is handled separately in hookScope, because only its package-summary finding, metadata kind package, is file-scoped.
 var hookFileScopeRuleIDs = map[string]struct{}{
 	"size.file-length":          {},
-	"design.hotspot-file":       {},
 	"docs.package-comment":      {},
 	"naming.package-underscore": {},
 	"naming.package-stutter":    {},

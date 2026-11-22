@@ -1,6 +1,6 @@
 # Rule Catalog
 
-`gruff-go` ships **80 rules** across **11 pillars**. **58 rules are enabled by default** and 22 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
+`gruff-go` ships **78 rules** across **10 pillars**. **56 rules are enabled by default** and 22 rules are opt-in. Projects can disable default rules via `selection.excludeRules` or `rules.<id>.enabled: false`, and can enable opt-in rules with `rules.<id>.enabled: true`.
 
 Opt-in rules: `complexity.cyclomatic`, `dead-code.unused-private-const`, `dead-code.unused-private-type`, `dead-code.unused-private-var`, `dependency.go-mod-local-replace`, `modernisation.ioutil-deprecated`, `naming.acronym-case`, `naming.get-prefix`, `naming.package-stutter`, `naming.package-underscore`, `naming.receiver-consistency`, `security.insecure-random-secret`, `security.open-redirect-candidate`, `security.request-body-without-limit`, `sensitive-data.aws-access-key`, `sensitive-data.connection-string`, `sensitive-data.gcp-service-account`, `sensitive-data.github-token`, `sensitive-data.google-api-key`, `sensitive-data.phi-pattern`, `sensitive-data.pii-pattern`, `test-quality.static-analysis-redundant-test`.
 
@@ -9,8 +9,6 @@ Print the live registry any time with `gruff-go list-rules` (text) or `gruff-go 
 The first summary sentence, the `Opt-in rules:` line, catalog rows, `### <rule-id>` headings, and exact `Pillar`, `Default severity`, `Default-enabled`, `Threshold`, `Confidence`, `Capability`, and `Tags` bullets form a narrow structured authoring contract. Tests compare those markers with the built-in no-config registry, including counts and the exact opt-in set. Keep both the catalog row and per-rule bullets in the same change as intentional registry metadata updates. Descriptions, remediation, examples, options, secondary pillars, and other explanatory prose remain free-form and are not parsed by this contract.
 
 ## Rule reference
-
-Composite `design.*` rules are score-neutral annotations: they appear in findings, counts, SARIF, GitHub annotations, JSON, and HTML, but they do not add a second scoring penalty on top of the underlying findings that created them.
 
 Generated Go files are skipped by default when their leading comments contain both `generated` and `DO NOT EDIT`, case-insensitive. `--include-ignored` opts those files back into scanning, and rule-level generated-file guards respect that run setting.
 
@@ -31,7 +29,6 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`dead-code.unused-private-var`](#dead-codeunused-private-var) | dead-code | advisory | parser | - | Opt-in candidate for package-private variables that are not referenced in their parsed package. |
 | [`dependency.go-mod-local-replace`](#dependencygo-mod-local-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a local filesystem path. |
 | [`dependency.go-mod-remote-replace`](#dependencygo-mod-remote-replace) | security | advisory | parser | - | go.mod replace directives that redirect a module to a different remote module. |
-| [`design.hotspot-file`](#designhotspot-file) | design | advisory | parser | `minFindings: 3`, `minPillars: 2` | Score-neutral composite triage for files with findings across multiple quality pillars. |
 | [`docs.comment-rubric`](#docscomment-rubric) | documentation | advisory | parser | `minPackageCommentLines: 1` | Path-scoped maintainer comments for package summaries and declarations. |
 | [`docs.config-field-comment`](#docsconfig-field-comment) | documentation | advisory | parser | - | Doc comments on exported struct fields, optionally scoped with `includePaths`. |
 | [`docs.exported-symbol-comment`](#docsexported-symbol-comment) | documentation | advisory | parser | - | Exported declarations missing a doc comment. |
@@ -44,7 +41,6 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`maintainability.ignored-error`](#maintainabilityignored-error) | maintainability | advisory | parser | - | Error-looking values assigned directly to the blank identifier. |
 | [`maintainability.log-fatal-library`](#maintainabilitylog-fatal-library) | maintainability | advisory | parser | - | `log.Fatal*` and `os.Exit` calls outside command entrypoints and tests. |
 | [`maintainability.loop-variable-address`](#maintainabilityloop-variable-address) | maintainability | advisory | parser | - | Storing, returning, or appending the address of a range variable copy. |
-| [`maintainability.production-panic`](#maintainabilityproduction-panic) | maintainability | advisory | parser | - | Literal panic calls in reusable production code. |
 | [`modernisation.ioutil-deprecated`](#modernisationioutil-deprecated) | modernisation | advisory | parser | - | Deprecated `io/ioutil` APIs with direct `io` or `os` replacements. |
 | [`naming.acronym-case`](#namingacronym-case) | naming | advisory | parser | - | Identifiers that spell Go initialisms with mixed casing. |
 | [`naming.contextual-generic`](#namingcontextual-generic) | naming | advisory | parser | `minBodyLines: 15`, `minFunctionLines: 50` | Generic names used only when the surrounding loop or function is large enough that context is weak. |
@@ -294,22 +290,6 @@ Each finding's metadata carries the replacement target.
 
 **Remediation.** Confirm the replacement module and version are trusted and intentional, and prefer pinning the original module to a vetted release where possible.
 
-### `design.hotspot-file`
-
-- **Pillar:** design
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Threshold:** `minFindings` (default `3`), `minPillars` (default `2`)
-- **Confidence:** low
-- **Capability:** parser
-- **Tags:** `composite`
-
-Emits score-neutral composite triage for files with at least `minFindings` findings across at least `minPillars` distinct non-design pillars. Composite findings do not feed other composite rules: design-pillar findings (including hotspot-file's own output) are excluded from the evidence the rule counts. Treat this as a grouping hint over the underlying findings, not a separate fix target.
-
-**Remediation.** Triage the file as a cluster, then fix the underlying findings. Once the underlying findings are handled, the composite disappears; there is no separate hotspot-only edit to make.
-
-**Known precision limit.** Several valid findings can be intentionally clustered in one file even though their composite hotspot is not a separate defect. Triage the underlying findings; do not make a separate code edit solely to clear the score-neutral composite. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
 ### `docs.comment-rubric`
 
 - **Pillar:** documentation
@@ -530,21 +510,6 @@ Taking an indexed element address such as `&slice[i]` remains accepted, as does 
 **Remediation.** Prefer declaration-form iteration variables in Go 1.22+ modules, take the address of the indexed element, copy the value into a deliberately scoped local before taking its address, or change the data structure to store values instead of pointers.
 
 **Known precision limit.** The nearest go.mod syntax version can differ from the effective build semantics selected by an external toolchain override. Index the collection or copy the loop value explicitly, or review the finding against the effective Go version. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
-
-### `maintainability.production-panic`
-
-- **Pillar:** maintainability
-- **Default severity:** advisory
-- **Default-enabled:** yes
-- **Confidence:** low
-- **Capability:** parser
-- **Tags:** `errors`
-
-Flags direct `panic` calls with literal message evidence in reusable production code. Test files, `package main`, `cmd/` paths, `init`, `main`, `Defaults`, and `Must*` functions are exempt. `panic(err)` is not reported because this parser-only rule cannot distinguish impossible invariant failures from ordinary error flow.
-
-**Remediation.** Return an error or fail during command/bootstrap setup instead of panicking from reusable production code.
-
-**Known precision limit.** A documented panic paired with recovery at a wider boundary can look like an unhandled production panic. Return an error where practical, or disable the rule only after reviewing the matching recovery boundary. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `modernisation.ioutil-deprecated`
 

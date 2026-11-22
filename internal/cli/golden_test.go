@@ -122,36 +122,6 @@ rules:
 	assertGolden(t, "analyse-configured-expansion.golden", normalizeGoldenOutput(root, stdout))
 }
 
-// TestGoldenCompositeRuleOutputs locks down output when composite rules fire.
-func TestGoldenCompositeRuleOutputs(t *testing.T) {
-	cases := []struct {
-		name   string
-		format string
-		code   int
-	}{
-		{name: "analyse-composite-summary-json.golden", format: "summary-json", code: 1},
-		{name: "analyse-composite-sarif.golden", format: "sarif", code: 1},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			writeFile(t, root, "composite.go", compositeFixture())
-			writeFile(t, root, ".gruff-go.yaml", compositeConfig())
-			t.Chdir(root)
-
-			stdout, stderr, code := runGoldenCLI("analyse", "--format", tc.format, "composite.go")
-			if code != tc.code {
-				t.Fatalf("exit = %d, want %d\nstderr:\n%s\nstdout:\n%s", code, tc.code, stderr, stdout)
-			}
-			if stderr != "" {
-				t.Fatalf("stderr = %q, want empty", stderr)
-			}
-			assertGolden(t, tc.name, normalizeGoldenOutput(root, stdout))
-		})
-	}
-}
-
 // expansionFixture returns Go source for TestGoldenConfiguredExpansionRules: Wide has nine parameters, six nested ifs and no doc comment.
 // They target the rules the test config enables: size.parameter-count, complexity.nesting-depth and docs.exported-symbol-comment.
 func expansionFixture() string {
@@ -173,43 +143,6 @@ func Wide(a, b, c, d, e, f, g, h, i int) {
 		}
 	}
 }
-`
-}
-
-// compositeFixture returns a Go source string that triggers composite rule findings.
-func compositeFixture() string {
-	return `// Package sample is a test package.
-package sample
-
-func Hot(a bool, b bool) {
-	if a {
-		_ = a
-	}
-	if b {
-		_ = b
-	}
-}
-`
-}
-
-// compositeConfig returns a YAML config enabling the rules compositeFixture needs to fire design.hotspot-file.
-//
-// It lowers size.function-length to 4 and complexity.cognitive to 2, and sets hotspot-file to minFindings 2 and minPillars 2.
-// With those settings the small Hot function yields the two findings, from two pillars, that keep the golden on a composite rule.
-// The default minFindings of 3 would leave the fixture below threshold.
-func compositeConfig() string {
-	return `
-schemaVersion: gruff-go.config.v0.1
-rules:
-  size.function-length:
-    threshold: 4
-  complexity.cognitive:
-    threshold: 2
-  design.hotspot-file:
-    enabled: true
-    thresholds:
-      minFindings: 2
-      minPillars: 2
 `
 }
 

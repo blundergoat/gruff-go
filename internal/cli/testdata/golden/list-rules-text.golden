@@ -9,7 +9,6 @@ dead-code.unused-private-type	dead-code	advisory	parser	Unused private type
 dead-code.unused-private-var	dead-code	advisory	parser	Unused private var
 dependency.go-mod-local-replace	security	advisory	parser	Local go.mod replace directive
 dependency.go-mod-remote-replace	security	advisory	parser	Remote go.mod replace directive
-design.hotspot-file	design	advisory	parser	Hotspot file
 docs.comment-rubric	documentation	advisory	parser	Comment rubric
 docs.config-field-comment	documentation	advisory	parser	Config field comment
 docs.exported-symbol-comment	documentation	advisory	parser	Exported symbol comment
@@ -22,7 +21,6 @@ maintainability.defer-in-loop	maintainability	advisory	parser	Defer in loop
 maintainability.ignored-error	maintainability	advisory	parser	Ignored error
 maintainability.log-fatal-library	maintainability	advisory	parser	Library fatal exit
 maintainability.loop-variable-address	maintainability	advisory	parser	Range variable address escapes
-maintainability.production-panic	maintainability	advisory	parser	Production panic
 modernisation.ioutil-deprecated	modernisation	advisory	parser	Deprecated ioutil API
 naming.acronym-case	naming	advisory	parser	Acronym case
 naming.contextual-generic	naming	advisory	parser	Contextual generic name

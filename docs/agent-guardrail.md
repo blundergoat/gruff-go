@@ -136,10 +136,6 @@ Treat every finding as requiring one explicit action before handoff:
 | `LARGER-REFACTOR` | The finding points at a real design issue that is too broad for the current change. | Leave an explicit follow-up with the underlying findings grouped; do not hide the signal. |
 | `SKIP-CODEBASE` | The path is generated, vendored, fixture-only, or otherwise outside the review boundary. | Use `check-ignore` / `paths.ignore` so gruff reports the skip instead of asking for a code edit. |
 
-`design.hotspot-file` is a composite triage pointer. Use it to group related
-underlying findings in one file; do not treat it as an extra standalone edit after
-the underlying findings are handled.
-
 ## Recommended settings for agent-generated code
 
 - **`--fail-on advisory` inside the agent loop.** The agent should clear

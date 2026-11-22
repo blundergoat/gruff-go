@@ -51,9 +51,6 @@
     "dependency.go-mod-remote-replace": {
       "median_ms": 21.289573840000003
     },
-    "design.hotspot-file": {
-      "median_ms": 20.70079636
-    },
     "docs.comment-rubric": {
       "median_ms": 20.58183908
     },
@@ -83,9 +80,6 @@
     },
     "maintainability.loop-variable-address": {
       "median_ms": 27.687301740000002
-    },
-    "maintainability.production-panic": {
-      "median_ms": 21.417433120000002
     },
     "modernisation.ioutil-deprecated": {
       "median_ms": 21.18732582

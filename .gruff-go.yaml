@@ -97,14 +97,6 @@ rules:
     enabled: true
     severity: advisory
 
-  # Emits score-neutral composite triage when a file has findings across multiple quality pillars.
-  design.hotspot-file:
-    enabled: true
-    severity: advisory
-    thresholds:
-      minFindings: 3
-      minPillars: 2
-
   # Flags files that opt into stricter maintainer comments for package summaries, functions, named types, and package-scope values. With minWordsBeyondSymbol set, the rule additionally requires the comment to carry that many tokens beyond the symbol's own name (rejects name-restatement boilerplate). On _test.go files the rule does not enforce requireConstComments or requireVarComments even when ignoreTests is false; function, type, and package-summary checks still apply.
   docs.comment-rubric:
     enabled: true
@@ -163,11 +155,6 @@ rules:
 
   # Flags storing, returning, or appending the address of a range variable copy.
   maintainability.loop-variable-address:
-    enabled: true
-    severity: advisory
-
-  # Flags direct literal panic calls in non-test, non-main production code.
-  maintainability.production-panic:
     enabled: true
     severity: advisory
 

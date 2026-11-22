@@ -6,7 +6,7 @@
 package rule
 
 // Defaults returns the built-in registry without project configuration.
-// It panics if NewRegistryWithComposite rejects the built-in rule lists, a gruff-go defect that no user config can cause.
+// It panics if NewRegistry rejects the built-in rule lists, a gruff-go defect that no user config can cause.
 func Defaults() Registry {
 	registry, err := DefaultsConfigured(Config{})
 	if err != nil {
@@ -18,9 +18,9 @@ func Defaults() Registry {
 // DefaultsConfigured returns the built-in registry after applying rule config.
 //
 // config overrides built-in rule options, thresholds, enablement, and severities.
-// When NewRegistryWithComposite fails, it returns a zero Registry and that error.
+// When NewRegistry fails, it returns a zero Registry and that error.
 func DefaultsConfigured(config Config) (Registry, error) {
-	registry, err := NewRegistryWithComposite(defaultUnitRules(config), defaultProjectRules(config), defaultCompositeRules(config))
+	registry, err := NewRegistry(defaultUnitRules(config), defaultProjectRules(config))
 	if err != nil {
 		return Registry{}, err
 	}
@@ -197,9 +197,6 @@ func defaultTestQualityUnitRules() []UnitRule {
 // config feeds only the package-stutter, receiver-consistency, and comment-rubric settings.
 func defaultProjectRules(config Config) []ProjectRule {
 	return []ProjectRule{
-		// Package-scoped since 2026-09-07: a package that recovers its own panics declares
-		// that boundary in whichever file owns the entry point, not the one that panics.
-		ProductionPanicRule{},
 		PackageCommentRule{},
 		PackageNameUnderscoreRule{},
 		PackageStutterRule{AllowStutter: stringSliceOption(config, "naming.package-stutter", "allowStutter")},
@@ -225,17 +222,6 @@ func defaultProjectRules(config Config) []ProjectRule {
 			RequireConstComments:     boolOption(config, "docs.comment-rubric", "requireConstComments", false),
 			RequireVarComments:       boolOption(config, "docs.comment-rubric", "requireVarComments", false),
 			IgnoreTests:              boolOption(config, "docs.comment-rubric", "ignoreTests", false),
-		},
-	}
-}
-
-// defaultCompositeRules builds the composite rule slice from strict config.
-// It returns only the design.hotspot-file rule, its minFindings and minPillars thresholds read from config with package defaults as fallback.
-func defaultCompositeRules(config Config) []CompositeRule {
-	return []CompositeRule{
-		DesignHotspotFileRule{
-			MinFindings: intThreshold(config, "design.hotspot-file", "minFindings", hotspotFileMinFindings),
-			MinPillars:  intThreshold(config, "design.hotspot-file", "minPillars", hotspotFileMinPillars),
 		},
 	}
 }
