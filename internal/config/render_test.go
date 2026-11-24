@@ -200,3 +200,56 @@ func TestRenderEmitsSingleThresholdAsScalar(t *testing.T) {
 		t.Fatalf("expected plural thresholds form for naming.contextual-generic; got:\n%s", body)
 	}
 }
+
+// TestRenderPreservesMapOptionsAndAliasKeyedOverrides ensures init --force keeps naming.misspelling.options.extra and legacy alias rule keys intact.
+func TestRenderPreservesMapOptionsAndAliasKeyedOverrides(t *testing.T) {
+	raw := []byte(`schemaVersion: gruff-go.config.v0.1
+rules:
+  documentation.package-comment:
+    enabled: false
+  size-file-length:
+    threshold: 500
+  naming.misspelling:
+    enabled: true
+    options:
+      extra:
+        teh: the
+`)
+	loaded, err := Parse(raw, defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse original: %v", err)
+	}
+	rendered := Render(defaultDefinitions(), RenderOptions{Existing: &loaded})
+	if strings.Contains(string(rendered), "map[") {
+		t.Fatalf("rendered YAML leaked Go map formatting:\n%s", rendered)
+	}
+	reparsed, err := Parse(rendered, defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse rendered: %v\n%s", err, rendered)
+	}
+	opts := reparsed.RuleOptions()
+	if opts.Enabled["docs.package-comment"] {
+		t.Fatalf("expected alias override documentation.package-comment enabled: false to survive Render")
+	}
+	if got := opts.Thresholds["size.file-length"]["maxLines"]; got != 500 {
+		t.Fatalf("size.file-length maxLines = %v, want 500 from legacy size-file-length alias", got)
+	}
+	extra, ok := opts.Options["naming.misspelling"]["extra"].(map[string]any)
+	if !ok || extra["teh"] != "the" {
+		t.Fatalf("naming.misspelling.options.extra = %#v, want map with teh:the", opts.Options["naming.misspelling"]["extra"])
+	}
+
+	// An empty map option must render as an empty block mapping ("extra:\n"), not unsupported flow "extra: {}".
+	emptyRaw := []byte("schemaVersion: gruff-go.config.v0.1\nrules:\n  naming.misspelling:\n    enabled: true\n    options:\n      extra:\n")
+	emptyLoaded, err := Parse(emptyRaw, defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse empty map original: %v", err)
+	}
+	emptyRendered := Render(defaultDefinitions(), RenderOptions{Existing: &emptyLoaded})
+	if strings.Contains(string(emptyRendered), "extra: {}") {
+		t.Fatalf("rendered empty map emitted unsupported flow syntax:\n%s", emptyRendered)
+	}
+	if _, err := Parse(emptyRendered, defaultDefinitions()); err != nil {
+		t.Fatalf("Parse empty map rendered: %v\n%s", err, emptyRendered)
+	}
+}

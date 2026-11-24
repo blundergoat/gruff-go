@@ -71,7 +71,7 @@ func projectRootFromTargets(paths []string) (string, error) {
 	if isSameOrDescendant(common, workingDirectory) {
 		return workingDirectory, nil
 	}
-	// A single external file can borrow its project's config and report paths. Several operands need a common root.
+	// A single external file can borrow its project's config and report paths. Several operands need a common non-root project directory.
 	if len(paths) == 1 {
 		target := paths[0]
 		// Resolve a relative file from the directory where the user typed the command before looking for its project.
@@ -82,8 +82,75 @@ func projectRootFromTargets(paths []string) (string, error) {
 		if info, statErr := os.Stat(target); statErr != nil || !info.IsDir() {
 			return enclosingProjectRoot(common), nil
 		}
+		return common, nil
+	}
+	// Climbing all the way to the filesystem root (such as / or C:\) means the external targets do not belong to one project.
+	if common == filepath.Dir(common) {
+		return "", fmt.Errorf("scan targets do not share a project root")
+	}
+	// Reject multiple external targets whose nearest project markers disagree, so scanning two unrelated repos never silently merges them.
+	if !externalTargetsShareProject(workingDirectory, paths) {
+		return "", fmt.Errorf("scan targets do not share a project root")
 	}
 	return common, nil
+}
+
+// externalTargetsShareProject reports whether every external target in paths resolves to the same enclosing project marker when markers exist.
+//
+// workingDirectory resolves relative entries before inspecting ancestors.
+// Returns true when paths is empty, when no target has a project marker, or when every target shares the same project root;
+// returns false when two targets resolve to different project roots or mix a marked project with an outside unmarked path.
+func externalTargetsShareProject(workingDirectory string, paths []string) bool {
+	sharedRoot := ""
+	hasUnmarked := false
+	for _, target := range paths {
+		targetPath := target
+		if !filepath.IsAbs(targetPath) {
+			targetPath = filepath.Join(workingDirectory, targetPath)
+		}
+		targetPath = filepath.Clean(targetPath)
+		targetDir := targetPath
+		// File targets anchor to their containing directory when searching upward for a project marker.
+		if info, err := os.Stat(targetPath); err != nil || !info.IsDir() {
+			targetDir = filepath.Dir(targetPath)
+		}
+		markerRoot := nearestProjectMarkerRoot(targetDir)
+		// Reject mixing a marked repository with an external target outside any repository.
+		if markerRoot == "" {
+			if sharedRoot != "" {
+				return false
+			}
+			hasUnmarked = true
+			continue
+		}
+		if hasUnmarked {
+			return false
+		}
+		if sharedRoot == "" {
+			sharedRoot = markerRoot
+			continue
+		}
+		if sharedRoot != markerRoot {
+			return false
+		}
+	}
+	return true
+}
+
+// nearestProjectMarkerRoot returns the nearest ancestor of dir (or dir itself) holding a Gruff config, Go module, or Git marker.
+// Returns an empty string when walking up to the filesystem root finds none of those markers.
+func nearestProjectMarkerRoot(dir string) string {
+	for candidate := dir; ; candidate = filepath.Dir(candidate) {
+		for _, marker := range []string{defaultConfigFileName, "go.mod", ".git"} {
+			if _, err := os.Stat(filepath.Join(candidate, marker)); err == nil {
+				return candidate
+			}
+		}
+		// Stop once filepath.Dir stops advancing at the filesystem root (/ or volume root).
+		if filepath.Dir(candidate) == candidate {
+			return ""
+		}
+	}
 }
 
 // enclosingProjectRoot returns the nearest parent of dir with a Gruff config, Go module, or Git marker.

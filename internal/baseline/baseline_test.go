@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -658,5 +659,53 @@ func sentinelForms(sentinel string) map[string]string {
 		"partial": sentinel[:8],
 		"hashed":  hex.EncodeToString(digest[:]),
 		"encoded": base64.StdEncoding.EncodeToString([]byte(sentinel)),
+	}
+}
+
+// TestMigrationMatchesLegacyMetricFindingsByContractStableIdentity ensures 0.5 symbol-less metric rows survive line-count growth during migration.
+func TestMigrationMatchesLegacyMetricFindingsByContractStableIdentity(t *testing.T) {
+	v05Finding := finding.Finding{
+		RuleID:   "size.file-length",
+		File:     "big.go",
+		Pillar:   finding.PillarSize,
+		Message:  "file has 1010 substantive lines, above threshold 1000",
+		Location: &finding.Location{Line: 1},
+		Metadata: map[string]any{"lines": 1010, "threshold": 1000},
+	}.WithFingerprint()
+	currentFinding := finding.Finding{
+		RuleID:   "size.file-length",
+		File:     "big.go",
+		Pillar:   finding.PillarSize,
+		Message:  "file has 1011 substantive lines, above threshold 1000",
+		Location: &finding.Location{Line: 1},
+		Metadata: map[string]any{"lines": 1011, "threshold": 1000},
+	}.WithFingerprint()
+
+	legacy := LegacyFile{
+		SchemaVersion: LegacySchemaVersion,
+		Findings: []LegacyEntry{{
+			RuleID:         v05Finding.RuleID,
+			File:           v05Finding.File,
+			Fingerprint:    v05Finding.Fingerprint,
+			StableIdentity: v05Finding.ComputeContractStableIdentity(),
+		}},
+	}
+	legacyBytes, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old.json")
+	newPath := filepath.Join(dir, "new.json")
+	if err := os.WriteFile(oldPath, legacyBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Migrate(oldPath, newPath, []finding.Finding{currentFinding}, stamp)
+	if err != nil {
+		t.Fatalf("Migrate error = %v", err)
+	}
+	if result.Accepted != 1 || result.Occurrences != 1 {
+		t.Fatalf("result = %+v, want Accepted=1 Occurrences=1 for shifted metric finding", result)
 	}
 }

@@ -69,10 +69,7 @@ type SkippedPath struct {
 
 // IgnoreDecision is the result of the shared ignore engine for a single path.
 //
-// Discovery skip records and the check-ignore command both come from this engine, but their outcomes can differ.
-//
-// check-ignore judges a file as if the user named it directly, so only config globs and VCS internals can exclude it.
-// Discovery also skips generated Go files, which check-ignore never reports.
+// Discovery skip records and check-ignore both consult this engine; discovery also skips generated Go files, which check-ignore never reads.
 type IgnoreDecision struct {
 	// Ignored is true when the path would be excluded from analysis.
 	Ignored bool

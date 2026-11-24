@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"go/ast"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
@@ -56,9 +57,6 @@ func (r PackageStutterRule) Definition() Definition {
 //
 // Units lacking a parsed AST, package name or file set are skipped; names in AllowStutter, or Config and Finding when it is empty, are exempt.
 // It returns one finding per stuttering identifier, in the order of units and their declarations, or nil when none stutters.
-//
-// It panics when a checked name is shorter in bytes than the lowercased package name yet its own lower case starts with that package name.
-// An exported Ⱥ in package ⱥ does this, because lowercase ⱥ takes three bytes and Ⱥ takes two.
 func (r PackageStutterRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	allow := r.allowSet()
 	var findings []finding.Finding
@@ -95,8 +93,6 @@ func (r PackageStutterRule) allowSet() map[string]bool {
 //
 // pkgLower is the package name of unit in lower case, and allow holds the exact identifier names exempt from the check.
 // It returns the findings for every top-level declaration in source order, or nil when none stutters.
-//
-// It panics when a checked name is shorter in bytes than pkgLower yet its own lower case starts with pkgLower, as Unicode case mapping allows.
 func scanUnitForStutter(unit parser.Unit, pkgLower string, allow map[string]bool) []finding.Finding {
 	var findings []finding.Finding
 	for _, decl := range unit.AST.Decls {
@@ -110,8 +106,6 @@ func scanUnitForStutter(unit parser.Unit, pkgLower string, allow map[string]bool
 // A function or general decl is checked for exported names that stutter pkgLower, the lowercase package name, unless allow exempts the exact name.
 // unit supplies the file path and position each finding reports.
 // It returns that inspector's findings, or nil for any other decl kind or when no name stutters.
-//
-// It panics when a checked name is shorter in bytes than pkgLower yet its own lower case starts with pkgLower, as Unicode case mapping allows.
 func stutterFindingsForDecl(unit parser.Unit, decl ast.Decl, pkgLower string, allow map[string]bool) []finding.Finding {
 	switch d := decl.(type) {
 	case *ast.GenDecl:
@@ -127,8 +121,6 @@ func stutterFindingsForDecl(unit parser.Unit, decl ast.Decl, pkgLower string, al
 // Type, const and var names in decl are checked for the lowercase package prefix pkgLower unless allow exempts the exact name.
 // Unexported names and import specs are skipped, and unit supplies the file path and position of each finding.
 // It returns one finding per stuttering name in spec order, or nil when none stutters.
-//
-// It panics when a checked name is shorter in bytes than pkgLower yet its own lower case starts with pkgLower, as Unicode case mapping allows.
 func stutterFindingsForGenDecl(unit parser.Unit, decl *ast.GenDecl, pkgLower string, allow map[string]bool) []finding.Finding {
 	var findings []finding.Finding
 	for _, spec := range decl.Specs {
@@ -155,8 +147,6 @@ func stutterFindingsForGenDecl(unit parser.Unit, decl *ast.GenDecl, pkgLower str
 //
 // The function name in decl is checked for the lowercase package prefix pkgLower unless allow exempts it; unit supplies its finding location.
 // It returns a one-element slice when the name stutters, or nil for a method, a missing or unexported name, or one that does not stutter.
-//
-// It panics when a checked name is shorter in bytes than pkgLower yet its own lower case starts with pkgLower, as Unicode case mapping allows.
 func stutterFindingsForFuncDecl(unit parser.Unit, decl *ast.FuncDecl, pkgLower string, allow map[string]bool) []finding.Finding {
 	if decl.Recv != nil || decl.Name == nil || !ast.IsExported(decl.Name.Name) {
 		return nil
@@ -198,21 +188,27 @@ func stutterCheck(unit parser.Unit, ident *ast.Ident, pkgLower string, allow map
 
 // isPackageStutter reports whether identName begins with pkgLower followed by a word boundary.
 //
-// The prefix match ignores the case of identName, and the boundary is the end of identName or an ASCII capital at byte offset len(pkgLower).
+// The prefix match ignores the case of identName, walking runes so Unicode case mappings that change UTF-8 byte length stay in bounds.
 // The result is false when either name is empty; rule.Rules does not stutter, while rule.RuleSet and config.Config do.
-//
-// It panics when identName is shorter in bytes than pkgLower yet its lower case starts with pkgLower, as for an exported Ⱥ in package ⱥ.
 func isPackageStutter(identName, pkgLower string) bool {
 	if pkgLower == "" || identName == "" {
 		return false
 	}
-	if !strings.HasPrefix(strings.ToLower(identName), pkgLower) {
-		return false
+	lowerPrefix := ""
+	for index, r := range identName {
+		lowerPrefix += strings.ToLower(string(r))
+		if len(lowerPrefix) < len(pkgLower) {
+			continue
+		}
+		if lowerPrefix != pkgLower {
+			return false
+		}
+		rest := identName[index+utf8.RuneLen(r):]
+		if rest == "" {
+			return true
+		}
+		next, _ := utf8.DecodeRuneInString(rest)
+		return next >= 'A' && next <= 'Z'
 	}
-	if len(identName) == len(pkgLower) {
-		return true
-	}
-	// A name shorter in bytes than pkgLower, reachable only through Unicode case mapping, panics on this index.
-	next := identName[len(pkgLower)]
-	return next >= 'A' && next <= 'Z'
+	return false
 }

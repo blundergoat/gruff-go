@@ -256,6 +256,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 	baselinePath := flagSet.String("baseline", "", "baseline file to apply for stable-identity new-only")
 	includeIgnored := flagSet.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	deepScanBudget := flagSet.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
+	_ = flagSet.String("min-severity", "", "refused in 0.6.0; use --fail-on")
 	failOn := flagSet.String("fail-on", string(finding.FailThresholdNone), "lowest severity that exits 1; the hook's default of none keeps findings advisory")
 	minConfidence := flagSet.String("min-confidence", "", "lowest confidence that reaches the exit gate: low, medium or high")
 	failOnNew := flagSet.Bool("fail-on-new", false, "exit 1 when any published finding is new against the applied baseline")
@@ -326,7 +327,7 @@ func hookFlagHasSeparateValue(flagArgument string) bool {
 	}
 	// These are the hook's non-Boolean flags; every other supported flag is self-contained.
 	switch strings.TrimLeft(flagArgument, "-") {
-	case "format", "config", "changed-ranges", "diff", "baseline", "deep-scan-budget", "fail-on", "min-confidence":
+	case "format", "config", "changed-ranges", "diff", "baseline", "deep-scan-budget", "fail-on", "min-severity", "min-confidence":
 		return true
 	default:
 		// Boolean and unknown flags do not reserve the next token during the help pre-scan.

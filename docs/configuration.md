@@ -252,8 +252,9 @@ Examples:
 
 ```yaml
 rules:
-  # Tighten cyclomatic complexity and bump severity.
+  # Enable opt-in cyclomatic complexity, tighten its limit, and bump severity.
   complexity.cyclomatic:
+    enabled: true
     threshold: 12
     severity: error
 

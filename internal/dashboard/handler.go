@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -28,7 +29,8 @@ import (
 // NewHandler returns the dashboard HTTP handler that owns the / and /scan routes.
 //
 // opts supplies the dashboard defaults: / renders the form state built from opts and the query, and /scan hands opts to handleScan.
-// The / route answers any path other than / with 404 before checking the method, and both routes reject methods other than GET with 405.
+// Unless opts.AllowPublic is set, requests carrying a non-loopback Host header are rejected with 403 to block DNS rebinding.
+// Responses set same-origin framing headers so external origins cannot embed or trigger scans.
 func NewHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
@@ -51,7 +53,35 @@ func NewHandler(opts Options) http.Handler {
 		}
 		handleScan(writer, request, opts)
 	})
-	return mux
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		writer.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+		// Reject non-loopback Host headers on local-only dashboard binds so DNS-rebinding pages cannot invoke /scan.
+		if !opts.AllowPublic && !isLoopbackRequestHost(request.Host) {
+			http.Error(writer, "forbidden host", http.StatusForbidden)
+			return
+		}
+		mux.ServeHTTP(writer, request)
+	})
+}
+
+// isLoopbackRequestHost reports whether rawHost from an HTTP Host header names a loopback host (localhost, 127.0.0.1, or ::1), with or without port.
+//
+// The dashboard handler calls it on local-only binds so a malicious web page opened by the user cannot trigger /scan through DNS rebinding.
+// Returns false when rawHost is empty or whitespace-only so requests missing a loopback Host header are refused with 403.
+func isLoopbackRequestHost(rawHost string) bool {
+	trimmed := strings.TrimSpace(rawHost)
+	if trimmed == "" {
+		return false
+	}
+	host := trimmed
+	// Strip an explicit port (such as 127.0.0.1:8765 or [::1]:8765); fall back to trimming brackets for portless IPv6 hosts like [::1].
+	if parsedHost, _, err := net.SplitHostPort(trimmed); err == nil {
+		host = parsedHost
+	} else if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		host = trimmed[1 : len(trimmed)-1]
+	}
+	return isLoopbackHost(host)
 }
 
 // handleScan reads the /scan query parameters from request, runs the analysis, and writes the HTML report or an error page to writer.
@@ -92,10 +122,15 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		return
 	}
 
+	resolvedRoot := reportData.Run.WorkingDirectory
+	// Use the absolute working directory so relative --project values such as "." still produce valid vscode:// and phpstorm:// editor links.
+	if resolvedRoot == "" {
+		resolvedRoot = scanOpts.projectRoot
+	}
 	var buffer bytes.Buffer
 	if err := report.WriteHTML(&buffer, reportData, report.HTMLOptions{
 		EditorLink:  opts.EditorLink,
-		ProjectRoot: scanOpts.projectRoot,
+		ProjectRoot: resolvedRoot,
 		Interactive: scanOpts.reportInteractive,
 	}); err != nil {
 		_ = report.WriteDashboardError(writer, "Render failed.", err.Error(), 2, durationMs)
@@ -353,11 +388,10 @@ func splitPaths(raw string) []string {
 
 // displayCommand formats selected scan settings from state as a gruff-go analyse command for display.
 //
-// opts contributes only the editor link, added unless empty or none; state supplies the other flags and the trailing paths.
+// opts contributes --deep-scan-budget (when non-empty) and --report-editor-link (unless empty or none); state supplies the other flags and paths.
 // It returns the space-joined command, which always starts with gruff-go analyse --format html and is not shell-quoted.
 //
-// The project root and the dashboard's deep-scan budget are not included, so the command can differ from the scan that ran.
-// Values the scan took from opts instead of the form are left out too, and a fail-on value the scan rejected is still shown as typed.
+// The project root is not included, so the command assumes the caller runs it from that directory; a rejected fail-on value is shown as typed.
 func displayCommand(state report.DashboardState, opts Options) string {
 	args := []string{"gruff-go", "analyse", "--format", "html"}
 	if state.ReportInteractive == "1" {

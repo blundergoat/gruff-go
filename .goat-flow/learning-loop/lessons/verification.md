@@ -1,6 +1,6 @@
 ---
 category: verification
-last_reviewed: 2026-10-03
+last_reviewed: 2026-11-25
 ---
 
 # Verification Lessons
@@ -137,3 +137,14 @@ matching working directories and operands as well as matching labels.
 **Prevention:** Derive what is protected from the registration first, then probe the script for its decision table and label the result as such. In this checkout `.claude/settings.json` (search: `"matcher": "Bash|PowerShell|Monitor"`) registers `deny-dangerous.mjs` and `deny-git-mutations.mjs` for Claude's shell and `Monitor` tools only, so its `Read` and `Edit` calls never reach either script and are bounded by `permissions.deny` alone.
 
 **What happened:** The goat-flow 1.17.0 install retired the static `Read`/`Edit` deny rules for credentials-prefixed file names. To check the loss was covered, the agent fed Claude `Read`-tool payloads directly to `deny-dangerous.sh`, saw exit 2 for a credentials file, and reported that such reads stayed blocked. The quality assessment in the same session read the registration, found the shell-only matcher, and showed the claim was false: nothing blocked Claude's file tools from reading that file. The agent corrected the report to the user.
+
+## Lesson: check section-boundary guards and dogfood prose when adding doc-contract test helpers
+
+**Created:** 2026-11-25
+**Decision changed:** When a Markdown contract test slices sections by heading prefix, verify it terminates at parent heading levels (`## `) as well as sibling headings (`### `), and always run `go run ./cmd/gruff-go analyse .` after adding test helpers so callable-doc rules check the new helper comment.
+**Trigger phase:** ACT
+**Caught at:** VERIFY
+
+**Prevention:** Bound Markdown section slices to the earliest following sibling or parent heading, never assume EOF means "still inside the last section", and write Go doc comments on test helpers using explicit return wording (`returns ...`) before running the dogfood gate.
+
+**What happened:** On 2026-11-24, `docs/rules.md` carried a stray `Known precision limit` paragraph for `test-quality.tempdir-misuse` at EOF below `## Confidence evidence` and `## Configuring rules`. `internal/cli/rules_docs_test.go` (search: `TestDocsRulesPrecisionGuidanceMatchesRegistry`) still passed because it only searched for the next `\n### \`` heading, so the last rule section swallowed the rest of the file. Extracting `internal/cli/rules_docs_test.go` (search: `func nextDocSectionEnd`) to stop at both `\n### \`` and `\n## ` closed the blind spot. On the next preflight run, dogfood tripped `docs.missing-return-doc` on `nextDocSectionEnd` itself because its comment opened with `"finds"` rather than `"returns"`; rewording the comment restored grade A (`100.00/100`, 0 findings).

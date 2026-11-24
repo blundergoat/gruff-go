@@ -217,6 +217,7 @@ func hookFindingBaselineFromFile(projectRoot, baselinePath string) (hookFindingB
 	if !filepath.IsAbs(resolvedBaselinePath) {
 		resolvedBaselinePath = filepath.Join(projectRoot, resolvedBaselinePath)
 	}
+	resolvedBaselinePath = filepath.Clean(resolvedBaselinePath)
 	baselineFile, err := baseline.Load(resolvedBaselinePath)
 	// Invalid or missing baseline files retain hook's fatal diagnostic behavior.
 	if err != nil {

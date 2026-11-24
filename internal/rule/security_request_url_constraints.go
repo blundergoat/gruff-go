@@ -26,13 +26,12 @@ type parsedDestinationEvidence struct {
 }
 
 // bodyHasParsedDestinationAllowlist recognises rejecting HTTP scheme and exact host checks on one parsed URL linked to the sink.
-// A sink inside a rejecting guard's body can qualify even though that destination need not pass those checks.
 //
+// Only guards that finish before sinkPosition qualify, so a sink placed inside the rejection branch stays flagged.
 // Parsing establishes syntax, not destination trust, so nothing weaker clears the sink.
 //
 // The requestScope recognises net/url parse calls, functionBody is the body searched, and sinkValueNames are the locals carrying the destination.
-// Only parses and exiting guards starting before sinkPosition count; every region enclosing a guard must also contain the sink.
-// Jumps such as goto are not followed, so this does not prove every path to the sink runs the guard.
+// Every region enclosing a qualifying guard must also contain the sink; jumps such as goto are not followed, so this is syntactic evidence.
 //
 // It returns true when one parsed URL has both a rejecting http or https scheme check and a non-empty host check; false means none was found.
 func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, functionBody *ast.BlockStmt, sinkValueNames map[string]bool, sinkPosition token.Pos) bool {
@@ -48,8 +47,8 @@ func bodyHasParsedDestinationAllowlist(requestScope *requestTaintScope, function
 			return false
 		}
 		returnGuard, isReturnGuard := syntaxNode.(*ast.IfStmt)
-		// Only an earlier guard that exits the handler constrains the later request.
-		if !isReturnGuard || returnGuard.Pos() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
+		// Only a guard that finishes before the sink constrains the later request; sinks inside the rejection branch remain flagged.
+		if !isReturnGuard || returnGuard.End() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
 			return true
 		}
 		// Scheme and host evidence accumulates per parsed value, so a guard the
@@ -477,7 +476,7 @@ func parsedURLField(valueExpression ast.Expr, parsedURLNames map[string]bool) (s
 		return identNameAndField(parsedURLIdentifier, "host", parsedURLNames, isIdentifier)
 	}
 	fieldSelector, isSelector := valueExpression.(*ast.SelectorExpr)
-	// The UI policy intentionally accepts only net/url's Scheme and Host fields.
+	// The URL allowlist check intentionally accepts only net/url's Scheme and Host fields.
 	if !isSelector || (fieldSelector.Sel.Name != "Scheme" && fieldSelector.Sel.Name != "Host") {
 		return "", "", false
 	}
@@ -511,7 +510,7 @@ func blockEndsWithReturn(statementBlock *ast.BlockStmt) bool {
 
 // bodyHasCommittedRelativePrefix recognises an exiting HasPrefix guard with a literal starting / followed by neither / nor backslash.
 //
-// A negated strings.HasPrefix guard in functionBody must start before sinkPosition; the sink may be inside its rejecting body.
+// A negated strings.HasPrefix guard in functionBody must finish before sinkPosition so a redirect inside the rejection branch stays flagged.
 // Every region enclosing the guard must also contain the sink; jumps such as goto are not followed.
 //
 // The stringPackageAliases set names that package's import aliases, and the call's first argument must use one of sinkValueNames.
@@ -528,8 +527,8 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 			return false
 		}
 		returnGuard, isReturnGuard := syntaxNode.(*ast.IfStmt)
-		// Only an earlier exiting guard constrains the later redirect.
-		if !isReturnGuard || returnGuard.Pos() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
+		// Only a guard that finishes before the sink constrains the later redirect; sinks inside the rejection branch remain flagged.
+		if !isReturnGuard || returnGuard.End() >= sinkPosition || !blockEndsWithReturn(returnGuard.Body) {
 			return true
 		}
 		// An optional outer branch lets the sink bypass this prefix requirement.
@@ -558,10 +557,9 @@ func bodyHasCommittedRelativePrefix(functionBody *ast.BlockStmt, sinkValueNames,
 	return foundCommittedPrefix
 }
 
-// bodyStripsProtocolRelativePrefix accepts a matching slash-trimming loop as evidence for suppressing a redirect finding.
-// A sink inside the loop body before trimming can qualify, even while its target still starts with //.
+// bodyStripsProtocolRelativePrefix accepts a completed slash-trimming loop before the sink as evidence for suppressing a redirect finding.
 //
-// A for loop in functionBody starting before sinkPosition must test HasPrefix of one of sinkValueNames against a double slash.
+// A for loop in functionBody finishing before sinkPosition must test HasPrefix of one of sinkValueNames against a double slash.
 // Every region enclosing the loop must also contain the sink; jumps such as goto are not followed.
 // Its body must contain a recognised top-level trim assignment made through stringPackageAliases.
 //
@@ -581,8 +579,8 @@ func bodyStripsProtocolRelativePrefix(requestScope *requestTaintScope, functionB
 			return false
 		}
 		prefixLoop, isForLoop := syntaxNode.(*ast.ForStmt)
-		// Only a loop that runs before the redirect can change the value the redirect sends.
-		if !isForLoop || prefixLoop.Pos() >= sinkPosition {
+		// Only a loop that finishes before the redirect guarantees the leading slashes are gone when the redirect executes.
+		if !isForLoop || prefixLoop.End() >= sinkPosition {
 			return true
 		}
 		// Normalization must run on every path that can reach the later redirect.

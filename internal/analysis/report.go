@@ -1193,17 +1193,13 @@ func machinePaths(root string, values []string) ([]string, error) {
 // machinePath converts one path to project-relative POSIX form and rejects values outside the report root.
 //
 // root is the directory an absolute value is made relative to, and value is the path to convert after filepath.Clean.
+// Absolute paths (including Windows drive paths inside root) are relativized before checking drive prefixes, so Windows targets under root succeed.
 //
-// It returns the cleaned slash-separated path, or an empty string and an error if value is empty or a Windows drive path.
-// An absolute value returns an empty string and an error when root is empty or filepath.Rel cannot make it relative to root.
-//
-// A value outside root, or one still holding a backslash, fails with an empty string and an error wrapping errOutsideProjectRoot.
+// It returns the cleaned slash-separated path, or an empty string and an error if value is empty or has no project root.
+// A value outside root, on a different Windows drive, or holding a backslash fails with an error wrapping errOutsideProjectRoot.
 func machinePath(root, value string) (string, error) {
 	if value == "" {
 		return "", fmt.Errorf("empty path is not portable")
-	}
-	if len(value) >= 2 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' {
-		return "", fmt.Errorf("Windows drive path %q is outside the project contract", value)
 	}
 	cleaned := filepath.Clean(value)
 	if filepath.IsAbs(cleaned) {
@@ -1213,13 +1209,21 @@ func machinePath(root, value string) (string, error) {
 		}
 		relative, err := filepath.Rel(base, cleaned)
 		if err != nil {
-			return "", fmt.Errorf("path %q cannot be made project-relative: %w", value, err)
+			return "", fmt.Errorf("path %q cannot be made project-relative (%w): %v", value, errOutsideProjectRoot, err)
 		}
 		cleaned = relative
+	}
+	if hasWindowsDrivePrefix(cleaned) {
+		return "", fmt.Errorf("path %q uses a Windows drive prefix and is %w", value, errOutsideProjectRoot)
 	}
 	portable := filepath.ToSlash(cleaned)
 	if portable == ".." || strings.HasPrefix(portable, "../") || strings.HasPrefix(portable, "/") || strings.Contains(portable, "\\") {
 		return "", fmt.Errorf("path %q is %w", value, errOutsideProjectRoot)
 	}
 	return portable, nil
+}
+
+// hasWindowsDrivePrefix reports whether value begins with an ASCII drive qualifier such as C:.
+func hasWindowsDrivePrefix(value string) bool {
+	return len(value) >= 2 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':'
 }

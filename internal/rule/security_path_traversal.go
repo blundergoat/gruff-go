@@ -48,8 +48,6 @@ func (PathTraversalFileAccessRule) Definition() Definition {
 // Inside each request function body in unit it flags sink calls whose path argument carries request data and lacks sanitizer evidence.
 // It returns one finding per flagged call with sink and source metadata, and an empty slice when no call is flagged.
 // It returns nil for a non-production path, a unit without AST or file set, or a file that imports net/http only as dot or blank, or not at all.
-//
-// It can panic during sanitizer checks when a Unicode call name's lowercase form is shorter than an original token offset.
 func (PathTraversalFileAccessRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil

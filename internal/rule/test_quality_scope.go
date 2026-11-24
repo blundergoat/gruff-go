@@ -7,33 +7,31 @@ package rule
 import (
 	"go/ast"
 	"go/token"
-	"path"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-// knownAssertionPackages lists the selector-style assertion libraries a test file may call through a package qualifier.
+// knownAssertionPackages maps selector-style assertion library import paths to their default local package names.
 //
 // Their qualifiers may stand in for an Assert*/Require*/Expect*/Must*/Check* prefix.
 // assertionPackageNames records each file's local name for these import paths; a library missing here earns no such credit.
-var knownAssertionPackages = map[string]bool{
-	"github.com/onsi/ginkgo/v2":           true,
-	"github.com/onsi/gomega":              true,
-	"github.com/stretchr/testify/assert":  true,
-	"github.com/stretchr/testify/require": true,
-	"gotest.tools/v3/assert":              true,
-	"gotest.tools/v3/assert/cmp":          true,
+var knownAssertionPackages = map[string]string{
+	"github.com/onsi/ginkgo/v2":           "ginkgo",
+	"github.com/onsi/gomega":              "gomega",
+	"github.com/stretchr/testify/assert":  "assert",
+	"github.com/stretchr/testify/require": "require",
+	"gotest.tools/v3/assert":              "assert",
+	"gotest.tools/v3/assert/cmp":          "cmp",
 }
 
-// ginkgoSuiteEntrypoints lists the Ginkgo suite-setup names, RunSpecs and RegisterFailHandler, that count as failure evidence.
+// ginkgoSuiteEntrypoints lists the Ginkgo suite runner entrypoint that counts as failure evidence.
 //
-// A Go test that calls one usually bootstraps a suite whose specs this parser-only rule never sees, so the call stands in for its assertions.
-// Matching a name does not prove a suite runs; isGinkgoSuiteEntrypoint checks only the qualifier or dot import, not arguments or called bodies.
+// A Go test calling RunSpecs bootstraps a spec suite whose specs this parser-only rule never sees, so the call stands in for its assertions.
+// RegisterFailHandler only wires a handler and cannot fail a test by itself, so it is intentionally excluded.
 var ginkgoSuiteEntrypoints = map[string]bool{
-	"RunSpecs":            true,
-	"RegisterFailHandler": true,
+	"RunSpecs": true,
 }
 
 // isRunnableTestFunction reports whether fn matches the supported Test, Benchmark, or Fuzz signature shape; type parameters are not checked.
@@ -157,13 +155,12 @@ func testingReceiverKind(name string) (string, bool) {
 	}
 }
 
-// assertionPackageNames returns the local names a test file uses for known selector-style assertion libraries, and up to two sentinel keys.
+// assertionPackageNames returns the local names a test file uses for known selector-style assertion libraries, plus a dot-import sentinel.
 //
-// file is the test file; each known import adds its alias, or the import path's last segment when it has none.
+// file is the test file; each known import adds its alias, or its package's default local name when unaliased.
 // A dot import adds the dotImportedAssertions sentinel instead, and a blank import adds nothing.
 //
-// A matching package-clause name adds insideAssertionPackage for this heuristic; the package's import path is not checked.
-// It returns an empty, non-nil map for a nil file, or one with no known import and no matching package name.
+// It returns an empty, non-nil map for a nil file or one with no known assertion-library imports.
 func assertionPackageNames(file *ast.File) map[string]bool {
 	names := map[string]bool{}
 	if file == nil {
@@ -174,17 +171,18 @@ func assertionPackageNames(file *ast.File) map[string]bool {
 			continue
 		}
 		importPath, err := strconv.Unquote(imported.Path.Value)
-		if err != nil || !knownAssertionPackages[importPath] {
+		defaultName, known := knownAssertionPackages[importPath]
+		if err != nil || !known {
 			continue
 		}
-		name := path.Base(importPath)
+		name := defaultName
 		if imported.Name != nil {
 			switch imported.Name.Name {
 			// A blank import runs init and exposes no name, so nothing can qualify a call.
 			case "_":
 				continue
 			// A dot import puts the library's names in file scope, so its calls are bare and only the dotImportedAssertions sentinel records it.
-			// The sentinel credits bare suite-setup calls; other bare assertion calls still need a recognised testing receiver argument.
+			// The sentinel credits bare suite-runner calls; other bare assertion calls still need a recognised testing receiver argument.
 			case ".":
 				names[dotImportedAssertions] = true
 				continue
@@ -194,58 +192,24 @@ func assertionPackageNames(file *ast.File) map[string]bool {
 		}
 		names[name] = true
 	}
-	// A file whose package clause matches a known library's base name is treated as that library's own code, whose tests call assertions bare.
-	//
-	// This lets a bare call that passes a testing receiver, such as Equal(t, a, b), count as failure evidence without an assertion prefix.
-	// Only the name is compared, so an unrelated project package named assert, require, cmp, gomega, or v2 gets the same credit.
-	if file.Name != nil && assertionPackageBaseNames[file.Name.Name] {
-		names[insideAssertionPackage] = true
-	}
-	return names
-}
-
-// assertionPackageBaseNames holds the final path segment of every known assertion package, meant as the name its own files compile under.
-//
-// assertionPackageNames compares a test file's package clause against it to set insideAssertionPackage.
-// For github.com/onsi/ginkgo/v2 the segment is v2, not the ginkgo name that package declares.
-// So Ginkgo's own files never match, while any package named v2 does.
-var assertionPackageBaseNames = buildAssertionPackageBaseNames()
-
-// buildAssertionPackageBaseNames derives the base names once, so the two lists cannot drift.
-// It returns a set keyed by the last path segment of every import path in knownAssertionPackages, each mapped to true.
-func buildAssertionPackageBaseNames() map[string]bool {
-	names := map[string]bool{}
-	for importPath := range knownAssertionPackages {
-		names[path.Base(importPath)] = true
-	}
 	return names
 }
 
 // dotImportedAssertions is the sentinel recorded when a test file dot-imports an assertion library, leaving no qualifier to match on.
 //
-// Bare suite entrypoints such as RegisterFailHandler(Fail) need no testing receiver; isGinkgoSuiteEntrypoint accepts them on the sentinel alone.
-// Other bare assertion calls in that file still need a recognised testing receiver argument.
+// Bare suite runner calls such as RunSpecs(t, "Suite") match on the sentinel; other bare assertion calls still need a testing receiver.
 const dotImportedAssertions = "."
 
-// insideAssertionPackage marks a file whose package name matches a known assertion library's final import-path segment.
+// isGinkgoSuiteEntrypoint reports whether call invokes Ginkgo's RunSpecs through a known assertion-library import.
 //
-// isInPackageAssertionCall credits bare calls only in such a file; membership is not verified, so any package named assert gets it too.
-// The NUL byte prefix keeps the key from colliding with any real import name.
-const insideAssertionPackage = "\x00self"
-
-// isGinkgoSuiteEntrypoint reports whether call is a recognised Ginkgo suite-setup call, RunSpecs or RegisterFailHandler.
-//
-// RunSpecs(t, "suite") and RegisterFailHandler(Fail) usually start a spec suite whose specs a parser-only rule cannot follow.
-// A matching name with a known assertion-library qualifier, or bare under a dot import, is enough; arguments and called bodies are not checked.
-//
+// RunSpecs(t, "suite") starts a spec suite whose specs a parser-only rule cannot follow.
 // assertionPackages holds the file's local names for known assertion libraries and the dot-import sentinel when one is dot-imported.
-// A qualified RunSpecs or RegisterFailHandler call needs its qualifier in that set, and a bare one needs the dot-import sentinel.
+// A qualified RunSpecs call needs its qualifier in that set, and a bare one needs the dot-import sentinel.
 func isGinkgoSuiteEntrypoint(call *ast.CallExpr, assertionPackages map[string]bool) bool {
 	if !ginkgoSuiteEntrypoints[callFunctionName(call)] {
 		return false
 	}
 	// Qualified is the ordinary spelling, a dot import makes it bare, and either way the file must import an assertion library.
-	// An unaliased ginkgo/v2 import is recorded under v2, so ginkgo.RunSpecs is credited only under an explicit alias or a dot import.
 	if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
 		receiver, isIdent := selector.X.(*ast.Ident)
 		return isIdent && assertionPackages[receiver.Name]
@@ -254,50 +218,11 @@ func isGinkgoSuiteEntrypoint(call *ast.CallExpr, assertionPackages map[string]bo
 	return bare && assertionPackages[dotImportedAssertions]
 }
 
-// isDelegatedSubtest reports whether the call is t.Run(name, fn) with fn given as an expression rather than a literal body.
-//
-// A table test that writes t.Run(tc.name, tc.test) or t.Run(name, suite.check) hands its checks to a function this walk cannot enter.
-// The callback is credited unread, so true is not proof of an assertion; a literal body is walked as a FuncLit instead.
-//
-// receivers holds the in-scope names bound to testing handles; the Run call must be made on one of them with exactly two arguments.
-func isDelegatedSubtest(call *ast.CallExpr, receivers map[string]bool) bool {
-	selector, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || selector.Sel.Name != "Run" || len(call.Args) != 2 {
-		return false
-	}
-	receiver, ok := selector.X.(*ast.Ident)
-	if !ok || !receivers[receiver.Name] {
-		return false
-	}
-	_, isLiteral := call.Args[1].(*ast.FuncLit)
-	return !isLiteral
-}
-
-// isInPackageAssertionCall reports whether a bare call passes a known testing receiver inside a package named like an assertion library.
-//
-// Inside testify/assert the package's own tests call Equal(t, a, b) with no qualifier, because the qualifier is the package they are in.
-// Selector checks cannot recognise these calls because they have no package qualifier.
-// Any bare call passing a known testing receiver is accepted, including ordinary helpers; the callee's body is not inspected.
-//
-// assertionPackages must hold insideAssertionPackage, the sentinel for a file whose package name matches an assertion library.
-// receivers holds the in-scope testing handle names, and the call must pass one of them.
-func isInPackageAssertionCall(call *ast.CallExpr, receivers map[string]bool, assertionPackages map[string]bool) bool {
-	if _, bare := call.Fun.(*ast.Ident); !bare {
-		return false
-	}
-	// Only a file whose package name matches an assertion library qualifies; elsewhere a bare call is ordinary project code.
-	// Crediting bare calls elsewhere would let ordinary helpers count as failure evidence in the rules that rely on blockHasFailureCall.
-	if !assertionPackages[insideAssertionPackage] {
-		return false
-	}
-	return callPassesTestingReceiver(call, receivers)
-}
-
 // blockHasFailureCall walks one function body for parser-visible failure evidence, with receiver names scoped per function literal.
 //
-// It reports true when body or a nested function literal holds a recognised failure, assertion, or delegation call.
+// It reports true when body or a nested function literal holds a recognised testing failure, assertion-library, or Ginkgo RunSpecs call.
 // A nil body, or one with no such call, reports false; the called functions themselves are not walked.
-// True is evidence, not proof: delegated subtests and assertion-shaped calls are credited without reading their bodies.
+// True is evidence, not proof: assertion-shaped calls are credited without reading their bodies.
 //
 // testingPackages and assertionPackages hold the file's qualifiers for package testing and for known assertion libraries.
 // receivers holds inherited testing handle names and is not modified; no same-file failure helpers are consulted.
@@ -307,9 +232,9 @@ func blockHasFailureCall(body *ast.BlockStmt, testingPackages, assertionPackages
 
 // blockHasFailureCallWithHelpers walks one function body and also matches calls against same-file failure helper summaries.
 //
-// It reports true when body or a nested function literal holds a recognised failure, assertion, or delegation call.
+// It reports true when body or a nested function literal holds a recognised testing failure, assertion-library, helper, or Ginkgo RunSpecs call.
 // A nil body, or one with no such call, reports false; the called functions themselves are not walked.
-// True is evidence, not proof: delegated subtests and assertion-shaped calls are credited without reading their bodies.
+// True is evidence, not proof: assertion-shaped calls are credited without reading their bodies.
 //
 // testingPackages and assertionPackages hold the file's qualifiers for package testing and for known assertion libraries.
 // receivers holds inherited testing handle names, and failureHelpers the same-file helper summaries; blockHasFailureCall passes nil for it.
@@ -339,9 +264,7 @@ func blockHasFailureCallWithHelpers(body *ast.BlockStmt, testingPackages, assert
 			isAssertionHelperCall(call, localReceivers, assertionPackages) ||
 			isCapturedAssertionHelperCall(call, helperObjects) ||
 			isLocalFailureHelperCall(call, localReceivers, failureHelpers) ||
-			isGinkgoSuiteEntrypoint(call, assertionPackages) ||
-			isDelegatedSubtest(call, localReceivers) ||
-			isInPackageAssertionCall(call, localReceivers, assertionPackages)
+			isGinkgoSuiteEntrypoint(call, assertionPackages)
 		return !found
 	})
 	return found

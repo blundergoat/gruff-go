@@ -1,3 +1,8 @@
+// Package analysis builds sibling Go package context for explicit single-file scans.
+//
+// When a developer runs gruff-go analyse on one Go file (such as internal/cli/hook.go), project rules still need sibling files in that directory
+// to see package comments, cross-file types, and package-wide conventions without reporting findings outside the requested target.
+// Sibling discovery honors .gitignore and paths.ignore so context loading matches whole-repository discovery.
 package analysis
 
 import (
@@ -26,6 +31,12 @@ func projectContextFiles(root string, opts Options, primary []source.File) ([]so
 	if len(dirs) == 0 {
 		return primary, nil
 	}
+	primarySet := reportableFileSet(primary)
+	ignoreOpts := source.Options{
+		Root:           root,
+		IgnorePatterns: opts.IgnorePaths,
+		IncludeIgnored: opts.IncludeIgnored,
+	}
 	paths := []string{}
 	for dir := range dirs {
 		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
@@ -37,8 +48,18 @@ func projectContextFiles(root string, opts Options, primary []source.File) ([]so
 			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
 				continue
 			}
-			paths = append(paths, filepath.ToSlash(filepath.Join(dir, entry.Name())))
+			rel := filepath.ToSlash(filepath.Join(dir, entry.Name()))
+			// Respect .gitignore and config ignore rules for context-only siblings so single-file scans match whole-repo discovery.
+			if _, isPrimary := primarySet[rel]; !isPrimary && !opts.IncludeIgnored {
+				if source.CheckIgnore(root, rel, false, ignoreOpts).Ignored {
+					continue
+				}
+			}
+			paths = append(paths, rel)
 		}
+	}
+	if len(paths) == 0 {
+		return primary, nil
 	}
 	slices.Sort(paths)
 	// Siblings are rediscovered with the scan's ignore patterns and include-ignored setting, so ignore config also applies to context files.

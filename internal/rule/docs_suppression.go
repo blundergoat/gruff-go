@@ -249,12 +249,11 @@ func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
 
 // contiguousCommentBlockExplains reports whether free-standing comments with consecutive start lines above the directive contain prose.
 //
-// Ordinary prose counts without a reason: marker, as in cobra's command.go; a line gap, a doc group or a comment trailing code stops the search.
-// Free-standing directives in between are skipped, so one prose block can explain several directives stacked under it.
+// Ordinary prose counts without a reason: marker, as in cobra's command.go.
+// A line gap, a doc group, another suppression directive, or a comment trailing code stops the search.
 //
 // comments holds the file's parsed comments in order, and index is the directive's position in it, which must be in range.
-//
-// Directives and comments with no reason word are passed over; a line gap, a doc-group line or a trailing comment stops the search with false.
+// Comments with no reason word are passed over; a line gap, a doc-group line, an intervening directive, or a trailing comment returns false.
 // It reports true at the first comment above holding a word hasReasonWord accepts, and false when it runs out of comments.
 func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
 	expectedLine := comments[index].Line - 1

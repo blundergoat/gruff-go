@@ -487,3 +487,57 @@ func equalSlices(a, b []string) bool {
 	}
 	return true
 }
+
+// TestHandlerRelativeProjectResolvesAbsoluteEditorLinks ensures relative --project . yields absolute vscode:// editor URIs.
+func TestHandlerRelativeProjectResolvesAbsoluteEditorLinks(t *testing.T) {
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "main.go"), []byte("package main\nfunc main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(project)
+	absProject, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(Options{ProjectRoot: ".", EditorLink: "vscode"})
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	resp, err := http.Get(server.URL + "/scan?project=.&scanScope=full")
+	if err != nil {
+		t.Fatalf("GET /scan: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
+	if strings.Contains(html, "vscode://file./") {
+		t.Fatalf("relative editor URI leaked into HTML:\n%s", html)
+	}
+	if !strings.Contains(html, "vscode://file"+filepath.ToSlash(absProject)+"/main.go") {
+		t.Fatalf("expected absolute vscode:// URI for %s/main.go", absProject)
+	}
+}
+
+// TestHandlerEnforcesLoopbackHostAndFramingHeaders blocks DNS-rebinding Host headers on local-only dashboards and sets framing headers.
+func TestHandlerEnforcesLoopbackHostAndFramingHeaders(t *testing.T) {
+	handler := NewHandler(Options{ProjectRoot: t.TempDir()})
+	req := httptest.NewRequest(http.MethodGet, "http://evil.example:8765/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-loopback Host status = %d, want 403", rec.Code)
+	}
+	if got := rec.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
+		t.Fatalf("X-Frame-Options = %q, want SAMEORIGIN", got)
+	}
+	if got := rec.Header().Get("Content-Security-Policy"); !strings.Contains(got, "frame-ancestors 'self'") {
+		t.Fatalf("Content-Security-Policy = %q, want frame-ancestors 'self'", got)
+	}
+
+	publicHandler := NewHandler(Options{ProjectRoot: t.TempDir(), AllowPublic: true})
+	pubRec := httptest.NewRecorder()
+	publicHandler.ServeHTTP(pubRec, req)
+	if pubRec.Code != http.StatusOK {
+		t.Fatalf("AllowPublic status = %d, want 200", pubRec.Code)
+	}
+}

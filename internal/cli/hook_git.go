@@ -1,3 +1,8 @@
+// Package cli exports git base trees for gruff-go hook diff runs.
+//
+// When a coding agent or developer invokes gruff-go hook --diff <ref>, this file materializes only the needed repository paths at <ref>
+// into an isolated temporary directory so hook comparison can measure introduced versus pre-existing findings without modifying the working tree.
+// All git refs are validated against leading dashes before running git archive to prevent option injection.
 package cli
 
 import (
@@ -22,6 +27,9 @@ import (
 // It returns the temporary directory and a cleanup func that removes it; a scoped export is empty when no resolved archive path exists at ref.
 // It fails with an error and a nil cleanup when path resolution, git archive, the temporary directory or tar extraction fails.
 func exportGitTree(ctx context.Context, root, ref string, paths []string) (string, func(), error) {
+	if strings.HasPrefix(ref, "-") {
+		return "", nil, fmt.Errorf("git base ref %q must not start with '-'", ref)
+	}
 	archivePaths, scoped, err := hookBaseArchivePaths(ctx, root, ref, paths)
 	if err != nil {
 		return "", nil, err
@@ -156,6 +164,9 @@ func slashParentDir(path string) string {
 // root is the repository directory git ls-tree runs in, and path may name a file or a directory.
 // When git ls-tree fails it returns false and an error, which quotes git's stderr when the command exited non-zero.
 func gitTreeHasPath(ctx context.Context, root, ref, path string) (bool, error) {
+	if strings.HasPrefix(ref, "-") {
+		return false, fmt.Errorf("git base ref %q must not start with '-'", ref)
+	}
 	args := []string{"ls-tree", "-r", "--name-only", ref, "--", path}
 	// #nosec G204 -- arguments are passed directly to git without shell expansion.
 	command := exec.CommandContext(ctx, "git", args...)

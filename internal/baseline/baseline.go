@@ -701,10 +701,10 @@ func matchLegacyFindings(rows []LegacyEntry, current []finding.Finding) []findin
 	type key struct{ rule, path, digest string }
 	fingerprints := map[key][]int{}
 	currentIdentities := map[key][]int{}
-	// Index both identities so a review can follow an unchanged or unambiguously moved finding.
+	// Index both exact fingerprints and 0.5 contract-stable identities so a review can follow an unchanged or unambiguously moved finding.
 	for index, item := range current {
 		exact := key{item.RuleID, item.File, item.ComputeFingerprint()}
-		stable := key{item.RuleID, item.File, item.ComputeStableIdentity()}
+		stable := key{item.RuleID, item.File, item.ComputeContractStableIdentity()}
 		fingerprints[exact] = append(fingerprints[exact], index)
 		currentIdentities[stable] = append(currentIdentities[stable], index)
 	}

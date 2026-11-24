@@ -69,16 +69,64 @@ func (s *requestTaintScope) bindingRewrittenBetween(binding *ast.Object, afterPo
 		if !isAssignment || assignment.Pos() <= afterPos || assignment.Pos() >= beforePos {
 			return true
 		}
-		value, attributed := replacementValueFor(assignment, binding)
-		// A compound or multi-value write keeps or may restore request data.
-		if !attributed {
-			rewritten = assignmentWritesBinding(assignment, binding)
-			return true
-		}
-		rewritten = !s.exprCarriesNoRequestData(value)
+		rewritten = s.assignmentMayRestoreRequestData(assignment, binding)
 		return true
 	})
 	return rewritten
+}
+
+// assignmentMayRestoreRequestData reports whether assignment writes binding with a value that may carry request data.
+// Compound or multi-value writes to binding return true; plain writes return true unless exprCarriesNoRequestData proves them clean.
+func (s *requestTaintScope) assignmentMayRestoreRequestData(assignment *ast.AssignStmt, binding *ast.Object) bool {
+	if assignment == nil {
+		return false
+	}
+	value, attributed := replacementValueFor(assignment, binding)
+	// A compound or multi-value write keeps or may restore request data.
+	if !attributed {
+		return assignmentWritesBinding(assignment, binding)
+	}
+	return !s.exprCarriesNoRequestData(value)
+}
+
+// enclosingLoopStartForBackEdgeTaint returns the start position of the innermost loop enclosing sinkPos that can re-taint binding on its back-edge.
+//
+// When a loop body after sinkPos or a for-loop post statement writes request-derived data into binding, iteration 2+ enters sinkPos tainted unless
+// a dominating clean write inside that loop runs before sinkPos.
+// It returns token.NoPos when no enclosing loop rewrites binding with request data after sinkPos, or when body or sinkPos is invalid.
+func (s *requestTaintScope) enclosingLoopStartForBackEdgeTaint(binding *ast.Object, sinkPos token.Pos) token.Pos {
+	if s.body == nil || !sinkPos.IsValid() {
+		return token.NoPos
+	}
+	innermost := token.NoPos
+	ast.Inspect(s.body, func(node ast.Node) bool {
+		if _, nested := node.(*ast.FuncLit); nested {
+			return false
+		}
+		switch loop := node.(type) {
+		case *ast.ForStmt:
+			if loop.Pos() >= sinkPos || sinkPos >= loop.End() {
+				return true
+			}
+			postAssign, _ := loop.Post.(*ast.AssignStmt)
+			if s.assignmentMayRestoreRequestData(postAssign, binding) || s.bindingRewrittenBetween(binding, sinkPos, loop.End()) {
+				if !innermost.IsValid() || loop.Pos() > innermost {
+					innermost = loop.Pos()
+				}
+			}
+		case *ast.RangeStmt:
+			if loop.Pos() >= sinkPos || sinkPos >= loop.End() {
+				return true
+			}
+			if s.bindingRewrittenBetween(binding, sinkPos, loop.End()) {
+				if !innermost.IsValid() || loop.Pos() > innermost {
+					innermost = loop.Pos()
+				}
+			}
+		}
+		return true
+	})
+	return innermost
 }
 
 // clearingDefeatedByControlFlow reports whether the body uses a construct that makes statement order unsafe for proving a clear.

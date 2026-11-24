@@ -13,7 +13,7 @@ hallucination-risk: high (both layers "do changed-region scoping", so a fix to t
 
 `.goat-flow/hooks/gruff-code-quality.mjs` and its `gruff/` helpers derive changed-line ranges and select changed-region scoping independently of the Go pipeline they call (`internal/diff`, `internal/analysis`). Until goat-flow 1.19.0 the same logic lived in the Bash `gruff-code-quality.sh`; the Node rewrite kept it as a parallel implementation. They are not one source of truth, so a correctness fix that lands in one half does not propagate to the other. PR #4's automated review (chatgpt-codex / cursor) caught three concrete drifts in the Bash hook after the Go side was hardened:
 
-- **Deletion-only hunks.** `internal/diff/diff.go` (search: `func addHunkLines`) anchors a zero-count `+N,0` hunk to the line before the removed block; the hook drops it, so a delete-only edit reports no changed lines.
+- **Deletion-only hunks.** `internal/diff/diff.go` (search: `func finishHunk`) anchors a zero-count `+N,0` hunk to the line before the removed block; the hook drops it, so a delete-only edit reports no changed lines.
 - **Native vs fallback scoping.** `internal/analysis` / `internal/cli` gained `--changed-ranges` / `--changed-scope` / `--no-baseline` (search: `func resolveChangedScope`), but the Bash hook's capability probe hard-coded `gruff-py` as the only native binary, so Go edits fell back to portable primary-line filtering instead of symbol-aware scoping.
 - **Staged edits.** The Bash hook's git fallback ran a bare `git diff` (unstaged only), so a staged-only edit yielded empty ranges.
 

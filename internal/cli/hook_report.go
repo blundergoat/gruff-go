@@ -67,8 +67,8 @@ type hookRunBaseline struct {
 // hookDiagnostic projects a runtime diagnostic into the gruff.hook.v2 field vocabulary.
 type hookDiagnostic struct {
 	Type string `json:"type"`
-	// Severity is fatal on a fatal error payload, or on a projected analysis diagnostic whose InvalidatesRun is explicitly true.
-	// A projected diagnostic with nil InvalidatesRun reads warning, although analysis treats nil as run-invalidating.
+	// Severity is fatal on a fatal error payload, or on a projected analysis diagnostic whose InvalidatesRun is nil or true.
+	// Only an explicit false InvalidatesRun downgrades a projected diagnostic to warning.
 	Severity       string `json:"severity"`
 	Message        string `json:"message"`
 	File           string `json:"file,omitempty"`

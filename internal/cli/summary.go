@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
@@ -26,8 +27,13 @@ import (
 // It returns the process exit code: 2 when a flag is invalid or config loading, deep-scan budget parsing, analysis or writing the digest fails.
 // Otherwise it returns the analysis summary's ExitCode, which the analysis derives from the resolved fail-on threshold; 0 means the gate passed.
 func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
+	if helpRequested(args, summaryFlagHasSeparateValue) {
+		writeCommandHelp("summary", commandUsages["summary"], stdout, ansiStyler{})
+		return 0
+	}
 	flags := flag.NewFlagSet("summary", flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.Usage = func() { writeCommandHelp("summary", commandUsages["summary"], stderr, ansiStyler{}) }
 	format := flags.String("format", "text", "output format: text or json")
 	top := flags.Int("top", 10, "limit on top rules and top offenders shown")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
@@ -36,8 +42,8 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	// Default comes from DefaultFailThresholdFor("summary"); precedence below lets failOn.summary in .gruff-go.yaml override it.
 	failOnSeverity := string(finding.DefaultFailThresholdFor("summary"))
-	flags.StringVar(&failOnSeverity, "min-severity", failOnSeverity, "minimum severity that causes exit 1")
-	flags.StringVar(&failOnSeverity, "fail-on", failOnSeverity, "alias for --min-severity")
+	flags.StringVar(&failOnSeverity, "min-severity", failOnSeverity, "refused in 0.6.0; use --fail-on")
+	flags.StringVar(&failOnSeverity, "fail-on", failOnSeverity, "lowest severity that causes exit 1")
 	// An unknown flag such as --formt, or a non-integer --top such as --top nope, stops the run here with exit 2.
 	if err := parseCommandArguments(flags, args); err != nil {
 		return 2
@@ -109,4 +115,20 @@ func runSummary(args []string, stdout, stderr io.Writer, interactive bool) int {
 		}
 	}
 	return analysisReport.Summary.ExitCode
+}
+
+// summaryFlagHasSeparateValue reports whether flagArgument is a summary flag that consumes the next CLI token as its value.
+//
+// The help pre-scan consults it so a value resembling --help (such as --config --help) stays a flag value instead of printing help.
+// Returns false for empty arguments, inline --flag=value forms, boolean flags, or unknown flags.
+func summaryFlagHasSeparateValue(flagArgument string) bool {
+	if strings.Contains(flagArgument, "=") {
+		return false
+	}
+	switch strings.TrimLeft(flagArgument, "-") {
+	case "format", "top", "config", "deep-scan-budget", "fail-on", "min-severity":
+		return true
+	default:
+		return false
+	}
 }

@@ -72,7 +72,7 @@ func (r htmlRenderer) render() string {
 	fmt.Fprintf(&builder, "<title>%s</title>\n", esc(fmt.Sprintf("gruff-go inspection report - %s", gradeOrNA(r.report.Score.Grade))))
 	builder.WriteString(`<style>`)
 	builder.WriteString(reportCSS)
-	if len(r.report.Diagnostics) > 0 {
+	if len(r.report.Diagnostics) > 0 || len(r.report.Suppressions) > 0 {
 		builder.WriteString(reportDiagnosticsCSS)
 	}
 	if r.opts.Interactive {
@@ -85,6 +85,7 @@ func (r htmlRenderer) render() string {
 	builder.WriteString(`<span class="corner-tr"></span><span class="corner-bl"></span>`)
 	builder.WriteString(r.masthead())
 	builder.WriteString(r.diagnostics())
+	builder.WriteString(r.suppressions())
 	builder.WriteString(r.verdict())
 	builder.WriteString(r.pillars())
 	builder.WriteString(r.offenders())
@@ -142,6 +143,31 @@ func (r htmlRenderer) diagnostics() string {
 				location = fmt.Sprintf("%s:%d", diagnostic.File, diagnostic.Location.Line)
 			}
 			fmt.Fprintf(&builder, `<span class="diagnostic-location">%s</span>`, esc(location))
+		}
+		builder.WriteString(`</div>`)
+	}
+	builder.WriteString(`</div></section>`)
+	return builder.String()
+}
+
+// suppressions renders the audit list of applied sensitive exclusions, built-in test/lockfile skips, and inline suppressions.
+//
+// It returns an empty string when report.Suppressions is empty so reports with no suppressions stay unchanged.
+// When suppressions exist, every row is rendered (including zero-match configured exclusions) so HTML never filters in silence.
+func (r htmlRenderer) suppressions() string {
+	if len(r.report.Suppressions) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	builder.WriteString(`<section class="diagnostics suppressions">`)
+	builder.WriteString(`<h2 class="section-head">suppressions <span class="aside">audit trail</span></h2>`)
+	builder.WriteString(`<div class="diagnostic-list">`)
+	for _, row := range r.report.Suppressions {
+		builder.WriteString(`<div class="diagnostic">`)
+		fmt.Fprintf(&builder, `<span class="diagnostic-type">%s</span>`, esc(row.Rule))
+		fmt.Fprintf(&builder, `<span class="diagnostic-message">%d suppressed - %s</span>`, row.Suppressed, esc(row.Reason))
+		if len(row.Paths) > 0 {
+			fmt.Fprintf(&builder, `<span class="diagnostic-location">%s</span>`, esc(strings.Join(row.Paths, ", ")))
 		}
 		builder.WriteString(`</div>`)
 	}

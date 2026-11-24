@@ -81,14 +81,22 @@ func applyExecutionSelectors(cfg cfgpkg.Config, selectors executionSelectors, de
 	selected.ExcludeRules = append(slices.Clone(cfg.ExcludeRules), excludeRules...)
 	selected.Selection.ExcludePillars = append(slices.Clone(cfg.Selection.ExcludePillars), excludePillars...)
 	options := selected.RuleOptions()
-	// Per-rule config can enable extra rules. A focused CLI scan must still enforce its include boundary.
+	// Focused CLI include selectors must force-enable requested rules (even when .gruff-go.yaml sets enabled: false, as gruff-go init does for opt-in
+	// rules) and disable every rule outside the requested boundary, while still letting CLI and config exclusions win.
 	if hasIncludes {
-		// Check each registered rule against the user's requested rule IDs and pillars.
+		excludedRules := map[string]bool{}
+		for _, id := range selected.ExcludeRules {
+			excludedRules[id] = true
+		}
+		excludedPillars := map[string]bool{}
+		for _, pillar := range selected.Selection.ExcludePillars {
+			excludedPillars[pillar] = true
+		}
+		// Check each registered rule against the user's requested rule IDs, pillars, and active exclusions.
 		for _, definition := range definitions {
-			// A rule outside both include lists cannot affect the score or a baseline written from this focused scan.
-			if !slices.Contains(includeRules, definition.ID) && !slices.Contains(includePillars, string(definition.Pillar)) {
-				options.Enabled[definition.ID] = false
-			}
+			included := slices.Contains(includeRules, definition.ID) || slices.Contains(includePillars, string(definition.Pillar))
+			excluded := excludedRules[definition.ID] || excludedPillars[string(definition.Pillar)]
+			options.Enabled[definition.ID] = included && !excluded
 		}
 	}
 	registry, err := rule.DefaultsConfigured(options)

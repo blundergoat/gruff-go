@@ -418,11 +418,12 @@ func (PackageCommentRule) Definition() Definition {
 
 // AnalyzeProject emits one finding per Go package that has no package-level comment.
 //
-// The units are grouped by directory and package name, skipping any without an AST; ctx prefers a reportable file as the line-1 anchor.
-// It returns the findings in no fixed order, skipping test-only _test packages; the slice is empty when every package has a comment.
+// The units are grouped by directory and package name; directories containing an unparsed Go sibling are skipped to avoid false positives.
+// ctx prefers a reportable file as the line-1 anchor; it returns the findings in no fixed order, skipping test-only _test packages.
 func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	type packageState struct {
 		name        string
+		dir         string
 		file        string
 		primaryFile string
 		hasDoc      bool
@@ -430,13 +431,19 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []fin
 		hasNonTest  bool
 	}
 	packages := map[string]packageState{}
+	incompleteDirs := map[string]bool{}
 	for _, unit := range units {
-		// A unit without an AST gives no package-comment evidence, so it neither clears its package nor anchors a finding.
+		// An unparsed Go sibling (such as a budget-degraded doc.go) may hold the package comment, so mark its directory incomplete.
 		if unit.AST == nil {
+			if unit.File.Type == source.FileTypeGo {
+				incompleteDirs[filepath.Dir(unit.File.Path)] = true
+			}
 			continue
 		}
-		key := filepath.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
+		dir := filepath.Dir(unit.File.Path)
+		key := dir + ":" + unit.AST.Name.Name
 		state := packages[key]
+		state.dir = dir
 		// The lexically first file is the fallback anchor, so the finding lands on the same file every run.
 		if state.file == "" || unit.File.Path < state.file {
 			state.file = unit.File.Path
@@ -458,7 +465,7 @@ func (PackageCommentRule) AnalyzeProject(units []parser.Unit, ctx Context) []fin
 	}
 	findings := []finding.Finding{}
 	for _, state := range packages {
-		if !state.hasCode || state.hasDoc {
+		if !state.hasCode || state.hasDoc || incompleteDirs[state.dir] {
 			continue
 		}
 		// Only a package named with an _test suffix and built only from _test.go files is exempt; other test-only packages are still checked.

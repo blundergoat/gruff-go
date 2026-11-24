@@ -430,3 +430,36 @@ func buildHTMLFixture() analysis.Report {
 		Definitions: defaultDefinitions(),
 	})
 }
+
+// TestWriteHTMLRendersSuppressionsAuditSection ensures HTML reports surface suppression audit rows and escape their reasons.
+func TestWriteHTMLRendersSuppressionsAuditSection(t *testing.T) {
+	rep := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "html",
+		FailOn:      finding.FailThresholdNone,
+		Scanned:     []string{"a.go"},
+		Definitions: defaultDefinitions(),
+	})
+	rep.Suppressions = []analysis.SuppressionSummary{{
+		Index:      0,
+		Rule:       "sensitive-data.aws-access-key",
+		Paths:      []string{"fixtures/aws.go"},
+		Reason:     `Sample <script>fixture</script> key`,
+		Suppressed: 0,
+	}}
+	var out bytes.Buffer
+	if err := WriteHTML(&out, rep, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML: %v", err)
+	}
+	body := out.String()
+	if !strings.Contains(body, `class="diagnostics suppressions"`) {
+		t.Fatalf("expected suppressions audit section in HTML output")
+	}
+	if !strings.Contains(body, "sensitive-data.aws-access-key") || !strings.Contains(body, "fixtures/aws.go") {
+		t.Fatalf("expected suppression rule and path in HTML output")
+	}
+	if strings.Contains(body, `<script>fixture</script>`) || !strings.Contains(body, `&lt;script&gt;fixture&lt;/script&gt;`) {
+		t.Fatalf("suppression reason was not HTML-escaped")
+	}
+}

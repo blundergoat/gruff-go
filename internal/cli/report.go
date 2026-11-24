@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -24,8 +25,13 @@ import (
 //
 // Returns the analysis summary exit code once the report is written, or 2 for any flag, config, analysis or report-writing failure.
 func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
+	if helpRequested(args, reportFlagHasSeparateValue) {
+		writeCommandHelp("report", commandUsages["report"], stdout, ansiStyler{})
+		return 0
+	}
 	flags := flag.NewFlagSet("report", flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.Usage = func() { writeCommandHelp("report", commandUsages["report"], stderr, ansiStyler{}) }
 	format := flags.String("format", "html", "report format: html or json")
 	output := flags.String("output", "", "write the report to this file (default: stdout)")
 	editorLink := flags.String("report-editor-link", "none", "html report file:line link mode: none, vscode, or phpstorm")
@@ -33,8 +39,8 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	// The default comes from DefaultFailThresholdFor("report"), which is none: report generates an artifact and is not a CI gate.
 	// failOn.report in .gruff-go.yaml overrides that default, and --fail-on wins over both (ADR-010).
 	failOnFlag := string(finding.DefaultFailThresholdFor("report"))
-	flags.StringVar(&failOnFlag, "min-severity", failOnFlag, "minimum severity that causes exit 1")
-	flags.StringVar(&failOnFlag, "fail-on", failOnFlag, "alias for --min-severity")
+	flags.StringVar(&failOnFlag, "min-severity", failOnFlag, "refused in 0.6.0; use --fail-on")
+	flags.StringVar(&failOnFlag, "fail-on", failOnFlag, "lowest severity that causes exit 1")
 	configPath := flags.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
@@ -173,5 +179,22 @@ func writeReport(writer io.Writer, analysisReport analysis.Report, format string
 	// Unreachable from runReport, which validates format first; kept so any other caller gets an error instead of an empty report.
 	default:
 		return fmt.Errorf("unsupported format %q", format)
+	}
+}
+
+// reportFlagHasSeparateValue reports whether flagArgument is a report flag that consumes the next CLI token as its value.
+//
+// The help pre-scan consults it so a value resembling --help (such as --output --help) stays a flag value instead of printing help.
+// Returns false for empty arguments, inline --flag=value forms, boolean flags, or unknown flags.
+func reportFlagHasSeparateValue(flagArgument string) bool {
+	if strings.Contains(flagArgument, "=") {
+		return false
+	}
+	switch strings.TrimLeft(flagArgument, "-") {
+	case "format", "output", "report-editor-link", "fail-on", "min-severity", "config", "baseline", "diff-base",
+		"include-rules", "exclude-rules", "include-pillars", "exclude-pillars", "deep-scan-budget":
+		return true
+	default:
+		return false
 	}
 }

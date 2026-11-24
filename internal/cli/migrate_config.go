@@ -118,7 +118,8 @@ func writeMigratedConfig(inputPath, outputPath, migrated string, stdout, stderr 
 // migrateConfigText returns original with the legacy keys rewritten before migrate-config validates it.
 // The result includes the changes a developer sees in a dry run. An empty change list means the original bytes can be copied.
 func migrateConfigText(original string) configMigration {
-	lines := strings.Split(original, "\n")
+	normalized := strings.ReplaceAll(original, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
 	root := firstConfigLine(lines, 0)
 	rootIndent := 0
 	// Use the first setting's column so comments above it do not change the structure of the rewritten config.
@@ -130,7 +131,7 @@ func migrateConfigText(original string) configMigration {
 	for index := 0; index < len(lines); {
 		line := lines[index]
 		switch {
-		case lineIndent(line) == rootIndent && keyIs(line, "minimumSeverity") && opensConfigBlock(lines, index):
+		case lineIndent(line) == rootIndent && keyIs(line, "minimumSeverity") && isLegacyMinimumSeverityMap(lines, index):
 			_, tail, _ := strings.Cut(line, ":")
 			migrated = append(migrated, line[:rootIndent]+"failOn:"+tail)
 			changes = append(changes, "minimumSeverity map renamed to failOn")
@@ -138,6 +139,23 @@ func migrateConfigText(original string) configMigration {
 			(keyIs(line, "allowlists") || keyIs(line, "sensitiveData") || keyIs(line, "rules")):
 			end := configBlockEnd(lines, index)
 			block, removedKeys := migrateConfigBlock(lines[index:end])
+			migrated = append(migrated, block...)
+			changes = append(changes, removedKeys...)
+			index = end
+			continue
+		case lineIndent(line) == rootIndent && (keyIs(line, "select") || keyIs(line, "excludeRules")):
+			end := index + 1
+			if opensConfigBlock(lines, index) {
+				end = configBlockEnd(lines, index)
+			}
+			block, removedKeys := migrateRuleListSection(lines[index:end])
+			migrated = append(migrated, block...)
+			changes = append(changes, removedKeys...)
+			index = end
+			continue
+		case lineIndent(line) == rootIndent && keyIs(line, "selection") && opensConfigBlock(lines, index):
+			end := configBlockEnd(lines, index)
+			block, removedKeys := migrateSelectionBlock(lines[index:end])
 			migrated = append(migrated, block...)
 			changes = append(changes, removedKeys...)
 			index = end
@@ -150,11 +168,164 @@ func migrateConfigText(original string) configMigration {
 	return withSchemaVersion(migrated, changes, original)
 }
 
+// isLegacyMinimumSeverityMap reports whether lines[index] holds a 0.5 minimumSeverity mapping (block, empty, or flow) rather than a 0.6 scalar floor.
+func isLegacyMinimumSeverityMap(lines []string, index int) bool {
+	if opensConfigBlock(lines, index) {
+		return true
+	}
+	_, tail, ok := strings.Cut(lines[index], ":")
+	if !ok {
+		return false
+	}
+	value := stripInlineYAMLComment(tail)
+	return value == "" || strings.HasPrefix(value, "{")
+}
+
+// stripInlineYAMLComment removes a trailing # comment outside quotes from raw and returns the trimmed scalar value.
+// Returns an empty string when raw is empty, whitespace-only, or begins directly with a # comment.
+func stripInlineYAMLComment(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return ""
+	}
+	for _, marker := range []string{" #", "\t#"} {
+		if idx := strings.Index(trimmed, marker); idx >= 0 {
+			trimmed = strings.TrimSpace(trimmed[:idx])
+		}
+	}
+	return trimmed
+}
+
+// migrateSelectionBlock strips retired rule IDs from selection.rules and selection.excludeRules inside block while keeping other keys intact.
+//
+// block holds the raw YAML lines of one top-level selection: section.
+// It returns the kept YAML lines (dropping the selection: header if removals leave it empty) and a slice of change notes for the CLI summary.
+func migrateSelectionBlock(block []string) ([]string, []string) {
+	keptLines, removedKeys := []string{block[0]}, []string{}
+	child := firstConfigLine(block, 1)
+	if child >= len(block) {
+		return keptLines, removedKeys
+	}
+	childIndent := lineIndent(block[child])
+	for index := 1; index < len(block); {
+		line := block[index]
+		// Only rule-ID list keys under selection can hold retired rule IDs; pillar and other keys pass through verbatim.
+		if lineIndent(line) == childIndent && (keyIs(line, "rules") || keyIs(line, "excludeRules")) {
+			end := index + 1
+			if opensConfigBlock(block, index) {
+				end = configBlockEnd(block, index)
+			}
+			section, removed := migrateRuleListSection(block[index:end])
+			keptLines = append(keptLines, section...)
+			removedKeys = append(removedKeys, removed...)
+			index = end
+			continue
+		}
+		keptLines = append(keptLines, line)
+		index++
+	}
+	// Drop an empty selection: header only when our removals emptied it, preserving a user's intentionally empty block.
+	if firstConfigLine(keptLines, 1) == len(keptLines) && len(removedKeys) > 0 {
+		return keptLines[1:], removedKeys
+	}
+	return keptLines, removedKeys
+}
+
+// migrateRuleListSection removes retired rule IDs from a YAML block list or inline flow list inside block (such as select or excludeRules).
+//
+// It returns the updated YAML lines (dropping the key header when removals leave it empty) and human-readable change notes for each removed rule ID.
+// Returns block unchanged and a nil note slice when no retired rule ID appears in block.
+func migrateRuleListSection(block []string) ([]string, []string) {
+	header := block[0]
+	// A single-line block carries an inline YAML flow list such as `excludeRules: [a, b]` rather than indented dash items.
+	if len(block) == 1 {
+		keyPart, tail, ok := strings.Cut(header, ":")
+		if !ok {
+			return block, nil
+		}
+		value := stripInlineYAMLComment(tail)
+		if !strings.HasPrefix(value, "[") || !strings.HasSuffix(value, "]") {
+			return block, nil
+		}
+		inner := strings.TrimSpace(value[1 : len(value)-1])
+		if inner == "" {
+			return block, nil
+		}
+		keptItems, removed := []string{}, []string{}
+		for _, rawItem := range strings.Split(inner, ",") {
+			item := strings.TrimSpace(rawItem)
+			if item == "" {
+				continue
+			}
+			if isRetiredRuleID(item) {
+				removed = append(removed, "removed "+trimYAMLQuotes(item))
+				continue
+			}
+			keptItems = append(keptItems, item)
+		}
+		if len(removed) == 0 {
+			return block, nil
+		}
+		// If every item in the inline list was retired, omit the entire key line so migration leaves clean YAML.
+		if len(keptItems) == 0 {
+			return nil, removed
+		}
+		return []string{keyPart + ": [" + strings.Join(keptItems, ", ") + "]"}, removed
+	}
+	keptLines, removed := []string{header}, []string{}
+	for index := 1; index < len(block); index++ {
+		line := block[index]
+		trimmed := strings.TrimSpace(line)
+		if rest, isItem := strings.CutPrefix(trimmed, "-"); isItem && (rest == "" || rest[0] == ' ' || rest[0] == '\t') {
+			candidate := stripInlineYAMLComment(rest)
+			if isRetiredRuleID(candidate) {
+				removed = append(removed, "removed "+trimYAMLQuotes(candidate))
+				continue
+			}
+		}
+		keptLines = append(keptLines, line)
+	}
+	// Drop the list header when removals emptied it so the migrated config does not retain a dangling empty key.
+	if firstConfigLine(keptLines, 1) == len(keptLines) && len(removed) > 0 {
+		return keptLines[1:], removed
+	}
+	return keptLines, removed
+}
+
+// trimYAMLQuotes removes one matching pair of single or double quotes around raw after trimming whitespace and returns the unquoted string.
+// Returns an empty string when raw is empty or contains only quotes and whitespace.
+func trimYAMLQuotes(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) >= 2 && ((trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"') || (trimmed[0] == '\'' && trimmed[len(trimmed)-1] == '\'')) {
+		return trimmed[1 : len(trimmed)-1]
+	}
+	return trimmed
+}
+
+// isRetiredRuleID reports whether raw names one of the 8 rules retired in 0.6.0, in either canonical dotted form or legacy hyphenated form.
+func isRetiredRuleID(raw string) bool {
+	switch trimYAMLQuotes(raw) {
+	case "design.hotspot-file", "design-hotspot-file",
+		"maintainability.production-panic", "maintainability-production-panic",
+		"naming.negated-boolean", "naming-negated-boolean",
+		"security.sensitive-data-logging", "security-sensitive-data-logging",
+		"security.sql-string-query", "security-sql-string-query",
+		"sensitive-data.high-entropy-string", "sensitive-data-high-entropy-string",
+		"test-quality.no-failure-path", "test-quality-no-failure-path",
+		"test-quality.skipped-test", "test-quality-skipped-test":
+		return true
+	}
+	return false
+}
+
 // migrateConfigBlock returns block with retired preview and rule entries removed while keeping supported settings.
 // The second result names what was removed so the developer can inspect the dry run. An empty list means the block needed no changes.
 func migrateConfigBlock(block []string) ([]string, []string) {
 	header, keptLines, removedKeys := block[0], []string{block[0]}, []string{}
 	child := firstConfigLine(block, 1)
+	if child >= len(block) {
+		return keptLines, removedKeys
+	}
 	childIndent := lineIndent(block[child])
 	// Keep other entries in the same order when a retired setting shares their section.
 	for index := 1; index < len(block); {
@@ -185,10 +356,7 @@ func retiredConfigKey(header, line string) bool {
 		return keyIs(line, "previewAllowlist")
 	case keyIs(header, "rules"):
 		key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
-		switch strings.TrimSpace(key) {
-		case "design.hotspot-file", "maintainability.production-panic", "naming.negated-boolean", "security.sensitive-data-logging", "security.sql-string-query", "sensitive-data.high-entropy-string", "test-quality.no-failure-path", "test-quality.skipped-test":
-			return true
-		}
+		return isRetiredRuleID(key)
 	}
 	return false
 }

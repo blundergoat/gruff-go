@@ -247,8 +247,12 @@ func TestAnalyseJSONDeterministicShape(t *testing.T) {
 	if err := json.Unmarshal(second.Bytes(), &secondReport); err != nil {
 		t.Fatal(err)
 	}
-	if firstReport.Paths.Extensions.Go.Paths.Scanned[0] != "a.go" || firstReport.Paths.Extensions.Go.Paths.Scanned[1] != "b.go" {
-		t.Fatalf("scanned paths not sorted: %#v", firstReport.Paths.Extensions.Go.Paths.Scanned)
+	scanned := firstReport.Paths.Extensions.Go.Paths.Scanned
+	if len(scanned) != 2 {
+		t.Fatalf("scanned paths = %#v, want two entries:\n%s", scanned, first.String())
+	}
+	if scanned[0] != "a.go" || scanned[1] != "b.go" {
+		t.Fatalf("scanned paths not sorted: %#v", scanned)
 	}
 	if first.String() != second.String() {
 		t.Fatalf("json output changed between runs:\nfirst:\n%s\nsecond:\n%s", first.String(), second.String())

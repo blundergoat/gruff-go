@@ -145,7 +145,6 @@ func (LoopVariableAddressRule) Definition() Definition {
 //
 // Range loops declared with := are checked only when usesLegacyRangeLoopVariables says they share one variable; = range loops always are.
 // Shapes match by syntax alone: assigning to a plain local variable is not one, and a matched store is not proven to outlive the iteration.
-// A zero-argument call named append in a checked loop body, such as a shadowing local function, panics with slice bounds out of range.
 func (LoopVariableAddressRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || shouldSkipGeneratedUnit(unit, ctx) {
 		return nil
@@ -275,7 +274,6 @@ func fatalLibraryCallName(call *ast.CallExpr, logPackages, osPackages map[string
 // Range loops that assign existing variables with = are always checked, and range loops without variables are skipped.
 //
 // unit and symbol go into each finding; it returns the findings of every checked range loop in body, nested ones included, or an empty slice.
-// A zero-argument call named append in a checked loop body, such as a shadowing local function, panics with slice bounds out of range.
 func loopVariableAddressBlock(unit parser.Unit, body *ast.BlockStmt, symbol string, legacyDeclarationSemantics bool) []finding.Finding {
 	findings := []finding.Finding{}
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -301,9 +299,8 @@ func loopVariableAddressBlock(unit parser.Unit, body *ast.BlockStmt, symbol stri
 // body is one range loop body and rangeVars its variable names; unit and symbol go into each finding.
 // It returns one finding per bare &name of a range variable that is returned, stored into a field, index or dereference, sent, or appended.
 //
-// Matching is by syntax alone: a parenthesized address is missed, append means any call by that name, and a store is not proven to escape.
+// Matching is by syntax alone: a parenthesized address is missed, and a store is not proven to escape.
 // Nested function literals and range loops are not entered, and the result is an empty slice when nothing matches.
-// A zero-argument call named append, such as a shadowing local function, panics with slice bounds out of range.
 func rangeVariableAddressFindings(unit parser.Unit, body *ast.BlockStmt, symbol string, rangeVars map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -333,10 +330,10 @@ func rangeVariableAddressFindings(unit parser.Unit, body *ast.BlockStmt, symbol 
 				findings = append(findings, loopVariableAddressFinding(unit, value.Value, symbol, name, "send"))
 			}
 		case *ast.CallExpr:
+			// Ignore shadowed local append helpers and malformed calls with fewer than two arguments.
 			if !isBuiltinAppendCall(value) {
 				return true
 			}
-			// A zero-argument call named append, such as a shadowing local function, panics here with slice bounds out of range.
 			for _, arg := range value.Args[1:] {
 				if name, ok := addressOfRangeVariable(arg, rangeVars); ok {
 					findings = append(findings, loopVariableAddressFinding(unit, arg, symbol, name, "append"))
@@ -373,11 +370,11 @@ func addressOfRangeVariable(expr ast.Expr, rangeVars map[string]bool) (string, b
 	return ident.Name, true
 }
 
-// isBuiltinAppendCall reports whether call has the unqualified callee name append, without resolving shadowing.
-// A local function named append matches too, which is how a zero-argument call reaches the panic in rangeVariableAddressFindings.
+// isBuiltinAppendCall reports whether call invokes the predeclared append built-in with a target slice and at least one appended value.
+// A local function or parameter named append resolves to a non-nil Obj and is skipped, preventing false positives and slice-bounds panics.
 func isBuiltinAppendCall(call *ast.CallExpr) bool {
 	ident, ok := call.Fun.(*ast.Ident)
-	return ok && ident.Name == "append"
+	return ok && ident.Name == "append" && ident.Obj == nil && len(call.Args) >= 2
 }
 
 // loopVariableAddressFinding builds the finding for one matched range variable address.

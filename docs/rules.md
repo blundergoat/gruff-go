@@ -71,7 +71,7 @@ Generated Go files are skipped by default when their leading comments contain bo
 | [`security.weak-crypto`](#securityweak-crypto) | security | advisory | parser | - | MD5/SHA1 in security contexts, DES/RC4 construction, or RSA keys below 2048 bits. |
 | [`security.xxe-candidate`](#securityxxe-candidate) | security | advisory | parser | - | `xml.Decoder` configured with a custom entity map (possible XXE); stdlib XML is safe by default. |
 | [`sensitive-data.anthropic-api-key`](#sensitive-dataanthropic-api-key) | sensitive-data | warning | parser | - | Anthropic API key literals (`sk-ant-…`). |
-| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | warning | parser | - | AWS access key id (AKIA…) literals. |
+| [`sensitive-data.aws-access-key`](#sensitive-dataaws-access-key) | sensitive-data | warning | parser | - | AWS access key id (`AKIA…` / `ASIA…`) literals. |
 | [`sensitive-data.connection-string`](#sensitive-dataconnection-string) | sensitive-data | warning | parser | - | Database/queue URLs with embedded passwords. |
 | [`sensitive-data.gcp-service-account`](#sensitive-datagcp-service-account) | sensitive-data | warning | parser | - | Files containing both `"type": "service_account"` and a PEM private-key header (GCP service-account JSON keys). |
 | [`sensitive-data.github-token`](#sensitive-datagithub-token) | sensitive-data | warning | parser | - | GitHub PAT / OAuth / user / server / refresh tokens (`gh[pousr]_…`). |
@@ -109,8 +109,8 @@ Every rule has a default severity; configs can override per rule. ADR-009 collap
 
 | Severity | Default penalty weight | HTML colour | Use it for |
 |----------|------------------------|-------------|------------|
-| `error` | 30 | red | Almost certainly broken; block merges. |
-| `warning` | 8 | amber | Worth fixing in the next clean-up pass. |
+| `error` | 12 | red | Almost certainly broken; block merges. |
+| `warning` | 4 | amber | Worth fixing in the next clean-up pass. |
 | `advisory` | 1 | muted | Informational; trend over time. |
 
 The `--fail-on` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse`, `none` for `summary`, `report` and `dashboard`; see [`configuration.md`](configuration.md#failon). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
@@ -179,7 +179,7 @@ Flags empty control-flow blocks (`if {}`, `for {}`, `switch {}`, etc.) that usua
 
 **Remediation.** Remove the empty block or add the intended implementation.
 
-**Known precision limit.** A control-flow block used only for header work, or an intentionally empty select or comment-only body, can look unfinished to the syntax-only check. Move the work into the body, add an executable statement, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** An intentionally empty if or else branch with no explanatory comment, such as a placeholder guard or ignored case, can look unfinished to the syntax-only check. Add a short comment explaining why the branch is empty, simplify the condition, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `dead-code.unreachable-code`
 
@@ -589,7 +589,7 @@ rules:
 
 **Remediation.** Rename long-loop values and long-function accumulators to describe the data role they carry, such as `finding`, `skippedPath`, `scoreRow`, or `rendered`.
 
-**Known precision limit.** A domain-meaningful name such as item or result can match the generic-name heuristic in a long function. Add the project term to genericNames, adjust minFunctionLines, or rename the identifier with its domain role. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A domain-meaningful name such as item or result can match the generic-name heuristic in a long function. Override genericNames or accumulatorNames without that term, adjust minBodyLines or minFunctionLines, or rename the identifier with its domain role. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.get-prefix`
 
@@ -613,7 +613,7 @@ rules:
 
 **Remediation.** Rename accessor-style methods from `GetThing` to `Thing` unless parameters make the lookup action explicit.
 
-**Known precision limit.** A zero-argument receiver method named Get... can be required by a protocol, framework, or compatibility API. Add the exact method name to allowNames, rename it when compatible, or keep this opt-in rule disabled. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A zero-argument receiver method named Get... can be required by a protocol, framework, or compatibility API. Add the exact method name to excludeNames, rename it when compatible, or keep this opt-in rule disabled. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.identifier-quality`
 
@@ -668,7 +668,7 @@ rules:
 
 **Remediation.** Replace the misspelled token with the suggested correction the finding includes. Add legitimate proper nouns or vendor-specific terms to the `ignore` option.
 
-**Known precision limit.** A proper noun, vendor term, or domain word can collide with a built-in misspelling entry. Add the exact token to ignore or extra, or correct the identifier when the match is a typo. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A proper noun, vendor term, or domain word can collide with a built-in misspelling entry. Add the exact token to ignore, or correct the identifier when the match is a typo. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `naming.package-stutter`
 
@@ -1070,10 +1070,9 @@ zero-payload marker, unconditionally. A detector that classified its match emits
 a fixed marker such as `[redacted:aws-access-key]`, `[redacted:private-key]`,
 `[redacted:jwt]`, `[redacted:email]`, or `[redacted:ssn]`; a connection finding
 may additionally name only the matched scheme
-(`[redacted:connection-string:postgres]`). Generic assignment and entropy
-findings stay `[redacted]`, because they classify nothing. Nothing configures a
-marker, and no marker exposes credential or
-identifier payload bytes.
+(`[redacted:connection-string:postgres]`). Generic assignment findings stay
+`[redacted]`, because they classify nothing. Nothing configures a marker, and no
+marker exposes credential or identifier payload bytes.
 
 **Sensitive-data suppression.** A `sensitive-data.*` finding is suppressed only
 by a hand-written `sensitiveExclusions` entry naming one rule, one
@@ -1103,7 +1102,7 @@ Flags Anthropic API key literals (`sk-ant-` prefix plus an alphanumeric body). A
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source or text files. Preview metadata follows the shared deny-by-default policy: unauthorized paths receive `[redacted]`, and authorized paths receive `[redacted:aws-access-key]` with zero key characters. Raw and reusable fragments never reach text / JSON / SARIF / GitHub / HTML output.
+Flags AWS access-key identifier literals (`(?:AKIA|ASIA)[0-9A-Z]{16}`) embedded in source or text files. Preview metadata unconditionally emits the zero-payload marker `[redacted:aws-access-key]` with zero key characters; raw and reusable fragments never reach text / JSON / SARIF / GitHub / HTML output.
 
 **Remediation.** Rotate the key, then load credentials from the AWS SDK default provider chain rather than embedding them.
 
@@ -1116,7 +1115,7 @@ Flags AWS access-key identifier literals (`AKIA[0-9A-Z]{16}`) embedded in source
 - **Capability:** parser
 - **Tags:** `secrets`
 
-Flags database / queue / cache connection URIs that embed a non-empty username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Passwords containing raw or percent-encoded reserved bytes such as `/`, `:`, `+`, `=`, and encoded `@` are detected. Preview is `[redacted]` unless the path is authorized; an authorized preview contains only the scheme marker (for example `[redacted:connection-string:postgres]`), never user, password, host, path, or query.
+Flags database / queue / cache connection URIs that embed a non-empty username and password in the URL - `postgres://user:pass@host`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `amqp://`, `amqps://`. Passwords containing raw or percent-encoded reserved bytes such as `/`, `:`, `+`, `=`, and encoded `@` are detected. Preview metadata unconditionally emits only the scheme marker (for example `[redacted:connection-string:postgres]`), never user, password, host, path, or query.
 
 Obvious dev/test placeholders are skipped only when both halves match: the bare host is local-style (`localhost`, `127.0.0.1`, `::1`, `0.0.0.0`, `db`, `database`, `postgres`) and the entire case-normalised, path-percent-decoded password equals an approved placeholder such as `change_me`, `placeholder`, `dummy`, `dev_password`, or `test_password`. A literal `+` stays a plus rather than becoming a space. Mixed values such as `myPassphrase2024` and `not-invalid-prod`, malformed percent encodings, and placeholders on non-local hosts still fire.
 
@@ -1135,7 +1134,7 @@ Obvious dev/test placeholders are skipped only when both halves match: the bare 
 
 Flags files containing both a `"type": "service_account"` field and a PEM private-key header (`-----BEGIN ... PRIVATE KEY-----`) - the documented shape of a GCP service-account JSON key file. Neither marker alone triggers the rule: `"type": "service_account"` in a doc snippet is harmless, and an isolated PEM key is already covered by `sensitive-data.private-key`. The co-occurrence is the signal.
 
-The finding is located at the line of the `"type"` marker. Empty/nonmatching paths fully mask both preview fields. Matching paths emit only `[redacted:gcp-service-account]` and `[redacted:private-key]`; the type literal, key header/body, and reusable fragments never reach any output format.
+The finding is located at the line of the `"type"` marker. Preview metadata unconditionally emits `[redacted:gcp-service-account]` and `[redacted:private-key]`; the type literal, key header/body, and reusable fragments never reach any output format.
 
 **Overlap with `sensitive-data.private-key`.** Both rules fire independently on a real GCP key file, producing two `warning` findings on the same file: one for the GCP shape, one for the PEM. This matches ADR-007's stance that every rule should emit on its own evidence.
 
@@ -1217,7 +1216,7 @@ Flags npm access token literals with `npm_` and `npm_pat_` provider prefixes whe
 - **Capability:** parser
 - **Tags:** `secrets`, `phi`
 
-Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries a `category` tag and either `[redacted]` or its fixed authorized marker (`[redacted:ssn]`, `[redacted:medicare]`, `[redacted:mrn]`), never identifier characters.
+Flags protected health information identifiers embedded in source or text: US Social Security numbers (dashed `AAA-GG-SSSS`, validated against the unissuable 000/666/9xx area, 00 group, and 0000 serial spaces), Medicare beneficiary identifiers (the 11-character MBI format whose letter positions exclude S/L/O/I/B/Z), and medical record numbers (a 6-10 digit run only when a nearby `MRN` / `medical record` / `patient id` label anchors it). Well-known placeholder SSNs (`123-45-6789`, the Woolworth and SSA-pamphlet numbers) are skipped. Each finding carries a `category` tag and unconditionally emits its fixed zero-payload marker (`[redacted:ssn]`, `[redacted:medicare]`, `[redacted:mrn]`), never identifier characters.
 
 **Overlap with `sensitive-data.pii-pattern`.** Government and health identifiers belong to this rule, not the PII rule, so an SSN is reported once here rather than by both. Enable both rules together for full personal-data coverage without double-counting.
 
@@ -1234,7 +1233,7 @@ Flags protected health information identifiers embedded in source or text: US So
 - **Capability:** parser
 - **Tags:** `secrets`, `pii`
 
-Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries a `category` tag and either `[redacted]` or its fixed authorized marker (`[redacted:email]`, `[redacted:phone]`, `[redacted:payment-card]`), never identifier characters.
+Flags personally identifiable information embedded in source or text: email addresses, phone numbers (NANP/E.164 shapes that carry phone punctuation - a leading `+` or grouping parens/dashes - so a bare digit run is not mistaken for one), and payment card numbers (13-19 digit runs that pass the Luhn checksum). Documentation and fixture placeholders are skipped: RFC 2606 example domains (`example.com`, `test`), generic local-parts (`you@`, `user@`, `noreply@`), and Luhn-invalid card-shaped numbers. Each finding carries a `category` tag and unconditionally emits its fixed zero-payload marker (`[redacted:email]`, `[redacted:phone]`, `[redacted:payment-card]`), never identifier characters.
 
 **Overlap with `sensitive-data.phi-pattern`.** This rule covers contact and payment PII; government/health identifiers (SSN, Medicare, MRN) are owned by `sensitive-data.phi-pattern` so they are never counted twice.
 
@@ -1257,7 +1256,7 @@ In parsed Go files, an isolated marker in an imported `regexp.Compile` or `regex
 call, or a caller-payload PEM re-wrap is also skipped. The exemption belongs to that exact literal and requires no authored key body.
 A second unproven header, an unresolved or shadowed call, a full or truncated key, and a Go file without parsed syntax still warn.
 
-Preview is `[redacted]` by default and `[redacted:private-key]` on an authorized path. Neither state includes key type, header, or body bytes.
+Preview metadata unconditionally emits `[redacted:private-key]` and never includes key type, header, or body bytes.
 
 **Remediation.** Remove the key, rotate it, and load it from a secret manager or environment-specific runtime configuration.
 
@@ -1277,7 +1276,7 @@ Documentation placeholders such as `${sessionToken}` are skipped when they are n
 
 **Remediation.** Move secrets to a secret manager or environment-specific runtime configuration. Never commit production secrets to source control.
 
-**Known precision limit.** A raw-string fixture or configuration example with a secret-shaped assignment can look like a committed credential. Use a recognised placeholder prefix or move the value to runtime configuration; do not suppress by matching secret text. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A quoted string fixture or config file example with a secret-shaped assignment can look like a committed credential. Use a recognised placeholder prefix or move the value to runtime configuration; do not suppress by matching secret text. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `sensitive-data.slack-token`
 
@@ -1329,7 +1328,7 @@ Flags Go files whose substantive line count exceeds the configured threshold. Bl
 
 Flags Go functions that exceed the configured code-line threshold. Blank lines, comment-only lines, and lines inside block comments are excluded via `go/scanner`; the finding metadata still includes `rawLines` for the original span. In `_test.go` functions, multiline table fixture literals such as `tests := []struct{ ... }{ ... }` are discounted from the executable line count so case matrices do not dominate the signal. In every file, a struct or map literal written with keys and passed straight to a call counts as one line, so a run of calls that each pass an options literal does not read as a long function; the metadata's `literalArgumentLines` records that discount, and a literal inside a discounted test table is not discounted twice. A `//nolint:funlen`, `//nolint:all` or bare `//nolint` comment on the `func` line, or alone on the line above it, suppresses that function's finding, counted as an `inline` row in `suppressions`.
 
-`_test.go` findings use the same threshold and fingerprint identity as production findings, but the built-in default reports them as `advisory` severity / `medium` confidence unless you explicitly configure a non-warning rule severity.
+`_test.go` findings keep the same threshold, fingerprint identity, and catalogue confidence (`high`) as production findings, while softening severity to `advisory` unless you explicitly configure a severity override.
 
 **Remediation.** In the upper band: split this function at its steps, one step per function. In the lower band: do not add to this function; put new code in a new function.
 
@@ -1529,8 +1528,9 @@ Every rule above accepts the same override shape. See [`configuration.md`](confi
 
 ```yaml
 rules:
-  # Tighten a default-enabled rule.
+  # Enable an opt-in rule and tighten its threshold and severity.
   complexity.cyclomatic:
+    enabled: true
     threshold: 12
     severity: error
 

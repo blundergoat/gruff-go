@@ -28,11 +28,12 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    and the text report names it, as `baseline: default gruff-baseline.json;
    suppressed N findings`. Pass `--no-baseline` to see every finding.
 
-   Gruff pairs exact fingerprints first, then remaining line-insensitive contract
-   identities, consuming one current and one prior occurrence per match. Harmless
-   line or measured-value shifts therefore stay reviewed, while a single baseline
-   row cannot hide several duplicate findings. Older rows without
-   `stableIdentity` continue to match exact fingerprints only.
+   `gruff.baseline.v3` matches findings by a line-insensitive 16-hex SHA-256
+   `identity` (tool language, rule ID, project-relative path, and symbol plus
+   declaration ordinal or normalized message) with a count budget. Harmless line
+   or measured-value shifts therefore stay reviewed, while duplicate occurrences
+   past the recorded count report as new. Non-v3 baselines fail closed until
+   migrated with `gruff-go baseline --migrate-baseline`.
 
 3. **Drift-down** - periodically regenerate the baseline as the team fixes findings.
 
@@ -265,4 +266,4 @@ threshold, including `none`.
 
 - **Shallow clones** break base-ref scoping (`--since`, `--diff-base`). Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
 - **First run on a busy codebase** with thousands of findings is a waste of CI cycles. Generate a baseline locally first, commit it, and let CI scan against it.
-- **Display filters ≠ score filters.** `--show-rule`, `--hide-rule`, `--show-pillar`, and `--hide-pillar` only filter the rendered output. The composite score, exit code, and SARIF results still reflect the full scan. To exclude a rule from execution and scoring, disable it in `.gruff-go.yaml`.
+- **Display filters ≠ score filters.** `--show-rule`, `--hide-rule`, `--show-pillar`, `--hide-pillar`, and `minimumSeverity` filter the rendered output (including text, JSON `findings`, and SARIF `results`), while the composite score and exit code still reflect the full scan. To exclude a rule from execution and scoring, disable it in `.gruff-go.yaml` or pass `--exclude-rule` / `--exclude-pillar`.

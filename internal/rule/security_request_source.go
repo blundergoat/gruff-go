@@ -514,16 +514,16 @@ func (s *requestTaintScope) argHasInlineSanitizer(arg ast.Expr, words []string) 
 // Each stem in words is compared unchanged against the lowercased name, so a stem must itself be lowercase to match.
 //
 // A call for which callName finds no name reports false.
-// A name that shrinks in bytes when lowercased, such as one with a Kelvin sign, can panic at a later token offset when words is non-empty.
+// Each token substring is lowercased from name[start:] so Unicode characters whose lowercase form shrinks in bytes never drift or panic.
 func callNameMatchesAny(call *ast.CallExpr, words []string) bool {
 	name := callName(call)
 	if name == "" {
 		return false
 	}
-	lower := strings.ToLower(name)
 	for _, start := range identifierTokenStarts(name) {
+		tokenLower := strings.ToLower(name[start:])
 		for _, word := range words {
-			if strings.HasPrefix(lower[start:], word) {
+			if strings.HasPrefix(tokenLower, word) {
 				return true
 			}
 		}

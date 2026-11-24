@@ -36,13 +36,14 @@ func Validate(pattern string) error {
 		return fmt.Errorf("path pattern %q must stay inside the repository", pattern)
 	}
 	// Matches gives ** meaning only as a trailing /** suffix; anywhere else path.Match would read it as a plain *, so pkg/**/gen.go is refused.
+	// Cleaned patterns such as ./ ** collapse to ** (root-wide match) and are refused just like ".".
 	recursiveGlobs := strings.Count(pattern, "**")
-	if recursiveGlobs > 1 || (recursiveGlobs == 1 && !strings.HasSuffix(pattern, "/**")) {
+	if recursiveGlobs > 1 || (recursiveGlobs == 1 && !strings.HasSuffix(pattern, "/**")) || cleaned == "**" {
 		return fmt.Errorf("path pattern %q may only use one ** as a trailing recursive suffix", pattern)
 	}
-	probe := pattern
-	if strings.HasSuffix(pattern, "/**") {
-		probe = strings.TrimSuffix(pattern, "/**") + "/*"
+	probe := cleaned
+	if strings.HasSuffix(cleaned, "/**") {
+		probe = strings.TrimSuffix(cleaned, "/**") + "/*"
 	}
 	// A malformed glob in an ignore path, such as an unclosed character class, fails here and Validate wraps path.Match's error.
 	if _, err := path.Match(probe, "probe"); err != nil {
@@ -73,23 +74,46 @@ func FirstMatch(patterns []string, rel string) (matched bool, pattern string) {
 
 // Matches reports whether the pattern matches the relative path.
 //
-// Both rel and pattern drop a leading ./ and rel is path-cleaned before matching.
-// A pattern ending in / or /** matches rel equal to its prefix or below it; other patterns match via path.Match or an exact cleaned equality.
-//
-// path.Match never lets * cross a slash, so *.go matches only root-level files; a whole subtree needs a trailing / or /**.
+// Both rel and pattern are normalized with path.Clean before matching.
+// A pattern ending in / or /** matches rel equal to its prefix or below it, including glob segments in the prefix such as pkg/*/gen/**.
+// Other patterns match via path.Match or exact cleaned equality; * never crosses a slash.
 func Matches(pattern string, rel string) bool {
 	rel = path.Clean(strings.TrimPrefix(rel, "./"))
-	pattern = strings.TrimPrefix(pattern, "./")
-	if strings.HasSuffix(pattern, "/") {
-		pattern += "**"
+	isDirPrefix := strings.HasSuffix(pattern, "/")
+	cleanedPattern := path.Clean(strings.TrimPrefix(pattern, "./"))
+	if isDirPrefix && cleanedPattern != "." {
+		cleanedPattern += "/**"
 	}
-	if strings.HasSuffix(pattern, "/**") {
-		prefix := strings.TrimSuffix(pattern, "/**")
-		return rel == prefix || strings.HasPrefix(rel, prefix+"/")
+	if strings.HasSuffix(cleanedPattern, "/**") {
+		prefix := strings.TrimSuffix(cleanedPattern, "/**")
+		return matchesRecursivePrefix(prefix, rel)
 	}
 	// path.Match's error is dropped: a malformed pattern that skipped Validate fails to match here and falls back to exact equality.
-	if ok, _ := path.Match(pattern, rel); ok {
+	if ok, _ := path.Match(cleanedPattern, rel); ok {
 		return true
 	}
-	return rel == path.Clean(pattern)
+	return rel == cleanedPattern
+}
+
+// matchesRecursivePrefix reports whether rel equals prefix or lies beneath a directory matching prefix, supporting globs in prefix segments.
+//
+// An empty or "." prefix matches any non-empty relative path other than ".", while a prefix with no glob characters uses exact prefix matching.
+// Returns false when rel has fewer path segments than a globbed prefix or when path.Match rejects a malformed pattern.
+func matchesRecursivePrefix(prefix, rel string) bool {
+	if prefix == "" || prefix == "." {
+		return rel != "" && rel != "."
+	}
+	// Fast path when prefix has no glob characters, avoiding segment splitting for literal directory prefixes like vendor/**.
+	if !strings.ContainsAny(prefix, "*?[\\") {
+		return rel == prefix || strings.HasPrefix(rel, prefix+"/")
+	}
+	prefixSegments := strings.Count(prefix, "/") + 1
+	relSegments := strings.Split(rel, "/")
+	// A path shallower than the globbed directory prefix cannot sit inside that directory tree.
+	if len(relSegments) < prefixSegments {
+		return false
+	}
+	candidate := strings.Join(relSegments[:prefixSegments], "/")
+	ok, err := path.Match(prefix, candidate)
+	return err == nil && ok
 }

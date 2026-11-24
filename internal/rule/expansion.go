@@ -40,14 +40,17 @@ func (PackageNameUnderscoreRule) Definition() Definition {
 // AnalyzeProject emits one finding per Go package whose name contains an underscore.
 //
 // units holds every parsed file of the scan; files without an AST and external test packages such as foo_test in _test.go files are skipped.
-// It returns one finding per directory and package name, at the package clause of the lexically first file, or line 1 without a FileSet.
+// ctx prefers a reportable file as the finding anchor so explicit-file scans keep package-level findings instead of anchoring on siblings.
 //
+// It returns one finding per directory and package name at the chosen file's package clause, or line 1 without a FileSet.
 // The result is empty but non-nil when nothing matches, and its order follows map iteration rather than file order.
-func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	type packageState struct {
-		name string
-		file string
-		line int
+		name        string
+		file        string
+		line        int
+		primaryFile string
+		primaryLine int
 	}
 	underscorePackages := map[string]packageState{}
 	for _, unit := range units {
@@ -63,18 +66,29 @@ func (PackageNameUnderscoreRule) AnalyzeProject(units []parser.Unit, _ Context) 
 		}
 		key := filepath.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
 		state := underscorePackages[key]
+		state.name = unit.AST.Name.Name
 		// Keeping the lexically first file pins each finding to the same location on every scan, whatever order the files arrive in.
 		if state.file == "" || unit.File.Path < state.file {
-			state = packageState{name: unit.AST.Name.Name, file: unit.File.Path, line: line}
+			state.file = unit.File.Path
+			state.line = line
+		}
+		// Prefer a reportable file so explicit-file and hook scans keep the package finding rather than dropping it on a context-only sibling.
+		if ctx.isReportable(unit.File.Path) && (state.primaryFile == "" || unit.File.Path < state.primaryFile) {
+			state.primaryFile = unit.File.Path
+			state.primaryLine = line
 		}
 		underscorePackages[key] = state
 	}
 	findings := []finding.Finding{}
 	for _, state := range underscorePackages {
+		targetFile, targetLine := state.primaryFile, state.primaryLine
+		if targetFile == "" {
+			targetFile, targetLine = state.file, state.line
+		}
 		findings = append(findings, finding.Finding{
 			Message:  fmt.Sprintf("package name %q contains an underscore", state.name),
-			File:     state.file,
-			Location: &finding.Location{Line: state.line},
+			File:     targetFile,
+			Location: &finding.Location{Line: targetLine},
 			Metadata: map[string]any{"package": state.name},
 		})
 	}

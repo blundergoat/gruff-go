@@ -3,7 +3,7 @@
 // Render writes the canonical YAML shape Load reads; with RenderOptions.Existing set it writes these values from the loaded config back out.
 //   - paths.ignore, allowlists.acceptedAbbreviations and sensitiveExclusions.
 //   - failOn, minimumSeverity and deepScanBudget.
-//   - Per-rule enabled, severity, threshold and thresholds; options are written too but can lose their type or mapping shape.
+//   - Per-rule enabled, severity, threshold, thresholds, and options (including lists and string maps).
 //
 // Rules missing from the registry are dropped and new ones land at defaults; init --force merges only when the existing config loads.
 package config
@@ -278,25 +278,43 @@ func indentWidth(s string) int {
 
 // writeRenderRules writes every rule block under the top-level rules map, so each registered rule appears in the user's file.
 //
-// Sort order is preserved, per-rule overrides from opts.Existing are layered in, and rules without overrides get registry default knobs.
-// It writes to buf in the order of definitions, looks up each rule's override in opts by ID, and puts a blank line between blocks.
+// Sort order is preserved, per-rule overrides from opts.Existing (including legacy alias keys) are layered in, and other rules get defaults.
+// It writes to buf in the order of definitions, resolving each override against canonical IDs, and puts a blank line between blocks.
 func writeRenderRules(buf *bytes.Buffer, definitions []rule.Definition, opts RenderOptions) {
+	overrides := canonicalRuleOverrides(definitions, opts.Existing)
 	fmt.Fprintln(buf, "rules:")
 	for index, definition := range definitions {
 		if index > 0 {
 			fmt.Fprintln(buf)
 		}
-		writeRenderRuleBlock(buf, definition, ruleOverrideFor(opts, definition.ID))
+		writeRenderRuleBlock(buf, definition, overrides[definition.ID])
 	}
 }
 
-// ruleOverrideFor returns the existing per-rule override for id, or a zero RuleConfig when none is recorded.
-// It reads the Rules map of the Existing config in opts, so a nil Existing or an unknown id both give the zero value.
-func ruleOverrideFor(opts RenderOptions, id string) RuleConfig {
-	if opts.Existing == nil {
-		return RuleConfig{}
+// canonicalRuleOverrides indexes existing per-rule overrides by canonical rule ID so alias-keyed entries survive init --force.
+//
+// definitions supplies the active rule catalogue used to resolve aliases, and existing is the loaded config (may be nil).
+// When both an alias key and a canonical key appear, the explicit canonical entry wins. It returns nil when existing has no Rules.
+func canonicalRuleOverrides(definitions []rule.Definition, existing *Config) map[string]RuleConfig {
+	if existing == nil || len(existing.Rules) == 0 {
+		return nil
 	}
-	return opts.Existing.Rules[id]
+	byID := make(map[string]rule.Definition, len(definitions))
+	for _, definition := range definitions {
+		byID[definition.ID] = definition
+	}
+	resolved := make(map[string]RuleConfig, len(existing.Rules))
+	for rawID, ruleConfig := range existing.Rules {
+		canonical, ok := canonicalRuleID(rawID, byID)
+		if !ok {
+			continue
+		}
+		// Keep an explicit canonical entry if both a legacy alias and the canonical ID were present.
+		if _, exists := resolved[canonical]; !exists || rawID == canonical {
+			resolved[canonical] = ruleConfig
+		}
+	}
+	return resolved
 }
 
 // writeRenderRuleBlock writes one rule entry with enabled and severity, plus any description, thresholds and options that are present.
@@ -365,9 +383,8 @@ func writeRenderOverrideThresholds(buf *bytes.Buffer, defaults map[string]float6
 	writeRenderThresholds(buf, merged)
 }
 
-// writeRenderOptionsBlock writes a YAML options block for the override map, covering bool, string, integer, float and string-list values.
+// writeRenderOptionsBlock writes a YAML options block for the override map, covering scalars, string lists, and string-keyed maps.
 //
-// A map-valued option such as naming.misspelling.extra falls to Go text in writeRenderOptionEntry and loses its mapping shape.
 // It writes nothing to buf when options is empty, and otherwise each entry of options in sorted key order through writeRenderOptionEntry.
 func writeRenderOptionsBlock(buf *bytes.Buffer, options map[string]any) {
 	if len(options) == 0 {
@@ -386,9 +403,7 @@ func writeRenderOptionsBlock(buf *bytes.Buffer, options map[string]any) {
 
 // writeRenderOptionEntry renders one option key and value under the options key of a rule block.
 //
-// Unsupported value types fall through to their fmt.Sprint form, so the entry is always emitted rather than silently dropped.
-//
-// Load may reject that text form or read it back as a different value.
+// Scalars, string lists, and string-keyed maps (such as naming.misspelling.options.extra) render as valid YAML that round-trips through Load.
 // It writes key and value to buf at options depth; a slice of any becomes a string list of each item's fmt.Sprint form.
 func writeRenderOptionEntry(buf *bytes.Buffer, key string, value any) {
 	switch typed := value.(type) {
@@ -410,8 +425,35 @@ func writeRenderOptionEntry(buf *bytes.Buffer, key string, value any) {
 			listItems = append(listItems, fmt.Sprint(item))
 		}
 		writeRenderStringList(buf, "      "+key, listItems)
+	case map[string]any:
+		writeRenderStringMap(buf, key, typed)
+	case map[string]string:
+		converted := make(map[string]any, len(typed))
+		for entryKey, entryValue := range typed {
+			converted[entryKey] = entryValue
+		}
+		writeRenderStringMap(buf, key, converted)
 	default:
-		fmt.Fprintf(buf, "      %s: %v\n", key, typed)
+		fmt.Fprintf(buf, "      %s: %s\n", key, yamlQuoteIfNeeded(fmt.Sprint(typed)))
+	}
+}
+
+// writeRenderStringMap appends a nested YAML mapping under key into buf in sorted key order so map options round-trip through init --force.
+//
+// When entries is nil or empty, it writes an empty block header ("key:\n") because gruff-go's YAML parser rejects flow mappings like "{}".
+func writeRenderStringMap(buf *bytes.Buffer, key string, entries map[string]any) {
+	if len(entries) == 0 {
+		fmt.Fprintf(buf, "      %s:\n", key)
+		return
+	}
+	subKeys := make([]string, 0, len(entries))
+	for subKey := range entries {
+		subKeys = append(subKeys, subKey)
+	}
+	sort.Strings(subKeys)
+	fmt.Fprintf(buf, "      %s:\n", key)
+	for _, subKey := range subKeys {
+		fmt.Fprintf(buf, "        %s: %s\n", yamlQuoteIfNeeded(subKey), yamlQuoteIfNeeded(fmt.Sprint(entries[subKey])))
 	}
 }
 

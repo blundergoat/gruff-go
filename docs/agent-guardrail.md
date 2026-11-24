@@ -106,7 +106,7 @@ gruff-go analyse --generate-baseline gruff-baseline.json .
 gruff-go analyse --baseline gruff-baseline.json --fail-on advisory .
 ```
 
-Baseline and hook new-only filtering share one matcher: exact fingerprints pair first, then remaining stable identities pair one-to-one. A reviewed finding can move lines without resurfacing, and one baseline entry can never hide multiple duplicate issues. Legacy rows without `stableIdentity` remain exact-only.
+Baseline and hook new-only filtering share one `gruff.baseline.v3` matcher: each entry stores a line-insensitive 16-hex SHA-256 `identity` and an occurrence `count`. A reviewed finding can move lines without resurfacing, and extra duplicates past the recorded count report as new. Non-v3 baselines fail closed until migrated with `gruff-go baseline --migrate-baseline`.
 
 ## How the rules serve the mission
 

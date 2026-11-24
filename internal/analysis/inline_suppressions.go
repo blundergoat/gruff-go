@@ -59,17 +59,14 @@ const gosecCredentialCheck = "G101"
 // functionLengthRule is the rule golangci-lint's `funlen` linter covers.
 const functionLengthRule = "size.function-length"
 
-// gosecDirective matches `#nosec` and its optional check list, e.g. `#nosec G204 -- fixed git arguments`.
-var gosecDirective = regexp.MustCompile(`#nosec\b((?:[ \t]*,?[ \t]*G\d+)*)`)
+// gosecCode matches one canonical uppercase gosec check code such as G204.
+var gosecCode = regexp.MustCompile(`^G\d+$`)
 
-// gosecCode matches one gosec check in a `#nosec` list.
-var gosecCode = regexp.MustCompile(`G\d+`)
+// nolintDirective matches golangci-lint's `//nolint` anchored to the start of a Go line comment, e.g. `//nolint:funlen,gosec`.
+var nolintDirective = regexp.MustCompile(`^//nolint(?::([\w,-]+))?(?:[^\w:,-]|$)`)
 
-// nolintDirective matches golangci-lint's `//nolint` and its optional linter list, e.g. `//nolint:funlen,gosec`.
-var nolintDirective = regexp.MustCompile(`//nolint(?::([\w,-]+))?(?:[^\w:,-]|$)`)
-
-// zizmorDirective matches zizmor's # zizmor: ignore comment and captures the comma-separated audits inside its brackets, such as unpinned-uses.
-var zizmorDirective = regexp.MustCompile(`#\s*zizmor:\s*ignore\[([^\]]*)\]`)
+// zizmorDirective matches zizmor's `# zizmor: ignore[...]` directive anchored to the start of a YAML hash comment.
+var zizmorDirective = regexp.MustCompile(`^#\s*zizmor:\s*ignore\[([^\]]*)\]`)
 
 // ApplyInlineSuppressions honors supported comments beside a finding or alone on the preceding line.
 //
@@ -167,7 +164,13 @@ func suppressionCommentsByLine(path, text string) map[int][]inlineComment {
 			line += strings.Count(text[lastCommentOffset:offset], "\n")
 			lastCommentOffset = offset
 			start := strings.LastIndexByte(text[:offset], '\n') + 1
-			standalone := strings.TrimSpace(text[start:offset]) == "" && !strings.Contains(literal, "\n")
+			end := offset + len(literal)
+			trailing := text[end:]
+			if newline := strings.IndexByte(trailing, '\n'); newline >= 0 {
+				trailing = trailing[:newline]
+			}
+			// A comment stands alone only when nothing precedes or follows it on its line, so `/* #nosec */ code` never covers the next line.
+			standalone := strings.TrimSpace(text[start:offset]) == "" && strings.TrimSpace(trailing) == "" && !strings.Contains(literal, "\n")
 			comments[line] = append(comments[line], inlineComment{literal, standalone})
 		})
 	case extension == ".yaml" || extension == ".yml":
@@ -301,23 +304,60 @@ func inlineCommentCovers(line string, item finding.Finding) bool {
 		zizmorCommentCovers(line, item.RuleID)
 }
 
-// gosecCommentCovers reports whether any #nosec on the line covers the finding's rule, named by ruleID; each one is checked in turn.
+// gosecCommentCovers reports whether line starts with a #nosec directive that suppresses ruleID.
 //
-// A #nosec naming checks covers only the rules those checks map to, and G101 maps to every sensitive-data rule.
-// Without a check list, it covers the rule only when broad is set, which marks a security or sensitive-data finding.
+// Prose mentioning #nosec later in a comment is ignored, and malformed lists such as #nosec: G304 or #nosec g304 never fall back to bare #nosec.
+// Canonical G-codes cover only their mapped rules (with G101 covering all sensitive-data rules); bare #nosec or #nosec -- note requires broad=true.
+//
+// Returns false when line is empty, is not a comment starting with #nosec, or names no check covering ruleID.
 func gosecCommentCovers(line, ruleID string, broad bool) bool {
-	for _, match := range gosecDirective.FindAllStringSubmatch(line, -1) {
-		codes := gosecCode.FindAllString(match[1], -1)
-		if len(codes) == 0 && broad {
-			return true
+	commentBody, ok := commentDirectiveBody(line)
+	if !ok || !strings.HasPrefix(commentBody, "#nosec") {
+		return false
+	}
+	afterMarker := commentBody[len("#nosec"):]
+	// Reject longer tokens such as #nosec_note that merely share the prefix.
+	if afterMarker != "" && afterMarker[0] != ' ' && afterMarker[0] != '\t' && afterMarker[0] != ':' {
+		return false
+	}
+	directiveRest := strings.TrimLeft(afterMarker, " \t")
+	// Bare `#nosec` or `#nosec -- rationale` applies to every security and sensitive-data finding.
+	if directiveRest == "" || strings.HasPrefix(directiveRest, "--") {
+		return broad
+	}
+	checkList, _, _ := strings.Cut(directiveRest, "--")
+	checkList = strings.TrimSpace(strings.TrimPrefix(checkList, ":"))
+	// A colon or check list with no recognised mapped check never degrades to wildcard bare #nosec.
+	if checkList == "" {
+		return false
+	}
+	// Check each comma- or whitespace-separated token so a developer listing multiple G-codes suppresses every matching rule.
+	for _, token := range strings.FieldsFunc(checkList, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
+		if !gosecCode.MatchString(token) {
+			continue
 		}
-		for _, code := range codes {
-			if gosecCheckRules[code] == ruleID || (code == gosecCredentialCheck && strings.HasPrefix(ruleID, "sensitive-data.")) {
-				return true
-			}
+		if gosecCheckRules[token] == ruleID || (token == gosecCredentialCheck && strings.HasPrefix(ruleID, "sensitive-data.")) {
+			return true
 		}
 	}
 	return false
+}
+
+// commentDirectiveBody strips the leading Go or hash comment syntax from raw and returns the trimmed directive text and true.
+// It returns an empty string and false when raw does not begin with a supported comment opener.
+func commentDirectiveBody(raw string) (string, bool) {
+	switch {
+	case strings.HasPrefix(raw, "//"):
+		return strings.TrimSpace(raw[2:]), true
+	case strings.HasPrefix(raw, "/*"):
+		return strings.TrimSpace(strings.TrimSuffix(raw[2:], "*/")), true
+	case strings.HasPrefix(raw, "#nosec"):
+		return strings.TrimSpace(raw), true
+	case strings.HasPrefix(raw, "#"):
+		return strings.TrimSpace(raw[1:]), true
+	default:
+		return "", false
+	}
 }
 
 // nolintCommentCovers reports whether a //nolint on the line covers the rule; a bare //nolint counts as //nolint:all.

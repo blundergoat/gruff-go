@@ -200,6 +200,102 @@ func TestFromGitReportsNonGitDiagnostics(t *testing.T) {
 	}
 }
 
+// TestFromGitRejectsLeadingDashBase blocks git option injection such as --output=<file> or --ext-diff.
+func TestFromGitRejectsLeadingDashBase(t *testing.T) {
+	root := t.TempDir()
+	clobber := filepath.Join(root, "clobbered.txt")
+	_, err := FromGit(context.Background(), root, "--output="+clobber, []string{"."})
+	if err == nil {
+		t.Fatal("expected error for leading-dash diff base")
+	}
+	if _, statErr := os.Stat(clobber); !os.IsNotExist(statErr) {
+		t.Fatalf("git option injection created %s", clobber)
+	}
+}
+
+// TestParseTracksHunkContextBlocksHeaderHijackAndStripsTimestamps pins -U3 context precision, "++ " body protection, diff -u timestamps, and CRLF.
+func TestParseTracksHunkContextBlocksHeaderHijackAndStripsTimestamps(t *testing.T) {
+	patch := "diff --git a/a.go b/a.go\r\n" +
+		"--- a/a.go\t2026-11-25 00:00:00 +0000\r\n" +
+		"+++ b/a.go\t2026-11-25 00:00:00 +0000\r\n" +
+		"@@ -1,4 +1,5 @@\r\n" +
+		" package p\r\n" +
+		" func untouched() {}\r\n" +
+		"+// ++ ../evil.go\r\n" +
+		"+++ ../hijack.go\r\n" +
+		" func end() {}\r\n" +
+		"diff --git a/new.go b/new.go\r\n" +
+		"--- /dev/null\r\n" +
+		"+++ b/new.go\r\n" +
+		"@@ -0,0 +1,1 @@\r\n" +
+		"+package p\r\n"
+	changed := Parse("stdin", []byte(patch))
+	if _, hijacked := changed.LinesByFile["../hijack.go"]; hijacked {
+		t.Fatalf("added +++ content hijacked currentFile: %#v", changed.ChangedFiles)
+	}
+	lines := changed.LinesByFile["a.go"]
+	if _, ok := lines[3]; !ok {
+		t.Fatalf("expected added line 3 in a.go, got %#v", lines)
+	}
+	if _, ok := lines[4]; !ok {
+		t.Fatalf("expected added +++ line 4 in a.go, got %#v", lines)
+	}
+	if _, ctxMarked := lines[2]; ctxMarked {
+		t.Fatalf("unchanged context line 2 must not be marked changed: %#v", lines)
+	}
+	if _, whole := changed.WholeFiles["new.go"]; !whole {
+		t.Fatalf("CRLF new file new.go was not marked whole: %#v", changed.WholeFiles)
+	}
+
+	// Synthetic header-only hunks with trailing newlines must preserve every line in the declared new range.
+	headerOnly := Parse("stdin", []byte("+++ b/only.go\n@@ -1,2 +1,2 @@\n"))
+	if len(headerOnly.LinesByFile["only.go"]) != 2 {
+		t.Fatalf("header-only hunk lines = %#v, want lines 1 and 2", headerOnly.LinesByFile["only.go"])
+	}
+
+	// Plain diff -u patches without "diff --git " must mark /dev/null files whole without leaking newFile into later files.
+	plainDiff := "--- /dev/null\t2026-11-25 00:00:00 +0000\n" +
+		"+++ b/added.go\t2026-11-25 00:00:00 +0000\n" +
+		"@@ -0,0 +1,1 @@\n+package p\n" +
+		"--- a/existing.go\t2026-11-25 00:00:00 +0000\n" +
+		"+++ b/existing.go\t2026-11-25 00:00:00 +0000\n" +
+		"@@ -1,1 +1,1 @@\n-old\n+new\n"
+	plainChanged := Parse("stdin", []byte(plainDiff))
+	if _, whole := plainChanged.WholeFiles["added.go"]; !whole {
+		t.Fatalf("plain diff -u new file added.go was not marked whole: %#v", plainChanged.WholeFiles)
+	}
+	if _, whole := plainChanged.WholeFiles["existing.go"]; whole {
+		t.Fatalf("plain diff -u leaked newFile flag into existing.go: %#v", plainChanged.WholeFiles)
+	}
+	if _, ok := plainChanged.LinesByFile["existing.go"][1]; !ok {
+		t.Fatalf("plain diff -u existing.go lines = %#v, want line 1", plainChanged.LinesByFile["existing.go"])
+	}
+}
+
+// TestFromModeWorkingTreeKeepsStagedLinesAlignedAfterUnstagedShift verifies working-tree diffs align shifted staged edits with disk lines.
+func TestFromModeWorkingTreeKeepsStagedLinesAlignedAfterUnstagedShift(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "test@example.test")
+	runGit(t, root, "config", "user.name", "test")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	runGit(t, root, "add", "main.go")
+	runGit(t, root, "commit", "-q", "-m", "initial")
+
+	// Stage a change on line 4, then prepend 3 unstaged lines above it so disk line is now 7.
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {\n\tprintln(\"staged\")\n}\n")
+	runGit(t, root, "add", "main.go")
+	writeFile(t, root, "main.go", "// header 1\n// header 2\n// header 3\npackage main\n\nfunc main() {\n\tprintln(\"staged\")\n}\n")
+
+	changed, err := FromMode(context.Background(), root, "working-tree", []string{"."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := changed.LinesByFile["main.go"][7]; !ok {
+		t.Fatalf("changed lines = %#v, want shifted staged edit at disk line 7", changed.LinesByFile["main.go"])
+	}
+}
+
 // runGit executes a git command inside root and fails the test on errors.
 // The args are passed to git unchanged as its arguments, and the failure message shows them with the error and the combined output.
 func runGit(t *testing.T, root string, args ...string) {

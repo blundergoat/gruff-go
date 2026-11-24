@@ -51,8 +51,6 @@ func (TemplateInjectionXSSRule) Definition() Definition {
 //
 // unit is the parsed file; the result is nil when it has no AST or file set, is not a production code path, or does not import net/http.
 // It returns one finding per flagged call, with the matched shape as reason metadata, or an empty slice when nothing fires.
-//
-// Sanitizer matching can panic when lowercasing a call name shortens it past an original token offset, as with the Kelvin sign U+212A.
 func (TemplateInjectionXSSRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil

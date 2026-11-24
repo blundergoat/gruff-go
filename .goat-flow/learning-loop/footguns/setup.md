@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-10-03
+last_reviewed: 2026-11-25
 ---
 
 # Setup Footguns
@@ -177,6 +177,20 @@ on whether a given file is valid at all. The same gap covers diagnostic wording:
 cross-port conformance can only assert substrings today. M03 should decide
 whether the contract owns the parseable subset and the diagnostic shape, or only
 the semantics.
+
+## Footgun: `docs/rules.md` Confidence evidence table omits measured rules - absence is intentional, not an oversight
+
+**Status:** active | **Created:** 2026-11-25 | **Evidence:** OBSERVED
+**Decision changed:** Before adding a default-on rule to `docs/rules.md` under `Confidence evidence`, check the full set of omitted default-on rules and commit history; omission means the rule's confidence is backed by corpus measurement rather than inherited.
+**Trigger phase:** READ
+**Caught at:** VERIFY
+**hallucination-risk:** high
+
+**Prevention:** Cross-check `go run ./cmd/gruff-go list-rules --no-config --format json` against `docs/rules.md` (search: `## Confidence evidence`) before editing that table, and add a row only for default-on rules whose confidence is inherited (`unmeasured`, `too-few`, `insufficient`, or `held`).
+
+**Evidence:**
+- `docs/rules.md` (search: `## Confidence evidence`) explicitly scopes the table to default-on rules that have no measurement setting their confidence (36 of 56 default-on rules measured on 2026-11-25; the other 20 measured default-on rules are intentionally omitted).
+- `docs/rules.md` (search: `has no re-review route yet`) lists `docs.missing-param-doc` right above the alphabetized gap where `docs.missing-return-doc` would sit. During `0.6.0` doc hardening, that juxtaposition made `docs.missing-return-doc` look accidentally omitted and led to adding a false `unmeasured` row. Re-checking `UPGRADING.md` (search: `docs.missing-return-doc`) and commit `2317576` confirmed `docs.missing-return-doc` was measured on the 12-repo precision corpus (`6,809` findings) and calibrated to `medium`, so it belongs outside the inherited-confidence table.
 
 ## Resolved Entries
 

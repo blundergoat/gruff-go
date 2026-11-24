@@ -179,6 +179,7 @@ selection:
 
 rules:
   complexity.cyclomatic:
+    enabled: true
     threshold: 15
     severity: error
   naming.package-underscore:
@@ -222,7 +223,7 @@ go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
 
-Matching is one-to-one. Gruff pairs exact rule, file, and fingerprint matches first, then pairs remaining v3 entries by their line-insensitive stable identity. Reviewed findings stay quiet after line or metric shifts, while one baseline row can never hide multiple duplicate findings. Older entries without `stableIdentity` still match exact fingerprints only. The agent hook uses the same matcher for baseline and git-base new-only filtering.
+Matching is count-aware and line-insensitive. `gruff.baseline.v3` records each reviewed finding under a 16-hex SHA-256 `identity` (tool language, rule ID, project-relative path, and symbol plus declaration ordinal or normalized message) and an occurrence `count`. Reviewed findings stay quiet after line or metric shifts, while extra duplicates past the recorded count report as new. Older `0.5` baselines fail closed until migrated with `gruff-go baseline --migrate-baseline`. The agent hook uses the same matcher for baseline and git-base new-only filtering.
 
 Changed-region scans use Git only when requested:
 

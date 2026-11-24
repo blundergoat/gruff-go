@@ -108,10 +108,23 @@ func (s *requestTaintScope) taintedBefore(identifier *ast.Ident, sinkPos token.P
 		return true
 	}
 	pos, ok := s.firstTaintPos[identifier.Obj]
-	if !ok || pos >= sinkPos {
+	if !ok {
 		return false
+	}
+	backEdgeLoopPos := s.enclosingLoopStartForBackEdgeTaint(identifier.Obj, sinkPos)
+	if pos >= sinkPos {
+		// Without an enclosing loop carrying later request data back to sinkPos, taint introduced after the sink cannot reach it.
+		if !backEdgeLoopPos.IsValid() {
+			return false
+		}
+		return !s.taintClearedBefore(identifier.Obj, backEdgeLoopPos, sinkPos)
+	}
+	effectiveTaintPos := pos
+	// A loop back-edge that re-taints binding defeats any clean write placed outside that loop.
+	if backEdgeLoopPos.IsValid() && backEdgeLoopPos > effectiveTaintPos {
+		effectiveTaintPos = backEdgeLoopPos
 	}
 	// A dominating write of request-free data replaces the tainted value, so the
 	// sink reads clean data even though this binding held request input earlier.
-	return !s.taintClearedBefore(identifier.Obj, pos, sinkPos)
+	return !s.taintClearedBefore(identifier.Obj, effectiveTaintPos, sinkPos)
 }

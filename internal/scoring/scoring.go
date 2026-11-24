@@ -381,11 +381,15 @@ func pluralise(count int, singular, plural string) string {
 // item supplies the severity and confidence; an unknown severity weighs zero, and any confidence other than low or medium takes the high weight.
 // It returns the severity weight times the confidence weight, from 0.5 for a low-confidence advisory to 12 for a high-confidence error.
 func findingPenalty(item finding.Finding) float64 {
-	base := map[finding.Severity]float64{
-		finding.SeverityAdvisory: severityWeightAdvisory,
-		finding.SeverityWarning:  severityWeightWarning,
-		finding.SeverityError:    severityWeightError,
-	}[item.Severity]
+	var base float64
+	switch item.Severity {
+	case finding.SeverityAdvisory:
+		base = severityWeightAdvisory
+	case finding.SeverityWarning:
+		base = severityWeightWarning
+	case finding.SeverityError:
+		base = severityWeightError
+	}
 	switch item.Confidence {
 	case finding.ConfidenceLow:
 		return base * confidenceWeightLow

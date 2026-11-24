@@ -10,9 +10,9 @@ package rule
 // Each Shape describes code a rule can flag without a real defect, and each Mitigation gives the user a practical next step.
 var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	"dead-code.empty-block": {
-		Shape: "A control-flow block used only for header work, or an intentionally empty select or comment-only body, " +
+		Shape: "An intentionally empty if or else branch with no explanatory comment, such as a placeholder guard or ignored case, " +
 			"can look unfinished to the syntax-only check.",
-		Mitigation: "Move the work into the body, add an executable statement, or disable the rule for the reviewed path.",
+		Mitigation: "Add a short comment explaining why the branch is empty, simplify the condition, or disable the rule for the reviewed path.",
 	},
 	"dead-code.unused-private-const": {
 		Shape: "A package-private constant referenced through reflection, build-tagged files, or indirect registration " +
@@ -69,11 +69,11 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	},
 	"naming.contextual-generic": {
 		Shape:      "A domain-meaningful name such as item or result can match the generic-name heuristic in a long function.",
-		Mitigation: "Add the project term to genericNames, adjust minFunctionLines, or rename the identifier with its domain role.",
+		Mitigation: "Override genericNames or accumulatorNames without that term, adjust minBodyLines or minFunctionLines, or rename the identifier with its domain role.",
 	},
 	"naming.get-prefix": {
 		Shape:      "A zero-argument receiver method named Get... can be required by a protocol, framework, or compatibility API.",
-		Mitigation: "Add the exact method name to allowNames, rename it when compatible, or keep this opt-in rule disabled.",
+		Mitigation: "Add the exact method name to excludeNames, rename it when compatible, or keep this opt-in rule disabled.",
 	},
 	"naming.identifier-quality": {
 		Shape:      "A project-specific term can match a configured placeholder name even when it carries clear domain meaning.",
@@ -81,7 +81,7 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 	},
 	"naming.misspelling": {
 		Shape:      "A proper noun, vendor term, or domain word can collide with a built-in misspelling entry.",
-		Mitigation: "Add the exact token to ignore or extra, or correct the identifier when the match is a typo.",
+		Mitigation: "Add the exact token to ignore, or correct the identifier when the match is a typo.",
 	},
 	"naming.package-stutter": {
 		Shape:      "An exported compatibility name or accepted domain noun can intentionally repeat its package name.",
@@ -156,7 +156,7 @@ var reviewedFalsePositiveShapes = map[string]FalsePositiveShape{
 		Mitigation: "Use a reserved email domain, an invalid test number, or keep this opt-in rule disabled for the reviewed fixture path.",
 	},
 	"sensitive-data.secret-pattern": {
-		Shape:      "A raw-string fixture or configuration example with a secret-shaped assignment can look like a committed credential.",
+		Shape:      "A quoted string fixture or config file example with a secret-shaped assignment can look like a committed credential.",
 		Mitigation: "Use a recognised placeholder prefix or move the value to runtime configuration; do not suppress by matching secret text.",
 	},
 	"test-quality.helper-missing-t-helper": {

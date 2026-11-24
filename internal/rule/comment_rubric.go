@@ -15,6 +15,7 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 	"github.com/blundergoat/gruff-go/internal/pathfilter"
+	"github.com/blundergoat/gruff-go/internal/source"
 )
 
 // commentRubricMinPackageCommentLines is the default minimum line count for package summaries.
@@ -119,12 +120,12 @@ func (r CommentRubricRule) Definition() Definition {
 // The package-summary check runs once per package, so a summary in an in-scope doc.go covers the package's other in-scope files.
 // The function, type, const and var checks stay strictly per unit.
 //
-// units is every parsed file in the project; package-summary findings come first, and only when RequirePackageSummary is set.
-// It returns a non-nil slice, empty when no unit breaks an enabled check.
-func (r CommentRubricRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+// units is every parsed file in the project; ctx prefers a reportable file as the package-summary anchor when scanning explicit targets.
+// Package-summary findings come first, and only when RequirePackageSummary is set; it returns a non-nil slice, empty when every check passes.
+func (r CommentRubricRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	findings := []finding.Finding{}
 	if r.RequirePackageSummary {
-		findings = append(findings, r.aggregatedPackageSummaryFindings(units)...)
+		findings = append(findings, r.aggregatedPackageSummaryFindings(units, ctx)...)
 	}
 	for _, unit := range units {
 		findings = append(findings, r.analyzeUnitDecls(unit)...)
@@ -172,32 +173,41 @@ func (r CommentRubricRule) appliesToPath(path string) bool {
 
 // aggregatedPackageSummaryFindings emits at most one package-summary finding per package directory and package name.
 //
-// The best summary across the package's in-scope files wins, and a finding lands on the lexicographically first file for a stable location.
-// IgnoreTests still applies, and a _test-suffixed package whose files are all tests never gets a finding.
+// The best summary across the package's in-scope files wins, preferring a reportable file from ctx over the lexicographically first file.
+// Directories containing an unparsed Go sibling (such as under a deep-scan budget) are skipped rather than emitting false missing-summary findings.
 //
-// units is every parsed file in the project; units without an AST or file set are skipped.
+// units is every parsed file in the project; ctx supplies reportable-file scoping.
 // It returns one finding per package whose best summary is too short, or an empty, non-nil slice when every package passes.
-func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit) []finding.Finding {
-	packages := r.collectPackageSummaryStates(units)
+func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit, ctx Context) []finding.Finding {
+	packages := r.collectPackageSummaryStates(units, ctx)
 	return r.packageSummaryFindings(packages)
 }
 
 // packageSummaryState records the best package-summary evidence found for one package directory and package name.
-// file is the lexicographically first in-scope file, where any finding lands, and bestLines is the longest summary's non-empty line count.
+//
+// primaryFile prefers the first reportable file in ctx before falling back to file; incomplete marks directories with unparsed Go siblings.
 type packageSummaryState struct {
-	name       string
-	file       string
-	bestLines  int
-	hasInScope bool
-	hasNonTest bool
+	name        string
+	dir         string
+	file        string
+	primaryFile string
+	bestLines   int
+	hasInScope  bool
+	hasNonTest  bool
+	incomplete  bool
 }
 
 // collectPackageSummaryStates scans in-scope units for package comments and stores the best summary evidence per package.
-// It returns a map keyed by directory, a colon and package name, empty when no unit passes the AST, path scope and IgnoreTests filters.
-func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit) map[string]*packageSummaryState {
+// units supplies all project units and ctx identifies reportable files; it returns a map keyed by directory, a colon, and package name.
+func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit, ctx Context) map[string]*packageSummaryState {
 	packages := map[string]*packageSummaryState{}
+	incompleteDirs := map[string]bool{}
 	for _, unit := range units {
+		// An unparsed Go sibling (such as a budget-degraded doc.go) may hold the package summary, so mark its directory incomplete.
 		if unit.AST == nil || unit.FileSet == nil {
+			if unit.File.Type == source.FileTypeGo {
+				incompleteDirs[path.Dir(unit.File.Path)] = true
+			}
 			continue
 		}
 		if !r.appliesToPath(unit.File.Path) {
@@ -206,21 +216,27 @@ func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit) map[
 		if r.IgnoreTests && isGoTestFile(unit.File.Path) {
 			continue
 		}
+		dir := path.Dir(unit.File.Path)
 		// An external foo_test package in the same directory is tracked apart from foo, so its test files cannot supply foo's summary.
-		key := path.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
+		key := dir + ":" + unit.AST.Name.Name
 		state := packages[key]
 		if state == nil {
-			state = &packageSummaryState{name: unit.AST.Name.Name}
+			state = &packageSummaryState{name: unit.AST.Name.Name, dir: dir}
 			packages[key] = state
 		}
-		updatePackageSummaryState(state, unit)
+		updatePackageSummaryState(state, unit, ctx)
+	}
+	for _, state := range packages {
+		if incompleteDirs[state.dir] {
+			state.incomplete = true
+		}
 	}
 	return packages
 }
 
 // updatePackageSummaryState marks state as having an in-scope file and folds in the package comment of unit.
-// It keeps the longest summary's line count and the lexicographically first file path, and notes when unit is not a test file.
-func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit) {
+// ctx lets explicit-file scans anchor findings to a reportable file rather than a context-only sibling.
+func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit, ctx Context) {
 	state.hasInScope = true
 	if !isGoTestFile(unit.File.Path) {
 		state.hasNonTest = true
@@ -232,22 +248,29 @@ func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit) {
 	if state.file == "" || unit.File.Path < state.file {
 		state.file = unit.File.Path
 	}
+	if ctx.isReportable(unit.File.Path) && (state.primaryFile == "" || unit.File.Path < state.primaryFile) {
+		state.primaryFile = unit.File.Path
+	}
 }
 
 // packageSummaryFindings emits one finding for each package whose best in-scope summary falls below the configured line threshold.
 //
-// A _test-suffixed package with only test files is skipped.
+// A _test-suffixed package with only test files and any directory with an unparsed Go sibling are skipped.
 // With no summary at all the message reads "package summary is missing"; a short one names its line count and the required count.
 // packages comes from collectPackageSummaryStates; it returns the findings in no fixed order, or an empty slice when none is needed.
 func (r CommentRubricRule) packageSummaryFindings(packages map[string]*packageSummaryState) []finding.Finding {
 	minLines := r.minPackageCommentLines()
 	findings := []finding.Finding{}
 	for _, state := range packages {
-		if !state.hasInScope || state.bestLines >= minLines {
+		if !state.hasInScope || state.incomplete || state.bestLines >= minLines {
 			continue
 		}
 		if !state.hasNonTest && strings.HasSuffix(state.name, "_test") {
 			continue
+		}
+		targetFile := state.primaryFile
+		if targetFile == "" {
+			targetFile = state.file
 		}
 		message := "package summary is missing"
 		if state.bestLines > 0 {
@@ -255,7 +278,7 @@ func (r CommentRubricRule) packageSummaryFindings(packages map[string]*packageSu
 		}
 		findings = append(findings, finding.Finding{
 			Message:  message,
-			File:     state.file,
+			File:     targetFile,
 			Location: &finding.Location{Line: 1},
 			Metadata: map[string]any{
 				"kind":      "package",

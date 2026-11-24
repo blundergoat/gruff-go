@@ -1,6 +1,8 @@
 // Package rule defines gruff-go's rule registry and analysers.
 //
 // This file implements two parser-only test-quality checks: test-quality.helper-missing-t-helper and test-quality.parallel-range-capture.
+// They catch test helpers that hide failing caller line numbers and pre-Go 1.22 parallel subtests that capture mutable range variables.
+// Both rules inspect Go test files statically without compiling or executing target tests.
 package rule
 
 import (
@@ -153,7 +155,7 @@ func failsThroughOwnHandle(body *ast.BlockStmt, testingPackages, assertionPackag
 			return true
 		}
 		found = isReceiverFailureCall(call, ownHandles) || isAssertionHelperCall(call, ownHandles, assertionPackages) ||
-			isCapturedAssertionHelperCall(call, helperObjects) || isInPackageAssertionCall(call, ownHandles, assertionPackages)
+			isCapturedAssertionHelperCall(call, helperObjects)
 		return !found
 	})
 	return found
@@ -333,6 +335,7 @@ func parallelRangeCaptureFindings(unit parser.Unit, body *ast.BlockStmt, testing
 func parallelCapturesInRange(unit parser.Unit, rangeStmt *ast.RangeStmt, rangeVars map[string]bool, testingPackages map[string]bool) []finding.Finding {
 	findings := []finding.Finding{}
 	shadowed := map[string]bool{}
+	orderedRangeVars := rangeVariableOrder(rangeStmt)
 	for _, stmt := range rangeStmt.Body.List {
 		recordRangeShadow(stmt, rangeVars, shadowed)
 		ast.Inspect(stmt, func(node ast.Node) bool {
@@ -344,8 +347,8 @@ func parallelCapturesInRange(unit parser.Unit, rangeStmt *ast.RangeStmt, rangeVa
 			if lit == nil || !funcLitCallsParallel(lit, testingPackages) {
 				return true
 			}
-			// With both key and value captured, map order picks which one the finding names, so the message can change between runs.
-			for name := range rangeVars {
+			// Walk range variables in declaration order (key then value) so finding messages and baseline identities stay deterministic.
+			for _, name := range orderedRangeVars {
 				if shadowed[name] || !funcLitUsesIdent(lit, name) {
 					continue
 				}
@@ -362,6 +365,23 @@ func parallelCapturesInRange(unit parser.Unit, rangeStmt *ast.RangeStmt, rangeVa
 		})
 	}
 	return findings
+}
+
+// rangeVariableOrder returns non-blank key and value identifiers of stmt in source order without duplicates.
+// It returns an empty slice when stmt binds no named variables.
+func rangeVariableOrder(stmt *ast.RangeStmt) []string {
+	ordered := make([]string, 0, 2)
+	for _, expr := range []ast.Expr{stmt.Key, stmt.Value} {
+		ident, ok := expr.(*ast.Ident)
+		if !ok || ident.Name == "_" {
+			continue
+		}
+		if len(ordered) == 1 && ordered[0] == ident.Name {
+			continue
+		}
+		ordered = append(ordered, ident.Name)
+	}
+	return ordered
 }
 
 // rangeVariableNames returns non-blank key/value identifiers named by a range statement, whether declared with := or assigned with =.

@@ -1,6 +1,6 @@
 ---
 category: rules
-last_reviewed: 2026-10-15
+last_reviewed: 2026-11-25
 ---
 
 # Rule-Authoring Patterns
@@ -74,3 +74,15 @@ last_reviewed: 2026-10-15
 **Context:** A gruff-ts false-positive pass named process execution, loop-in-test labelling, and nested signature parsing as family defect classes. In gruff-go, `security.shell-command` owns only explicit interpreter execution, `test-quality.parallel-range-capture` owns a separate Go-version capture hazard, and documentation rules inspect `go/ast` declarations rather than `@param` text. Runtime probes in `/tmp/gruff-go-cross-port-repros-f253192aeec9/` plus the registry showed that literal rule-name matching would have invented new Go policy for two non-applicable classes.
 
 **Approach:** Before adapting a sibling fix, map the language primitive, live registry ID, detector input, and user-facing remediation. Run the translated positive and quiet shapes at HEAD, then classify the class as reproduces, already-fixed, or not-applicable. Pin already-correct behavior at the nearest native AST boundary; for not-applicable classes, record complete registry/source-search evidence instead of adding a lookalike rule.
+
+## Pattern: Normalize pluralized Go acronyms before camelCase tokenization
+
+**Created:** 2026-11-25
+
+**Evidence:** ACTUAL_MEASURED
+
+**Context:** `internal/rule/naming_acronym.go` (search: `func splitIdentifierTokens`) splits uppercase runs before the last capital followed by a lowercase letter so `HTTPServer` yields `["HTTP", "Server"]`. That rule mis-splits pluralized acronyms such as `articleIDs` (`["article", "i", "ds"]`) and `articleIDsList` (`["article", "i", "ds", "list"]`), causing false positives in `docs.missing-param-doc` when prose says `"article IDs"`. Trimming a trailing `'s'` only at the end of the identifier fixes `articleIDs` but still breaks `articleIDsList` and `IDs_map`.
+
+**Approach:** Normalize pluralized acronyms before calling `identifierTokens`: drop a lowercase `'s'` immediately following two or more uppercase letters only when it ends the identifier or precedes a non-lowercase rune (`internal/rule/callable_docs.go`, search: `func normalizePluralAcronyms`). That keeps acronyms intact before suffixes or underscores (`articleIDsList` → `articleIDList` → `["article", "id"]` after suffix stripping) while preserving mixed-case words such as `DNSsec` and `XMLschema`, and lets simple singular/plural lookup match both `"id"` and `"ids"`.
+
+**Verification:** `internal/rule/callable_docs_test.go` (search: `TestMissingParamDocRuleMatchesMeaningfulTokensAndSuffixes`) pins both `articleIDs` and `articleIDsList` alongside negative controls (`clientID`, `val`, `queries`).

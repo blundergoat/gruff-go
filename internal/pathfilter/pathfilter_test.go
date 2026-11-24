@@ -1,3 +1,7 @@
+// Package pathfilter tests verify repository-relative ignore-pattern validation and glob matching.
+//
+// Each table test pins the contract developers rely on in paths.ignore and rule includePaths/excludePaths config entries,
+// including recursive /** suffixes, directory prefixes, and rejection of unsafe or non-relative patterns.
 package pathfilter
 
 import (
@@ -21,6 +25,7 @@ func TestValidateContract(t *testing.T) {
 		{name: "malformed class", pattern: "pkg/[abc.go", wantErr: "invalid path pattern"},
 		{name: "mid-pattern recursive glob", pattern: "pkg/**/generated.go", wantErr: "one ** as a trailing recursive suffix"},
 		{name: "multiple recursive globs", pattern: "pkg/**/**", wantErr: "one ** as a trailing recursive suffix"},
+		{name: "root-wide dot recursive glob", pattern: "./**", wantErr: "one ** as a trailing recursive suffix"},
 		{name: "segment glob", pattern: "pkg/*.go"},
 		{name: "exact path", pattern: "cmd/gruff-go/main.go"},
 		{name: "leading dot slash", pattern: "./cmd/*.go"},
@@ -67,6 +72,10 @@ func TestMatchesContract(t *testing.T) {
 		{name: "trailing slash prefix boundary", pattern: "ignored/", rel: "ignoredness/main.go", want: false},
 		{name: "recursive suffix directory self", pattern: "ignored/**", rel: "ignored", want: true},
 		{name: "recursive suffix descendant", pattern: "ignored/**", rel: "ignored/nested/main.go", want: true},
+		{name: "glob prefix recursive suffix", pattern: "services/*/generated/**", rel: "services/api/generated/types.go", want: true},
+		{name: "glob prefix trailing slash", pattern: "services/*/generated/", rel: "services/api/generated/sub/types.go", want: true},
+		{name: "glob prefix non-match", pattern: "services/*/generated/**", rel: "services/api/other/types.go", want: false},
+		{name: "uncleaned dot segment recursive", pattern: "a/./b/**", rel: "a/b/c.go", want: true},
 	}
 
 	for _, tt := range tests {

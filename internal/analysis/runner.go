@@ -7,6 +7,8 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
@@ -336,7 +338,7 @@ func applyBaseline(root string, findings []finding.Finding, diagnostics []Diagno
 		loadPath = filepath.Join(root, loadPath)
 	}
 	baselineSummary.Path = displayPath
-	// The report labels the baseline by file name: gruff-baseline.json reads "default" even when the user passed that path themselves.
+	// Default to "explicit"; Analyze flips Source to "default" only when BaselineDiscovered confirms auto-discovery found the file.
 	baselineSummary.Source = "explicit"
 	file, err := baseline.Load(loadPath)
 	// A missing or invalid baseline file lands here; the run goes on with every finding unsuppressed and an error diagnostic.
@@ -419,7 +421,7 @@ func stampBaselineStatuses(currentFindings []finding.Finding, result baseline.Ap
 
 // DefaultBaselineFileName is the one filename every port writes and auto-discovers.
 //
-// baselineSource reports any baseline with this base name as "default" in the report, whether it was auto-discovered or named by the user.
+// Analyze labels a baseline "default" only when auto-discovery loaded it via BaselineDiscovered; an explicitly passed path stays "explicit".
 const DefaultBaselineFileName = "gruff-baseline.json"
 
 // reportBaselineEntries projects baseline resolved entries onto the report shape.
@@ -459,15 +461,21 @@ func declarationPositionFor(units []parser.Unit) func(finding.Finding) int {
 	}
 }
 
-// sameNamedDeclarationLinesFor lists, for a finding, the start line of every parsed function in its file that its symbol names.
+// sameNamedDeclarationLinesFor lists, for a finding, the start line of every declaration in its file that its symbol names.
 //
-// A bare method name such as Process names A.Process and B.Process alike, so a clean same-named method still takes its ordinal slot.
-// It returns a closure over the functions in units that gives those lines in parser order, or an empty non-nil slice when none matches.
+// Function and method symbols rank against all parsed functions so clean same-named methods (A.Process, B.Process) keep their ordinal slots.
+// When no function matches, it lazily indexes non-function declarations (types, vars, consts, fields, short-var and range bindings) from the AST
+// so an earlier clean declaration keeps its ordinal slot without shifting a baselined sibling.
+//
+// It returns a closure over units that gives those lines in ascending source order, or an empty non-nil slice when none matches.
 func sameNamedDeclarationLinesFor(units []parser.Unit) func(finding.Finding) []int {
 	functionsByFile := map[string][]parser.Function{}
+	unitsByFile := map[string]parser.Unit{}
 	for _, unit := range units {
 		functionsByFile[unit.File.Path] = unit.Functions
+		unitsByFile[unit.File.Path] = unit
 	}
+	nonFuncCache := map[string]map[string][]int{}
 	return func(item finding.Finding) []int {
 		lines := []int{}
 		for _, function := range functionsByFile[item.File] {
@@ -475,8 +483,76 @@ func sameNamedDeclarationLinesFor(units []parser.Unit) func(finding.Finding) []i
 				lines = append(lines, function.Line)
 			}
 		}
+		if len(lines) > 0 || item.Symbol == "" {
+			return lines
+		}
+		indexed, loaded := nonFuncCache[item.File]
+		if !loaded {
+			indexed = indexNonFunctionDeclarationLines(unitsByFile[item.File])
+			nonFuncCache[item.File] = indexed
+		}
+		if declLines := indexed[item.Symbol]; len(declLines) > 0 {
+			return declLines
+		}
 		return lines
 	}
+}
+
+// indexNonFunctionDeclarationLines maps each non-function declared identifier in unit to its sorted, deduplicated 1-based declaration lines.
+//
+// It indexes types, vars, consts, struct/interface/signature fields, and := assignments or range clauses so clean declarations reserve ordinal slots.
+// It returns nil when unit has no parsed AST or FileSet.
+func indexNonFunctionDeclarationLines(unit parser.Unit) map[string][]int {
+	if unit.AST == nil || unit.FileSet == nil {
+		return nil
+	}
+	byName := map[string][]int{}
+	record := func(ident *ast.Ident) {
+		if ident == nil || ident.Name == "" || ident.Name == "_" {
+			return
+		}
+		line := unit.FileSet.Position(ident.Pos()).Line
+		if line > 0 {
+			byName[ident.Name] = append(byName[ident.Name], line)
+		}
+	}
+	ast.Inspect(unit.AST, func(node ast.Node) bool {
+		switch typed := node.(type) {
+		case *ast.TypeSpec:
+			record(typed.Name)
+		case *ast.ValueSpec:
+			for _, name := range typed.Names {
+				record(name)
+			}
+		case *ast.Field:
+			for _, name := range typed.Names {
+				record(name)
+			}
+		case *ast.AssignStmt:
+			if typed.Tok == token.DEFINE {
+				for _, lhs := range typed.Lhs {
+					if ident, ok := lhs.(*ast.Ident); ok {
+						record(ident)
+					}
+				}
+			}
+		case *ast.RangeStmt:
+			if typed.Tok == token.DEFINE {
+				if ident, ok := typed.Key.(*ast.Ident); ok {
+					record(ident)
+				}
+				if ident, ok := typed.Value.(*ast.Ident); ok {
+					record(ident)
+				}
+			}
+		}
+		return true
+	})
+	for name, lines := range byName {
+		slices.Sort(lines)
+		byName[name] = slices.Compact(lines)
+	}
+	return byName
 }
 
 // symbolNamesFunction accepts the parser's receiver-qualified name and the unqualified name a rule may emit for the same declaration.

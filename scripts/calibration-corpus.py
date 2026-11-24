@@ -359,7 +359,7 @@ def scan_corpus(
             allowed=(0, 1),
         )
         report = parse_report(completed.stdout, label)
-        files = report["summary"].get("filesScanned")
+        files = report["summary"].get("analysedFiles")
         if not isinstance(files, int) or files <= 0:
             fail(f"scanner report for {label} records files={files!r}; every module must report files>0")
         report_rel = Path("reports") / entry["name"] / module_report_name(entry["module"])
