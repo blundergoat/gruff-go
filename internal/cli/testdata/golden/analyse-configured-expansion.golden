@@ -1301,7 +1301,8 @@
         "complexity",
         "documentation",
         "size"
-      ]
+      ],
+      "caveat": "Composite grade B averages higher-scoring pillars alongside failing (F) pillars: complexity, documentation, size."
     },
     "evaluatedFiles": 1,
     "pillars": [

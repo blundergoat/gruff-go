@@ -80,7 +80,7 @@ jobs:
           go-version: '1.25'
 
       - name: Install gruff-go
-        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
+        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
 
       - name: Scan (diff-mode for PRs, full for push)
         run: |
@@ -134,7 +134,7 @@ gruff-go:
   image: golang:1.25
   stage: test
   script:
-    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
+    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
     - gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif
   artifacts:
     when: always
@@ -163,7 +163,7 @@ jobs:
       - checkout
       - run:
           name: Install gruff-go
-          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
+          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
       - run:
           name: Scan
           command: gruff-go analyse --baseline gruff-baseline.json .
@@ -187,7 +187,7 @@ pipeline {
     stages {
         stage('gruff-go') {
             steps {
-                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0'
+                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0'
                 sh 'gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif'
             }
             post {
@@ -229,21 +229,17 @@ Migrating from 0.5: `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as
 
 ### `--fail-on=error` is not a security gate
 
-With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are below error: 20 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.shell-command` (`security.sql-string-query`, which this sentence named, was removed in 0.6.0). No default-enabled `sensitive-data.*` rule reaches error either: since 0.6.0 every one defaults to warning, so an error-only gate ignores every built-in secret finding too.
+With the built-in v0.6.0 registry, all 17 default-enabled `security.*` rules are below error: 15 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.shell-command` (`security.sql-string-query`, which this sentence named, was removed in 0.6.0). No default-enabled `sensitive-data.*` rule reaches error either: since 0.6.0 every one defaults to warning, so an error-only gate ignores every built-in secret finding too.
 
-The below-error invariant is enforced, not just documented: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches error, naming this section in its failure message. Verify the live numbers yourself with `gruff-go list-rules --no-config --format json` - without `--no-config` you get the effective severities after your own `.gruff-go.yaml` overrides, which is a different question.
+The below-error invariant is enforced in tests: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches `error`, citing this section in its failure message. Verify the live counts yourself with `gruff-go list-rules --no-config --format json` (`list-rules` always prints the built-in defaults; `--no-config` skips validating your local `.gruff-go.yaml`).
 
-Use `--fail-on advisory` to gate CI on every reported security finding. `analyse` uses this gate by default.
-`summary`, `report`, and `dashboard` need an explicit flag or a `failOn` entry such as `failOn.summary: advisory`.
-For an existing codebase, use a baseline or `--since` to limit the initial scope while keeping every severity eligible for the gate.
+Use `--fail-on advisory` to gate CI on every reported security finding — `analyse` already uses this by default. `summary`, `report`, and `dashboard` need an explicit `--fail-on` flag or a `failOn` entry such as `failOn.summary: advisory`. On an existing codebase, use a baseline or `--since` to limit initial scope while keeping all severities eligible for the gate.
 
 ### Open family decision: security findings and grade A
 
-A run can report security findings and still receive grade A because the composite is a weighted aggregate. A fixture containing a dynamic SQL query and explicit shell execution scores A (99 / 100) while `--fail-on=error` exits `0`; the default advisory gate exits `1` for the same report. Grade A means the aggregate score is at least 90, not that the scan found no security issues.
+Because the composite score averages pillars, a run can report security findings and still earn grade `A`. In [ADR-020](../.goat-flow/learning-loop/decisions/ADR-020-security-tier-evidence-routed-to-family.md), a fixture carrying explicit shell execution and a dynamic SQL finding scored `A (99 / 100)`: `--fail-on=error` exited `0`, while the default `advisory` gate exited `1`. Grade `A` means the weighted aggregate is at least 90, not that the scan found zero security issues.
 
-The evidence behind this question - the registry distribution, the fixture above, the mitigating gate defaults, and this project's own `.gruff-go.yaml` override of `security.shell-command` to error - is recorded in [ADR-020](../.goat-flow/learning-loop/decisions/ADR-020-security-tier-evidence-routed-to-family.md), which routes the decision to the family rather than taking it.
-
-Gruff family contract §12 must decide whether any `security.*` finding should cap the composite below A or whether grades and finding gates remain independent. A cap would change serialized scores, grades, and cross-port semantics. No cap, severity, or scoring change is made here. Until that decision is ratified, CI should gate on findings at the advisory floor - on a command that has one, per the note above - and must not treat grade A as security proof.
+[ADR-020](../.goat-flow/learning-loop/decisions/ADR-020-security-tier-evidence-routed-to-family.md) records the evidence — registry distribution, fixture behaviour, gate defaults, and this repo's own `.gruff-go.yaml` override raising `security.shell-command` to `error` — and routes the grade-cap question to the cross-port family contract (§12). Capping grade `A` on `security.*` findings would change serialized scores and cross-port semantics, so no cap is applied here. Until ratified across ports, gate CI on findings at `advisory` rather than treating grade `A` as security proof.
 
 For projects that want per-command defaults without passing the flag on every invocation, set [`failOn`](configuration.md#failon) in `.gruff-go.yaml`:
 
@@ -269,4 +265,4 @@ threshold, including `none`.
 
 - **Shallow clones** break base-ref scoping (`--since`, `--diff-base`). Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
 - **First run on a busy codebase** with thousands of findings is a waste of CI cycles. Generate a baseline locally first, commit it, and let CI scan against it.
-- **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff-go.yaml`.
+- **Display filters ≠ score filters.** `--show-rule`, `--hide-rule`, `--show-pillar`, and `--hide-pillar` only filter the rendered output. The composite score, exit code, and SARIF results still reflect the full scan. To exclude a rule from execution and scoring, disable it in `.gruff-go.yaml`.

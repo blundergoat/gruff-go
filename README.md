@@ -6,7 +6,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/blundergoat/gruff-go)](https://goreportcard.com/report/github.com/blundergoat/gruff-go)
 [![License: MIT](https://img.shields.io/github/license/blundergoat/gruff-go)](LICENSE)
 
-`gruff-go` is an opinionated, parser-only code-quality scanner for Go, built to govern AI-generated code. It reads Go packages without executing them, scores findings across 11 quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
+`gruff-go` is an opinionated, parser-only code-quality scanner for Go, built to govern AI-generated code. It reads Go packages without executing them, scores findings across 10 quality pillars, and emits reports for terminals, CI annotations, SARIF consumers, static HTML, and a local dashboard.
 
 ## Mission
 
@@ -24,7 +24,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 
 | Field | Value |
 | --- | --- |
-| Release line | Published `0.5.0` package line |
+| Release line | `0.6.0` package line |
 | Runtime | Go `1.25+` |
 | Module | `github.com/blundergoat/gruff-go` |
 | Binary | `gruff-go` |
@@ -35,7 +35,7 @@ gruff is heuristic static analysis, not a proof: it can create the artifact a re
 | Severity gate | `--fail-on` with `advisory`, `warning`, `error`, `none` |
 | Dashboard | `127.0.0.1:8765` by default |
 
-The Release line row names the published package; the schema and severity-gate rows are what this checkout emits, and the move to the `v3` envelopes and the refusal of `--min-severity` land in `0.6.0`. [`CHANGELOG.md`](CHANGELOG.md) records every break under `v0.6.0`, and [`UPGRADING.md`](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) states what each one costs and how to go back.
+[`CHANGELOG.md`](CHANGELOG.md) records every change under `v0.6.0`, and [`UPGRADING.md`](https://github.com/blundergoat/gruff-go/blob/main/UPGRADING.md) states what each breaking change costs and how to go back.
 
 ## Requirements
 
@@ -50,7 +50,7 @@ The project-pinned install flow uses Go's `tool` directive, which needs Go `1.24
 Install as a project-pinned dev tool:
 
 ```bash
-go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.5.0
+go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
 go tool gruff-go init
 go tool gruff-go summary .
 ```
@@ -138,7 +138,9 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 | `1` | At least one finding met `--fail-on`. |
 | `2` | Invalid input or a fatal diagnostic such as config, parse, baseline, path, or diff failure. |
 
-`--fail-on` defaults per command: `advisory` (every finding fails) for `analyse`, `none` (never fails) for `summary` and for the `report` and `dashboard` artifact generators - see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for moderate gating or `error` for the strict gate. **`--min-severity` is refused in 0.6.0**: it gated the exit code in 0.5 and returns in 0.7.0 with the family meaning, filtering which findings are displayed. Passing it to `analyse` or `summary` prints that break and names `--fail-on`.
+`--fail-on` defaults per command: `advisory` (every finding fails) for `analyse`, and `none` (never fails on findings) for `summary`, `report`, and `dashboard` — see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for a moderate gate or `error` for a strict gate.
+
+**`--min-severity` is refused in 0.6.0.** It controlled the exit gate in 0.5 and returns in 0.7.0 as a display-only filter. Passing it to `analyse` or `summary` exits `2` and points you to `--fail-on`.
 
 ## CI Usage
 
@@ -187,7 +189,12 @@ See [`docs/configuration.md`](https://github.com/blundergoat/gruff-go/blob/main/
 
 ## Rules And Pillars
 
-The current checkout contains 78 rules across 10 pillars. 56 rules are enabled by default; the 22 opt-in rules are convention-only naming/modernisation checks, parser-only dead-code candidates, the PII/PHI sensitive-data detectors, the static-analysis-redundant test candidate, seven rules turned off in 0.6.0 because they were right less than half the time on fewer than ten findings, `complexity.cyclomatic`, turned off in 0.6.0 because its findings at one and a half times its limit or more measured below the accuracy floor, and `security.open-redirect-candidate` and `security.request-body-without-limit`, each turned off in 0.6.0 because fewer than ten of its findings remain after its repair, too few to measure.
+`gruff-go` ships 78 rules across 10 pillars: 56 rules are enabled by default and 22 opt-in rules stay off until you enable them in `.gruff-go.yaml`. The opt-in set covers:
+
+- Convention-only naming and modernisation checks, parser-only dead-code candidates, PII/PHI sensitive-data detectors, and the static-analysis-redundant test candidate.
+- Seven rules turned off in 0.6.0 after scoring below 50% accuracy on small samples (fewer than ten findings each).
+- `complexity.cyclomatic`, turned off in 0.6.0 after its upper-band findings measured below the accuracy floor.
+- `security.open-redirect-candidate` and `security.request-body-without-limit`, turned off in 0.6.0 because fewer than ten findings remained after their false-positive fixes (too few to verify precision).
 
 | Pillar | Rules |
 | --- | ---: |
@@ -215,12 +222,7 @@ go tool gruff-go analyse --generate-baseline gruff-baseline.json .
 go tool gruff-go analyse --baseline gruff-baseline.json .
 ```
 
-Matching is one-to-one. Gruff consumes exact rule/file/fingerprint pairs first,
-then pairs remaining modern entries by their line-insensitive contract identity.
-This keeps reviewed findings unchanged after line or measured-value shifts without
-letting one baseline row hide multiple duplicate findings. Older entries without
-`stableIdentity` remain compatible and use exact fingerprint matching only. The
-agent hook uses the same matcher for baseline and git-base new-only filtering.
+Matching is one-to-one. Gruff pairs exact rule, file, and fingerprint matches first, then pairs remaining v3 entries by their line-insensitive stable identity. Reviewed findings stay quiet after line or metric shifts, while one baseline row can never hide multiple duplicate findings. Older entries without `stableIdentity` still match exact fingerprints only. The agent hook uses the same matcher for baseline and git-base new-only filtering.
 
 Changed-region scans use Git only when requested:
 
@@ -247,7 +249,7 @@ In polyglot repositories, `gruff-go`, `gruff-php`, and `gruff-py` all default to
 
 ## Trust Boundary
 
-Default scans are local source inspections. `gruff-go` parses Go source and selected text/config files; it does not execute target code, run tests, call package build scripts, query vulnerability feeds, or replace type-aware tools. Git is invoked only for explicit diff scans. Sensitive-data findings carry a marker, never a payload: the bare `[redacted]`, a fixed category such as `[redacted:aws-access-key]`, or a connection marker naming only its already-public scheme. `gruff-go` emits the most specific marker its detector classified on every path and under every configuration; there is no preview allowlist to leave empty, nonmatching or matching, and no reusable payload bytes.
+Default scans are local source inspections. `gruff-go` parses Go source and selected text or config files; it does not execute target code, run tests, call build scripts, query vulnerability feeds, or replace type-aware tools. Git runs only for explicit diff scans. Sensitive-data findings emit a zero-payload marker — never raw secret bytes — such as `[redacted]`, `[redacted:aws-access-key]`, or a public scheme marker like `[redacted:connection-string:postgres]`. The most specific safe marker always prints automatically, with no preview allowlist to configure.
 
 ## Stability Contract
 

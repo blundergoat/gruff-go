@@ -166,6 +166,37 @@ func TestPrivateKeyRuleKeepsEmbeddedBodyVisible(t *testing.T) {
 	}
 }
 
+// TestPrivateKeyRuleAcceptsNormalizedCallerRewrap confirms stripping matching BEGIN/END markers and line breaks
+// before re-wrapping a caller parameter yields no warning, while non-empty substitution still reports.
+func TestPrivateKeyRuleAcceptsNormalizedCallerRewrap(t *testing.T) {
+	safe := parseOne(t, "service_account.go", privateKeyTestSource(`package vertex
+import "strings"
+func rewrap(privateKeyPEM string) []byte {
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "{{PRIVATE}}", "")
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "{{END_PRIVATE}}", "")
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "\r", "")
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "\n", "")
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "\\n", "")
+	privateKeyPEM = strings.TrimSpace(privateKeyPEM)
+	return []byte("{{PRIVATE}}\n" + privateKeyPEM + "\n{{END_PRIVATE}}")
+}
+`))
+	if findings := (PrivateKeyRule{}).AnalyzeUnit(safe, Context{}); len(findings) != 0 {
+		t.Fatalf("normalized caller re-wrap findings = %#v, want none", findings)
+	}
+
+	substituted := parseOne(t, "service_account.go", privateKeyTestSource(`package vertex
+import "strings"
+func rewrap(privateKeyPEM string) []byte {
+	privateKeyPEM = strings.ReplaceAll(privateKeyPEM, "\n", "AUTHOREDKEYBYTES")
+	return []byte("{{PRIVATE}}\n" + privateKeyPEM + "\n{{END_PRIVATE}}")
+}
+`))
+	if findings := (PrivateKeyRule{}).AnalyzeUnit(substituted, Context{}); len(findings) != 1 {
+		t.Fatalf("non-empty replacement findings = %#v, want one", findings)
+	}
+}
+
 // TestPrivateKeyRuleKeepsWarningWithoutGoSyntax models an over-budget Go scan with source text but no AST.
 // A developer still gets the warning because the scanner cannot establish what the regexp-like text means.
 func TestPrivateKeyRuleKeepsWarningWithoutGoSyntax(t *testing.T) {

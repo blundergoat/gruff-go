@@ -1,6 +1,6 @@
 # Contributing to gruff-go
 
-Thanks for considering a contribution. `gruff-go` is pre-1.0; this source tree currently reports gruff-go version `0.6.0`. The surface is small enough that focused PRs land quickly. This page covers the dev loop, the test gates the project expects to stay green, and a few conventions worth knowing before you open a change.
+Thanks for considering a contribution. `gruff-go` is pre-1.0 (currently at `0.6.0`) and small enough that focused PRs land quickly. This page covers the dev loop, the test gates that must stay green, and the conventions worth knowing before you open a change.
 
 ## Prerequisites
 
@@ -60,13 +60,13 @@ All current rules run at the parser layer (the `parser` capability). Rules opera
 Run the full sweep before pushing:
 
 ```bash
-make check    # gofmt -d, go vet ./..., go test ./...
+make check    # gofmt -l, go vet ./..., go test ./...
 ```
 
 ## Adding a rule
 
 1. Read `internal/rule/builtin.go`, `internal/rule/expansion.go`, and the rule-specific files (`naming_*.go`, `sensitive.go`, `composite.go`, `comment_rubric.go`) for the existing patterns. Pick the file whose pillar the new rule fits.
-2. Implement the rule type with `Definition() Definition` and either `AnalyzeUnit(unit parser.Unit, ctx Context)` or a project-level analyzer. Rules ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md) unless they would dominate a default scan, which is why 61 of the 80 shipped rules are enabled by default; pick a default severity that won't push existing CI gates into a stricter bucket for an unrelated codebase. Default `--fail-on` is `advisory` (every finding can fail the run), so most new naming/test-quality rules ship at `advisory` and only escalate to `warning` or `error` when the failure mode is unambiguous.
+2. Implement the rule type with `Definition() Definition` and either `AnalyzeUnit(unit parser.Unit, ctx Context)` or a project-level analyzer. Rules ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md) unless they would dominate a default scan (56 of the 78 shipped rules are enabled by default); pick a default severity that won't push existing CI gates into a stricter bucket for an unrelated codebase. Default `--fail-on` is `advisory` (every finding can fail the run), so most new naming and test-quality rules ship at `advisory` and only escalate to `warning` or `error` when the failure mode is unambiguous.
 3. Register the rule in `Defaults()` (`internal/rule/defaults.go`) so `list-rules` picks it up.
 4. Add paired firing and remediation-clearability fixtures in `internal/rule/*_test.go`, plus known false-positive shapes and mitigations in the rule definition.
 5. Update [`docs/rules.md`](docs/rules.md) and `.gruff-go.yaml` so dogfood reflects the new policy.

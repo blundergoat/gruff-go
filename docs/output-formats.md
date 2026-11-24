@@ -216,9 +216,7 @@ therefore retain the analysis values for the same run.
 
 ## `sarif`
 
-Configured exclusion audit rows appear in Markdown under **Suppressions** and in SARIF under `runs[].properties.suppressions`.
-
-SARIF 2.1.0. Compatible with [GitHub Code Scanning](https://docs.github.com/en/code-security/code-scanning), [GitLab SAST integration](https://docs.gitlab.com/ee/user/application_security/sast/), and any other SARIF consumer.
+SARIF 2.1.0, compatible with [GitHub Code Scanning](https://docs.github.com/en/code-security/code-scanning), [GitLab SAST integration](https://docs.gitlab.com/ee/user/application_security/sast/), and any other SARIF consumer.
 
 ```bash
 gruff-go analyse --format sarif . > gruff-go.sarif
@@ -226,12 +224,13 @@ gruff-go analyse --format sarif . > gruff-go.sarif
 
 The output includes:
 
-- `runs[].tool.driver` with the resolved rule registry (one `rules[]` entry per rule active for the run, including pillar / severity / confidence / capability / tags via `properties`).
+- `runs[].tool.driver` with the resolved rule registry (one `rules[]` entry per active rule, carrying pillar, severity, confidence, capability, and tags under `properties`).
+- `runs[].properties.suppressions` carrying configured exclusion and built-in/inline suppression audit rows.
 - `runs[].results` with one entry per finding, mapping severity to SARIF `level`:
   - `error` → `error`
   - `warning` → `warning`
   - `advisory` → `note`
-- `partialFingerprints.gruffFingerprint` carries the gruff-go fingerprint so consumers can match findings across runs. A `sensitive-data.*` result carries no `partialFingerprints` and no `properties.fingerprint`: a code-scanning system would keep either as a durable name for a secret.
+- `partialFingerprints.gruffFingerprint` carrying the durable gruff-go identity so consumers match findings across runs. `sensitive-data.*` results omit `partialFingerprints` and `properties.fingerprint` so code-scanning systems never store a durable fingerprint for a secret.
 
 Upload via GitHub Actions:
 
@@ -304,18 +303,16 @@ Even without flags, the HTML report includes:
 
 - Masthead with the run inputs, scope, format, fail-on threshold, and tool version.
 - Verdict block with the tilted grade stamp (`A` through `F` plus numeric composite) and a data-driven subtitle.
-- Score coverage caveat when the grade is clean or driven by only one or two score-impacting pillars.
+- Score coverage caveat when the grade is clean, driven by one or two score-impacting pillars, or an `A`/`B` composite averaging any failing (`F`) pillar.
 - Per-pillar grade grid with severity breakdowns.
 - Top-offender file table with cyclomatic, finding count, penalty, and grade per file.
 - Cyclomatic distribution histogram with a one-line finding-only summary.
 - Findings list grouped by document order.
-- Footer with version + schema metadata.
-
-`design.*` composite findings appear in the findings list and summary counts, but they do not contribute to per-pillar grades, top-offender penalties, or the numeric composite score.
+- Footer with version and schema metadata.
 
 ## `markdown`
 
-CommonMark-flavoured markdown digest tuned for CI logs and GitHub PR comments. Use `--format markdown` (or the `md` alias) to emit a short header, severity totals, the canonical Pillars table, and a compact top-rules block.
+CommonMark-flavoured markdown digest tuned for CI logs and GitHub PR comments. Use `--format markdown` (or the `md` alias) to emit a short header, severity totals, the canonical Pillars table, a compact top-rules block, and (when exclusions apply) a **Suppressions** section.
 
 ```bash
 gruff-go analyse --format markdown . > gruff-report.md

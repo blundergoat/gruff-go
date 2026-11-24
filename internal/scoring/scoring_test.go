@@ -5,6 +5,7 @@
 package scoring
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
@@ -43,6 +44,29 @@ func TestCalculateScoresFindings(t *testing.T) {
 	}
 	if len(score.TopOffender) != 2 || score.TopOffender[0].Penalty < score.TopOffender[1].Penalty {
 		t.Fatalf("top offenders not sorted: %#v", score.TopOffender)
+	}
+}
+
+// TestCalculateCaveatNamesFailingPillarInsideHighComposite confirms an A or B composite flags any F pillar in Coverage.Caveat
+// without altering composite arithmetic, while leaving non-F caveats unchanged.
+func TestCalculateCaveatNamesFailingPillarInsideHighComposite(t *testing.T) {
+	registeredPillars := registeredRuleBackedPillars(t)
+	findings := make([]finding.Finding, 0, 20)
+	for index := 0; index < 20; index++ {
+		findings = append(findings, finding.Finding{
+			File:       "doc.go",
+			Severity:   finding.SeverityAdvisory,
+			Confidence: finding.ConfidenceMedium,
+			Pillar:     finding.PillarDocumentation,
+		})
+	}
+	score := Calculate(findings, 1, registeredPillars...)
+	if score.Grade == nil || *score.Grade != "A" {
+		t.Fatalf("grade = %v, want A across clean rule-backed pillars", score.Grade)
+	}
+	wantFragment := "Grade A averages higher-scoring pillars alongside failing (F) pillar: documentation."
+	if !strings.Contains(score.Coverage.Caveat, wantFragment) {
+		t.Fatalf("caveat = %q, want failing-pillar note %q", score.Coverage.Caveat, wantFragment)
 	}
 }
 

@@ -109,7 +109,14 @@ Through `0.5` this key carried the per-command exit gate as a map. That shape no
 
 ### `paths.ignore`
 
-A list of additional path prefixes or globs to skip during discovery. VCS internals (`.git/`, `.hg/`, `.svn/`) are always blocked. Third-party copies, build output and minified files are skipped at any depth and in any letter case, even under a `.gitignore`: directories named `vendor`, `vendors`, `third_party`, `third-party` or `bower_components` (reason `dependency`) or `dist` (reason `build-output`), and files with `.min.` directly before the final extension, such as `jquery.min.js` (reason `generated`). When no `.gitignore` governs a candidate, the family fallback also skips `.fleet/`, `.idea/`, `.vscode/`, `build/`, `coverage/`, and `node_modules/` at any depth; any `.gitignore` from the scan root through the candidate's parent takes ownership of those non-VCS names. Committed control metadata such as `.agents/`, `.claude/`, `.codex/`, `.github/`, and `.goat-flow/` remains scannable unless Git or this config excludes it. Explicit supported files and `--include-ignored` bypass Git, third-party and fallback exclusions, but never VCS internals or `paths.ignore`. Generated Go files whose leading comments contain both `generated` and `DO NOT EDIT` retain their existing generated-file handling.
+Additional path prefixes or globs to skip during discovery. Built-in discovery exclusions follow four layers:
+
+- **Always blocked:** VCS internals (`.git/`, `.hg/`, `.svn/`). Neither explicit file operands nor `--include-ignored` bypass these or `paths.ignore`.
+- **Skipped at any depth (even under `.gitignore`):** third-party copies (`vendor`, `vendors`, `third_party`, `third-party`, `bower_components`, reason `dependency`), build output (`dist`, reason `build-output`), and minified files with `.min.` before the final extension such as `jquery.min.js` (reason `generated`).
+- **Fallback when no `.gitignore` governs the path:** `.fleet/`, `.idea/`, `.vscode/`, `build/`, `coverage/`, and `node_modules/`. Any `.gitignore` from the scan root to the file's parent takes ownership of these names. Committed control metadata (`.agents/`, `.claude/`, `.codex/`, `.github/`, `.goat-flow/`) remains scannable unless Git or `paths.ignore` excludes it.
+- **Generated Go files:** skipped when leading comments contain both `generated` and `DO NOT EDIT` (case-insensitive).
+
+Explicit supported file operands and `--include-ignored` bypass Git, third-party, generated, and fallback skips, while `paths.ignore` and VCS internals always apply.
 
 ```yaml
 paths:
@@ -119,7 +126,7 @@ paths:
     - "api/*_pb.go"
 ```
 
-Patterns are repository-relative slash paths; a leading `./` is normalised away. Exact paths and segment globs use Go's `path.Match` semantics, so `*.go` matches a root file but not `pkg/main.go`, and `api/*.go` does not cross another `/`. A single trailing `/**` matches the named directory and every descendant. A trailing slash is exactly equivalent shorthand: `internal/generated/` and `internal/generated/**` make the same decision in directory walks, explicit-file scans, diff modes, `check-ignore`, and secret-preview authorisation.
+Patterns are repository-relative slash paths (a leading `./` is normalised away). Exact paths and segment globs use Go's `path.Match` rules, so `*.go` matches a root file but not `pkg/main.go`, and `api/*.go` never crosses another `/`. A trailing `/**` or trailing `/` matches the directory and every descendant across directory walks, explicit file operands, diff modes, and `check-ignore`.
 
 Config validation rejects empty or escaping patterns, POSIX-absolute paths, Windows drive-qualified or backslash-containing paths, malformed glob classes, and `**` anywhere except one trailing recursive suffix. General recursive-glob forms such as `**/*.go` and `pkg/**/generated.go` are not accepted.
 
@@ -146,30 +153,17 @@ Entries are case-insensitive: `ID` and `id` resolve to the same allowlist key. T
 
 ### Sensitive-data markers are not configurable
 
-A sensitive-data finding carries a marker, never a payload: the bare `[redacted]`, a fixed category such as
-`[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:email]` or `[redacted:ssn]`, or a connection
-marker naming only its already-public scheme (`[redacted:connection-string:postgres]`). Generic-assignment and
-entropy findings are always `[redacted]`, because they classify nothing the user can act on.
+Sensitive-data findings emit a zero-payload marker, never raw secret bytes: bare `[redacted]`, a fixed category such as `[redacted:aws-access-key]`, `[redacted:private-key]`, `[redacted:email]`, or `[redacted:ssn]`, or a public scheme marker (`[redacted:connection-string:postgres]`). Generic secret-pattern findings always emit `[redacted]`.
 
-gruff-go emits the most specific marker its detector already classified, on every path and under every
-configuration. FAMILY-CONTRACT.md section 5 ratifies that: every marker is zero-payload by construction, so gating
-one behind configuration bought no confidentiality. The 0.5 key `allowlists.secretPreviews` is therefore removed,
-and a configuration carrying it — even as an empty list — is refused with that explanation rather than silently
-ignored. `gruff-go migrate-config` deletes it.
+`gruff-go` always prints the most specific safe marker its detector classified. Because every marker is zero-payload by construction (FAMILY-CONTRACT.md section 5), the 0.5 key `allowlists.secretPreviews` was removed; any config carrying it — even as an empty list — exits `2`. Run `gruff-go migrate-config` to remove it.
 
-No marker exposes provider payload characters, JWT segments, private-key bytes, connection user, password, host,
-path or query, or PII/PHI identifier characters. GCP primary and secondary fields are marked independently.
+No marker exposes provider payload characters, JWT segments, private-key bytes, connection user, password, host, path, query, or PII/PHI digits. GCP primary and secondary fields are marked independently.
 
 ### `sensitiveExclusions`
 
-The only setting that suppresses a sensitive-data finding. It is a separate top-level
-section rather than an option on `selection` or `rules` so the ban on matching a
-finding's message or value is structural: there is no key to add it back.
+The only config setting that suppresses a sensitive-data finding. Keeping it as a separate top-level section ensures suppressions never match a finding's message or secret value.
 
-Two built-in skips also hide findings, and count each one in `suppressions`:
-the entropy rule in package-manager lockfiles, and every sensitive-data and
-security rule in test, fixture and example files. A configured entry
-applies before either, so a finding it claims is counted under the entry.
+One built-in skip also hides findings and counts each skip in `suppressions`: every sensitive-data and security rule skips test, fixture, and example files. A configured `sensitiveExclusions` entry runs first, so any finding it matches is counted under your entry.
 
 ```yaml
 sensitiveExclusions:
@@ -252,7 +246,7 @@ Per-rule overrides. Every field is optional:
 - `severity` - one of `advisory`, `warning`, or `error`. The vocabulary collapsed from the previous five-bucket scale in v0.2.0 (ADR-009); old names (`critical`, `high`, `medium`, `low`, `info`, `notice`, `warn`) are rejected at load.
 - `options` - opaque per-rule map for rules with bespoke options.
 
-Default size rules have one built-in calibration: when a size rule's default severity is warning or error, findings in `_test.go` files are still emitted with the same threshold, message, metadata, and fingerprint identity, but report as `advisory` severity / `medium` confidence. This keeps long table-driven or integration tests visible without making them equivalent to production size debt. Advisory defaults are already softened, and any configured `severity` applies to test files as configured and disables the downranking for the overridden rule.
+Default size rules have one built-in test calibration: when a size rule defaults to `warning` or `error`, findings in `_test.go` files keep the same threshold, message, metadata, fingerprint identity, and catalogue confidence, but soften severity to `advisory`. That keeps long table-driven or integration tests visible without weighing them like production debt. Advisory defaults are already advisory, and setting an explicit `severity` in config applies as configured and disables test softening for that rule.
 
 Examples:
 

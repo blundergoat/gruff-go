@@ -1,7 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
 //
 // This file tests docs.missing-param-doc and docs.missing-return-doc across callable forms, skipped handles, result shapes and natural prose.
-// A failure means users who enable either rule would get wrong or missing doc findings, or a default scan would start reporting them.
+// A failure means default scans would report wrong or missing callable documentation findings.
 package rule
 
 import (
@@ -161,6 +161,53 @@ func handle(int, string) {}
 	}
 }
 
+// TestMissingParamDocRuleMatchesMeaningfulTokensAndSuffixes confirms camelCase and snake_case tokens match
+// singular or plural prose and ignore trailing boilerplate suffixes when preceded by a stem, while standalone
+// short names and partially mentioned parameters still report.
+func TestMissingParamDocRuleMatchesMeaningfulTokensAndSuffixes(t *testing.T) {
+	findings := analyseMissingParamDoc(t, "auth/auth.go", `package auth
+
+// IsEmailAllowed checks if an email is in the allowed list.
+// It checks both specific email addresses and domain patterns.
+func IsEmailAllowed(email string, allowedEmails, allowedDomains []string) bool { return false }
+
+// envString reads the key from the environment, returning the default if unset.
+func envString(keyStr string, defaultVal string, tagList []string, headerMap map[string]string) string { return defaultVal }
+
+// applyTags attaches tags and headers to the items.
+func applyTags(tagList []string, headerMap map[string]string, itemSlice []string) {}
+
+// lookupUser reads the user id from storage.
+func lookupUser(user_id string) string { return user_id }
+
+// deleteArticles removes the given article IDs.
+func deleteArticles(articleIDs []int, articleIDsList []int) {}
+
+// ValidateGoogleIDToken validates a Google ID token and returns the claims.
+func ValidateGoogleIDToken(idToken, clientID string) error { return nil }
+
+// Clamp bounds the input within the allowed range.
+func Clamp(val int) int { return val }
+
+// ListAllArticles returns all articles including drafts.
+func ListAllArticles(queries any) {}
+`)
+	want := []string{
+		`doc comment on function "envString" does not name parameters "tagList", "headerMap"`,
+		`doc comment on function "ValidateGoogleIDToken" does not name parameter "clientID"`,
+		`doc comment on function "Clamp" does not name parameter "val"`,
+		`doc comment on function "ListAllArticles" does not name parameter "queries"`,
+	}
+	if len(findings) != len(want) {
+		t.Fatalf("findings = %#v, want %d findings %q", findings, len(want), want)
+	}
+	for index, message := range want {
+		if findings[index].message != message {
+			t.Fatalf("findings[%d] = %q, want %q", index, findings[index].message, message)
+		}
+	}
+}
+
 // TestMissingParamDocRuleLeavesUndocumentedCallablesToOtherRules confirms a callable with no doc comment,
 // or one that only repeats its name, is not reported by this rule.
 func TestMissingParamDocRuleLeavesUndocumentedCallablesToOtherRules(t *testing.T) {
@@ -289,5 +336,40 @@ func Parse(text string) (string, error) { return text, nil }
 	assertReturnDocMessages(t, findings, []string{
 		`doc comment on function "Load" does not describe the returned value`,
 		`doc comment on function "Parse" does not say when an error is returned`,
+	})
+}
+
+// TestMissingReturnDocRuleAcceptsIdiomaticGoVerbs confirms third-person Go doc verbs satisfy value prose
+// while keeping error-clause separation intact for both error-only objects and missing failure descriptions.
+func TestMissingReturnDocRuleAcceptsIdiomaticGoVerbs(t *testing.T) {
+	findings := analyseMissingReturnDoc(t, "config/config.go", `package config
+
+// newDefaultConfig creates a Config with sensible defaults.
+func newDefaultConfig() string { return "" }
+
+// IsEmailAllowed checks if an email is in the allowed list.
+func IsEmailAllowed(email string) bool { return email != "" }
+
+// envStringList parses a comma-separated list from an environment variable.
+func envStringList(key string) []string { return nil }
+
+// toResponse converts a row into an API payload.
+func toResponse(row string) string { return row }
+
+// mergeSettings merges environment values with defaults.
+func mergeSettings(env string) string { return env }
+
+// fetchAccount fetches the account record and fails when the lookup misses.
+func fetchAccount(id string) (string, error) { return id, nil }
+
+// parsePositive parses a positive integer from an environment variable.
+func parsePositive(key string) (int, error) { return 0, nil }
+
+// newError creates an error when the input is blank.
+func newError(input string) (string, error) { return input, nil }
+`)
+	assertReturnDocMessages(t, findings, []string{
+		`doc comment on function "parsePositive" does not say when an error is returned`,
+		`doc comment on function "newError" does not describe the returned value`,
 	})
 }

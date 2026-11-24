@@ -52,13 +52,7 @@ func TestDocsRulesPrecisionGuidanceMatchesRegistry(t *testing.T) {
 		if sectionStart < 0 {
 			t.Fatalf("docs/rules.md missing section for %s", definition.ID)
 		}
-		sectionEnd := strings.Index(docs[sectionStart+len(heading):], "\n### `")
-		// The last rule section has no next heading, so it runs to the end of docs/rules.md.
-		if sectionEnd < 0 {
-			sectionEnd = len(docs)
-		} else {
-			sectionEnd += sectionStart + len(heading)
-		}
+		sectionEnd := nextDocSectionEnd(docs, sectionStart+len(heading))
 		section := docs[sectionStart:sectionEnd]
 		for _, knownShape := range definition.FalsePositiveShapes {
 			if !strings.Contains(section, knownShape.Shape) || !strings.Contains(section, knownShape.Mitigation) {
@@ -66,6 +60,19 @@ func TestDocsRulesPrecisionGuidanceMatchesRegistry(t *testing.T) {
 			}
 		}
 	}
+}
+
+// nextDocSectionEnd returns the end index of a per-rule section starting after its heading at offset in docs.
+// It stops at the earliest following rule heading ("\n### `") or level-2 heading ("\n## "), or len(docs) when neither follows.
+func nextDocSectionEnd(docs string, offset int) int {
+	rest := docs[offset:]
+	end := len(docs)
+	for _, marker := range []string{"\n### `", "\n## "} {
+		if index := strings.Index(rest, marker); index >= 0 && offset+index < end {
+			end = offset + index
+		}
+	}
+	return end
 }
 
 // repoRootForTest walks upward from the package test directory to locate files that live at repository root.

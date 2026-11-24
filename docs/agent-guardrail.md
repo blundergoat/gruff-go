@@ -106,19 +106,15 @@ gruff-go analyse --generate-baseline gruff-baseline.json .
 gruff-go analyse --baseline gruff-baseline.json --fail-on advisory .
 ```
 
-Baseline and hook new-only filtering share one matcher: exact fingerprints pair
-first, then remaining contract-stable identities pair one-to-one. A reviewed
-finding can move without resurfacing, but one prior occurrence cannot hide
-multiple duplicate issues. Legacy baseline rows without `stableIdentity` remain
-exact-only.
+Baseline and hook new-only filtering share one matcher: exact fingerprints pair first, then remaining stable identities pair one-to-one. A reviewed finding can move lines without resurfacing, and one baseline entry can never hide multiple duplicate issues. Legacy rows without `stableIdentity` remain exact-only.
 
 ## How the rules serve the mission
 
 | Axis | What enforces it |
 | --- | --- |
-| Legible enough to verify | `size.*`, `complexity.*`, and `docs.*` - especially `docs.comment-rubric` with `minWordsBeyondSymbol` set, which rejects name-restatement comments so a doc actually states intent a reviewer can check against the code. |
+| Legible enough to verify | `size.*`, `complexity.*`, and `docs.*` — including `docs.comment-rubric` with `minWordsBeyondSymbol` set (rejecting name-restatement comments) and `docs.missing-param-doc` / `docs.missing-return-doc` so comments state intent a reviewer can verify against the code. |
 | Secure where the eye fails | the `security.*` and `sensitive-data.*` pillars. |
-| Tested for real, not padded | `test-quality.*` - `no-failure-path`, `empty-test`, the skip and sleep checks - which reject assertion-free and ceremony tests. |
+| Tested for real, not padded | `test-quality.*` — `empty-test`, `duplicate-test-body`, `sleep-in-test`, `helper-missing-t-helper`, `tempdir-misuse`, and `fatal-in-goroutine` — which catch empty, duplicated, flaky, and misstructured tests. |
 
 Tune these in [Configuration](configuration.md); the full catalogue is in
 [Rules](rules.md).

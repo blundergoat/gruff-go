@@ -122,6 +122,9 @@ func WriteSummaryText(writer io.Writer, report analysis.Report, opts SummaryOpti
 			return err
 		}
 	}
+	if err := writeAllIgnoredHint(writer, report); err != nil {
+		return err
+	}
 	if opts.ScanDuration > 0 {
 		if _, err := fmt.Fprintf(writer, "scan time: %s\n", summaryDuration(opts.ScanDuration)); err != nil {
 			return err

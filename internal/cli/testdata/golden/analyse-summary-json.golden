@@ -1289,7 +1289,7 @@
       "contributingPillars": [
         "complexity"
       ],
-      "caveat": "Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage."
+      "caveat": "Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage. Grade A averages higher-scoring pillars alongside failing (F) pillar: complexity."
     },
     "evaluatedFiles": 1,
     "pillars": [

@@ -239,13 +239,14 @@ func isPrivateKeyPayloadName(expression ast.Expr, binding *ast.Object) bool {
 	return isName && name.Obj == binding
 }
 
-// isCallerMarkerStrip recognizes a native string operation that only removes the opening marker from the wrapped parameter.
+// isCallerMarkerStrip recognizes a native string operation that only removes PEM delimiters or line breaks from the wrapped parameter.
 //
 // An unrelated replacement or a shadowed package may introduce authored data and keeps the warning.
 //
-// expression is the right-hand side assigned to the payload, binding is that parameter's object, and marker is the header it must remove.
+// expression is the right-hand side assigned to the payload, binding is that parameter's object, and marker is the header it may remove.
 // stringsImports holds the file's local names for the strings package, so a shadowed or unrelated package name never qualifies.
-// It returns true for ReplaceAll with an empty replacement, TrimPrefix or TrimSuffix of binding by exactly marker, and false otherwise.
+// It returns true for TrimSpace, or for ReplaceAll with an empty replacement, TrimPrefix, or TrimSuffix of binding by marker,
+// its matching END footer, or newline/whitespace literals, and false otherwise.
 func isCallerMarkerStrip(expression ast.Expr, binding *ast.Object, marker string, stringsImports map[string]bool) bool {
 	call, isCall := expression.(*ast.CallExpr)
 	// Only a direct native string call establishes that the parameter remains caller-derived.
@@ -259,13 +260,19 @@ func isCallerMarkerStrip(expression ast.Expr, binding *ast.Object, marker string
 	}
 	packageName, isPackageName := selector.X.(*ast.Ident)
 	// A shadowed or absent import cannot prove what the operation does to the payload.
-	if !isPackageName || packageName.Obj != nil || !stringsImports[packageName.Name] || len(call.Args) < 2 ||
+	if !isPackageName || packageName.Obj != nil || !stringsImports[packageName.Name] || len(call.Args) == 0 ||
 		!isPrivateKeyPayloadName(call.Args[0], binding) {
 		return false
 	}
+	if selector.Sel.Name == "TrimSpace" && len(call.Args) == 1 {
+		return true
+	}
+	if len(call.Args) < 2 {
+		return false
+	}
 	delimiter, isDelimiter := stringLiteral(call.Args[1])
-	// The strip must remove this marker, rather than adding or substituting other text.
-	if !isDelimiter || delimiter != marker {
+	// The strip must remove only this marker, its matching footer, or line-break whitespace, never arbitrary text.
+	if !isDelimiter || !isPrivateKeyNormalizationDelimiter(delimiter, marker) {
 		return false
 	}
 	// ReplaceAll is safe only with an empty replacement; the trim calls have no replacement argument.
@@ -274,6 +281,20 @@ func isCallerMarkerStrip(expression ast.Expr, binding *ast.Object, marker string
 		return isReplacement && replacement == ""
 	}
 	return len(call.Args) == 2 && (selector.Sel.Name == "TrimPrefix" || selector.Sel.Name == "TrimSuffix")
+}
+
+// isPrivateKeyNormalizationDelimiter reports whether delimiter is marker, its matching END footer, or line-break/space normalization text.
+// Only these fixed cleanup strings are accepted when stripping a caller-supplied PEM payload with an empty replacement.
+func isPrivateKeyNormalizationDelimiter(delimiter string, marker string) bool {
+	if delimiter == marker || delimiter == strings.Replace(marker, "-----BEGIN ", "-----END ", 1) {
+		return true
+	}
+	switch delimiter {
+	case "\r", "\n", "\r\n", `\n`, `\r`, `\r\n`, " ":
+		return true
+	default:
+		return false
+	}
 }
 
 // functionParameterObjects collects the named parameters of every function in the file for the bounded PEM re-wrap check.

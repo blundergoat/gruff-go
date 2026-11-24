@@ -170,6 +170,35 @@ func TestSummaryCommandShowsGitignoredCount(t *testing.T) {
 	if !strings.Contains(out.String(), "ignored by .gitignore: 1") {
 		t.Fatalf("summary missing gitignored count; got: %s", out.String())
 	}
+	if strings.Contains(out.String(), "hint: every target path was skipped") {
+		t.Fatalf("summary printed all-ignored hint even though main.go was scanned; got: %s", out.String())
+	}
+}
+
+// TestSummaryAndAnalysePrintHintWhenEveryTargetIgnored verifies both text commands explain when ignore rules skip every target path.
+func TestSummaryAndAnalysePrintHintWhenEveryTargetIgnored(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".gitignore", "nested/\n")
+	writeFile(t, root, "nested/main.go", "// Package main is a fixture.\npackage main\n\nfunc main() {}\n")
+	t.Chdir(root)
+
+	wantHint := "hint: every target path was skipped by ignore rules; run from the target directory, pass --include-ignored, or inspect with gruff-go check-ignore"
+	cases := []struct {
+		command  string
+		wantExit int
+	}{
+		{command: "summary", wantExit: 0},
+		{command: "analyse", wantExit: 2},
+	}
+	for _, tc := range cases {
+		var out, errBuf bytes.Buffer
+		if code := Main([]string{tc.command, "nested"}, &out, &errBuf); code != tc.wantExit {
+			t.Fatalf("%s exit = %d, want %d; stderr = %s", tc.command, code, tc.wantExit, errBuf.String())
+		}
+		if !strings.Contains(out.String(), wantHint) {
+			t.Fatalf("%s missing all-ignored hint; got:\n%s", tc.command, out.String())
+		}
+	}
 }
 
 // TestSummaryCommandSuggestsGeneratedBaseline checks the text-only fresh-start hint a first summary prints for existing debt.

@@ -204,6 +204,7 @@ func Calculate(findings []finding.Finding, evaluatedFiles int, ruleBackedPillars
 	scoredPillars := sortedPillarNames(compositePillars)
 	scored := scorePillars(scoredPillars, pillarCounts, pillarPenalty, evaluatedFiles)
 	evaluated := evaluatedFiles
+	pillarDetails := collectPillarDetails(pillarCounts)
 	score := Score{
 		// The denominator is published even when it is zero, so a reader sees that nothing was evaluated.
 		// A missing key would be indistinguishable from a port that never computed one.
@@ -212,8 +213,7 @@ func Calculate(findings []finding.Finding, evaluatedFiles int, ruleBackedPillars
 		RuleAttribution:             collectRuleAttribution(findings, penalties),
 		Pillars:                     scored.findingBearing,
 		ScoredPillars:               scoredPillars,
-		PillarDetails:               collectPillarDetails(pillarCounts),
-		Coverage:                    scoreCoverage(pillarPenalty),
+		PillarDetails:               pillarDetails,
 		TopOffender:                 topOffenders(filePenalty, fileFindings, fileMaxCyclomatic),
 		ComplexityDistribution:      complexityFindingDistribution(findings),
 		ComplexityDistributionScope: complexityDistributionScopeFindingOnly,
@@ -222,6 +222,7 @@ func Calculate(findings []finding.Finding, evaluatedFiles int, ruleBackedPillars
 	// With nothing evaluated or no reachable pillar, Composite and Grade stay nil rather than a perfect score.
 	// Running gruff-go analyse on a directory with no Go files lands here, so an empty directory never grades A.
 	if scored.count == 0 {
+		score.Coverage = scoreCoverage(pillarPenalty, "", nil)
 		return score
 	}
 
@@ -229,6 +230,7 @@ func Calculate(findings []finding.Finding, evaluatedFiles int, ruleBackedPillars
 	compositeGrade := grade(compositeScore)
 	score.Composite = &compositeScore
 	score.Grade = &compositeGrade
+	score.Coverage = scoreCoverage(pillarPenalty, compositeGrade, pillarDetails)
 	return score
 }
 
@@ -314,9 +316,10 @@ func complexityFindingDistribution(findings []finding.Finding) map[string]int {
 
 // scoreCoverage names the pillars responsible for deductions and any evidence caveat.
 //
-// pillarPenalty maps each pillar with score-impacting findings to its weight, and only its keys are read.
-// It returns those pillars sorted as ContributingPillars, with a Caveat when none or one or two contribute and no Caveat for three or more.
-func scoreCoverage(pillarPenalty map[string]float64) ScoreCoverage {
+// pillarPenalty maps each pillar with score-impacting findings to its weight, compositeGrade is the headline grade when evaluated,
+// and pillarDetails holds per-pillar grades used to flag any failing (F) pillar inside an A or B composite.
+// It returns those pillars sorted as ContributingPillars, keeping existing caveat prose unchanged when no pillar grades F.
+func scoreCoverage(pillarPenalty map[string]float64, compositeGrade string, pillarDetails []PillarDetail) ScoreCoverage {
 	pillars := make([]string, 0, len(pillarPenalty))
 	for pillar := range pillarPenalty {
 		pillars = append(pillars, pillar)
@@ -333,7 +336,33 @@ func scoreCoverage(pillarPenalty map[string]float64) ScoreCoverage {
 			pluralise(len(pillars), "pillar", "pillars"),
 		)
 	}
+	failing := failingPillarNames(pillarDetails)
+	if (compositeGrade == "A" || compositeGrade == "B") && len(failing) > 0 {
+		note := fmt.Sprintf(
+			"Grade %s averages higher-scoring pillars alongside failing (F) %s: %s.",
+			compositeGrade,
+			pluralise(len(failing), "pillar", "pillars"),
+			strings.Join(failing, ", "),
+		)
+		if coverage.Caveat == "" {
+			coverage.Caveat = "Composite " + strings.ToLower(note[:1]) + note[1:]
+		} else {
+			coverage.Caveat += " " + note
+		}
+	}
 	return coverage
+}
+
+// failingPillarNames returns the sorted names of evaluated pillars in pillarDetails whose grade is F, or an empty slice when none fail.
+func failingPillarNames(pillarDetails []PillarDetail) []string {
+	failing := []string{}
+	for _, detail := range pillarDetails {
+		if detail.Grade != nil && *detail.Grade == "F" {
+			failing = append(failing, detail.Pillar)
+		}
+	}
+	slices.Sort(failing)
+	return failing
 }
 
 // pluralise returns singular when count is exactly one and plural for any other count, including zero.

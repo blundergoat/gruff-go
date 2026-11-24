@@ -162,6 +162,9 @@ func writeTextHeader(writer io.Writer, report analysis.Report) error {
 			return err
 		}
 	}
+	if err := writeAllIgnoredHint(writer, report); err != nil {
+		return err
+	}
 	if report.DisplayFilter.Applied {
 		if _, err := fmt.Fprintf(writer, "display filter: %d findings hidden; score and exit use full scan\n", report.DisplayFilter.HiddenFindings); err != nil {
 			return err
@@ -246,6 +249,26 @@ func countGitignored(skipped []analysis.SkippedPath) int {
 		}
 	}
 	return gitignoredCount
+}
+
+// writeAllIgnoredHint writes a recovery hint to writer when report evaluated zero files because ignore rules skipped every target.
+// It prints nothing when any file was scanned or no skip came from .gitignore or paths.ignore, returning any write error.
+func writeAllIgnoredHint(writer io.Writer, report analysis.Report) error {
+	if report.Summary.FilesScanned > 0 || report.Summary.FilesSkipped == 0 || !hasIgnoreRuleSkip(report.Paths.Skipped) {
+		return nil
+	}
+	_, err := fmt.Fprintln(writer, "  hint: every target path was skipped by ignore rules; run from the target directory, pass --include-ignored, or inspect with gruff-go check-ignore")
+	return err
+}
+
+// hasIgnoreRuleSkip reports whether any skipped path in skipped was excluded by .gitignore or paths.ignore.
+func hasIgnoreRuleSkip(skipped []analysis.SkippedPath) bool {
+	for _, item := range skipped {
+		if item.Reason == "gitignored" || item.Reason == "config-ignore" {
+			return true
+		}
+	}
+	return false
 }
 
 // WriteRuleText writes one line per registered rule with id, pillar, severity, capability, and title.

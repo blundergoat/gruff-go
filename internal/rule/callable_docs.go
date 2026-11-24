@@ -21,7 +21,8 @@ import (
 
 // MissingParamDocRule flags documented callables whose doc comment leaves a named, non-blank parameter unmentioned.
 //
-// A name counts wherever it appears, in any letter case, in plain prose, backticks, or brackets, so no tag format is needed.
+// A parameter counts when its full name or every meaningful camelCase or snake_case token appears, in any letter case,
+// in plain prose, backticks, or brackets, so no tag format is needed.
 //
 // Context, HTTP request and response, and testing handles are exempt, as are local closures.
 // Callables whose doc comment fails hasUsefulDeclarationComment are skipped.
@@ -131,6 +132,8 @@ func funcLiteralVars(decl *ast.GenDecl) []documentedCallable {
 // undocumentedParameters returns, in signature order, the named parameters the doc comment never mentions.
 //
 // Blank and unnamed parameters and context, HTTP request and response, and testing handles are skipped.
+// A parameter counts as covered when its full name appears as a word, or when every meaningful camelCase or
+// snake_case token appears in singular or plural form after ignoring trailing boilerplate suffixes such as Val or List.
 //
 // fnType supplies the parameter list; a nil fnType or nil Params yields nil, else a non-nil slice that is empty when none are missing.
 // A nil doc mentions nothing. handles maps local standard-library import names to their package names.
@@ -146,14 +149,91 @@ func undocumentedParameters(fnType *ast.FuncType, doc *ast.CommentGroup, handles
 			continue
 		}
 		for _, name := range field.Names {
-			// A parameter called path counts as named when the word path appears anywhere in the comment, even in an unrelated sentence.
-			if name.Name == "_" || words[strings.ToLower(name.Name)] {
+			// A parameter counts as named when its full name or every meaningful identifier token appears in doc.
+			if name.Name == "_" || parameterMentioned(name.Name, words) {
 				continue
 			}
 			missing = append(missing, name.Name)
 		}
 	}
 	return missing
+}
+
+// boilerplateParamSuffixes are trailing type or container words dropped when a parameter name has a preceding stem.
+// Standalone parameter names such as val or list keep their single token and stay required.
+var boilerplateParamSuffixes = map[string]bool{
+	"val": true, "str": true, "list": true, "slice": true, "map": true,
+}
+
+// parameterMentioned reports whether doc word set words covers parameter name by full name or meaningful tokens.
+//
+// name is split into camelCase and snake_case tokens, trailing boilerplateParamSuffixes entries are dropped only
+// when a stem precedes them, and every remaining token must match words in singular or simple plural form.
+func parameterMentioned(name string, words map[string]bool) bool {
+	if len(words) == 0 {
+		return false
+	}
+	lower := strings.ToLower(name)
+	if words[lower] {
+		return true
+	}
+	tokens := meaningfulParamTokens(name)
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, token := range tokens {
+		if !wordMatchesDoc(token, words) {
+			return false
+		}
+	}
+	return true
+}
+
+// meaningfulParamTokens splits parameter name into lower-cased tokens and strips trailing boilerplate suffixes when a stem exists.
+// It normalizes pluralized acronyms such as articleIDs or articleIDsList before calling identifierTokens, returning a non-empty slice
+// for any identifier with letters or digits and an empty slice when name holds none.
+func meaningfulParamTokens(name string) []string {
+	tokens := identifierTokens(normalizePluralAcronyms(name))
+	for len(tokens) > 1 && boilerplateParamSuffixes[tokens[len(tokens)-1]] {
+		tokens = tokens[:len(tokens)-1]
+	}
+	return tokens
+}
+
+// normalizePluralAcronyms removes a lowercase s immediately following two or more uppercase letters when it ends the name
+// or precedes a non-lowercase rune (such as articleIDs, articleIDsList, or IDs_map) so identifierTokens keeps the acronym intact.
+// It preserves mixed words such as DNSsec and returns name unchanged when no plural acronym appears.
+func normalizePluralAcronyms(name string) string {
+	runes := []rune(name)
+	out := make([]rune, 0, len(runes))
+	for index, current := range runes {
+		isPluralAcronymS := current == 's' &&
+			index >= 2 && unicode.IsUpper(runes[index-1]) && unicode.IsUpper(runes[index-2]) &&
+			(index+1 == len(runes) || !unicode.IsLower(runes[index+1]))
+		if isPluralAcronymS {
+			continue
+		}
+		out = append(out, current)
+	}
+	return string(out)
+}
+
+// wordMatchesDoc reports whether lower-cased token appears in doc word set words directly or as a simple singular or plural form.
+// Short tokens stay exact on singular trimming so words such as "is" or "os" never reduce to unrelated prefixes.
+func wordMatchesDoc(token string, words map[string]bool) bool {
+	if words[token] || words[token+"s"] || words[token+"es"] {
+		return true
+	}
+	if len(token) > 2 && strings.HasSuffix(token, "y") && words[token[:len(token)-1]+"ies"] {
+		return true
+	}
+	if len(token) > 4 && strings.HasSuffix(token, "ies") && words[token[:len(token)-3]+"y"] {
+		return true
+	}
+	if len(token) > 4 && strings.HasSuffix(token, "es") && words[token[:len(token)-2]] {
+		return true
+	}
+	return len(token) > 3 && strings.HasSuffix(token, "s") && words[token[:len(token)-1]]
 }
 
 // docWordSet returns the lower-cased identifier-like words of doc as a set, so a parameter counts as named in prose, backticks, or brackets.
@@ -290,10 +370,13 @@ type returnDocGap struct {
 // returnWords introduce what a callable hands back in natural prose.
 //
 // A return word counts as value prose unless its first following word, after skipping returnLeadWords, is in failureWords.
-// Other verbs, such as computes or provides, do not count toward the value half of docs.missing-return-doc.
+// Third-person idiomatic Go verbs such as creates, checks, and parses are included while base forms such as load or fetch stay excluded
+// so a leading function name alone never satisfies the value half of docs.missing-return-doc.
 var returnWords = map[string]bool{
 	"return": true, "returns": true, "returned": true, "returning": true, "result": true, "results": true,
 	"reports": true, "yields": true, "gives": true,
+	"creates": true, "builds": true, "checks": true, "parses": true, "converts": true,
+	"transforms": true, "fetches": true, "merges": true, "extracts": true, "loads": true,
 }
 
 // failureWords explain when a callable fails in natural prose.
