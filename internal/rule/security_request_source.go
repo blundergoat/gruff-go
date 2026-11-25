@@ -178,6 +178,17 @@ func (s *requestTaintScope) collectTaintedVars(body *ast.BlockStmt) {
 						}
 					}
 				}
+			case *ast.RangeStmt:
+				// Only a loop over request data, such as for _, v := range r.URL.Query(), makes its loop variables tainted.
+				if !s.directRequestExpr(stmt.X) {
+					return true
+				}
+				for _, target := range []ast.Expr{stmt.Key, stmt.Value} {
+					// Each named loop variable now holds request data; a blank _ holds nothing.
+					if ident, ok := target.(*ast.Ident); ok && ident.Name != "_" {
+						s.markTaintedAt(ident, s.taintIntroPos(stmt.X, ident.Pos()))
+					}
+				}
 			}
 			return true
 		})

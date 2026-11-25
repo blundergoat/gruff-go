@@ -34,22 +34,18 @@ func alwaysIgnoredFile(rel string) (string, bool) {
 	return "", false
 }
 
-// fallbackIgnoredDir reports directory skips used when no readable .gitignore exists from the discovery root through rel's parent.
+// fallbackIgnoredDirSegment reports whether one path segment matches a no-gitignore fallback directory name.
 //
-// rel is a slash-separated path, possibly absolute; its segments are compared with exact case, and the first match decides the reason.
+// part is a single directory name checked with exact case.
 // It returns true with "dependency" for node_modules, "build-output" for build or coverage, and "local-tooling" for .fleet, .idea or .vscode.
-// When no segment matches, the result is an empty reason and false.
-func fallbackIgnoredDir(rel string) (string, bool) {
-	parts := strings.Split(rel, "/")
-	for _, part := range parts {
-		switch part {
-		case "node_modules":
-			return "dependency", true
-		case "build", "coverage":
-			return "build-output", true
-		case ".fleet", ".idea", ".vscode":
-			return "local-tooling", true
-		}
+func fallbackIgnoredDirSegment(part string) (string, bool) {
+	switch part {
+	case "node_modules":
+		return "dependency", true
+	case "build", "coverage":
+		return "build-output", true
+	case ".fleet", ".idea", ".vscode":
+		return "local-tooling", true
 	}
 	return "", false
 }

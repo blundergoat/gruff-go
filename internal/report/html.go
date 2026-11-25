@@ -356,7 +356,13 @@ func (r htmlRenderer) findings() string {
 	}
 	fmt.Fprintf(&builder, `<div class="findings-list"%s>`, listAttribute)
 	if len(findings) == 0 {
-		builder.WriteString(`<div class="empty">No findings.</div>`)
+		total := severityCounts(r.report).total
+		// Tell browser viewers when display filters hid all findings instead of claiming the scan found nothing.
+		if total > 0 {
+			fmt.Fprintf(&builder, `<div class="empty">All %d %s hidden by display filter.</div>`, total, pluralise(total, "finding", "findings"))
+		} else {
+			builder.WriteString(`<div class="empty">No findings.</div>`)
+		}
 	}
 	for _, item := range findings {
 		builder.WriteString(r.findingRow(item))

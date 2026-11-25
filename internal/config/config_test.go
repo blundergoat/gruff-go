@@ -518,3 +518,37 @@ minimumSeverity: warning
 		t.Errorf("display floor = %q configured=%t, want warning", floor, configured)
 	}
 }
+
+// TestYAMLQuotedKeysApostrophesInTokenHashAndDuplicateAlias covers YAML parser edge cases and canonical/alias collision rejection.
+func TestYAMLQuotedKeysApostrophesInTokenHashAndDuplicateAlias(t *testing.T) {
+	raw := []byte(`schemaVersion: gruff-go.config.v0.1
+sensitiveExclusions:
+  - "rule": sensitive-data.jwt-token
+    path: fixtures/sample.go
+    reason: Don't flag issue#42 in class of '26 # trailing comment
+rules:
+  "size.file-length":
+    enabled: true
+`)
+	cfg, err := Parse(raw, defaultDefinitions())
+	if err != nil {
+		t.Fatalf("Parse error = %v", err)
+	}
+	if len(cfg.SensitiveExclusions) != 1 || cfg.SensitiveExclusions[0].Reason != "Don't flag issue#42 in class of '26" {
+		t.Fatalf("reason = %#v, want \"Don't flag issue#42 in class of '26\"", cfg.SensitiveExclusions)
+	}
+	if _, ok := cfg.Rules["size.file-length"]; !ok {
+		t.Fatalf("quoted rule key size.file-length was not unquoted: %#v", cfg.Rules)
+	}
+
+	dupAlias := []byte(`schemaVersion: gruff-go.config.v0.1
+rules:
+  size.file-length:
+    enabled: true
+  size-file-length:
+    enabled: false
+`)
+	if _, err := Parse(dupAlias, defaultDefinitions()); err == nil || !strings.Contains(err.Error(), "duplicate rule config") {
+		t.Fatalf("expected duplicate canonical+alias error, got %v", err)
+	}
+}

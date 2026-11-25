@@ -512,3 +512,24 @@ func TestExportGitTreeScopesToRequestedPackageContext(t *testing.T) {
 		t.Fatalf("unrelated file exported, err=%v", err)
 	}
 }
+
+// TestExportGitTreeIgnoresExportIgnoreAttributes proves committed files under .gitattributes export-ignore (such as .github/workflows) stay exported.
+func TestExportGitTreeIgnoresExportIgnoreAttributes(t *testing.T) {
+	root := t.TempDir()
+	hookRunGit(t, root, "init", "-q")
+	hookRunGit(t, root, "config", "user.email", "test@example.test")
+	hookRunGit(t, root, "config", "user.name", "test")
+	writeFile(t, root, ".gitattributes", ".github/ export-ignore\n")
+	writeFile(t, root, ".github/workflows/ci.yml", "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n")
+	hookRunGit(t, root, "add", ".")
+	hookRunGit(t, root, "commit", "-q", "-m", "baseline")
+
+	baseRoot, cleanup, err := exportGitTree(context.Background(), root, "HEAD", []string{".github/workflows/ci.yml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(filepath.Join(baseRoot, ".github/workflows/ci.yml")); err != nil {
+		t.Fatalf("export-ignored workflow missing from base export: %v", err)
+	}
+}

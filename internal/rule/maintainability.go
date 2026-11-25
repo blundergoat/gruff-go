@@ -201,9 +201,9 @@ func isBootstrapPath(path string) bool {
 	return strings.HasPrefix(clean, "cmd/") || strings.Contains(clean, "/cmd/")
 }
 
-// isDirectPanicCall reports whether call has the unqualified callee name panic, without resolving shadowing.
-// A local function named panic is therefore treated as the builtin, and its calls can be reported.
+// isDirectPanicCall reports whether call invokes the unqualified builtin panic, skipping calls shadowed by a local or file-level binding.
+// An identifier with a non-nil Obj resolved to a local, parameter, or file-level declaration rather than the universe builtin panic.
 func isDirectPanicCall(call *ast.CallExpr) bool {
 	ident, ok := call.Fun.(*ast.Ident)
-	return ok && ident.Name == "panic"
+	return ok && ident.Name == "panic" && ident.Obj == nil
 }

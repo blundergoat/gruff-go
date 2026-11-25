@@ -9,14 +9,10 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
-	"regexp"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
-
-// sqlKeywordPattern recognises SQL statement keywords inside constructed query strings.
-var sqlKeywordPattern = regexp.MustCompile(`(?i)\b(select|insert|update|delete|create|drop|alter)\b`)
 
 // TLSInsecureConfigRule flags tls.Config literals with concrete insecure settings.
 //
@@ -197,7 +193,8 @@ func (ArchivePathTraversalRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			if !ok {
 				return true
 			}
-			if archiveJoinHasContainmentEvidence(fn.Body, call) {
+			// A real check, such as filepath.IsLocal(f.Name) or a Rel result tested for "..", keeps the join quiet.
+			if archiveJoinHasContainmentEvidence(fn.Body, call, entryExpr, archiveNameVars) {
 				return true
 			}
 			position := unit.FileSet.Position(call.Pos())
@@ -267,22 +264,53 @@ func isPathJoinCall(call *ast.CallExpr, pathPackages map[string]bool) bool {
 	return ok && pathPackages[receiver.Name]
 }
 
-// archiveEntryNameArg returns the first archive entry name expression among call arguments.
+// archiveEntryNameArg returns the first archive entry name expression among call arguments, looking through non-containment wrappers.
 //
-// args are the Join call arguments; an identifier counts when archiveNameVars maps it, and its recorded Name selector is returned instead.
-// So the finding's entry metadata shows the Name selector, such as header.Name, even when the Join used a local copy.
-// When no argument qualifies it returns nil and false.
+// args are Join call arguments; bare .Name selectors, locals in archiveNameVars, and wrappers like Clean, Trim*, or + resolve to the entry name.
+// Returns the underlying archive entry name expression and true when one matches, or nil and false otherwise.
 func archiveEntryNameArg(args []ast.Expr, archiveNameVars map[string]ast.Expr) (ast.Expr, bool) {
 	for _, arg := range args {
-		if isArchiveNameExpr(arg) {
-			return arg, true
+		// The first argument built from an archive entry name, even through a wrapper such as filepath.Clean(f.Name), is the one to check.
+		if entryExpr, ok := archiveEntryNameInExpr(arg, archiveNameVars); ok {
+			return entryExpr, true
 		}
-		ident, ok := arg.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		if original, ok := archiveNameVars[ident.Name]; ok {
+	}
+	return nil, false
+}
+
+// archiveEntryNameInExpr unwraps non-containment transformations around an archive entry Name selector or local alias in expr using archiveNameVars.
+// It returns the underlying archive entry expression and true when found, or nil and false otherwise.
+func archiveEntryNameInExpr(expr ast.Expr, archiveNameVars map[string]ast.Expr) (ast.Expr, bool) {
+	if expr == nil {
+		return nil, false
+	}
+	// A direct entry name, such as hdr.Name or f.Name, is the untrusted input.
+	if isArchiveNameExpr(expr) {
+		return expr, true
+	}
+	switch node := expr.(type) {
+	case *ast.ParenExpr:
+		return archiveEntryNameInExpr(node.X, archiveNameVars)
+	case *ast.Ident:
+		if original, ok := archiveNameVars[node.Name]; ok {
 			return original, true
+		}
+	case *ast.BinaryExpr:
+		// Only string joining, as in prefix + f.Name, carries the entry name forward.
+		if node.Op != token.ADD {
+			return nil, false
+		}
+		if entryExpr, ok := archiveEntryNameInExpr(node.X, archiveNameVars); ok {
+			return entryExpr, true
+		}
+		return archiveEntryNameInExpr(node.Y, archiveNameVars)
+	case *ast.CallExpr:
+		switch callName(node) {
+		// These calls reshape the name but keep any ../ it carries, so the wrapped name is still untrusted.
+		case "Clean", "TrimPrefix", "TrimLeft", "TrimSpace", "ToSlash", "FromSlash":
+			if len(node.Args) > 0 {
+				return archiveEntryNameInExpr(node.Args[0], archiveNameVars)
+			}
 		}
 	}
 	return nil, false

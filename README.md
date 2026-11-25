@@ -140,7 +140,7 @@ Run `go tool gruff-go help <command>` for command-specific flags.
 
 `--fail-on` defaults per command: `advisory` (every finding fails) for `analyse`, and `none` (never fails on findings) for `summary`, `report`, and `dashboard` — see [configuration](https://github.com/blundergoat/gruff-go/blob/main/docs/configuration.md#failon). Pass `warning` for a moderate gate or `error` for a strict gate.
 
-**`--min-severity` is refused in 0.6.0.** It controlled the exit gate in 0.5 and returns in 0.7.0 as a display-only filter. Passing it to `analyse` or `summary` exits `2` and points you to `--fail-on`.
+**`--min-severity` is refused in 0.6.0.** It controlled the exit gate in 0.5 and returns in 0.7.0 as a display-only filter. Passing it to `analyse`, `summary`, `report`, or `hook` exits `2` and points you to `--fail-on`.
 
 ## CI Usage
 

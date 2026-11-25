@@ -46,7 +46,7 @@ var commandCatalogue = []commandEntry{
 	{name: "list", description: "List the available commands."},
 	{name: "list-rules", description: "List gruff rule metadata.", usage: "[--format text|json] [--config path|--no-config]"},
 	{name: "migrate-config", description: "Rewrite a 0.5 config for the current schema, writing the result to a different file.", usage: "--config path --output path [--dry-run]"},
-	{name: "report", description: "Render a gruff report to stdout or a file.", usage: "[--format html|json] [--output path] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity] [--include-rules ids] [--exclude-rules ids] [--include-pillars names] [--exclude-pillars names] [--include-ignored] [path ...]"},
+	{name: "report", description: "Render a gruff report to stdout or a file.", usage: "[--format html|json] [--output path] [--deep-scan-budget lines:bytes|off] [--report-editor-link none|vscode|phpstorm] [--report-interactive] [--config path|--no-config] [--baseline path] [--diff-base ref] [--fail-on severity] [--show-rule ids] [--hide-rule ids] [--show-pillar names] [--hide-pillar names] [--include-ignored] [path ...]"},
 	{name: "summary", description: "Print a compact digest of a scan: score, per-pillar counts, top rules and offenders.", usage: "[--format text|json] [--top N] [--fail-on severity] [--deep-scan-budget lines:bytes|off] [--config path|--no-config] [--include-ignored] [path ...]"},
 }
 

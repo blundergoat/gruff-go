@@ -18,7 +18,7 @@ score coverage: size
 score caveat: Composite grade is driven by 1 score-impacting pillar; clean pillars mean no above-threshold findings from configured rules, not broad risk coverage.
 complexity distribution: finding-only
 findings:
-- [warning] internal/foo/bar.go:42 complexity.cyclomatic - function cyclomatic complexity is 23, above threshold 20
+- [warning] internal/foo/bar.go:42 complexity.cyclomatic - function cyclomatic complexity is 31, above threshold 20
 exit: 1
 ```
 
@@ -113,7 +113,7 @@ A canonical finding uses one path key:
 ```jsonc
 {
   "ruleId": "complexity.cyclomatic",
-  "message": "function cyclomatic complexity is 23, above threshold 20",
+  "message": "function cyclomatic complexity is 31, above threshold 20",
   "file": "internal/foo/bar.go",
   "line": 42,
   "endLine": 78,
@@ -123,11 +123,12 @@ A canonical finding uses one path key:
   "secondaryPillars": [],
   "tier": "v0.1",
   "confidence": "high",
-  "remediation": "Split independent decisions or move branches into named helpers.",
+  "remediation": "Simplify the execution path: return early, merge branches that lead to the same result, and drop flags that steer later branches; moving branches into helpers leaves the path as hard to follow.",
   "fingerprint": "a3b1c2d4e5f6a7b8",
   "stableIdentity": "b8a7f6e5d4c2b1a3",
   "metadata": {
-    "complexity": 23,
+    "complexity": 31,
+    "limitBand": "upper",
     "threshold": 20,
     "locationPrecision": "line-only"
   }
@@ -305,7 +306,7 @@ Even without flags, the HTML report includes:
 - Verdict block with the tilted grade stamp (`A` through `F` plus numeric composite) and a data-driven subtitle.
 - Score coverage caveat when the grade is clean, driven by one or two score-impacting pillars, or an `A`/`B` composite averaging any failing (`F`) pillar.
 - Per-pillar grade grid with severity breakdowns.
-- Top-offender file table with cyclomatic, finding count, penalty, and grade per file.
+- Top-offender file table with cyclomatic, finding count, score, and grade per file.
 - Cyclomatic distribution histogram with a one-line finding-only summary.
 - Findings list grouped by document order.
 - Footer with version and schema metadata.
@@ -347,17 +348,19 @@ The chosen format does **not** change the exit code. All formats use:
 
 | Exit | Meaning |
 |------|---------|
-| `0` | No findings at or above `--fail-on` and no diagnostics. |
+| `0` | No findings at or above `--fail-on` and no run-invalidating diagnostics. |
 | `1` | At least one finding at or above `--fail-on`. |
-| `2` | Diagnostics (path missing, parse error, config error, baseline error, diff error) **or** invalid CLI input. |
+| `2` | Run-invalidating diagnostics (`invalidatesRun: true`: path missing, parse error, config error, baseline error, diff error) **or** invalid CLI input. |
 
 Set `--fail-on` to control where the line falls (default: `advisory`). `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter.
 The threshold applies only to findings: `--fail-on none` disables exit `1`,
 but it cannot hide a missing path, parse failure, baseline load failure, diff
 failure, invalid configuration, or invalid CLI input. Those failures always exit
 `2`. Analysis diagnostics retain severity `error` as descriptive output; the
-presence of any diagnostic, not a second severity threshold, determines exit `2`.
-Nonfatal limitations are rendered through existing caveat fields instead.
+presence of any run-invalidating diagnostic (`invalidatesRun: true`), not a second severity threshold, determines exit `2`.
+Non-fatal caveats such as `bounded-deep-scan` (`invalidatesRun: false`) inform the caller without flipping a clean scan to exit `2`.
+
+On both `analyse` and `report`, display-only filters (`--show-rule`, `--hide-rule`, `--show-pillar`, `--hide-pillar`) narrow the printed findings without changing rule execution, full-scan headline totals, scores, or the exit code.
 
 Agent `hook` mode has one intentional advisory exception: ignored or skipped
 explicit paths are reported in-band and exit `0`. Genuine hook configuration,

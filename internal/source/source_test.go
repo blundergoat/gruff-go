@@ -5,6 +5,7 @@
 package source
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -555,5 +556,47 @@ func TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope(t *testing.T) 
 
 	if got := paths(result.Files); !equal(got, want) {
 		t.Fatalf("files = %#v, want %#v", got, want)
+	}
+}
+
+// TestCheckIgnoreAppliesFallbackAncestorsToFilePaths verifies file-level CheckIgnore matches directory-walk fallback skips.
+func TestCheckIgnoreAppliesFallbackAncestorsToFilePaths(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "node_modules/pkg/a.go", "package pkg\n")
+	writeFile(t, root, "build/out/b.go", "package out\n")
+
+	decision := CheckIgnore(root, "node_modules/pkg/a.go", false, Options{Root: root})
+	if !decision.Ignored || decision.Reason != "dependency" || decision.Source != OriginDefault {
+		t.Fatalf("CheckIgnore(node_modules/pkg/a.go) = %+v, want ignored dependency/default", decision)
+	}
+	buildDecision := CheckIgnore(root, "build/out/b.go", false, Options{Root: root})
+	if !buildDecision.Ignored || buildDecision.Reason != "build-output" {
+		t.Fatalf("CheckIgnore(build/out/b.go) = %+v, want ignored build-output", buildDecision)
+	}
+
+	writeFile(t, root, ".gitignore", "*.log\n")
+	if after := CheckIgnore(root, "build/out/b.go", false, Options{Root: root}); after.Ignored {
+		t.Fatalf("CheckIgnore after .gitignore = %+v, want not ignored when fallback defers", after)
+	}
+}
+
+// TestDiscoverSkipsWalkedSymlinks verifies directory walks do not follow symlinks pointing outside the project root.
+func TestDiscoverSkipsWalkedSymlinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeFile(t, root, "main.go", "package main\n")
+	outsideFile := filepath.Join(outside, "leak.go")
+	if err := os.WriteFile(outsideFile, []byte("package outside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(root, "link.go")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	result, err := Discover(Options{Root: root, Paths: []string{"."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := paths(result.Files); !equal(got, []string{"main.go"}) {
+		t.Fatalf("files = %#v, want walked symlink link.go skipped", got)
 	}
 }

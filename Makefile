@@ -16,8 +16,15 @@ fmt: ## Format Go code
 
 .PHONY: fmt-check
 fmt-check: ## Fail when gofmt would change a package Go file; run make fmt to fix
-	@if [ -z "$(GO_PACKAGE_DIRS)" ]; then echo "no Go packages"; exit 0; fi; \
-	unformatted=$$(gofmt -l $(addsuffix /*.go,$(GO_PACKAGE_DIRS))) || exit 1; \
+	@dirs=$$(go list -f '{{.Dir}}' ./...) || exit 1; \
+	if [ -z "$$dirs" ]; then echo "no Go packages"; exit 0; fi; \
+	unformatted=$$(printf '%s\n' "$$dirs" | while IFS= read -r dir; do \
+		[ -n "$$dir" ] || continue; \
+		for file in "$$dir"/*.go; do \
+			[ -f "$$file" ] || continue; \
+			gofmt -l "$$file" || exit 1; \
+		done; \
+	done) || exit 1; \
 	if [ -n "$$unformatted" ]; then printf 'needs gofmt (run make fmt):\n%s\n' "$$unformatted"; exit 1; fi
 
 .PHONY: vet
@@ -34,6 +41,6 @@ tidy: ## Tidy Go modules
 
 .PHONY: clean
 clean: ## Remove local build and coverage artifacts
-	@if [ -d bin ]; then find bin -mindepth 1 ! -name gruff-go -exec rm -rf {} +; fi
+	@if [ -d bin ]; then find bin -mindepth 1 ! -name gruff-go.sh -exec rm -rf {} +; fi
 	rm -f coverage.out coverage.html
 	go clean -testcache

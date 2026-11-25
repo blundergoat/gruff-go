@@ -67,52 +67,56 @@ func runMigrateConfig(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "cannot migrate %s: %v (original kept)\n", *inputPath, err)
 		return 2
 	}
+	var summary strings.Builder
 	// An already-current file is still copied byte for byte to -output unless -dry-run is set.
 	if len(migration.changes) == 0 {
-		fmt.Fprintf(stdout, "%s is already current; no changes.\n", *inputPath)
+		fmt.Fprintf(&summary, "%s is already current; no changes.\n", *inputPath)
 	} else {
-		fmt.Fprintln(stdout, "Migration changes:")
+		fmt.Fprintln(&summary, "Migration changes:")
 		// List each rewrite so the developer can review the migration before replacing their project config.
 		for _, change := range migration.changes {
-			fmt.Fprintf(stdout, "  - %s\n", change)
+			fmt.Fprintf(&summary, "  - %s\n", change)
 		}
 	}
 
 	// With -dry-run the change list above is the whole result, so -output may be left out and nothing is written.
 	if *dryRun {
+		_, _ = io.WriteString(stdout, summary.String())
 		fmt.Fprintln(stdout, "Dry run: nothing written.")
 		return 0
 	}
-	return writeMigratedConfig(*inputPath, *outputPath, migration.text, stdout, stderr)
+	if err := writeMigratedConfig(*outputPath, migration.text); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	_, _ = io.WriteString(stdout, summary.String())
+	fmt.Fprintf(stdout, "Wrote %s; %s is unchanged.\n", *outputPath, *inputPath)
+	return 0
 }
 
-// writeMigratedConfig publishes migrated at a new outputPath while keeping inputPath available as the rollback copy.
+// writeMigratedConfig writes migrated to a newly created outputPath, refusing empty or pre-existing destinations.
 //
-// An empty outputPath or any existing destination is refused. stdout confirms success and stderr explains a failed write.
-// Returns 0 once the file is closed, or 2 if it cannot be safely created or written.
-func writeMigratedConfig(inputPath, outputPath, migrated string, stdout, stderr io.Writer) int {
+// A failed write or close removes the partial file, so the user never keeps half a config.
+// It returns nil on success, or an error saying why outputPath could not be created or written.
+func writeMigratedConfig(outputPath, migrated string) error {
 	// Only a dry run can omit a destination.
 	if outputPath == "" {
-		fmt.Fprintln(stderr, "migrate-config needs -output <path>, or -dry-run to print the changes")
-		return 2
+		return fmt.Errorf("migrate-config needs -output <path>, or -dry-run to print the changes")
 	}
 	// #nosec G304 -- The destination is the CLI's explicit output operand.
 	output, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	// A destination already linked to the source, or a directory the developer cannot write, leaves the original available.
 	if err != nil {
-		fmt.Fprintf(stderr, "unable to create %s: %v; choose a new output file\n", outputPath, err)
-		return 2
+		return fmt.Errorf("unable to create %s: %v; choose a new output file", outputPath, err)
 	}
 	_, writeErr := io.WriteString(output, migrated)
 	closeErr := output.Close()
 	// If storage fills during the write, remove the incomplete destination so it cannot be mistaken for valid output.
 	if writeErr != nil || closeErr != nil {
 		_ = os.Remove(outputPath)
-		fmt.Fprintf(stderr, "unable to finish writing %s: write=%v close=%v\n", outputPath, writeErr, closeErr)
-		return 2
+		return fmt.Errorf("unable to finish writing %s: write=%v close=%v", outputPath, writeErr, closeErr)
 	}
-	fmt.Fprintf(stdout, "Wrote %s; %s is unchanged.\n", outputPath, inputPath)
-	return 0
+	return nil
 }
 
 // migrateConfigText returns original with the legacy keys rewritten before migrate-config validates it.
@@ -135,6 +139,10 @@ func migrateConfigText(original string) configMigration {
 			_, tail, _ := strings.Cut(line, ":")
 			migrated = append(migrated, line[:rootIndent]+"failOn:"+tail)
 			changes = append(changes, "minimumSeverity map renamed to failOn")
+		case lineIndent(line) == rootIndent && keyIs(line, "sensitiveData") && !opensConfigBlock(lines, index):
+			changes = append(changes, "removed sensitiveData")
+		case lineIndent(line) == rootIndent && keyIs(line, "allowlists") && !opensConfigBlock(lines, index) && isEmptyFlowMapLine(line):
+			changes = append(changes, "removed empty flow mapping allowlists")
 		case lineIndent(line) == rootIndent && opensConfigBlock(lines, index) &&
 			(keyIs(line, "allowlists") || keyIs(line, "sensitiveData") || keyIs(line, "rules")):
 			end := configBlockEnd(lines, index)
@@ -391,10 +399,27 @@ func firstConfigLine(lines []string, start int) int {
 	return len(lines)
 }
 
-// keyIs reports whether a line is exactly the named key followed by a colon, so a comment or longer name is not it.
+// isEmptyFlowMapLine reports whether line carries an empty YAML flow mapping (`{}`) after its colon, such as a removed `allowlists: {}` key.
+// Returns false when line has no colon or contains any non-whitespace token inside the braces.
+func isEmptyFlowMapLine(line string) bool {
+	_, tail, ok := strings.Cut(line, ":")
+	if !ok {
+		return false
+	}
+	value := stripInlineYAMLComment(tail)
+	return strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") && strings.TrimSpace(value[1:len(value)-1]) == ""
+}
+
+// keyIs reports whether line declares the YAML mapping key (bare or single/double quoted) followed by a colon.
+// Used during migration so quoted keys like `"schemaVersion":` are recognised instead of duplicated.
 func keyIs(line, key string) bool {
-	rest, found := strings.CutPrefix(strings.TrimSpace(line), key)
-	return found && strings.HasPrefix(strings.TrimLeft(rest, " \t"), ":")
+	trimmed := strings.TrimSpace(line)
+	for _, candidate := range []string{key, `"` + key + `"`, `'` + key + `'`} {
+		if rest, found := strings.CutPrefix(trimmed, candidate); found && strings.HasPrefix(strings.TrimLeft(rest, " \t"), ":") {
+			return true
+		}
+	}
+	return false
 }
 
 // lineIndent reports how many leading spaces and tabs a line carries, counting a tab as one, the same as a space.
@@ -405,8 +430,7 @@ func lineIndent(line string) int {
 
 // withSchemaVersion pins the schema version, inserting it at the top when the 0.5 file never named one.
 //
-// Only a root-level schemaVersion key counts; unless it already matches the pinned line, it is replaced whole, trailing comment included.
-// A quoted key such as "schemaVersion" is not recognised, so it stays and a second, pinned line is added at the top.
+// Only a root-level schemaVersion key (bare or single/double quoted) counts; unless it already matches the pinned line, it is replaced whole.
 //
 // lines is the migrated text split into lines, changes the rewrites so far, and original the input text kept when nothing changed.
 // It returns the newline-joined lines and changes, plus an entry when schemaVersion was added or rewritten; with no changes, text is original.

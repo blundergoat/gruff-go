@@ -84,14 +84,27 @@ func validateDeepScanBudget(budget DeepScanBudgetConfig) error {
 // validateRuleConfig validates every per-rule override entry from the config file.
 //
 // Each entry in rules maps a configured rule ID to its override and goes through validateOneRuleConfig with definitions.
+// Duplicate entries resolving to the same canonical rule ID, such as a canonical key paired with its legacy alias, are rejected deterministically.
 //
-// It returns the first error found, or nil when every entry is valid or rules is empty.
-// With two bad overrides, map iteration order picks which error the user sees, so it can differ between runs.
+// It returns the first error found in sorted rule-ID order, or nil when every entry is valid or rules is empty.
 func validateRuleConfig(rules map[string]RuleConfig, definitions map[string]rule.Definition) error {
-	for id, ruleConfig := range rules {
-		if err := validateOneRuleConfig(id, ruleConfig, definitions); err != nil {
+	ids := make([]string, 0, len(rules))
+	// Check rules in sorted order so the same config always reports the same first error.
+	for id := range rules {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	seenCanonical := map[string]string{}
+	for _, id := range ids {
+		if err := validateOneRuleConfig(id, rules[id], definitions); err != nil {
 			return err
 		}
+		canonical, _ := canonicalRuleID(id, definitions)
+		// Listing a rule under both its current ID and its old alias would leave its real settings ambiguous, so the config is refused.
+		if previous, exists := seenCanonical[canonical]; exists {
+			return fmt.Errorf("duplicate rule config for %q (configured as both %q and %q)", canonical, previous, id)
+		}
+		seenCanonical[canonical] = id
 	}
 	return nil
 }

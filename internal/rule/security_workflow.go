@@ -26,8 +26,6 @@ var (
 	// Allowing indentation would let a nested key, such as on: inside a step's with: map, be misread as a workflow trigger.
 	// The anchor therefore forbids leading whitespace.
 	workflowOnKeyPattern    = regexp.MustCompile(`^['"]?on['"]?\s*:`)
-	workflowPRTargetPattern = regexp.MustCompile(`pull_request_target`)
-	workflowPRPattern       = regexp.MustCompile(`pull_request\b`)
 	actionShaRefPattern     = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 	actionVersionTagPattern = regexp.MustCompile(`^(?:v\d+(?:\.\d+){0,2}|\d+\.\d+(?:\.\d+)?)$`)
 )
@@ -223,13 +221,19 @@ func (GitHubActionsPullRequestTargetRule) Definition() Definition {
 // Some comment-stripped line must also mention actions/checkout or start a run: key, which workflowHasExecution takes as execution.
 // It returns a single finding on the first source line mentioning pull_request_target, and nil otherwise.
 func (GitHubActionsPullRequestTargetRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if !isWorkflowFile(unit.File.Path) || !isPullRequestTargetTriggered(unit.Source) || !workflowHasExecution(unit.Source) {
+	// Only files under .github/workflows run as GitHub Actions workflows.
+	if !isWorkflowFile(unit.File.Path) {
+		return nil
+	}
+	triggerLine := pullRequestTargetTriggerLine(unit.Source)
+	// pull_request_target is risky only when the workflow then checks out or runs code with the repository's secrets.
+	if triggerLine == 0 || !workflowHasExecution(unit.Source) {
 		return nil
 	}
 	return []finding.Finding{{
 		Message:  "pull_request_target workflow checks out or runs code with secret access",
 		File:     unit.File.Path,
-		Location: &finding.Location{Line: firstPatternLine(unit.Source, workflowPRTargetPattern)},
+		Location: &finding.Location{Line: triggerLine},
 		Metadata: map[string]any{"trigger": "pull_request_target"},
 	}}
 }
@@ -336,12 +340,12 @@ func workflowHasExecution(source string) bool {
 	return false
 }
 
-// isPullRequestTargetTriggered reports whether pull_request_target appears in the on: text that workflowTriggerSection collects.
+// isPullRequestTargetTriggered reports whether source triggers on pull_request_target in its top-level on: block.
 //
-// A nested filter value or a longer word containing it also counts, so a push filter that names it is enough.
-// The source is the whole workflow text; collection stops at any non-blank dedent, even a column-0 comment, so false can miss later events.
+// Nested event filter values (such as a branch named pull_request_target under push:) return false.
+// It returns true when pullRequestTargetTriggerLine finds a positive trigger line, and false otherwise.
 func isPullRequestTargetTriggered(source string) bool {
-	return workflowPRTargetPattern.MatchString(workflowTriggerSection(source))
+	return pullRequestTargetTriggerLine(source) > 0
 }
 
 // leadingSpaces counts the leading space characters of a YAML line.
@@ -400,43 +404,171 @@ func executableRunLines(source string) map[int]bool {
 	return inRun
 }
 
-// workflowTriggerSection returns the text of the workflow on: block, so trigger detection ignores keys outside it.
+// pullRequestTargetTriggerLine returns the 1-based line in the workflow source's on: section that triggers pull_request_target, or 0 if none does.
 //
-// It collects the on: line and the more-indented lines after it, event filters included, each with its trailing comment stripped.
-// Any non-blank line that is not more indented ends collection, even a column-0 comment, so events listed below such a comment are missed.
-// The source is the workflow text; only a column-0 on: key starts the section, blank lines are dropped, and without one the result is empty.
-func workflowTriggerSection(source string) string {
-	lines := strings.Split(source, "\n")
-	var section strings.Builder
-	onColumn := -1
-	for _, line := range lines {
+// Supported YAML trigger shapes in the on: block:
+//   - Inline scalars and flow collections, including multi-line [push, ...] and {pull_request_target: {...}} forms.
+//   - Block sequences (including indentless on:\n- pull_request_target) and block mappings (on:\n  pull_request_target:).
+//   - Nested event filter lines (such as push:\n  branches:\n    - fix-pull_request_target-bug) sit deeper than eventIndent and return 0.
+func pullRequestTargetTriggerLine(source string) int {
+	lines := strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n")
+	onColumn, eventIndent := -1, -1
+	for index, line := range lines {
 		if onColumn >= 0 {
-			if strings.TrimSpace(line) == "" {
+			trimmed := strings.TrimSpace(line)
+			// Blank lines and comments, even a column-0 comment, neither end the on: section nor name an event.
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 				continue
 			}
-			if leadingSpaces(line) > onColumn {
-				section.WriteString(stripYAMLComment(line))
-				section.WriteByte('\n')
+			indent := leadingSpaces(line)
+			// More-indented lines, and indentless "- event" items, still belong to the on: section.
+			if indent > onColumn || (indent == onColumn && workflowGuardItem.MatchString(trimmed)) {
+				// The first nested line fixes the event level; deeper lines configure one event, such as its branch filter.
+				if eventIndent < 0 {
+					eventIndent = indent
+				}
+				triggerLine := 0
+				// Only a line at the event level can name a trigger.
+				if indent == eventIndent {
+					triggerLine = workflowEventEntryLine(lines, index, stripYAMLComment(line), "pull_request_target")
+				}
+				if triggerLine > 0 {
+					return triggerLine
+				}
 				continue
 			}
-			onColumn = -1 // a dedent ends the section; re-check this line as a key
+			// Any other line at or left of on: is the next top-level key, so the trigger list has ended.
+			onColumn, eventIndent = -1, -1
 		}
 		if workflowOnKeyPattern.MatchString(line) {
-			section.WriteString(stripYAMLComment(line))
-			section.WriteByte('\n')
+			_, tail, _ := strings.Cut(stripYAMLComment(line), ":")
+			// An inline value, such as on: pull_request_target or on: [push, pull_request_target], names the events on this line.
+			if triggerLine := workflowInlineEventLine(lines, index, tail, "pull_request_target"); triggerLine > 0 {
+				return triggerLine
+			}
 			onColumn = leadingSpaces(line)
+			eventIndent = -1
 		}
 	}
-	return section.String()
+	return 0
 }
 
-// firstPatternLine returns the 1-indexed line of the first match for pattern, or 1 when no line matches.
-// The source is split on newlines and pattern is matched against each line in turn.
-func firstPatternLine(source string, pattern *regexp.Regexp) int {
-	for index, line := range strings.Split(source, "\n") {
-		if pattern.MatchString(line) {
-			return index + 1
+// workflowInlineEventLine returns the 1-based line where raw, the inline value after the on: key at lines[index], names target, or 0 if it does not.
+// A scalar must equal target; a flow collection is read across continuation lines until its brackets close.
+func workflowInlineEventLine(lines []string, index int, raw, target string) int {
+	trimmed := strings.TrimSpace(raw)
+	// A bare on: header lists its events on the following lines instead.
+	if trimmed == "" {
+		return 0
+	}
+	// A flow collection such as [push, pull_request_target] can name several events and can continue onto later lines.
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
+		return workflowFlowEventLine(lines, index, trimmed, target)
+	}
+	// A plain scalar, such as on: pull_request_target, names exactly one event.
+	if trimWorkflowYAMLQuotes(trimmed) == target {
+		return index + 1
+	}
+	return 0
+}
+
+// workflowEventEntryLine returns the 1-based line where one event-level entry inside an on: block names target, or 0 when it does not.
+// line is the entry's text and index its position in lines; the entry may be a "- event" item, an "event:" key, or a [push, ...] collection.
+func workflowEventEntryLine(lines []string, index int, line, target string) int {
+	trimmed := strings.TrimSpace(line)
+	// A flow collection nested under on: names its events directly, possibly across several lines.
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
+		return workflowFlowEventLine(lines, index, trimmed, target)
+	}
+	if workflowTriggerLineNamesEvent(line, target) {
+		return index + 1
+	}
+	return 0
+}
+
+// workflowFlowEventLine joins a flow collection that starts on lines[index] with its continuation lines and reports where it names target.
+// It returns the first line of the collection that mentions target, the collection's first line as a fallback, or 0 when target is not an event.
+func workflowFlowEventLine(lines []string, index int, first, target string) int {
+	flow := first
+	last := index
+	// An unclosed collection, such as "on: [push," continues on the next lines until its brackets balance.
+	for workflowFlowDepth(flow) > 0 && last+1 < len(lines) {
+		last++
+		flow += " " + stripYAMLComment(lines[last])
+	}
+	// A collection that does not list the event at its top level, such as a branch filter that merely names it, is not a trigger.
+	if !workflowFlowNamesEvent(flow, target) {
+		return 0
+	}
+	for offset := index; offset <= last; offset++ {
+		// Strip trailing comments so the finding points at the actual trigger line, not a comment mentioning pull_request_target.
+		if strings.Contains(stripYAMLComment(lines[offset]), target) {
+			return offset + 1
 		}
 	}
-	return 1
+	return index + 1
+}
+
+// workflowFlowDepth returns how many flow brackets ("[" or "{") in text are still open; zero or less means the collection is complete.
+func workflowFlowDepth(text string) int {
+	depth := 0
+	for _, character := range text {
+		switch character {
+		case '[', '{':
+			depth++
+		case ']', '}':
+			depth--
+		}
+	}
+	return depth
+}
+
+// workflowFlowNamesEvent reports whether a flow collection names target as a top-level entry, such as [push, pull_request_target]
+// or {pull_request_target: {types: [opened]}}; a value nested inside one event's settings, such as a branch name, never counts.
+func workflowFlowNamesEvent(flow, target string) bool {
+	depth := 0
+	var entry strings.Builder
+	for _, character := range flow {
+		switch character {
+		case '[', '{':
+			depth++
+			entry.Reset()
+		case ']', '}', ',', ':':
+			// Only depth-1 entries are events; deeper text belongs to one event's own settings.
+			if depth == 1 && trimWorkflowYAMLQuotes(entry.String()) == target {
+				return true
+			}
+			// Closing a bracket leaves that event's settings and returns to the level above.
+			if character == ']' || character == '}' {
+				depth--
+			}
+			entry.Reset()
+		default:
+			entry.WriteRune(character)
+		}
+	}
+	return false
+}
+
+// workflowTriggerLineNamesEvent reports whether a direct child line inside an `on:` block names target as a list item or mapping key.
+func workflowTriggerLineNamesEvent(line, target string) bool {
+	trimmed := strings.TrimSpace(line)
+	// A list item such as "- pull_request_target" names one event.
+	if prefix := workflowGuardItem.FindString(trimmed); prefix != "" {
+		return trimWorkflowYAMLQuotes(trimmed[len(prefix):]) == target
+	}
+	// A mapping key such as "pull_request_target:" names one event, whatever settings follow.
+	if key, _, hasColon := strings.Cut(trimmed, ":"); hasColon {
+		return trimWorkflowYAMLQuotes(key) == target
+	}
+	return false
+}
+
+// trimWorkflowYAMLQuotes trims whitespace and one matching pair of single or double quotes from raw and returns the unquoted string.
+func trimWorkflowYAMLQuotes(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) >= 2 && ((trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"') || (trimmed[0] == '\'' && trimmed[len(trimmed)-1] == '\'')) {
+		return trimmed[1 : len(trimmed)-1]
+	}
+	return trimmed
 }

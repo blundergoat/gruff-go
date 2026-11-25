@@ -119,6 +119,11 @@ func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) i
 		}
 		return 2
 	}
+	// Protect a non-v3 default baseline from accidental overwrite on both generate and migrate; --force is the way to mean it.
+	if err := baseline.RequireOverwritableDefaultPath(opts.outPath, opts.force); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 	// A migration re-identifies the findings the 0.5 rows covered from this scan and writes them to --out; the original stays byte-identical.
 	if opts.migratePath != "" {
 		result, err := baseline.Migrate(opts.migratePath, opts.outPath, analysisReport.Findings, time.Now().UTC())
@@ -130,11 +135,6 @@ func writeBaselineFromScan(opts baselineScanOptions, stdout, stderr io.Writer) i
 		fmt.Fprintf(stdout, "baseline: migrated %d reviewed findings from %s into %d entries at %s; %d sensitive findings counted, not baselined; original preserved\n",
 			result.Accepted, opts.migratePath, result.Occurrences, opts.outPath, result.Sensitive)
 		return 0
-	}
-	// A generate at the shared default path never destroys a 0.5 baseline by accident; --force is the way to mean it.
-	if err := baseline.RequireOverwritableDefaultPath(opts.outPath, opts.force); err != nil {
-		fmt.Fprintln(stderr, err)
-		return 2
 	}
 	baselineFile, err := baseline.FromFindings(analysisReport.Findings)
 	if err != nil {

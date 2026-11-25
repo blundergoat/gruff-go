@@ -635,3 +635,17 @@ func TestWriteSARIFKeepsInlineSuppressedFindingsAsSuppressedResults(t *testing.T
 		t.Fatal("an open result must not carry a suppressions key")
 	}
 }
+
+// TestSARIFURIPercentEncodesSpecialPathCharacters ensures SARIF URIs escape spaces, #, ?, and % while keeping normal paths and Windows drives intact.
+func TestSARIFURIPercentEncodesSpecialPathCharacters(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"internal/foo/bar.go", "internal/foo/bar.go"},
+		{"./pkg/review #1 100%.go", "pkg/review%20%231%20100%25.go"},
+		{`C:\repo\a b\c?d.go`, "C:/repo/a%20b/c%3Fd.go"},
+	}
+	for _, tc := range cases {
+		if got := sarifURI(tc.in); got != tc.want {
+			t.Fatalf("sarifURI(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

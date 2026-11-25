@@ -113,7 +113,7 @@ Every rule has a default severity; configs can override per rule. ADR-009 collap
 | `warning` | 4 | amber | Worth fixing in the next clean-up pass. |
 | `advisory` | 1 | muted | Informational; trend over time. |
 
-The `--fail-on` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse`, `none` for `summary`, `report` and `dashboard`; see [`configuration.md`](configuration.md#failon). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `[0.2.0]`](../CHANGELOG.md#020---2026-05-27) for the mapping.
+The `--fail-on` flag sets the threshold at which findings flip the exit code from `0` to `1`. Its binary default is per command - `advisory` for `analyse`, `none` for `summary`, `report` and `dashboard`; see [`configuration.md`](configuration.md#failon). The previous five-bucket vocabulary (`critical`, `high`, `medium`, `low`, `info`) and its aliases (`notice`, `warn`) are no longer accepted by config or CLI parsing - see [CHANGELOG `v0.2.0`](../CHANGELOG.md#v020---2026-05-28) for the mapping.
 
 ## Per-rule reference
 
@@ -1190,7 +1190,7 @@ Flags Google API keys (`AIza` prefix plus exactly 35 base64url characters) embed
 
 Flags JWT-shaped literals - three base64url segments separated by dots, the first segment starting with `eyJ` (the literal base64 prefix for `{"`). Tokens can be signing keys, session tokens, or API credentials; the rule does not distinguish.
 
-**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, add a `sensitiveExclusions` entry naming the rule, the file, and why - see [Configuration](configuration.md#sensitiveexclusions). The marker `[redacted:jwt]` is emitted unconditionally: it exposes no JWT segment bytes, and no configuration suppresses a sensitive-data finding.
+**Remediation.** Move the token to a secret manager or runtime-only configuration; never check signed tokens into source control. If the literal is a public test vector documented in code, add a `sensitiveExclusions` entry naming the rule, the file, and why - see [Configuration](configuration.md#sensitiveexclusions). The marker `[redacted:jwt]` is emitted unconditionally: it exposes no JWT segment bytes, and baselines never suppress sensitive-data findings.
 
 **Known precision limit.** A syntactically valid sample, expired, or test JWT is indistinguishable from a live token literal. Use a non-token placeholder or load the fixture from an approved secure test source. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 

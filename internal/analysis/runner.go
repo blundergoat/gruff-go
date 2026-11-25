@@ -747,18 +747,28 @@ func changedScopeMatches(item finding.Finding, changed diff.ChangedLines, functi
 	}
 	// A finding can belong to the changed function even when its own line was left alone.
 	if function, ok := enclosingFunction(item.Location.Line, item.Symbol, functions); ok &&
-		diff.RangeChanged(changed, item.File, function.Line, function.EndLine) {
+		diff.RangeChanged(changed, item.File, functionScopeStartLine(function), function.EndLine) {
 		return true
 	}
 	// A duplicate-test group can be created by editing a member other than the test where the finding is anchored.
 	for _, line := range item.GroupMemberLines() {
 		// An edit anywhere in this member's function keeps the group visible for the reviewer.
 		if function, ok := enclosingFunction(line, "", functions); ok &&
-			diff.RangeChanged(changed, item.File, function.Line, function.EndLine) {
+			diff.RangeChanged(changed, item.File, functionScopeStartLine(function), function.EndLine) {
 			return true
 		}
 	}
 	return false
+}
+
+// functionScopeStartLine returns the earliest 1-based line owned by function for changed-region matching, including its attached doc comment.
+// It returns function.DocLine when positive and earlier than function.Line, otherwise function.Line.
+func functionScopeStartLine(function parser.Function) int {
+	// A doc comment above the function belongs to it, so editing only the comment still brings the function into a symbol-scope review.
+	if function.DocLine > 0 && function.DocLine < function.Line {
+		return function.DocLine
+	}
+	return function.Line
 }
 
 // enclosingFunction finds the function containing line, preferring the tightest one whose name matches the finding's symbol.
@@ -771,13 +781,15 @@ func enclosingFunction(line int, symbol string, functions []parser.Function) (pa
 	var best parser.Function
 	found := false
 	for _, function := range functions {
-		if line < function.Line || line > function.EndLine {
+		start := functionScopeStartLine(function)
+		if line < start || line > function.EndLine {
 			continue
 		}
 		if symbol != "" && function.Name != symbol && !strings.HasSuffix(function.Name, "."+symbol) {
 			continue
 		}
-		if !found || function.EndLine-function.Line < best.EndLine-best.Line {
+		// Keep the tightest function around the line, so a change inside a nested literal is credited to the innermost owner.
+		if !found || function.EndLine-start < best.EndLine-functionScopeStartLine(best) {
 			best = function
 			found = true
 		}
@@ -786,7 +798,7 @@ func enclosingFunction(line int, symbol string, functions []parser.Function) (pa
 		return best, true
 	}
 	for _, function := range functions {
-		if line >= function.Line && line <= function.EndLine {
+		if line >= functionScopeStartLine(function) && line <= function.EndLine {
 			return function, true
 		}
 	}

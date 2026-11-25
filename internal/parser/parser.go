@@ -58,6 +58,8 @@ type Unit struct {
 type Function struct {
 	// Name is the FuncDeclSymbol rendering, such as "Foo.Bar" for a method, or the var name for a var-assigned function literal.
 	Name string
+	// DocLine is the 1-based line where the function's attached doc comment begins, or Line when no doc comment is attached.
+	DocLine int
 	// Line is the 1-based line where the declaration begins.
 	Line int
 	// EndLine is the 1-based line where the declaration ends.
@@ -163,9 +165,10 @@ func ParseWithBudget(files []source.File, budget DeepScanBudget) ([]Unit, []Diag
 	return units, diagnostics
 }
 
-// parseDiagnostics converts a parser error or error list into per-file diagnostics.
+// parseDiagnostics converts a parser error or error list into per-file diagnostics with literal tokens sanitized.
 //
 // Every Diagnostic carries path unchanged from the discovered file and is built from err, the error the Go parser returned for that file.
+// String, raw-string, and long single-quoted literals are redacted so malformed files never leak credentials through parser errors.
 //
 // It returns one Diagnostic per entry, with its line and column, when err is a scanner.ErrorList, and an empty slice for an empty list.
 // Any other err gives a single Diagnostic with no position whose message is the err text with every occurrence of path plus a colon removed.
@@ -178,15 +181,100 @@ func parseDiagnostics(path string, err error) []Diagnostic {
 				File:    path,
 				Line:    item.Pos.Line,
 				Column:  item.Pos.Column,
-				Message: item.Msg,
+				Message: sanitizeParserDiagnosticMessage(item.Msg),
 			})
 		}
 		return out
 	}
 	return []Diagnostic{{
 		File:    path,
-		Message: strings.ReplaceAll(err.Error(), path+":", ""),
+		Message: sanitizeParserDiagnosticMessage(strings.ReplaceAll(err.Error(), path+":", "")),
 	}}
+}
+
+// sanitizeParserDiagnosticMessage replaces string, raw-string, and secret-shaped single-quoted literals in Go parser error message.
+//
+// Short Go keywords and operators in single quotes ('package', 'EOF', ':=') stay intact so syntax errors stay actionable.
+// Double-quoted strings, backtick raw strings, and secret-shaped single-quoted spans are redacted in the returned message.
+func sanitizeParserDiagnosticMessage(message string) string {
+	var out strings.Builder
+	out.Grow(len(message))
+	// Scan the parser's message byte by byte so a quoted source literal, which may hold a secret, never reaches the user's report.
+	for i := 0; i < len(message); i++ {
+		switch message[i] {
+		// A double-quoted literal from the user's source is always hidden.
+		case '"':
+			end := scanQuotedSpan(message, i, '"', true)
+			out.WriteString(`"[redacted-literal]"`)
+			i = end
+		// A raw-string literal is always hidden too; it often holds templates, keys or sample payloads.
+		case '`':
+			end := scanQuotedSpan(message, i, '`', false)
+			out.WriteString("`[redacted-literal]`")
+			i = end
+		// Single quotes also wrap Go's own tokens, such as 'package' or ':=', which stay so the syntax error is still useful.
+		case '\'':
+			end := scanQuotedSpan(message, i, '\'', true)
+			inner := ""
+			if end > i && end < len(message) && message[end] == '\'' {
+				inner = message[i+1 : end]
+			}
+			if isSafeParserTokenLiteral(inner) && end < len(message) && message[end] == '\'' {
+				out.WriteString(message[i : end+1])
+			} else {
+				out.WriteString("'[redacted-literal]'")
+			}
+			i = end
+		default:
+			out.WriteByte(message[i])
+		}
+	}
+	return out.String()
+}
+
+// scanQuotedSpan returns the index of the closing quote starting at start, or len(text)-1 if unclosed.
+// When allowEscape is true, a backslash skips the next byte so escaped quotes do not close the span early.
+func scanQuotedSpan(text string, start int, quote byte, allowEscape bool) int {
+	for i := start + 1; i < len(text); i++ {
+		// An escaped quote, such as \" inside a string literal, does not end the literal.
+		if allowEscape && text[i] == '\\' && i+1 < len(text) {
+			i++
+			continue
+		}
+		if text[i] == quote {
+			return i
+		}
+	}
+	return len(text) - 1
+}
+
+// isSafeParserTokenLiteral reports whether inner looks like a standard Go keyword, token class, or short operator printed by go/parser.
+// Multi-word, numeric, or secret-shaped single-quoted spans return false so sanitizeParserDiagnosticMessage redacts them.
+func isSafeParserTokenLiteral(inner string) bool {
+	// An empty or unclosed quote names no token, so it is hidden.
+	if inner == "" {
+		return false
+	}
+	// Short printable spans are Go operators such as ':=' or '...'.
+	if len(inner) <= 3 {
+		for i := 0; i < len(inner); i++ {
+			if inner[i] <= ' ' || inner[i] >= 0x7f {
+				return false
+			}
+		}
+		return true
+	}
+	// Go's longest keywords and token names are 11 letters, so anything longer is user text.
+	if len(inner) > 11 {
+		return false
+	}
+	for i := 0; i < len(inner); i++ {
+		ch := inner[i]
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+			return false
+		}
+	}
+	return true
 }
 
 // functions extracts top-level function metadata from a parsed AST file, including the function literals selected by PackageVarFuncs.
@@ -207,12 +295,22 @@ func functions(fset *token.FileSet, file *ast.File) []Function {
 		}
 		start := fset.Position(fn.Pos())
 		end := fset.Position(fn.End())
-		out = append(out, Function{Name: FuncDeclSymbol(fn), Line: start.Line, EndLine: end.Line})
+		docLine := start.Line
+		// A function's doc comment belongs to it, so changed-scope symbol runs count an edit to the comment as an edit to the function.
+		if fn.Doc != nil {
+			docLine = fset.Position(fn.Doc.Pos()).Line
+		}
+		out = append(out, Function{Name: FuncDeclSymbol(fn), DocLine: docLine, Line: start.Line, EndLine: end.Line})
 	}
 	for _, varFunc := range PackageVarFuncs(file) {
 		start := fset.Position(varFunc.Name.Pos())
 		end := fset.Position(varFunc.Lit.End())
-		out = append(out, Function{Name: varFunc.Name.Name, Line: start.Line, EndLine: end.Line})
+		docLine := start.Line
+		// The same applies to a function stored in a package-level var.
+		if varFunc.Doc != nil {
+			docLine = fset.Position(varFunc.Doc.Pos()).Line
+		}
+		out = append(out, Function{Name: varFunc.Name.Name, DocLine: docLine, Line: start.Line, EndLine: end.Line})
 	}
 	return out
 }

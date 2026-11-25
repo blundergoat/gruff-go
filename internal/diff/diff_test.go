@@ -296,6 +296,114 @@ func TestFromModeWorkingTreeKeepsStagedLinesAlignedAfterUnstagedShift(t *testing
 	}
 }
 
+// TestParseAnchorsShiftedDeletionLinesAndMixedHunks verifies -U0 shifted deletion anchors, -U3 multi-edit deletions, and ./ path cleanup.
+func TestParseAnchorsShiftedDeletionLinesAndMixedHunks(t *testing.T) {
+	u0Delete := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -4,1 +3,0 @@\n-// deleted doc\n"
+	changed := Parse("HEAD", []byte(u0Delete))
+	if _, ok := changed.LinesByFile["a.go"][4]; !ok {
+		t.Fatalf("-U0 deletion lines = %#v, want shifted post-deletion line 4", changed.LinesByFile["a.go"])
+	}
+
+	u3Mixed := "--- ./main.go\n+++ ./main.go\n@@ -1,5 +1,4 @@\n package p\n-// deleted doc\n func Foo() {}\n func Mid() {}\n-// old\n+func Bar() {}\n"
+	mixed := Parse("stdin", []byte(u3Mixed))
+	lines := mixed.LinesByFile["main.go"]
+	if _, ok := lines[2]; !ok {
+		t.Fatalf("-U3 mixed hunk dropped deletion anchor at line 2: %#v", lines)
+	}
+	if _, ok := lines[4]; !ok {
+		t.Fatalf("-U3 mixed hunk missed added line 4: %#v", lines)
+	}
+}
+
+// TestFromGitHandlesMnemonicPrefixColorAndNonASCIIPaths ensures user git config cannot drop changed-region findings.
+func TestFromGitHandlesMnemonicPrefixColorAndNonASCIIPaths(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "test@example.test")
+	runGit(t, root, "config", "user.name", "test")
+	runGit(t, root, "config", "diff.mnemonicPrefix", "true")
+	runGit(t, root, "config", "color.diff", "always")
+	writeFile(t, root, "café.go", "package main\n\nfunc main() {}\n")
+	runGit(t, root, "add", "café.go")
+	runGit(t, root, "commit", "-q", "-m", "initial")
+	writeFile(t, root, "café.go", "package main\n\nfunc main() {\n\tprintln(\"hi\")\n}\n")
+
+	changed, err := FromGit(context.Background(), root, "HEAD", []string{"."})
+	if err != nil {
+		t.Fatalf("FromGit error = %v", err)
+	}
+	if _, ok := changed.LinesByFile["café.go"][4]; !ok {
+		t.Fatalf("changed lines = %#v, want café.go line 4", changed.LinesByFile)
+	}
+}
+
+// TestParseStdinHandlesMnemonicQuotedPathsAndRejectsTruncatedHunks covers piped git patches with mnemonic/quoted headers and truncated hunks.
+func TestParseStdinHandlesMnemonicQuotedPathsAndRejectsTruncatedHunks(t *testing.T) {
+	mnemonic := "diff --git i/pkg/a.go w/pkg/a.go\n--- i/pkg/a.go\n+++ w/pkg/a.go\n@@ -1 +1 @@\n-old\n+new\n"
+	changed, err := ParseStdin([]byte(mnemonic))
+	if err != nil {
+		t.Fatalf("ParseStdin(mnemonic) error = %v", err)
+	}
+	if _, ok := changed.LinesByFile["pkg/a.go"][1]; !ok {
+		t.Fatalf("mnemonic changed lines = %#v, want pkg/a.go line 1", changed.LinesByFile)
+	}
+
+	// A --no-prefix patch for a real top-level w/ folder keeps its path, because both sides carry the same letter.
+	noPrefix := "diff --git w/handler.go w/handler.go\n--- w/handler.go\n+++ w/handler.go\n@@ -1 +1 @@\n-old\n+new\n"
+	npChanged, err := ParseStdin([]byte(noPrefix))
+	if err != nil {
+		t.Fatalf("ParseStdin(noPrefix) error = %v", err)
+	}
+	if _, ok := npChanged.LinesByFile["w/handler.go"][1]; !ok {
+		t.Fatalf("no-prefix changed lines = %#v, want w/handler.go line 1", npChanged.LinesByFile)
+	}
+	// A new file under diff.mnemonicPrefix has a /dev/null source, so its c/ to w/ header decides the prefix.
+	newFile := "diff --git c/pkg/n.go w/pkg/n.go\nnew file mode 100644\n--- /dev/null\n+++ w/pkg/n.go\n@@ -0,0 +1 @@\n+new\n"
+	nfChanged, err := ParseStdin([]byte(newFile))
+	if err != nil {
+		t.Fatalf("ParseStdin(newFile) error = %v", err)
+	}
+	if _, ok := nfChanged.WholeFiles["pkg/n.go"]; !ok {
+		t.Fatalf("mnemonic new-file changed lines = %#v, want pkg/n.go", nfChanged.LinesByFile)
+	}
+
+	quoted := "diff --git \"a/caf\\303\\251.go\" \"b/caf\\303\\251.go\"\n--- \"a/caf\\303\\251.go\"\n+++ \"b/caf\\303\\251.go\"\n@@ -1 +1 @@\n-old\n+new\n"
+	qChanged, err := ParseStdin([]byte(quoted))
+	if err != nil {
+		t.Fatalf("ParseStdin(quoted) error = %v", err)
+	}
+	if _, ok := qChanged.LinesByFile["café.go"][1]; !ok {
+		t.Fatalf("quoted changed lines = %#v, want café.go line 1", qChanged.LinesByFile)
+	}
+
+	truncated := "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1,2 @@\n-old\n+only-one\n"
+	if _, err := ParseStdin([]byte(truncated)); err == nil {
+		t.Fatal("expected ParseStdin to reject truncated hunk body")
+	}
+}
+
+// TestFromModeStagedFailsClosedWhenStagedFileHasUnstagedEdits ensures --diff staged never checks stale disk bytes when index and disk diverge.
+func TestFromModeStagedFailsClosedWhenStagedFileHasUnstagedEdits(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	runGit(t, root, "config", "user.email", "test@example.test")
+	runGit(t, root, "config", "user.name", "test")
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {}\n")
+	runGit(t, root, "add", "main.go")
+	runGit(t, root, "commit", "-q", "-m", "initial")
+
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {\n\tprintln(\"staged\")\n}\n")
+	runGit(t, root, "add", "main.go")
+	if _, err := FromMode(context.Background(), root, "staged", []string{"."}); err != nil {
+		t.Fatalf("clean staged FromMode error = %v", err)
+	}
+
+	writeFile(t, root, "main.go", "package main\n\nfunc main() {\n\tprintln(\"unstaged-fix\")\n}\n")
+	if _, err := FromMode(context.Background(), root, "staged", []string{"."}); err == nil {
+		t.Fatal("expected FromMode(staged) to fail closed when staged file also has unstaged edits")
+	}
+}
+
 // runGit executes a git command inside root and fails the test on errors.
 // The args are passed to git unchanged as its arguments, and the failure message shows them with the error and the combined output.
 func runGit(t *testing.T, root string, args ...string) {

@@ -52,17 +52,28 @@ var hunkPattern = regexp.MustCompile(`@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 // patchParseState carries state while streaming a unified diff, including active hunk line counters.
 // Tracking hunk line counts keeps unchanged context lines out of ChangedLines and prevents added "++ " content from hijacking file headers.
 type patchParseState struct {
-	currentFile    string
-	newFile        bool
-	inHunk         bool
-	oldRemaining   int
-	newRemaining   int
-	newLine        int
-	hunkStart      int
-	hunkNewCount   int
-	hunkSawBody    bool
-	hunkSawAdd     bool
-	deletionAnchor int
+	currentFile  string
+	newFile      bool
+	sourcePrefix byte // Git source prefix letter (a, c, i, o or w) for the current file, or 0 when the patch has none
+	inHunk       bool
+	oldRemaining int
+	newRemaining int
+	newLine      int
+	hunkStart    int
+	hunkNewCount int
+	hunkSawBody  bool
+}
+
+// gitDiffArgs builds the hardened git diff argument prefix that keeps paths unquoted, prefix-normalized, textconv-free, and ANSI-free.
+//
+// extra supplies mode-specific arguments such as "--cached" or a base revision placed before the "--" path separator.
+// It returns a fresh slice starting with "-c core.quotepath=false diff" and fixed a/ and b/ prefixes so user git config cannot break parsing.
+func gitDiffArgs(extra ...string) []string {
+	args := make([]string, 0, 10+len(extra))
+	args = append(args, "-c", "core.quotepath=false", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-textconv", "--unified=0", "--no-ext-diff", "--relative")
+	args = append(args, extra...)
+	args = append(args, "--")
+	return args
 }
 
 // FromGit runs git diff against base and returns the changed lines under paths, with file paths relative to root.
@@ -81,25 +92,7 @@ func FromGit(ctx context.Context, root string, base string, paths []string) (Cha
 	if strings.HasPrefix(base, "-") {
 		return ChangedLines{}, fmt.Errorf("diff base %q must not start with '-'", base)
 	}
-	args := []string{"diff", "--unified=0", "--no-ext-diff", "--relative", base, "--"}
-	if len(paths) == 0 {
-		args = append(args, ".")
-	} else {
-		args = append(args, paths...)
-	}
-	// #nosec G204 -- arguments are passed directly to git without shell expansion.
-	command := exec.CommandContext(ctx, "git", args...)
-	command.Dir = root
-	output, err := command.Output()
-	if err != nil {
-		// A missing repository or an unknown base, such as a mistyped branch, stops the changed-lines scan; the error carries git's message.
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return ChangedLines{}, fmt.Errorf("git diff failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		// If git is not installed or root does not exist, this startup error stops the changed-lines scan.
-		return ChangedLines{}, err
-	}
-	return Parse(base, output), nil
+	return gitDiff(ctx, root, base, gitDiffArgs(base), paths)
 }
 
 // FromMode resolves gruff's CLI diff modes into changed-line data, and ctx cancels the git subprocesses it spawns.
@@ -118,25 +111,41 @@ func FromMode(ctx context.Context, root string, mode string, paths []string) (Ch
 		}
 		// When HEAD exists, diffing HEAD directly against the working tree keeps staged and unstaged line numbers aligned with files on disk.
 		if gitHasHead(ctx, root) {
-			working, err := gitDiff(ctx, root, "working-tree", []string{"diff", "HEAD", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+			working, err := gitDiff(ctx, root, "working-tree", gitDiffArgs("HEAD"), paths)
 			if err != nil {
 				return ChangedLines{}, err
 			}
 			return Merge("working-tree", working, WholeFiles("working-tree", untracked)), nil
 		}
-		staged, err := gitDiff(ctx, root, "working-tree", []string{"diff", "--cached", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		staged, err := gitDiff(ctx, root, "working-tree", gitDiffArgs("--cached"), paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
-		unstaged, err := gitDiff(ctx, root, "working-tree", []string{"diff", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		unstaged, err := gitDiff(ctx, root, "working-tree", gitDiffArgs(), paths)
 		if err != nil {
 			return ChangedLines{}, err
 		}
 		return Merge("working-tree", staged, unstaged, WholeFiles("working-tree", untracked)), nil
 	case "staged":
-		return gitDiff(ctx, root, mode, []string{"diff", "--cached", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		staged, err := gitDiff(ctx, root, mode, gitDiffArgs("--cached"), paths)
+		if err != nil {
+			return ChangedLines{}, err
+		}
+		// Because analysis reads working-tree files from disk, fail closed if any staged file also has unstaged edits that diverge from the index.
+		diverged, err := unstagedOverlap(ctx, root, staged.ChangedFiles)
+		if err != nil {
+			return ChangedLines{}, err
+		}
+		// A staged file the user kept editing on disk would be scanned with lines that do not match the staged diff, so the run stops with advice.
+		if len(diverged) > 0 {
+			return ChangedLines{}, fmt.Errorf(
+				"staged diff cannot be checked against working-tree files because %s also has unstaged edits; stage or stash unstaged changes, or use --diff working-tree",
+				strings.Join(diverged, ", "),
+			)
+		}
+		return staged, nil
 	case "unstaged":
-		return gitDiff(ctx, root, mode, []string{"diff", "--unified=0", "--no-ext-diff", "--relative", "--"}, paths)
+		return gitDiff(ctx, root, mode, gitDiffArgs(), paths)
 	default:
 		// Any other mode is taken as a revision, so a mistyped mode such as stagd reaches git as a revision name and fails there.
 		revisionLines, err := FromGit(ctx, root, mode, paths)
@@ -231,58 +240,118 @@ func Parse(base string, patch []byte) ChangedLines {
 
 // ParseStdin reads the patch a developer pipes to --diff=- and returns its changed lines without running Git.
 //
-// An empty patch means there is no change to check. Unrecognized input or a bad hunk header returns an error instead of an empty successful scan.
+// An empty patch means there is no change to check. Unrecognized input, a bad hunk header, or a truncated hunk body returns an error
+// instead of silently passing a partial changed-region scan.
 func ParseStdin(patch []byte) (ChangedLines, error) {
 	// A clean git diff produces no bytes, so an empty pipe is a valid comparison.
 	if len(bytes.TrimSpace(patch)) == 0 {
 		return Parse("stdin", patch), nil
 	}
+	// A malformed pipe, such as a cut-off `git diff | head`, must fail instead of quietly checking only part of the change.
+	if err := validateStdinPatch(patch); err != nil {
+		return ChangedLines{}, err
+	}
+	return Parse("stdin", patch), nil
+}
 
-	lines := bytes.Split(patch, []byte("\n"))
+// validateStdinPatch checks that non-empty stdin unified-diff bytes in patch carry valid file headers and complete hunk bodies.
+// It returns nil when patch is a complete unified diff, or an error naming the invalid or truncated line when validation fails.
+func validateStdinPatch(patch []byte) error {
+	trimmed := bytes.TrimSuffix(patch, []byte("\n"))
+	lines := bytes.Split(trimmed, []byte("\n"))
 	hasChangeRecord, hasGitHeader, hasDestination := false, false, false
 	previousLine := ""
-	// A patch can contain several files, including metadata-only changes with no source lines for Gruff to check.
+	oldRem, newRem, hunkHeaderLine := 0, 0, 0
 	for lineIndex, raw := range lines {
 		line := strings.TrimSuffix(string(raw), "\r")
+		// Inside a hunk, every line must be a body line until the counts its @@ header promised are used up.
+		if oldRem > 0 || newRem > 0 {
+			if consumed := consumeStdinHunkLine(line, &oldRem, &newRem); consumed {
+				previousLine = line
+				continue
+			}
+			return fmt.Errorf("stdin patch has a truncated hunk starting at line %d", hunkHeaderLine)
+		}
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
 			hasGitHeader, hasDestination = true, false
 		case strings.HasPrefix(line, "+++ ") && strings.HasPrefix(previousLine, "--- "):
 			hasDestination = strings.TrimSpace(line[4:]) != "" && strings.TrimSpace(previousLine[4:]) != ""
 		case strings.HasPrefix(line, "@@"):
-			// A truncated or unrelated input may contain a hunk marker with no usable file location.
-			if !hasDestination || !validStdinHunk(line, len(lines)) {
-				return ChangedLines{}, fmt.Errorf("stdin patch has an invalid hunk at line %d", lineIndex+1)
+			oldCount, newCount, ok := parseStdinHunkCounts(line, len(lines))
+			// A hunk needs a ---/+++ file pair before it and a header whose counts fit inside the patch.
+			if !hasDestination || !ok {
+				return fmt.Errorf("stdin patch has an invalid hunk at line %d", lineIndex+1)
 			}
+			oldRem, newRem, hunkHeaderLine = oldCount, newCount, lineIndex+1
 			hasChangeRecord = true
 		case hasGitHeader && isGitMetadataChange(line):
 			hasChangeRecord = true
 		}
 		previousLine = line
 	}
-	// A log or compiler message accidentally piped in contains no recognizable patch record.
-	if !hasChangeRecord {
-		return ChangedLines{}, fmt.Errorf("stdin did not contain a unified diff")
+	// A patch that ends mid-hunk was cut off, so the last hunk's changed lines cannot be trusted.
+	if oldRem > 0 || newRem > 0 {
+		return fmt.Errorf("stdin patch has a truncated hunk starting at line %d", hunkHeaderLine)
 	}
-	return Parse("stdin", patch), nil
+	if !hasChangeRecord {
+		return fmt.Errorf("stdin did not contain a unified diff")
+	}
+	return nil
 }
 
-// validStdinHunk reports whether line gives a usable new-side range for --diff=-.
-// The declared number of lines must fit within patchLineCount, so a bad header cannot expand beyond the supplied patch.
-func validStdinHunk(line string, patchLineCount int) bool {
-	bounds := hunkPattern.FindStringSubmatch(line)
-	// A combined or truncated hunk uses a header this changed-line scan cannot interpret.
-	if bounds == nil || !strings.HasPrefix(line, bounds[0]) {
+// consumeStdinHunkLine decrements oldRem and newRem for one valid hunk body line, returning false when line does not belong to the active hunk.
+func consumeStdinHunkLine(line string, oldRem, newRem *int) bool {
+	switch {
+	case strings.HasPrefix(line, "+") && *newRem > 0:
+		*newRem--
+		return true
+	case strings.HasPrefix(line, "-") && *oldRem > 0:
+		*oldRem--
+		return true
+	// A context line, or a blank line some tools write for one, counts against both sides of the hunk.
+	case (strings.HasPrefix(line, " ") || line == "") && *oldRem > 0 && *newRem > 0:
+		*oldRem--
+		*newRem--
+		return true
+	// "\ No newline at end of file" belongs to the hunk but counts as neither side.
+	case strings.HasPrefix(line, "\\"):
+		return true
+	default:
 		return false
 	}
-	start, startErr := strconv.Atoi(bounds[2])
-	count := 1
-	var countErr error
-	// A user piping a one-line diff gets a header that usually omits the count.
-	if bounds[3] != "" {
-		count, countErr = strconv.Atoi(bounds[3])
+}
+
+// parseStdinHunkCounts extracts and bounds-checks the old and new line counts from one unified-diff hunk header line against patchLineCount.
+// It returns oldCount, newCount, and true when line is a valid bounded header, or zeros and false otherwise.
+func parseStdinHunkCounts(line string, patchLineCount int) (int, int, bool) {
+	bounds := hunkPattern.FindStringSubmatch(line)
+	if bounds == nil || !strings.HasPrefix(line, bounds[0]) {
+		return 0, 0, false
 	}
-	return startErr == nil && countErr == nil && count <= patchLineCount && start <= math.MaxInt-count
+	oldCount := 1
+	if bounds[1] != "" {
+		parsed, err := strconv.Atoi(bounds[1])
+		// A count larger than the whole patch can never be filled, so the header is rejected up front.
+		if err != nil || parsed < 0 || parsed > patchLineCount {
+			return 0, 0, false
+		}
+		oldCount = parsed
+	}
+	start, startErr := strconv.Atoi(bounds[2])
+	newCount := 1
+	if bounds[3] != "" {
+		parsed, err := strconv.Atoi(bounds[3])
+		if err != nil || parsed < 0 || parsed > patchLineCount {
+			return 0, 0, false
+		}
+		newCount = parsed
+	}
+	// A start line that would overflow when the count is added is rejected rather than wrapping to a bogus line.
+	if startErr != nil || start > math.MaxInt-newCount {
+		return 0, 0, false
+	}
+	return oldCount, newCount, true
 }
 
 // isGitMetadataChange reports whether line identifies a valid kind of Git change that can appear without text hunks.
@@ -307,17 +376,24 @@ func parsePatchLine(result *ChangedLines, state *patchParseState, line string) {
 		finishHunk(result, state)
 		state.currentFile = ""
 		state.newFile = false
+		state.sourcePrefix = gitSourcePrefix(gitHeaderSourcePath(strings.TrimPrefix(line, "diff --git ")))
 	// A file added by this diff is marked whole, so every finding in it survives the changed-lines filter.
 	case strings.HasPrefix(line, "new file mode "):
 		state.newFile = true
 	case strings.HasPrefix(line, "--- "):
 		finishHunk(result, state)
-		// Plain diff -u patches omit "diff --git " headers, so refresh newFile from each source header (stripping optional tab timestamps).
+		// Plain diff -u patches omit "diff --git " headers, so refresh newFile and source-prefix tracking from each source header.
 		sourcePath, _, _ := strings.Cut(strings.TrimPrefix(line, "--- "), "\t")
-		state.newFile = strings.TrimSpace(sourcePath) == "/dev/null"
+		trimmedSource := unquoteGitPath(strings.TrimSpace(sourcePath))
+		state.newFile = trimmedSource == "/dev/null"
+		// A new file's source is /dev/null, so it keeps the prefix letter its diff --git header showed.
+		if !state.newFile {
+			state.sourcePrefix = gitSourcePrefix(trimmedSource)
+		}
 	case strings.HasPrefix(line, "+++ "):
 		finishHunk(result, state)
-		state.currentFile = parseNewFile(line)
+		state.currentFile = parseNewFile(line, state.sourcePrefix)
+		state.sourcePrefix = 0
 		markParsedFile(result, state.currentFile, state.newFile)
 	case state.currentFile != "" && strings.HasPrefix(line, "@@ "):
 		finishHunk(result, state)
@@ -333,7 +409,6 @@ func consumeHunkLine(result *ChangedLines, state *patchParseState, line string) 
 	switch {
 	case strings.HasPrefix(line, "+") && state.newRemaining > 0:
 		state.hunkSawBody = true
-		state.hunkSawAdd = true
 		// Wholly new files already retain every finding, so line-level entries are recorded only for modified files.
 		if _, whole := result.WholeFiles[state.currentFile]; !whole && state.currentFile != "" {
 			result.LinesByFile[state.currentFile][state.newLine] = struct{}{}
@@ -342,10 +417,7 @@ func consumeHunkLine(result *ChangedLines, state *patchParseState, line string) 
 		state.newRemaining--
 	case strings.HasPrefix(line, "-") && state.oldRemaining > 0:
 		state.hunkSawBody = true
-		// Keep the first deletion point so a pure-deletion hunk still anchors nearby findings when no lines are added.
-		if state.deletionAnchor == 0 {
-			state.deletionAnchor = max(1, state.newLine)
-		}
+		recordDeletionAnchor(result, state)
 		state.oldRemaining--
 	// Treat bare empty lines as context only once body lines have started, so header-only patches never lose their fallback line range.
 	case (strings.HasPrefix(line, " ") || (line == "" && state.hunkSawBody)) && state.oldRemaining > 0 && state.newRemaining > 0:
@@ -364,6 +436,34 @@ func consumeHunkLine(result *ChangedLines, state *patchParseState, line string) 
 		finishHunk(result, state)
 	}
 	return true
+}
+
+// recordDeletionAnchor marks the post-deletion line(s) in result for a removed line inside the active hunk tracked by state.
+//
+// Pure-deletion -U0 hunks (hunkNewCount == 0) anchor max(1, hunkStart) and hunkStart+1 (when hunkStart > 0) to cover adjacent and shifted lines.
+// Hunks with context or additions anchor state.newLine directly, plus newLine-1 when deleting at the end of the hunk.
+func recordDeletionAnchor(result *ChangedLines, state *patchParseState) {
+	file := state.currentFile
+	if file == "" {
+		return
+	}
+	// A wholly changed file, such as a new one, already keeps every finding, so no line anchor is needed.
+	if _, whole := result.WholeFiles[file]; whole {
+		return
+	}
+	// A pure deletion has no new lines, so the lines either side of the gap are anchored to keep the edited function in scope.
+	if state.hunkNewCount == 0 {
+		result.LinesByFile[file][max(1, state.hunkStart)] = struct{}{}
+		if state.hunkStart > 0 {
+			result.LinesByFile[file][state.hunkStart+1] = struct{}{}
+		}
+		return
+	}
+	result.LinesByFile[file][max(1, state.newLine)] = struct{}{}
+	// A deletion at the end of a hunk also anchors the line above, which is where code after the removed lines now ends.
+	if state.newRemaining == 0 && state.newLine > 1 {
+		result.LinesByFile[file][state.newLine-1] = struct{}{}
+	}
 }
 
 // beginHunk initializes active hunk tracking in state from a unified-diff @@ header line.
@@ -389,14 +489,12 @@ func beginHunk(state *patchParseState, line string) {
 	state.hunkStart = start
 	state.hunkNewCount = newCount
 	state.hunkSawBody = false
-	state.hunkSawAdd = false
-	state.deletionAnchor = 0
 }
 
-// finishHunk closes the active hunk in state and records fallback or deletion-anchor lines into result when needed.
+// finishHunk closes the active hunk in state and records fallback lines into result for header-only hunks without body lines.
 //
-// When no hunk body lines appeared (such as synthetic -U0 header-only patches), it marks the header's new-line range in result.
-// When body lines held only deletions, it records the deletion anchor line so deletions still trigger overlapping findings; inactive hunks no-op.
+// When no hunk body lines appeared (such as synthetic -U0 header-only patches), it marks the header's new-line range in result,
+// or both max(1, hunkStart) and hunkStart+1 (when hunkStart > 0) for a zero-new-line pure deletion; inactive hunks no-op.
 func finishHunk(result *ChangedLines, state *patchParseState) {
 	if !state.inHunk {
 		return
@@ -410,24 +508,19 @@ func finishHunk(result *ChangedLines, state *patchParseState) {
 	if _, whole := result.WholeFiles[file]; whole {
 		return
 	}
-	// Header-only hunks without body lines fall back to the header's declared new range (or line 1 for a zero-line deletion).
+	// Header-only hunks without body lines fall back to the header's declared new range (or deletion anchors for a zero-line deletion).
 	if !state.hunkSawBody {
 		if state.hunkNewCount == 0 {
 			result.LinesByFile[file][max(1, state.hunkStart)] = struct{}{}
+			// Lines left above the deletion mean the line after the gap is anchored too; a deletion at the top of the file anchors line 1 only.
+			if state.hunkStart > 0 {
+				result.LinesByFile[file][state.hunkStart+1] = struct{}{}
+			}
 			return
 		}
 		for offset := 0; offset < state.hunkNewCount; offset++ {
 			result.LinesByFile[file][state.hunkStart+offset] = struct{}{}
 		}
-		return
-	}
-	// A hunk with only deletions and context gets one anchor line so deleting a guard or comment keeps findings at that spot in scope.
-	if !state.hunkSawAdd {
-		anchor := state.deletionAnchor
-		if anchor < 1 {
-			anchor = max(1, state.hunkStart)
-		}
-		result.LinesByFile[file][anchor] = struct{}{}
 	}
 }
 
@@ -533,19 +626,116 @@ func RangeChanged(changed ChangedLines, file string, start int, end int) bool {
 
 // parseNewFile extracts the destination file path from a unified-diff "+++ " header line.
 //
-// It strips optional diff -u tab-separated timestamps and any leading b/ prefix.
+// It decodes Git C-quoted paths, strips diff -u timestamps, b/ or mnemonic prefixes using sourcePrefix, and leading ./ markers.
 // Returns an empty string for deleted files ("/dev/null") or an empty header so callers skip tracking them.
-func parseNewFile(line string) string {
+func parseNewFile(line string, sourcePrefix byte) string {
 	headerPath, _, _ := strings.Cut(strings.TrimPrefix(line, "+++ "), "\t")
-	cleanPath := strings.TrimSpace(headerPath)
+	cleanPath := unquoteGitPath(strings.TrimSpace(headerPath))
 	// Deleted files use /dev/null as their destination and carry no post-change lines to filter.
 	if cleanPath == "/dev/null" {
 		return ""
 	}
-	if strings.HasPrefix(cleanPath, "b/") {
-		return strings.TrimPrefix(cleanPath, "b/")
+	cleanPath = stripGitDestinationPrefix(cleanPath, sourcePrefix)
+	// Strip every leading ./ so "./pkg/a.go" and "pkg/a.go" name the same changed file.
+	for strings.HasPrefix(cleanPath, "./") {
+		cleanPath = strings.TrimPrefix(cleanPath, "./")
 	}
 	return cleanPath
+}
+
+// gitSourcePrefix returns the single-letter Git source prefix (a, i, c, o or w) that path starts with, or 0 when it has none.
+func gitSourcePrefix(path string) byte {
+	if len(path) < 2 || path[1] != '/' {
+		return 0
+	}
+	switch path[0] {
+	case 'a', 'i', 'c', 'o', 'w':
+		return path[0]
+	}
+	return 0
+}
+
+// gitHeaderSourcePath returns the first (source) path of a "diff --git" header body, decoding a Git-quoted path such as "a/caf\303\251.go".
+func gitHeaderSourcePath(header string) string {
+	// A quoted source path ends at its closing quote, because the path itself may contain spaces.
+	if strings.HasPrefix(header, "\"") {
+		for index := 1; index < len(header); index++ {
+			// An escaped character, such as \" inside the name, never closes the quoted path.
+			if header[index] == '\\' {
+				index++
+				continue
+			}
+			if header[index] == '"' {
+				return unquoteGitPath(header[:index+1])
+			}
+		}
+		return header
+	}
+	source, _, _ := strings.Cut(header, " ")
+	return source
+}
+
+// stripGitDestinationPrefix returns path without Git's destination prefix, or path unchanged when none applies.
+//
+// A b/ prefix is always removed; a mnemonic prefix (w/, i/, c/, o/) only when sourcePrefix is a different letter, as in c/ to w/.
+// A --no-prefix patch for a real top-level folder named w/ has the same letter on both sides, so its path is kept intact.
+func stripGitDestinationPrefix(path string, sourcePrefix byte) string {
+	// The standard b/ destination prefix is always Git's, so it is always removed.
+	if strings.HasPrefix(path, "b/") {
+		return path[2:]
+	}
+	// Strip only a mnemonic pair such as i/ to w/; an a/ source pairs with b/, which is handled above.
+	if sourcePrefix != 0 && sourcePrefix != 'a' && len(path) >= 2 && path[1] == '/' && path[0] != sourcePrefix {
+		switch path[0] {
+		case 'w', 'i', 'c', 'o':
+			return path[2:]
+		}
+	}
+	return path
+}
+
+// unquoteGitPath decodes a Git C-style double-quoted path literal (including octal byte escapes and escaped quotes) into raw UTF-8 text.
+// An unquoted or malformed string is returned unchanged.
+func unquoteGitPath(raw string) string {
+	if len(raw) < 2 || raw[0] != '"' || raw[len(raw)-1] != '"' {
+		return raw
+	}
+	decoded, err := strconv.Unquote(raw)
+	if err != nil {
+		return raw
+	}
+	return decoded
+}
+
+// unstagedOverlap returns the sorted subset of changedFiles inside root that also have unstaged diffs between the Git index and working tree.
+// It returns nil and nil when changedFiles is empty or clean, or an error when running git diff in root fails.
+func unstagedOverlap(ctx context.Context, root string, changedFiles []string) ([]string, error) {
+	// With nothing staged there is no file whose staged and on-disk copies could disagree.
+	if len(changedFiles) == 0 {
+		return nil, nil
+	}
+	args := make([]string, 0, 5+len(changedFiles))
+	args = append(args, "diff", "--name-only", "-z", "--relative", "--")
+	args = append(args, changedFiles...)
+	// #nosec G204 -- arguments are passed directly to git without shell expansion.
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = root
+	output, err := command.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("git diff failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, err
+	}
+	overlap := []string{}
+	// Git separates names with NUL bytes, so names containing spaces or newlines come through intact.
+	for _, entry := range bytes.Split(output, []byte{0}) {
+		if len(entry) > 0 {
+			overlap = append(overlap, filepath.ToSlash(string(entry)))
+		}
+	}
+	slices.Sort(overlap)
+	return overlap, nil
 }
 
 // gitHasHead reports whether the git repository at root has a resolvable HEAD commit.
@@ -592,7 +782,7 @@ func gitDiff(ctx context.Context, root string, base string, args []string, paths
 // With no untracked files the slice is empty, not nil.
 // It fails with an error holding git's trimmed stderr when git exits non-zero, or with the exec error when git cannot be started.
 func untrackedFiles(ctx context.Context, root string, paths []string) ([]string, error) {
-	args := []string{"ls-files", "--others", "--exclude-standard", "--"}
+	args := []string{"ls-files", "-z", "--others", "--exclude-standard", "--"}
 	if len(paths) == 0 {
 		args = append(args, ".")
 	} else {
@@ -609,9 +799,9 @@ func untrackedFiles(ctx context.Context, root string, paths []string) ([]string,
 		return nil, err
 	}
 	files := []string{}
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.TrimSpace(line) != "" {
-			files = append(files, filepath.ToSlash(line))
+	for _, entry := range bytes.Split(output, []byte{0}) {
+		if len(entry) > 0 {
+			files = append(files, filepath.ToSlash(string(entry)))
 		}
 	}
 	return files, nil

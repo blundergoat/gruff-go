@@ -23,11 +23,20 @@ type severityTotals struct {
 	advisory int
 }
 
-// severityCounts tallies findings across the report by severity for the headline summaries.
+// severityCounts returns full-scan finding totals by severity for headline summaries.
 //
-// Returns a severityTotals whose total is len(report.Findings) and whose error, warning and advisory fields count findings of that severity.
-// A finding of any other severity adds to total only, and every count is zero when report has no findings.
+// When report carries Summary counts from analysis.NewReport, it reads them directly so display filters never contradict Pillars or JSON totals.
+// Synthetic reports built without Summary counts fall back to tallying report.Findings directly.
 func severityCounts(report analysis.Report) severityTotals {
+	// Use the full-scan counts, so --show-rule or --hide-rule never makes the headline disagree with the pillar table or JSON totals.
+	if report.Summary.CountsBySeverity != nil || report.Summary.FindingsCount > 0 {
+		return severityTotals{
+			total:    report.Summary.FindingsCount,
+			error:    report.Summary.CountsBySeverity[string(finding.SeverityError)],
+			warning:  report.Summary.CountsBySeverity[string(finding.SeverityWarning)],
+			advisory: report.Summary.CountsBySeverity[string(finding.SeverityAdvisory)],
+		}
+	}
 	counts := severityTotals{total: len(report.Findings)}
 	for _, item := range report.Findings {
 		switch item.Severity {
@@ -52,14 +61,24 @@ func (r htmlRenderer) verdictSubtitle(counts severityTotals) string {
 	if thresholdFindings == 0 {
 		return "No warning or higher severity findings flagged."
 	}
-	pillarSet := map[string]struct{}{}
-	for _, item := range r.report.Findings {
-		switch item.Severity {
-		case finding.SeverityError, finding.SeverityWarning:
-			pillarSet[string(item.Pillar)] = struct{}{}
+	pillarCount := 0
+	// Count pillars from the score, which also sees findings the display filters hid.
+	for _, detail := range r.report.Score.PillarDetails {
+		if detail.Error+detail.Warning > 0 {
+			pillarCount++
 		}
 	}
-	pillarCount := len(pillarSet)
+	// A report built without pillar scores, such as a test fixture, falls back to counting the listed findings.
+	if pillarCount == 0 {
+		pillarSet := map[string]struct{}{}
+		for _, item := range r.report.Findings {
+			switch item.Severity {
+			case finding.SeverityError, finding.SeverityWarning:
+				pillarSet[string(item.Pillar)] = struct{}{}
+			}
+		}
+		pillarCount = len(pillarSet)
+	}
 	return fmt.Sprintf(
 		"%d %s at warning or higher severity across %d %s.",
 		thresholdFindings,

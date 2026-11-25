@@ -45,7 +45,9 @@ func (s *requestTaintScope) taintIntroPos(rhs ast.Expr, fallback token.Pos) toke
 	case *ast.Ident:
 		if e.Obj != nil {
 			if pos, ok := s.firstTaintPos[e.Obj]; ok {
-				return pos
+				// Never back-date the destination binding earlier than the assignment itself (fallback),
+				// while still preserving a later source taint position when the source is tainted later.
+				return max(pos, fallback)
 			}
 		}
 	case *ast.BinaryExpr:

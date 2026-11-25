@@ -1,12 +1,11 @@
 // Package cli exports git base trees for gruff-go hook diff runs.
 //
-// When a coding agent or developer invokes gruff-go hook --diff <ref>, this file materializes only the needed repository paths at <ref>
-// into an isolated temporary directory so hook comparison can measure introduced versus pre-existing findings without modifying the working tree.
-// All git refs are validated against leading dashes before running git archive to prevent option injection.
+// For gruff-go hook --diff <ref>, this file materializes only the needed repository paths at <ref> into an isolated temporary directory.
+// Reading blobs via git ls-tree and git cat-file bypasses .gitattributes export-ignore and export-subst while rejecting symlinks and unsafe paths.
 package cli
 
 import (
-	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -15,53 +14,50 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
+// gitTreeEntry describes one regular blob entry returned by git ls-tree for base-tree materialization.
+type gitTreeEntry struct {
+	sha  string
+	path string
+}
+
 // exportGitTree materializes a git ref in a temporary directory as the B3 diff baseline for a gruff-go hook run with --diff.
 //
-// The export is scoped to the paths the hook invocation needs.
-// An explicit Go file widens to its package directory, so project rules keep sibling context.
+// The export is scoped to the paths the hook invocation needs, reading tree entries via git ls-tree and git cat-file so .gitattributes
+// export-ignore (for example on .github/workflows/) never hides committed files from new-only comparison.
 //
-// root is the repository git runs in, ref the commit or tree to export, and paths the hook's inputs; with no paths the whole tree is exported.
-// It returns the temporary directory and a cleanup func that removes it; a scoped export is empty when no resolved archive path exists at ref.
-// It fails with an error and a nil cleanup when path resolution, git archive, the temporary directory or tar extraction fails.
+// root is the repository git runs in, ref the commit or tree to export, and paths the hook's inputs (empty exports the whole tree).
+// It returns the temp directory and cleanup func (empty when nothing exists at ref), or an error and nil cleanup if git or file writes fail.
 func exportGitTree(ctx context.Context, root, ref string, paths []string) (string, func(), error) {
 	if strings.HasPrefix(ref, "-") {
 		return "", nil, fmt.Errorf("git base ref %q must not start with '-'", ref)
 	}
-	archivePaths, scoped, err := hookBaseArchivePaths(ctx, root, ref, paths)
+	exportPaths, scoped, err := hookBaseExportPaths(ctx, root, ref, paths)
 	if err != nil {
 		return "", nil, err
 	}
 	// No resolved path exists at ref, as when the hook checks a new package directory added since that commit, so the base is an empty directory.
-	if scoped && len(archivePaths) == 0 {
+	if scoped && len(exportPaths) == 0 {
 		return emptyHookBaseDir()
 	}
-	args := []string{"archive", "--format=tar", ref}
-	if scoped {
-		args = append(args, "--")
-		args = append(args, archivePaths...)
-	}
-	// #nosec G204 -- arguments are passed directly to git without shell expansion.
-	command := exec.CommandContext(ctx, "git", args...)
-	command.Dir = root
-	data, err := command.Output()
-	// A base ref git cannot resolve in a whole-tree run, such as a mistyped branch, fails here with git's stderr as the error text.
-	// A git binary missing from PATH returns the exec error unchanged.
+	entries, err := gitTreeRegularBlobs(ctx, root, ref, exportPaths, scoped)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", nil, fmt.Errorf("git archive failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
-		}
 		return "", nil, err
+	}
+	// A base revision with none of the edited files, such as files added since, has no earlier findings to compare against.
+	if len(entries) == 0 {
+		return emptyHookBaseDir()
 	}
 	dir, err := os.MkdirTemp("", "gruff-go-hook-base-*")
 	if err != nil {
 		return "", nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	// A failed write, such as a full disk, or an unsafe entry path aborts the export, and the partial tree is removed first.
-	if err := extractTar(data, dir); err != nil {
+	// A failed write, missing object, or unsafe entry path aborts the export, and the partial tree is removed first.
+	if err := writeGitTreeBlobs(ctx, root, entries, dir); err != nil {
 		cleanup()
 		return "", nil, err
 	}
@@ -79,18 +75,17 @@ func emptyHookBaseDir() (string, func(), error) {
 	return dir, cleanup, nil
 }
 
-// hookBaseArchivePaths resolves user paths to git archive pathspecs; a false scoped result means the whole tree is required.
+// hookBaseExportPaths resolves user paths to git ls-tree pathspecs; a false scoped result means the whole tree is required.
 //
-// root is the repository directory, ref the tree checked with git ls-tree, and paths the user's inputs, absolute or relative to root.
-// It returns sorted, de-duplicated pathspecs that exist at ref, an empty list when none does; inputs outside root are skipped.
-// No paths, the root itself or a Go file at the root gives scoped false; a failed ls-tree returns its error with scoped true.
-func hookBaseArchivePaths(ctx context.Context, root, ref string, paths []string) ([]string, bool, error) {
+// root is the repository directory, ref the tree checked with git ls-tree, and paths the hook's inputs (absolute or relative to root).
+// Returns sorted pathspecs existing at ref (empty if none); empty paths, root, or root Go files give scoped false, and ls-tree errors return true.
+func hookBaseExportPaths(ctx context.Context, root, ref string, paths []string) ([]string, bool, error) {
 	if len(paths) == 0 {
 		return nil, false, nil
 	}
-	archivePaths := map[string]struct{}{}
+	exportSet := map[string]struct{}{}
 	for _, input := range paths {
-		candidate, fullTree, ok := hookBaseArchivePath(root, input)
+		candidate, fullTree, ok := hookBaseExportPath(root, input)
 		if !ok {
 			continue
 		}
@@ -104,23 +99,22 @@ func hookBaseArchivePaths(ctx context.Context, root, ref string, paths []string)
 			return nil, true, err
 		}
 		if exists {
-			archivePaths[candidate] = struct{}{}
+			exportSet[candidate] = struct{}{}
 		}
 	}
-	out := make([]string, 0, len(archivePaths))
-	for path := range archivePaths {
+	out := make([]string, 0, len(exportSet))
+	for path := range exportSet {
 		out = append(out, path)
 	}
 	slices.Sort(out)
 	return out, true, nil
 }
 
-// hookBaseArchivePath maps one hook path to the smallest base-tree path that preserves analysis context.
+// hookBaseExportPath maps one hook path to the smallest base-tree path that preserves analysis context.
 //
-// input is one hook path, made relative to root when absolute; a Go file maps to its package directory and any other path to its cleaned form.
-// It returns that slash-separated path, then a full-tree flag that is true, with an empty path, for the root or a Go file at the root.
-// The third result is false for an empty input or one that cannot be made relative to root or resolves outside it.
-func hookBaseArchivePath(root, input string) (string, bool, bool) {
+// input is resolved relative to root; Go files map to their package directory, and root or root Go files return an empty path with fullTree true.
+// The third result is false when input is empty, cannot be made relative to root, or resolves outside root.
+func hookBaseExportPath(root, input string) (string, bool, bool) {
 	if input == "" {
 		return "", false, false
 	}
@@ -204,61 +198,151 @@ func gitWriteTree(ctx context.Context, root string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// extractTar expands a git archive into root while validating every path.
+// gitTreeRegularBlobs lists regular file blobs in root at ref under exportPaths (or the whole tree when scoped is false).
 //
-// data is the tar stream from git archive, and root the directory receiving its directories and regular files; other entry types are skipped.
-// It returns nil at the end of the stream, and an error when the tar cannot be read, an entry path is unsafe, or a directory or file write fails.
-func extractTar(data []byte, root string) error {
-	reader := tar.NewReader(bytes.NewReader(data))
-	for {
-		header, err := reader.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		target, err := safeTarTarget(root, header.Name)
-		if err != nil {
-			return err
-		}
-		// Symlinks and other entry types are skipped, so the base tree never holds a link that points outside the temporary directory.
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(file, reader); err != nil {
-				_ = file.Close()
-				return err
-			}
-			if err := file.Close(); err != nil {
-				return err
-			}
-		}
+// Symlinks (120000), submodules (160000), and non-blob entries are skipped so the exported base contains only safe regular files.
+// It returns the matched gitTreeEntry slice (empty when none exist), or an error when git ls-tree fails or cannot be started.
+func gitTreeRegularBlobs(ctx context.Context, root, ref string, exportPaths []string, scoped bool) ([]gitTreeEntry, error) {
+	args := []string{"ls-tree", "-r", "-z", ref}
+	// A scoped export lists only the edited paths, so a large repository is not copied for a one-file hook run.
+	if scoped {
+		args = append(args, "--")
+		args = append(args, exportPaths...)
 	}
+	// #nosec G204 -- arguments are passed directly to git without shell expansion.
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = root
+	out, err := command.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("git ls-tree failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, err
+	}
+	entries := []gitTreeEntry{}
+	for _, record := range bytes.Split(out, []byte{0}) {
+		if len(record) == 0 {
+			continue
+		}
+		meta, pathPart, ok := strings.Cut(string(record), "\t")
+		// A record without a tab-separated path is not a file entry.
+		if !ok || pathPart == "" {
+			continue
+		}
+		fields := strings.Fields(meta)
+		// Only ordinary and executable files are exported; symlinks and submodules could point outside the temporary base folder.
+		if len(fields) != 3 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
+			continue
+		}
+		entries = append(entries, gitTreeEntry{sha: fields[2], path: pathPart})
+	}
+	return entries, nil
 }
 
-// safeTarTarget rejects archive entries that would escape the extraction root.
+// writeGitTreeBlobs reads every blob listed in entries from root via one git cat-file --batch subprocess and writes them safely under destRoot.
 //
-// name is the archive entry name and root the extraction directory; the result is the cleaned name joined under root.
-// It returns an empty string and an error quoting name when name is empty, cleans to a dot such as dir/.., is absolute, or would escape root.
-func safeTarTarget(root, name string) (string, error) {
+// Each entry path is validated through safeExportTarget before any parent directory or file is created under destRoot.
+// It returns nil on success, or an error when git cat-file fails, a blob header is invalid, or a file write fails.
+func writeGitTreeBlobs(ctx context.Context, root string, entries []gitTreeEntry, destRoot string) error {
+	var stdin bytes.Buffer
+	for _, entry := range entries {
+		stdin.WriteString(entry.sha)
+		stdin.WriteByte('\n')
+	}
+	// #nosec G204 -- fixed git subcommand reading SHA list from stdin without shell expansion.
+	command := exec.CommandContext(ctx, "git", "cat-file", "--batch")
+	command.Dir = root
+	command.Stdin = &stdin
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := command.Start(); err != nil {
+		return err
+	}
+	writeErr := copyGitBatchBlobs(bufio.NewReader(stdout), entries, destRoot)
+	// A failed write, such as a full temp disk, leaves git blocked on unread output, so stop it before waiting or the hook would hang.
+	if writeErr != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return writeErr
+	}
+	waitErr := command.Wait()
+	if waitErr != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("git cat-file failed: %s", msg)
+		}
+		return waitErr
+	}
+	return nil
+}
+
+// copyGitBatchBlobs streams git cat-file --batch records for entries from reader into validated regular files under destRoot.
+// It returns nil once every entry is written, or an error when a batch header, blob payload, path check, or write fails.
+func copyGitBatchBlobs(reader *bufio.Reader, entries []gitTreeEntry, destRoot string) error {
+	for _, blob := range entries {
+		header, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("read git object header for %s: %w", blob.path, err)
+		}
+		fields := strings.Fields(header)
+		// Git answers in the order the hashes were sent, so any other object here means the export is out of step and must stop.
+		if len(fields) != 3 || fields[1] != "blob" {
+			return fmt.Errorf("unexpected git object %q for %s", strings.TrimSpace(header), blob.path)
+		}
+		size, err := strconv.ParseInt(fields[2], 10, 64)
+		// A size that does not parse would make the next read land in the middle of another file.
+		if err != nil || size < 0 {
+			return fmt.Errorf("invalid git blob size for %s: %q", blob.path, fields[2])
+		}
+		target, err := safeExportTarget(destRoot, blob.path)
+		if err != nil {
+			return err
+		}
+		if err := writeLimitedBlob(target, reader, size); err != nil {
+			return err
+		}
+		// git cat-file --batch appends one trailing LF after each object payload.
+		if _, err := reader.ReadByte(); err != nil {
+			return fmt.Errorf("read git blob terminator for %s: %w", blob.path, err)
+		}
+	}
+	return nil
+}
+
+// writeLimitedBlob writes exactly size bytes from reader to target, creating parent directories as needed.
+// It returns nil on success, or an error when directory creation, file opening, copying, or closing fails.
+func writeLimitedBlob(target string, reader io.Reader, size int64) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.CopyN(file, reader, size)
+	closeErr := file.Close()
+	// A short copy, such as a full temp disk, wins over the close error because it is the cause the user can act on.
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
+// safeExportTarget rejects exported git blob paths that would escape the temporary base directory.
+//
+// name is the repository-relative blob path and root the temp export directory; returns the cleaned path joined under root.
+// Returns an empty string and an error quoting name when name is empty, cleans to ".", is absolute, or would escape root.
+func safeExportTarget(root, name string) (string, error) {
 	clean := filepath.Clean(name)
 	if clean == "." || filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
-		return "", fmt.Errorf("unsafe git archive path %q", name)
+		return "", fmt.Errorf("unsafe git export path %q", name)
 	}
 	target := filepath.Join(root, clean)
 	if rel, err := filepath.Rel(root, target); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("unsafe git archive path %q", name)
+		return "", fmt.Errorf("unsafe git export path %q", name)
 	}
 	return target, nil
 }

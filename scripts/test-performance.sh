@@ -141,6 +141,7 @@ preflight() {
   local need_hf="${1:-}"
   # A performance baseline must never bind a stale ignored binary. Build from
   # the current runtime source on every invocation, matching the family runner.
+  mkdir -p "$(dirname "$BIN")"
   log "${C_DIM}building $BIN ...${C_OFF}"
   (cd "$REPO_ROOT" && go build -trimpath -o "$BIN" ./cmd/gruff-go) || fail "go build failed"
 

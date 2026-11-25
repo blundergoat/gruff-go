@@ -541,3 +541,43 @@ func TestHandlerEnforcesLoopbackHostAndFramingHeaders(t *testing.T) {
 		t.Fatalf("AllowPublic status = %d, want 200", pubRec.Code)
 	}
 }
+
+// TestDashboardErrorMetadataNoBaselineCommandAndQueryFailOn covers error metadata injection, --no-baseline display, and query failOn resolution.
+func TestDashboardErrorMetadataNoBaselineCommandAndQueryFailOn(t *testing.T) {
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, ".gruff-go.yaml"), "schemaVersion: gruff-go.config.v0.1\nfailOn:\n  dashboard: error\n")
+
+	// stateFromQuery must consult failOn.dashboard in the requested ?project= and honor ?noConfig=1.
+	state := stateFromQuery(Options{}, map[string][]string{"project": {project}})
+	if state.FailOn != "error" {
+		t.Fatalf("stateFromQuery(?project) FailOn = %q, want error", state.FailOn)
+	}
+	noCfgState := stateFromQuery(Options{}, map[string][]string{"project": {project}, "noConfig": {"1"}})
+	if noCfgState.FailOn != "none" {
+		t.Fatalf("stateFromQuery(?project&noConfig=1) FailOn = %q, want none", noCfgState.FailOn)
+	}
+	// Startup --no-config must not be undone by ?noConfig=0 during failOn lookup.
+	startupNoCfg := stateFromQuery(Options{SkipConfig: true}, map[string][]string{"project": {project}, "noConfig": {"0"}})
+	if startupNoCfg.FailOn != "none" {
+		t.Fatalf("stateFromQuery(SkipConfig=true, ?noConfig=0) FailOn = %q, want none", startupNoCfg.FailOn)
+	}
+
+	// displayCommand must emit --no-baseline/--no-config exclusively without conflicting --baseline/--config flags.
+	cmd := displayCommand(report.DashboardState{SkipBaseline: "1", Baseline: "old.json", SkipConfig: "1", Config: "custom.yaml"}, Options{})
+	if !strings.Contains(cmd, "--no-baseline") || strings.Contains(cmd, "--baseline old.json") {
+		t.Fatalf("displayCommand(SkipBaseline=1) = %q, want --no-baseline without --baseline", cmd)
+	}
+	if !strings.Contains(cmd, "--no-config") || strings.Contains(cmd, "--config custom.yaml") {
+		t.Fatalf("displayCommand(SkipConfig=1) = %q, want --no-config without --config", cmd)
+	}
+
+	// Scan error responses must carry gruff-dashboard-meta so the parent frame updates status and exit code.
+	handler := NewHandler(Options{ProjectRoot: project})
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8765/scan?project=/nonexistent-gruff-dashboard-dir", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	meta := extractScanMetadata(t, rec.Body.String())
+	if meta.ExitCode != 2 {
+		t.Fatalf("error page metadata exitCode = %d, want 2", meta.ExitCode)
+	}
+}

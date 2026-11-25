@@ -463,3 +463,47 @@ func TestWriteHTMLRendersSuppressionsAuditSection(t *testing.T) {
 		t.Fatalf("suppression reason was not HTML-escaped")
 	}
 }
+
+// TestDisplayFilterPreservesFullScanHeadlineCounts verifies display filters preserve full-scan headline totals and use a clear empty state.
+func TestDisplayFilterPreservesFullScanHeadlineCounts(t *testing.T) {
+	rep := buildHTMLFixture()
+	analysis.ApplyDisplayFilter(&rep, analysis.DisplayFilter{MinimumSeverity: finding.SeverityError})
+	if len(rep.Findings) != 2 {
+		t.Fatalf("filtered findings = %d, want 2 errors shown", len(rep.Findings))
+	}
+
+	var textOut bytes.Buffer
+	if err := WriteText(&textOut, rep); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
+	if !strings.Contains(textOut.String(), "Findings: 5 total · 2 error · 2 warning · 1 advisory") {
+		t.Fatalf("text headline contradicted full scan summary:\n%s", textOut.String())
+	}
+
+	var mdOut bytes.Buffer
+	if err := WriteMarkdown(&mdOut, rep); err != nil {
+		t.Fatalf("WriteMarkdown: %v", err)
+	}
+	if !strings.Contains(mdOut.String(), "Findings: 5 total · 2 error · 2 warning · 1 advisory") {
+		t.Fatalf("markdown headline contradicted full scan summary:\n%s", mdOut.String())
+	}
+
+	var htmlOut bytes.Buffer
+	if err := WriteHTML(&htmlOut, rep, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML: %v", err)
+	}
+	if !strings.Contains(htmlOut.String(), "4 findings at warning or higher severity across 2 pillars.") {
+		t.Fatalf("HTML verdict subtitle contradicted full scan summary:\n%s", htmlOut.String())
+	}
+
+	// Hiding every finding must show a filter-specific empty state instead of contradicting the verdict with "No findings.".
+	allHidden := buildHTMLFixture()
+	analysis.ApplyDisplayFilter(&allHidden, analysis.DisplayFilter{IncludeRules: []string{"nonexistent.rule"}})
+	var hiddenHTML bytes.Buffer
+	if err := WriteHTML(&hiddenHTML, allHidden, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML(allHidden): %v", err)
+	}
+	if !strings.Contains(hiddenHTML.String(), "All 5 findings hidden by display filter.") {
+		t.Fatalf("HTML empty filtered state missing:\n%s", hiddenHTML.String())
+	}
+}

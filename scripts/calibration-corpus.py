@@ -343,18 +343,30 @@ def parse_report(raw: bytes, label: str) -> dict[str, Any]:
     return report
 
 
+def write_calibration_config(stage: Path) -> Path:
+    """Write a deterministic config enabling every calibration target rule, including opt-in rules."""
+    config_path = stage / "calibration-config.yaml"
+    lines = ["schemaVersion: gruff-go.config.v0.1", "rules:"]
+    for rule_id in TARGET_RULES:
+        lines.append(f"  {rule_id}:")
+        lines.append("    enabled: true")
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return config_path
+
+
 def scan_corpus(
     binary: Path,
     stage: Path,
     entries: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Scan every pinned module, save raw reports, and collect sample fields."""
+    config_path = write_calibration_config(stage)
     corpus_manifest: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     for entry in entries:
         label = f"{entry['name']}/{entry['module']}"
         completed = run(
-            [str(binary), "analyse", "--format", "json", "--no-config", "."],
+            [str(binary), "analyse", "--format", "json", "--config", str(config_path), "."],
             cwd=entry["moduleRoot"],
             allowed=(0, 1),
         )
@@ -545,12 +557,13 @@ def build_oracles(
     findings: list[dict[str, Any]],
 ) -> dict[str, str]:
     """Execute known positives and validate one concrete missed-case search per rule."""
+    config_path = write_calibration_config(stage)
     entry_by_name = {entry["name"]: entry for entry in entries}
     oracle_paths: dict[str, str] = {}
     for rule_id in TARGET_RULES:
         fixture = write_known_positive_fixture(stage, rule_id)
         completed = run(
-            [str(binary), "analyse", "--format", "json", "--no-config", "."],
+            [str(binary), "analyse", "--format", "json", "--config", str(config_path), "."],
             cwd=fixture,
             allowed=(0, 1),
         )

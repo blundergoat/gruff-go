@@ -331,11 +331,18 @@ func gosecCommentCovers(line, ruleID string, broad bool) bool {
 	if checkList == "" {
 		return false
 	}
-	// Check each comma- or whitespace-separated token so a developer listing multiple G-codes suppresses every matching rule.
-	for _, token := range strings.FieldsFunc(checkList, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
+	// Validate every listed token before matching any rule so malformed directives such as `#nosec G402, typo` fail closed.
+	tokens := strings.FieldsFunc(checkList, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	// A list of separators only, such as "#nosec ,", names no check, so nothing is suppressed.
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, token := range tokens {
 		if !gosecCode.MatchString(token) {
-			continue
+			return false
 		}
+	}
+	for _, token := range tokens {
 		if gosecCheckRules[token] == ruleID || (token == gosecCredentialCheck && strings.HasPrefix(ruleID, "sensitive-data.")) {
 			return true
 		}

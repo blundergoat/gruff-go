@@ -5,10 +5,9 @@
 package rule
 
 import (
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	parserpkg "github.com/blundergoat/gruff-go/internal/parser"
@@ -21,17 +20,19 @@ import (
 // It returns a populated Unit with Go FileType, AST, FileSet, and parsed Functions so unit and project rules behave like a live scan.
 func parseReviewFixture(t *testing.T, path, src string) parserpkg.Unit {
 	t.Helper()
-	fileSet := token.NewFileSet()
-	file, err := parser.ParseFile(fileSet, path, src, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("parse %s: %v", path, err)
+	root := t.TempDir()
+	absPath := filepath.Join(root, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
 	}
-	return parserpkg.Unit{
-		File:    source.File{Path: path, Type: source.FileTypeGo},
-		Source:  src,
-		FileSet: fileSet,
-		AST:     file,
+	if err := os.WriteFile(absPath, []byte(src), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
+	units, diags := parserpkg.Parse([]source.File{{Path: path, AbsPath: absPath, Type: source.FileTypeGo}})
+	if len(diags) != 0 || len(units) != 1 {
+		t.Fatalf("parse %s: units=%d diags=%#v", path, len(units), diags)
+	}
+	return units[0]
 }
 
 // TestLoopVariableAddressSkipsShadowedZeroArgAppend ensures a shadowing zero-arg append() never panics the scan.
@@ -305,5 +306,193 @@ func TestPoll(t *testing.T) {
 `
 	if got := (SleepInTestRule{}).AnalyzeUnit(parseReviewFixture(t, "gomega_test.go", sleepGomega), Context{}); len(got) != 1 {
 		t.Fatalf("RegisterFailHandler sleep findings = %d, want 1", len(got))
+	}
+}
+
+// TestSecurityRuleRegressionsForTaintWorkflowAndArchive covers taint clearing, indentless/flow workflow YAML, and archive zip-slip hardening.
+func TestSecurityRuleRegressionsForTaintWorkflowAndArchive(t *testing.T) {
+	// Sink precedes target = raw assignment; taintIntroPos must not back-date target to raw's earlier declaration.
+	preSink := `package p
+import ("net/http")
+func handle(r *http.Request) {
+	raw := r.FormValue("u")
+	target := "https://fixed.example/ok"
+	_, _ = http.Get(target)
+	target = raw
+	_ = target
+}
+`
+	if got := (RequestControlledURLRule{}).AnalyzeUnit(parseReviewFixture(t, "handler.go", preSink), Context{}); len(got) != 0 {
+		t.Fatalf("sink-before-reassignment findings = %#v, want 0", got)
+	}
+
+	// Range reassignment after clean write must defeat taint clearing.
+	rangeRetaint := `package p
+import ("net/http")
+func handle(r *http.Request) {
+	target := r.FormValue("u")
+	target = "https://fixed.example/ok"
+	for _, target = range r.URL.Query()["u"] {
+	}
+	_, _ = http.Get(target)
+}
+`
+	if got := (RequestControlledURLRule{}).AnalyzeUnit(parseReviewFixture(t, "handler.go", rangeRetaint), Context{}); len(got) != 1 {
+		t.Fatalf("range-retaint findings = %#v, want 1", got)
+	}
+
+	// First taint introduction directly from ranging over request values must also flag SSRF.
+	rangeIntro := `package p
+import ("net/http")
+func handle(r *http.Request) {
+	for _, target := range r.URL.Query()["u"] {
+		_, _ = http.Get(target)
+	}
+}
+`
+	if got := (RequestControlledURLRule{}).AnalyzeUnit(parseReviewFixture(t, "handler.go", rangeIntro), Context{}); len(got) != 1 {
+		t.Fatalf("range-intro findings = %#v, want 1", got)
+	}
+
+	// Indentless workflow sequence, column-0 comments inside on:, and negative nested branch filter checks.
+	workflow := "# Note: avoid pull_request_target misuse\n" +
+		"name: pull_request_target check\n" +
+		"on:\n" +
+		"# column-0 comment inside on block\n" +
+		"- pull_request_target\n" +
+		"jobs:\n" +
+		"  deploy:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"    steps:\n" +
+		"    - if: github.event_name == 'push'\n" +
+		"      run: echo ${{ secrets.DEPLOY_TOKEN }}\n"
+	wfUnit := parserpkg.Unit{File: source.File{Path: ".github/workflows/ci.yml", Type: source.FileTypeText}, Source: workflow}
+	prFindings := (GitHubActionsPullRequestTargetRule{}).AnalyzeUnit(wfUnit, Context{})
+	if len(prFindings) != 1 || prFindings[0].Location.Line != 5 {
+		t.Fatalf("pull_request_target findings = %#v, want 1 at line 5", prFindings)
+	}
+	if secretFindings := (GitHubActionsSecretsInPRRule{}).AnalyzeUnit(wfUnit, Context{}); len(secretFindings) != 0 {
+		t.Fatalf("indentless guarded step secret findings = %#v, want 0", secretFindings)
+	}
+	branchFilter := "on:\n  push:\n    branches:\n      - fix-pull_request_target-bug\njobs:\n  b:\n    steps:\n      - run: echo ok\n"
+	if got := (GitHubActionsPullRequestTargetRule{}).AnalyzeUnit(parserpkg.Unit{File: wfUnit.File, Source: branchFilter}, Context{}); len(got) != 0 {
+		t.Fatalf("branch filter pull_request_target findings = %#v, want 0", got)
+	}
+
+	// Flow mappings and flow sequences split over lines still name pull_request_target, while a nested filter value inside one does not.
+	steps := "jobs:\n  b:\n    steps:\n      - uses: actions/checkout@v4\n"
+	flowCases := []struct {
+		name     string
+		on       string
+		wantLine int
+	}{
+		{name: "inline flow mapping", on: "on: {pull_request_target: {types: [opened]}}\n", wantLine: 1},
+		{name: "multi-line flow sequence", on: "on: [push,\n  pull_request_target]\n", wantLine: 2},
+		{name: "flow sequence under on block", on: "on:\n  [push, pull_request_target]\n", wantLine: 2},
+		{name: "comment mentioning trigger before real line", on: "on: [push, # pull_request_target\n  pull_request_target]\n", wantLine: 2},
+		{name: "nested branch filter in flow mapping", on: "on: {push: {branches: [pull_request_target]}}\n", wantLine: 0},
+	}
+	for _, tc := range flowCases {
+		got := (GitHubActionsPullRequestTargetRule{}).AnalyzeUnit(parserpkg.Unit{File: wfUnit.File, Source: tc.on + steps}, Context{})
+		if (tc.wantLine == 0 && len(got) != 0) || (tc.wantLine > 0 && (len(got) != 1 || got[0].Location.Line != tc.wantLine)) {
+			t.Fatalf("%s: pull_request_target findings = %#v, want line %d", tc.name, got, tc.wantLine)
+		}
+	}
+
+	assertArchiveTraversalHardening(t)
+}
+
+// assertArchiveTraversalHardening covers Clean-only, wrapped entry names, unrelated Contains filters, ignored Rel, and stdlib IsLocal guards.
+func assertArchiveTraversalHardening(t *testing.T) {
+	t.Helper()
+	cases := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{
+			name: "bare Clean without containment",
+			src:  "package p\nimport (\"archive/zip\"; \"path/filepath\")\nfunc extract(file *zip.File, dest string) {\n\ttarget := filepath.Join(dest, file.Name)\n\tclean := filepath.Clean(target)\n\t_ = clean\n}\n",
+			want: 1,
+		},
+		{
+			name: "wrapped Clean inside Join entry arg",
+			src:  "package p\nimport (\"archive/zip\"; \"path/filepath\")\nfunc extract(file *zip.File, dest string) {\n\ttarget := filepath.Join(dest, filepath.Clean(file.Name))\n\t_ = target\n}\n",
+			want: 1,
+		},
+		{
+			name: "unrelated MkdirAll err Contains does not suppress",
+			src:  "package p\nimport (\"archive/zip\"; \"os\"; \"path/filepath\"; \"strings\")\nfunc extract(file *zip.File, dest string) {\n\ttarget := filepath.Join(dest, file.Name)\n\terr := os.MkdirAll(filepath.Dir(target), 0o755)\n\tif err != nil && strings.Contains(err.Error(), \"perm\") {\n\t\treturn\n\t}\n}\n",
+			want: 1,
+		},
+		{
+			name: "ignored Rel result does not suppress",
+			src:  "package p\nimport (\"archive/zip\"; \"fmt\"; \"path/filepath\")\nfunc extract(file *zip.File, dest string) {\n\ttarget := filepath.Join(dest, file.Name)\n\trel, _ := filepath.Rel(dest, target)\n\tfmt.Println(rel)\n}\n",
+			want: 1,
+		},
+		{
+			name: "entry-name Contains filter without a parent-directory check does not suppress",
+			src:  "package p\nimport (\"archive/zip\"; \"os\"; \"path/filepath\"; \"strings\")\nfunc extract(file *zip.File, dest string) {\n\tif strings.Contains(file.Name, \"__MACOSX\") {\n\t\treturn\n\t}\n\ttarget := filepath.Join(dest, file.Name)\n\t_, _ = os.Create(target)\n}\n",
+			want: 1,
+		},
+		{
+			name: "joined-target Contains filter without a parent-directory check does not suppress",
+			src:  "package p\nimport (\"archive/zip\"; \"os\"; \"path/filepath\"; \"strings\")\nfunc extract(file *zip.File, dest string) {\n\ttarget := filepath.Join(dest, file.Name)\n\tif strings.Contains(target, \"__MACOSX\") {\n\t\treturn\n\t}\n\t_, _ = os.Create(target)\n}\n",
+			want: 1,
+		},
+		{
+			name: "entry-name Contains parent-directory check suppresses",
+			src:  "package p\nimport (\"archive/zip\"; \"path/filepath\"; \"strings\")\nfunc extract(file *zip.File, dest string) {\n\tif strings.Contains(file.Name, \"..\") {\n\t\treturn\n\t}\n\ttarget := filepath.Join(dest, file.Name)\n\t_ = target\n}\n",
+			want: 0,
+		},
+		{
+			name: "stdlib filepath.IsLocal guard suppresses",
+			src:  "package p\nimport (\"archive/zip\"; \"path/filepath\")\nfunc extract(file *zip.File, dest string) {\n\tif !filepath.IsLocal(file.Name) {\n\t\treturn\n\t}\n\ttarget := filepath.Join(dest, file.Name)\n\t_ = target\n}\n",
+			want: 0,
+		},
+	}
+	for _, tc := range cases {
+		if got := (ArchivePathTraversalRule{}).AnalyzeUnit(parseReviewFixture(t, "zip.go", tc.src), Context{}); len(got) != tc.want {
+			t.Fatalf("%s: findings = %#v, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestSizeDocsAndStyleRuleRegressions covers init() keys, multiline var funcs, FuncLit args, rationales, empty blocks, receivers, and panic.
+func TestSizeDocsAndStyleRuleRegressions(t *testing.T) {
+	// First init() carries a data-only keyed literal (discounted below cap) while the second is long with FuncLit (flagged).
+	dataFields := strings.Repeat("\t\tA: 1,\n", 10)
+	longBody := strings.Repeat("\t\tx++\n", 10)
+	src := "package p\ntype Data struct{ A int }\ntype Cmd struct{ Run func() }\nfunc regData(d Data) {}\nfunc reg(c Cmd) {}\n" +
+		"func init() {\n\tregData(Data{\n" + dataFields + "\t})\n}\n" +
+		"func init() {\n\treg(Cmd{\n\t\tRun: func() {\n\t\t\tx := 0\n" + longBody + "\t\t\t_ = x\n\t\t},\n\t})\n}\n" +
+		"var multiline =\n\tfunc() {\n\t\tregData(Data{\n" + dataFields + "\t\t})\n\t}\n"
+	gotLen := (FunctionLengthRule{MaxLines: 8}).AnalyzeUnit(parseReviewFixture(t, "init.go", src), Context{})
+	if len(gotLen) != 1 || gotLen[0].Symbol != "init" {
+		t.Fatalf("function-length findings = %#v, want exactly 1 on second init()", gotLen)
+	}
+
+	// Multiline /* ... */ rationale above #nosec passes, while bare #nosec G101,G204 fails.
+	suppSrc := "package p\nfunc f() {\n/*\nIntentional fixture for validation.\n*/\n// #nosec G101\n_ = 1\n// #nosec G101,G204\n_ = 2\n}\n"
+	suppFindings := (SuppressionWithoutRationaleRule{}).AnalyzeUnit(parseReviewFixture(t, "s.go", suppSrc), Context{})
+	if len(suppFindings) != 1 || suppFindings[0].Location.Line != 8 {
+		t.Fatalf("suppression findings = %#v, want 1 at line 8", suppFindings)
+	}
+
+	// Single-line commented empty block if ok {/* intentional */} stays quiet.
+	if got := (EmptyBlockRule{}).AnalyzeUnit(parseReviewFixture(t, "e.go", "package p\nfunc f(ok bool) { if ok {/* intentional */} }\n"), Context{}); len(got) != 0 {
+		t.Fatalf("commented single-line empty block findings = %#v, want 0", got)
+	}
+
+	// Parenthesized receiver (*T) resolves to T in naming.receiver-consistency.
+	recvSrc := "package p\ntype T struct{}\nfunc (t (*T)) A() {}\nfunc (other *T) B() {}\n"
+	if got := (ReceiverConsistencyRule{}).AnalyzeProject([]parserpkg.Unit{parseReviewFixture(t, "r.go", recvSrc)}, Context{}); len(got) != 1 {
+		t.Fatalf("paren receiver findings = %#v, want 1", got)
+	}
+
+	// Locally shadowed panic callback does not trigger dead-code.unreachable-code, while builtin panic still does.
+	panicSrc := "package p\nfunc shadowed(panic func(string)) {\n\tpanic(\"logged\")\n\t_ = 1\n}\nfunc real() {\n\tpanic(\"boom\")\n\t_ = 2\n}\n"
+	if got := (UnreachableCodeRule{}).AnalyzeUnit(parseReviewFixture(t, "panic.go", panicSrc), Context{}); len(got) != 1 {
+		t.Fatalf("unreachable-code panic findings = %#v, want 1 (real panic only)", got)
 	}
 }

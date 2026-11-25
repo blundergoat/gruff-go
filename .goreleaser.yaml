@@ -84,7 +84,7 @@ release:
     go install github.com/blundergoat/gruff-go/cmd/gruff-go@{{ .Tag }}
     ```
 
-    Or pin per project as a dev tool (Go 1.24+):
+    Or pin per project as a dev tool (Go 1.25+):
 
     ```bash
     go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@{{ .Tag }}

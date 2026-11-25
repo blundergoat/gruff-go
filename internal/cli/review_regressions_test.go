@@ -225,3 +225,160 @@ func TestHookBaselineCleansEscapingAbsolutePath(t *testing.T) {
 		t.Fatalf("loaded.path = %q, want empty for external baseline outside projectRoot", loaded.path)
 	}
 }
+
+// TestCLIRegressionsForReleaseBlockers covers empty changed-ranges baseline refusal, report display flags, migrate safety, and hook fatals.
+func TestCLIRegressionsForReleaseBlockers(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	// --generate-baseline combined with empty --changed-ranges= must fail with exit 2.
+	var out, errBuf bytes.Buffer
+	if code := Main([]string{"analyse", "--generate-baseline", "base.json", "--changed-ranges=", "."}, &out, &errBuf); code != 2 {
+		t.Fatalf("analyse --generate-baseline --changed-ranges= exit = %d, want 2; stderr=%s", code, errBuf.String())
+	}
+
+	// report accepts canonical --hide-rule and warns on superseded --include-rules, actually applying the filter in JSON output.
+	out.Reset()
+	errBuf.Reset()
+	if code := Main([]string{"report", "--format", "json", "--hide-rule", "docs.package-comment", "."}, &out, &errBuf); code != 0 {
+		t.Fatalf("report --hide-rule exit = %d, want 0; stderr=%s", code, errBuf.String())
+	}
+	var hiddenPayload struct {
+		Findings []struct {
+			RuleID string `json:"ruleId"`
+		} `json:"findings"`
+		DisplayFilter struct {
+			HiddenFindings int `json:"hiddenFindings"`
+		} `json:"displayFilter"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &hiddenPayload); err != nil {
+		t.Fatalf("unmarshal report --hide-rule json: %v", err)
+	}
+	if hiddenPayload.DisplayFilter.HiddenFindings != 1 || len(hiddenPayload.Findings) != 0 {
+		t.Fatalf("report --hide-rule filtered payload = %+v, want 1 hidden and 0 shown", hiddenPayload)
+	}
+	out.Reset()
+	errBuf.Reset()
+	if code := Main([]string{"report", "--format", "json", "--include-rules", "docs.package-comment", "."}, &out, &errBuf); code != 0 {
+		t.Fatalf("report --include-rules exit = %d, want 0; stderr=%s", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "--show-rule") {
+		t.Fatalf("expected superseded warning naming --show-rule, got stderr=%q", errBuf.String())
+	}
+	var shownPayload struct {
+		Findings []struct {
+			RuleID string `json:"ruleId"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &shownPayload); err != nil || len(shownPayload.Findings) != 1 || shownPayload.Findings[0].RuleID != "docs.package-comment" {
+		t.Fatalf("report --include-rules payload = %+v (err=%v), want docs.package-comment shown", shownPayload, err)
+	}
+
+	// migrate-config removes bare sensitiveData:, writes nothing to stdout on error, and recognizes quoted "schemaVersion".
+	t.Run("migrate-config and baseline safety", func(t *testing.T) {
+		assertMigrateAndBaselineSafety(t, dir)
+	})
+
+	// hookFatalReport stamps invalidatesRun=true on fatal diagnostics.
+	fatal := hookFatalReport("baseline", "bad baseline")
+	if len(fatal.Diagnostics) != 1 || fatal.Diagnostics[0].InvalidatesRun == nil || !*fatal.Diagnostics[0].InvalidatesRun {
+		t.Fatalf("hookFatalReport diagnostic = %+v, want InvalidatesRun=true", fatal.Diagnostics)
+	}
+}
+
+// assertMigrateAndBaselineSafety tests migrate-config error isolation, bare/quoted cleanup, and default-baseline overwrite checks in dir.
+func assertMigrateAndBaselineSafety(t *testing.T, dir string) {
+	t.Helper()
+	var out, errBuf bytes.Buffer
+	oldCfg := filepath.Join(dir, "old.yaml")
+	existingOut := filepath.Join(dir, "existing.yaml")
+	newOut := filepath.Join(dir, "migrated.yaml")
+	quotedCfg := filepath.Join(dir, "quoted.yaml")
+	if err := os.WriteFile(oldCfg, []byte("sensitiveData:\nallowlists: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existingOut, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(quotedCfg, []byte("\"schemaVersion\": \"gruff-go.config.v0.1\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := Main([]string{"migrate-config", "--config", oldCfg, "--output", existingOut}, &out, &errBuf); code != 2 {
+		t.Fatalf("migrate-config existing output exit = %d, want 2", code)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("migrate-config wrote stdout on failure: %q", out.String())
+	}
+	out.Reset()
+	errBuf.Reset()
+	if code := Main([]string{"migrate-config", "--config", oldCfg, "--output", newOut}, &out, &errBuf); code != 0 {
+		t.Fatalf("migrate-config bare sensitiveData exit = %d, want 0; stderr=%s", code, errBuf.String())
+	}
+	migratedBytes, err := os.ReadFile(newOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(migratedBytes), "sensitiveData") || strings.Contains(string(migratedBytes), "allowlists") {
+		t.Fatalf("migrated config retained removed sections:\n%s", migratedBytes)
+	}
+	out.Reset()
+	errBuf.Reset()
+	if code := Main([]string{"migrate-config", "--config", quotedCfg, "--dry-run"}, &out, &errBuf); code != 0 {
+		t.Fatalf("migrate-config quoted schemaVersion exit = %d, stderr=%s", code, errBuf.String())
+	}
+
+	// baseline --migrate-baseline targeting an existing non-v3 gruff-baseline.json refuses without --force.
+	legacyBytes := []byte(`{"schemaVersion":"gruff-go.baseline.v0.1","findings":[]}`)
+	legacyPath := filepath.Join(dir, "legacy.json")
+	defaultBase := filepath.Join(dir, baseline.DefaultFilename)
+	if err := os.WriteFile(legacyPath, legacyBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultBase, legacyBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errBuf.Reset()
+	if code := Main([]string{"baseline", "--migrate-baseline", legacyPath, "--out", defaultBase, "."}, &out, &errBuf); code != 2 {
+		t.Fatalf("baseline --migrate-baseline over default non-v3 exit = %d, want 2", code)
+	}
+	if !strings.Contains(errBuf.String(), "--migrate-baseline") {
+		t.Fatalf("refusal message should recommend --migrate-baseline, got %q", errBuf.String())
+	}
+}
+
+// TestProjectRootKeepsEnclosingRootForMultipleExternalFiles ensures two external files in one repo resolve to the repo root, not their subdir.
+func TestProjectRootKeepsEnclosingRootForMultipleExternalFiles(t *testing.T) {
+	workspace := t.TempDir()
+	launch := filepath.Join(workspace, "other")
+	app := filepath.Join(workspace, "app")
+	pkgDir := filepath.Join(app, "pkg")
+	for _, d := range []string{launch, pkgDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(app, "go.mod"), []byte("module example.com/app\n\ngo 1.25.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fileA := filepath.Join(pkgDir, "a.go")
+	fileB := filepath.Join(pkgDir, "b.go")
+	if err := os.WriteFile(fileA, []byte("package pkg\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fileB, []byte("package pkg\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(launch)
+
+	got, err := projectRootFromTargets([]string{fileA, fileB})
+	if err != nil {
+		t.Fatalf("projectRootFromTargets error = %v", err)
+	}
+	if got != app {
+		t.Fatalf("projectRootFromTargets = %q, want enclosing project root %q", got, app)
+	}
+}

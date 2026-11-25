@@ -65,11 +65,12 @@ func (HelperMissingTHelperRule) AnalyzeUnit(unit parser.Unit, _ Context) []findi
 			continue
 		}
 		position := unit.FileSet.Position(fn.Name.NamePos)
+		symbol := functionName(fn)
 		findings = append(findings, finding.Finding{
-			Message:  fmt.Sprintf("test helper %s can fail without calling Helper", fn.Name.Name),
+			Message:  fmt.Sprintf("test helper %s can fail without calling Helper", symbol),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: position.Line, Column: position.Column},
-			Symbol:   fn.Name.Name,
+			Symbol:   symbol,
 		})
 	}
 	return findings

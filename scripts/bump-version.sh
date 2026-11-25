@@ -212,7 +212,7 @@ scan_owned_prose_file() {
       continue
     fi
     # README labels this value as the currently published package line.
-    if [[ "$relative_path" == "README.md" && "$line_text" == *'Published `'*' package line'* ]]; then
+    if [[ "$relative_path" == "README.md" && ( "$line_text" == *'Published `'*' package line'* || "$line_text" == *'| Release line | `'*' package line'* ) ]]; then
       record_semver_from_line "published-install" "$relative_path" "$line_number" "$line_text"
       continue
     fi
@@ -222,7 +222,7 @@ scan_owned_prose_file() {
       continue
     fi
     # CONTRIBUTING tells source builders which version the checkout reports.
-    if [[ "$relative_path" == "CONTRIBUTING.md" && "$line_text" == *'source tree currently reports gruff-go version'* ]]; then
+    if [[ "$relative_path" == "CONTRIBUTING.md" && ( "$line_text" == *'source tree currently reports gruff-go version'* || "$line_text" == *'currently at `'* ) ]]; then
       record_semver_from_line "source-current" "$relative_path" "$line_number" "$line_text"
       continue
     fi

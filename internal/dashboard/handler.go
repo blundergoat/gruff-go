@@ -105,20 +105,25 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 	duration := time.Since(started)
 	durationMs := int(duration.Milliseconds())
 
+	commandText := displayCommand(state, opts)
 	// A scan that outlasts the scan timeout lands here, even one that returned just past the deadline, and the page shows exit code 124.
 	if errors.Is(runErr, context.DeadlineExceeded) || scanCtx.Err() == context.DeadlineExceeded {
-		_ = report.WriteDashboardError(
+		writeDashboardErrorWithMetadata(
 			writer,
 			fmt.Sprintf("Scan exceeded %ds timeout.", int(opts.ScanTimeout.Seconds())),
 			"The dashboard cancelled the scan before it completed. Increase --scan-timeout to allow longer runs.",
-			124,
-			durationMs,
+			report.ScanMetadata{ExitCode: 124, DurationMs: durationMs, ProjectRoot: scanOpts.projectRoot, Command: commandText},
 		)
 		return
 	}
 	// A config file that fails to load, a malformed deep-scan budget, or an analysis error lands here, and the page shows exit code 2.
 	if runErr != nil {
-		_ = report.WriteDashboardError(writer, "Scan failed.", runErr.Error(), 2, durationMs)
+		writeDashboardErrorWithMetadata(
+			writer,
+			"Scan failed.",
+			runErr.Error(),
+			report.ScanMetadata{ExitCode: 2, DurationMs: durationMs, ProjectRoot: scanOpts.projectRoot, Command: commandText},
+		)
 		return
 	}
 
@@ -133,7 +138,12 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		ProjectRoot: resolvedRoot,
 		Interactive: scanOpts.reportInteractive,
 	}); err != nil {
-		_ = report.WriteDashboardError(writer, "Render failed.", err.Error(), 2, durationMs)
+		writeDashboardErrorWithMetadata(
+			writer,
+			"Render failed.",
+			err.Error(),
+			report.ScanMetadata{ExitCode: 2, DurationMs: durationMs, ProjectRoot: scanOpts.projectRoot, Command: commandText},
+		)
 		return
 	}
 
@@ -141,9 +151,18 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		ExitCode:    reportData.Summary.ExitCode,
 		DurationMs:  durationMs,
 		ProjectRoot: scanOpts.projectRoot,
-		Command:     displayCommand(state, opts),
+		Command:     commandText,
 	}
 	_, _ = writer.Write([]byte(report.InjectScanMetadata(buffer.String(), metadata)))
+}
+
+// writeDashboardErrorWithMetadata renders a dashboard error page with injected scan metadata so the parent frame updates status and exit code.
+//
+// writer receives the HTML error document built from headline, detail, and metadata (exit code, duration, project root, and command).
+func writeDashboardErrorWithMetadata(writer http.ResponseWriter, headline, detail string, metadata report.ScanMetadata) {
+	var errBuf bytes.Buffer
+	_ = report.WriteDashboardError(&errBuf, headline, detail, metadata.ExitCode, metadata.DurationMs)
+	_, _ = writer.Write([]byte(report.InjectScanMetadata(errBuf.String(), metadata)))
 }
 
 // scanContext derives the context one dashboard scan runs under, adding the per-scan timeout when one is set.
@@ -404,13 +423,16 @@ func displayCommand(state report.DashboardState, opts Options) string {
 	if opts.EditorLink != "" && opts.EditorLink != "none" {
 		args = append(args, "--report-editor-link", opts.EditorLink)
 	}
-	if state.Config != "" {
+	// Skipping config, from the form or the launch flags, wins over any config path the form still shows.
+	if state.SkipConfig == "1" || opts.SkipConfig {
+		args = append(args, "--no-config")
+	} else if state.Config != "" {
 		args = append(args, "--config", state.Config)
 	}
-	if state.SkipConfig == "1" {
-		args = append(args, "--no-config")
-	}
-	if state.Baseline != "" && state.SkipBaseline != "1" {
+	// Skipping the baseline wins over a baseline path in the same way.
+	if state.SkipBaseline == "1" || opts.SkipBaseline {
+		args = append(args, "--no-baseline")
+	} else if state.Baseline != "" {
 		args = append(args, "--baseline", state.Baseline)
 	}
 	if state.ScanScope == "diff" {
@@ -432,7 +454,19 @@ func displayCommand(state report.DashboardState, opts Options) string {
 // values is the parsed query and opts seeds the defaults; it returns the state with each empty or missing key replaced by its default.
 // A field the user clears in the form therefore comes back as its default rather than blank.
 func stateFromQuery(opts Options, values url.Values) report.DashboardState {
-	defaults := defaultState(opts)
+	effectiveOpts := opts
+	// A cleared form field falls back to the value the dashboard was launched with.
+	if project := values.Get("project"); project != "" {
+		effectiveOpts.ProjectRoot = project
+	}
+	if configPath := values.Get("config"); configPath != "" {
+		effectiveOpts.ConfigPath = configPath
+	}
+	if noConfig := values.Get("noConfig"); noConfig != "" {
+		// Preserve startup --no-config so a query param (?noConfig=0) cannot make failOn lookup diverge from buildScanOptions.
+		effectiveOpts.SkipConfig = opts.SkipConfig || noConfig == "1"
+	}
+	defaults := defaultState(effectiveOpts)
 	valueOrDefault := func(key, fallback string) string {
 		value := values.Get(key)
 		if value == "" {

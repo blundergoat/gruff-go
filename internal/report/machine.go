@@ -9,6 +9,7 @@ package report
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	"github.com/blundergoat/gruff-go/internal/analysis"
@@ -501,14 +502,36 @@ func sarifRegionFromFinding(item finding.Finding) *sarifRegion {
 	return &region
 }
 
-// sarifURI normalises a report file path into a forward-slash, dot-stripped SARIF URI.
-// It returns path with every backslash turned into a forward slash and all leading ./ segments removed, so an empty path stays empty.
+// sarifURI normalises a report file path into a forward-slash, dot-stripped, percent-encoded SARIF 2.1.0 URI.
+//
+// Backslashes become forward slashes, leading ./ segments are stripped, and path segments are percent-encoded so spaces, #, ?, and % stay valid URIs.
+// It returns the normalized URI string with Windows drive prefixes such as C: preserved unescaped, or an empty string when path is empty.
 func sarifURI(path string) string {
 	path = strings.ReplaceAll(path, "\\", "/")
 	for strings.HasPrefix(path, "./") {
 		path = strings.TrimPrefix(path, "./")
 	}
-	return path
+	if path == "" {
+		return ""
+	}
+	segments := strings.Split(path, "/")
+	for index, segment := range segments {
+		// An empty segment, such as the root before /tmp, has nothing to encode.
+		if segment == "" {
+			continue
+		}
+		// A Windows drive such as C: stays literal, because encoding its colon would break the SARIF file URI.
+		if index == 0 && len(segment) == 2 && segment[1] == ':' && isASCIILetter(segment[0]) {
+			continue
+		}
+		segments[index] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+// isASCIILetter reports whether ch is an ASCII uppercase or lowercase letter.
+func isASCIILetter(ch byte) bool {
+	return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')
 }
 
 // sarifRunPropertiesFromReport copies gruff schema, score, and grade into SARIF run properties.

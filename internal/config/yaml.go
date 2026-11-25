@@ -144,12 +144,16 @@ func parseYAMLMap(lines []yamlLine, index int, indent int) (map[string]any, int,
 		if line.indent > indent {
 			return nil, index, fmt.Errorf("unexpected YAML indentation at line %d", line.number)
 		}
-		key, valueText, ok := strings.Cut(line.text, ":")
+		key, valueText, ok := splitYAMLKeyValue(line.text)
 		// A line with no colon, such as a bare word or a --- document marker, fails here.
 		if !ok {
 			return nil, index, fmt.Errorf("expected YAML key/value at line %d", line.number)
 		}
 		key = strings.TrimSpace(key)
+		// A quoted key such as "rules": names the same setting as the bare key.
+		if unquoted, quoted := unquoteYAML(key); quoted {
+			key = unquoted
+		}
 		valueText = strings.TrimSpace(valueText)
 		if key == "" {
 			return nil, index, fmt.Errorf("empty YAML key at line %d", line.number)
@@ -245,13 +249,14 @@ func yamlFlowMappingError(subject string, valueText string, lineNumber int) erro
 
 // yamlListItemOpensMap reports whether a list item's text starts a mapping rather than a scalar.
 //
-// text is the item after its dash; an unquoted item holding a colon and space, or ending in a colon, gives true and parses as a map.
-// A quoted item gives false even when it contains a colon, so the existing string lists keep their meaning.
+// text is the item after its dash; an unquoted or quoted key followed by a colon at end-of-line or before whitespace gives true and parses as a map.
+// A quoted scalar holding an interior colon (such as "http://example") has no colon outside quotes and returns false.
 func yamlListItemOpensMap(text string) bool {
-	if strings.HasPrefix(text, "'") || strings.HasPrefix(text, "\"") {
+	_, rest, ok := splitYAMLKeyValue(text)
+	if !ok {
 		return false
 	}
-	return strings.Contains(text, ": ") || strings.HasSuffix(text, ":")
+	return rest == "" || rest[0] == ' ' || rest[0] == '\t'
 }
 
 // parseYAMLListItemMap parses one dash-introduced mapping item: its first key/value plus every following line indented deeper than the dash.
@@ -352,12 +357,43 @@ func unquoteYAML(input string) (string, bool) {
 	return "", false
 }
 
+// splitYAMLKeyValue splits line at the first colon outside quotes into its key and value substrings.
+//
+// Quoted keys carrying a colon, such as "http://example": value, stay intact while their trailing separator splits the mapping entry.
+// It returns the raw key, the raw remainder after the colon, and true on a match, or empty strings and false when no unquoted colon exists.
+func splitYAMLKeyValue(line string) (string, string, bool) {
+	var quote byte
+	for index := 0; index < len(line); index++ {
+		current := line[index]
+		switch {
+		// Inside double quotes, a backslash escapes the next character, so an escaped quote does not end the string.
+		case quote == '"' && current == '\\':
+			index++
+		// Inside single quotes, '' is an escaped quote, as in 'it''s', and does not end the string.
+		case quote == '\'' && current == '\'' && index+1 < len(line) && line[index+1] == '\'':
+			index++
+		case quote != 0 && current == quote:
+			quote = 0
+		case quote == 0 && index == 0 && (current == '\'' || current == '"'):
+			quote = current
+		// The first colon outside quotes separates the key from its value; a colon inside a quoted key does not.
+		case quote == 0 && current == ':':
+			return line[:index], line[index+1:], true
+		}
+	}
+	return "", "", false
+}
+
 // stripYAMLComment removes a trailing hash comment that sits outside quoted text.
 //
-// input is one config line. Escaped double quotes and doubled single quotes stay inside their scalar.
-// Returns the text before the first hash outside quotes with trailing spaces trimmed, or input unchanged when there is no such hash.
+// input is one config line. Returns the text before the comment with trailing spaces and tabs trimmed, or input unchanged when there is no comment.
+//
+//   - Escaped double quotes and doubled single quotes stay inside their string.
+//   - A quote opens a string only at the start of a YAML token, so apostrophes in plain text such as Don't or class of '26 stay plain.
+//   - An unquoted # starts a comment only at the start of the line or after whitespace.
 func stripYAMLComment(input string) string {
 	var quote byte
+	canOpenQuote := true
 	// Read through escaped quotes before looking for the hash that begins an actual YAML comment.
 	for index := 0; index < len(input); index++ {
 		current := input[index]
@@ -368,11 +404,39 @@ func stripYAMLComment(input string) string {
 			index++
 		case quote != 0 && current == quote:
 			quote = 0
-		case quote == 0 && (current == '\'' || current == '"'):
+			canOpenQuote = false
+		// A quote opens a string only at the start of a value, so an apostrophe in plain text such as don't is just a letter.
+		case quote == 0 && canOpenQuote && (current == '\'' || current == '"'):
 			quote = current
-		case quote == 0 && current == '#':
-			return strings.TrimRight(input[:index], " ")
+			canOpenQuote = false
+		case quote == 0 && current == '#' && (index == 0 || input[index-1] == ' ' || input[index-1] == '\t'):
+			return strings.TrimRight(input[:index], " \t")
+		case quote == 0:
+			canOpenQuote = nextYAMLQuoteBoundary(input, index, canOpenQuote)
 		}
 	}
 	return input
+}
+
+// nextYAMLQuoteBoundary reports whether a YAML quoted scalar may open after input[index] outside quotes, given current boundary state.
+// Delimiters (:, [, ,, { and list-leading -) return true; whitespace returns current, and plain characters return false.
+func nextYAMLQuoteBoundary(input string, index int, current bool) bool {
+	ch := input[index]
+	switch ch {
+	case ' ', '\t':
+		return current
+	case '[', ',', '{':
+		return true
+	case '-':
+		return current && (index+1 == len(input) || input[index+1] == ' ' || input[index+1] == '\t')
+	case ':':
+		// A colon at the end of the line ends a key, as in rules:, and starts a nested block.
+		if index+1 == len(input) {
+			return true
+		}
+		next := input[index+1]
+		return next == ' ' || next == '\t' || next == '"' || next == '\''
+	default:
+		return false
+	}
 }

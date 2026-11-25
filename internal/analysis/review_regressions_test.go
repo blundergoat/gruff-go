@@ -55,6 +55,13 @@ func TestInlineSuppressionsRejectProseWildcardsAndLeadingBlockComments(t *testin
 			suppress: false,
 		},
 		{
+			name:     "mixed valid and malformed #nosec list fails closed",
+			file:     "main.go",
+			source:   "// #nosec G402, typo -- bad directive\nrun()",
+			finding:  inlineFinding("security.tls-insecure-config", finding.PillarSecurity, 2),
+			suppress: false,
+		},
+		{
 			name:     "prose mentioning nosec does not suppress",
 			file:     "main.go",
 			source:   "// Removed #nosec after review; validate input first.\nrun()",
@@ -169,5 +176,32 @@ func TestNonFunctionSymbolOrdinalsPreserveBaselinedSibling(t *testing.T) {
 	}
 	if secondReport.Findings[0].Location == nil || secondReport.Findings[0].Location.Line > 10 {
 		t.Fatalf("surviving finding at line %#v, want new finding in A near top of file", secondReport.Findings[0].Location)
+	}
+}
+
+// TestSymbolScopeDiffKeepsCallableDocFindingsOnDocCommentEdit ensures doc-only edits remain inside the function's symbol scope.
+func TestSymbolScopeDiffKeepsCallableDocFindingsOnDocCommentEdit(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "p.go", "// Package p checks doc-only symbol scope.\npackage p\n\n// Compute scales input.\nfunc Compute(amount int, rate int) int {\n\treturn amount * rate\n}\n")
+
+	report, err := Analyze(Options{
+		Root:          root,
+		Paths:         []string{"."},
+		Registry:      rule.Defaults(),
+		FailOn:        finding.FailThresholdNone,
+		ChangedRanges: "4-4",
+		ChangedScope:  "symbol",
+	})
+	if err != nil {
+		t.Fatalf("Analyze error = %v", err)
+	}
+	foundParamDoc := false
+	for _, item := range report.Findings {
+		if item.RuleID == "docs.missing-param-doc" && item.Symbol == "Compute" {
+			foundParamDoc = true
+		}
+	}
+	if !foundParamDoc {
+		t.Fatalf("findings = %#v, want docs.missing-param-doc on Compute when editing its doc comment line 4", report.Findings)
 	}
 }

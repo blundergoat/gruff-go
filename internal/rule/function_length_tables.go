@@ -9,17 +9,41 @@ import (
 	"go/scanner"
 	"go/token"
 	"strings"
+
+	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// funcDeclsBySymbol indexes the declarations measuredFuncDecls yields by symbol, spelled as in parser.Function and parser.FuncDeclSymbol.
+// funcDeclKey uniquely identifies a parsed function declaration or package-level var function literal by symbol name and parser.Function.Line.
+type funcDeclKey struct {
+	name string
+	line int
+}
+
+// funcDeclsByKey indexes top-level functions and package-level var function literals in file by (symbol, parser.Function.Line), using fset.
 //
-// These are top-level function declarations and function literals assigned to package-level vars.
-// It returns a map from each symbol to its declaration in file, the parsed source, and an empty non-nil map when file is nil or has no function.
-// When two declarations share a symbol, the one measuredFuncDecls yields last is kept.
-func funcDeclsBySymbol(file *ast.File) map[string]*ast.FuncDecl {
-	out := map[string]*ast.FuncDecl{}
-	for _, fn := range measuredFuncDecls(file) {
-		out[functionName(fn)] = fn
+// Matching parser.Function's line anchor keeps duplicate init() funcs, multiline var function literals, and same-line var funcs distinct.
+// Returns a non-nil map keyed by funcDeclKey, or an empty map when fset or file is nil.
+func funcDeclsByKey(fset *token.FileSet, file *ast.File) map[funcDeclKey]*ast.FuncDecl {
+	out := map[funcDeclKey]*ast.FuncDecl{}
+	// A file that failed to parse has no functions to measure.
+	if fset == nil || file == nil {
+		return out
+	}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		key := funcDeclKey{name: parser.FuncDeclSymbol(fn), line: fset.Position(fn.Pos()).Line}
+		out[key] = fn
+	}
+	for _, varFunc := range parser.PackageVarFuncs(file) {
+		key := funcDeclKey{name: varFunc.Name.Name, line: fset.Position(varFunc.Name.Pos()).Line}
+		out[key] = &ast.FuncDecl{
+			Name: varFunc.Name,
+			Type: varFunc.Lit.Type,
+			Body: varFunc.Lit.Body,
+		}
 	}
 	return out
 }
@@ -158,8 +182,10 @@ func keyedLiteralArgumentLineRanges(fset *token.FileSet, fn *ast.FuncDecl) []lin
 	return ranges
 }
 
-// keyedCompositeLiteral returns an argument's composite literal, or the literal behind its address, when every element is key: value.
-// arg is a call argument, possibly behind the address operator; it gives nil for a non-literal, an empty literal, or any unkeyed element.
+// keyedCompositeLiteral returns an argument's composite literal, or the literal behind its address, when every element is key: value and data-only.
+//
+// arg is a call argument, possibly behind the address operator; it gives nil for a non-literal, an empty literal, any unkeyed element,
+// or any literal embedding a function literal so executable callbacks such as cobra.Command{RunE: func...} are not discounted to one line.
 func keyedCompositeLiteral(arg ast.Expr) *ast.CompositeLit {
 	if unary, ok := arg.(*ast.UnaryExpr); ok && unary.Op == token.AND {
 		arg = unary.X
@@ -169,11 +195,30 @@ func keyedCompositeLiteral(arg ast.Expr) *ast.CompositeLit {
 		return nil
 	}
 	for _, element := range lit.Elts {
-		if _, keyed := element.(*ast.KeyValueExpr); !keyed {
+		kv, keyed := element.(*ast.KeyValueExpr)
+		// A table entry with logic in it, such as a func literal value, is code to review, not data, so the length allowance does not apply.
+		if !keyed || exprContainsFuncLit(kv.Value) {
 			return nil
 		}
 	}
 	return lit
+}
+
+// exprContainsFuncLit reports whether expr embeds an *ast.FuncLit anywhere in its subtree.
+// It returns true when a nested closure is found so keyed literal discounts exclude executable handlers, and false otherwise.
+func exprContainsFuncLit(expr ast.Expr) bool {
+	found := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		if found {
+			return false
+		}
+		if _, isFuncLit := node.(*ast.FuncLit); isFuncLit {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // countLinesInLineRangesExcept counts unique code-bearing lines in ranges that no excluded range covers.

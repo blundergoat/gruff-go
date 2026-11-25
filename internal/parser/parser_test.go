@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blundergoat/gruff-go/internal/source"
@@ -122,6 +123,30 @@ func TestParseReportsParseDiagnostics(t *testing.T) {
 	}
 	if diagnostics[0].File != "broken.go" || diagnostics[0].Line == 0 {
 		t.Fatalf("diagnostic = %#v, want file and line", diagnostics[0])
+	}
+}
+
+// TestParseRedactsQuotedLiteralsInSyntaxDiagnostics ensures Go syntax errors never leak raw string or backtick secrets into diagnostics.
+func TestParseRedactsQuotedLiteralsInSyntaxDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	secret := "synthetic-review-sentinel-987654"
+	path := filepath.Join(root, "secret_broken.go")
+	src := "package main\nvar x \"" + secret + "\"\nvar y `" + secret + "`\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	units, diagnostics := Parse([]source.File{{Path: "secret_broken.go", AbsPath: path, Type: source.FileTypeGo}})
+	if len(units) != 0 || len(diagnostics) == 0 {
+		t.Fatalf("units=%d diagnostics=%#v, want 0 units and >=1 diagnostic", len(units), diagnostics)
+	}
+	for _, diag := range diagnostics {
+		if strings.Contains(diag.Message, secret) {
+			t.Fatalf("parser diagnostic leaked raw literal: %q", diag.Message)
+		}
+	}
+	// Standard short Go token wording in single quotes remains intact so syntax diagnostics stay readable.
+	if got := sanitizeParserDiagnosticMessage("expected 'package', found 'EOF'"); got != "expected 'package', found 'EOF'" {
+		t.Fatalf("sanitized token error = %q, want intact Go token wording", got)
 	}
 }
 

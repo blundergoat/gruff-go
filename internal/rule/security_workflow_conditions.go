@@ -190,8 +190,13 @@ func workflowGuardOwnership(source string) *workflowGuardNode {
 // With an empty prefix it returns the enclosing node; otherwise it pushes and returns a new item spanning line index plus one to total.
 // The result is nil when the enclosing node has inline content or already holds children of the other kind, keys versus items.
 func workflowGuardParent(stack *[]*workflowGuardNode, indent, index int, prefix string, total int) *workflowGuardNode {
-	for len(*stack) > 1 && (*stack)[len(*stack)-1].indent >= indent {
-		(*stack)[len(*stack)-1].end = index
+	for len(*stack) > 1 {
+		top := (*stack)[len(*stack)-1]
+		// YAML permits sequence items at the same indent as their owning mapping key (for example steps:\n- run:).
+		if top.indent < indent || (prefix != "" && top.indent == indent && !top.isItem && top.key != "") {
+			break
+		}
+		top.end = index
 		*stack = (*stack)[:len(*stack)-1]
 	}
 	parent := (*stack)[len(*stack)-1]

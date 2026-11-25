@@ -253,7 +253,8 @@ func isControlFlowBlock(file *ast.File, block *ast.BlockStmt) bool {
 // file supplies the comment groups, compared by position with the braces of block; a group counts only when it lies strictly inside them.
 func blockSpanHasComment(file *ast.File, block *ast.BlockStmt) bool {
 	for _, group := range file.Comments {
-		if group.Pos() > block.Lbrace && group.End() < block.Rbrace {
+		// Only a comment between the braces explains the block; a doc comment above the function does not.
+		if group.Pos() > block.Lbrace && group.End() <= block.Rbrace {
 			return true
 		}
 	}

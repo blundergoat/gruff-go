@@ -248,7 +248,7 @@ func parseHookFlags(commandArguments []string, stderr io.Writer) (hookFlagValues
 	flagSet.SetOutput(stderr)
 	flagSet.Usage = func() { writeCommandHelp("hook", commandUsages["hook"], stderr, ansiStyler{}) }
 	outputFormat := flagSet.String("format", "json", "output format: json")
-	capabilitiesRequested := flagSet.Bool("capabilities", false, "emit gruff.hook.v1 capability metadata and exit")
+	capabilitiesRequested := flagSet.Bool("capabilities", false, "emit gruff.hook.v2 capability metadata and exit")
 	configPath := flagSet.String("config", "", "gruff config file (.gruff-go.yaml)")
 	noConfig := flagSet.Bool("no-config", false, "skip auto-loading default gruff config")
 	changedRanges := flagSet.String("changed-ranges", "", "explicit changed line ranges such as 3-3,8-10")
@@ -359,6 +359,7 @@ func hookConfigErrorReport(configError error) hookReport {
 // diagnosticType and message fill the single fatal diagnostic.
 // It returns a full-mode, file-scope payload with empty paths, findings, suppressions and ignored paths, and Config.SchemaOK true.
 func hookFatalReport(diagnosticType, message string) hookReport {
+	invalidates := true
 	return hookReport{
 		ContractVersion: hookContractVersion,
 		Analyzer:        hookAnalyzer{Name: "gruff-go", Version: toolVersion},
@@ -366,9 +367,10 @@ func hookFatalReport(diagnosticType, message string) hookReport {
 		Findings:        []hookFinding{},
 		// The requested run could not be completed, so this diagnostic is fatal rather than a caveat on a usable report.
 		Diagnostics: []hookDiagnostic{{
-			Type:     diagnosticType,
-			Severity: "fatal",
-			Message:  message,
+			Type:           diagnosticType,
+			Severity:       "fatal",
+			Message:        message,
+			InvalidatesRun: &invalidates,
 		}},
 		Suppressed:   hookSuppressed{},
 		Suppressions: []hookSuppression{},

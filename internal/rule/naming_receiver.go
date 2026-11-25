@@ -198,6 +198,8 @@ func receiverType(expr ast.Expr) (string, bool) {
 	switch item := expr.(type) {
 	case *ast.Ident:
 		return item.Name, false
+	case *ast.ParenExpr:
+		return receiverType(item.X)
 	case *ast.StarExpr:
 		name, _ := receiverType(item.X)
 		return name, true

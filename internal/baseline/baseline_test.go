@@ -709,3 +709,39 @@ func TestMigrationMatchesLegacyMetricFindingsByContractStableIdentity(t *testing
 		t.Fatalf("result = %+v, want Accepted=1 Occurrences=1 for shifted metric finding", result)
 	}
 }
+
+// TestValidateRejectsNegativeSensitiveCounts ensures hand-edited baselines cannot pass Validate with negative rule counts that cancel out.
+func TestValidateRejectsNegativeSensitiveCounts(t *testing.T) {
+	file := File{
+		SchemaVersion: SchemaVersion,
+		ToolLanguage:  finding.BaselineToolLanguage,
+		GeneratedAt:   "2026-11-25T00:00:00Z",
+		Occurrences:   []Occurrence{},
+		Sensitive: SensitiveSummary{
+			Eligible: false,
+			Counts: SensitiveCounts{
+				Total:  0,
+				ByRule: map[string]int{"sensitive-data.jwt-token": 1, "sensitive-data.private-key": -1},
+			},
+		},
+	}
+	if err := Validate(file); err == nil || !strings.Contains(err.Error(), "negative") {
+		t.Fatalf("Validate(negative byRule) = %v, want negative count error", err)
+	}
+
+	// RequireOverwritableDefaultPath must protect symlinks aliasing gruff-baseline.json as well as case-folded names.
+	dir := t.TempDir()
+	defaultPath := filepath.Join(dir, DefaultFilename)
+	if err := os.WriteFile(defaultPath, []byte(`{"schemaVersion":"gruff-go.baseline.v0.1","findings":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	aliasPath := filepath.Join(dir, "alias-baseline.json")
+	if err := os.Symlink(defaultPath, aliasPath); err == nil {
+		if err := RequireOverwritableDefaultPath(aliasPath, false); err == nil {
+			t.Fatal("expected RequireOverwritableDefaultPath to refuse symlink aliasing legacy gruff-baseline.json")
+		}
+	}
+	if !targetsDefaultBaselineFile(filepath.Join(dir, "GRUFF-BASELINE.JSON")) {
+		t.Fatal("expected case-insensitive match for GRUFF-BASELINE.JSON")
+	}
+}

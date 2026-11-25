@@ -267,6 +267,10 @@ func (w *discoveryWalker) visitInput(input string) error {
 			}
 			return w.visitDir(current)
 		}
+		// Skip walked symlinks, named pipes, sockets, and device nodes so walks stay inside root and never block on FIFOs.
+		if !entry.Type().IsRegular() {
+			return nil
+		}
 		w.visitFile(current, false)
 		return nil
 	})
@@ -299,6 +303,12 @@ func (w *discoveryWalker) visitFile(path string, explicit bool) {
 			w.result.Skipped = append(w.result.Skipped, decision.skippedPath(rel))
 		}
 		return
+	}
+	// Never read non-regular explicit targets (such as named pipes or sockets) that could block indefinitely on open/read.
+	if explicit {
+		if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
+			return
+		}
 	}
 	w.addFile(path)
 }
@@ -364,12 +374,13 @@ func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) Ig
 		}
 	}
 	if isDir {
-		if w.fallbackAppliesAt(rel) {
-			if reason, ignored := fallbackIgnoredDir(rel); ignored {
-				return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
-			}
+		if reason, ignored := w.fallbackIgnoredDirPath(rel, true); ignored {
+			return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 		}
 		return IgnoreDecision{}
+	}
+	if reason, ignored := w.fallbackIgnoredDirPath(rel, false); ignored {
+		return IgnoreDecision{Ignored: true, Reason: reason, Source: OriginDefault}
 	}
 	if w.fallbackAppliesAt(rel) {
 		if reason, ignored := fallbackIgnoredFile(rel); ignored {
@@ -377,6 +388,30 @@ func (w *discoveryWalker) decideIgnore(rel string, isDir bool, explicit bool) Ig
 		}
 	}
 	return IgnoreDecision{}
+}
+
+// fallbackIgnoredDirPath checks rel's directory ancestors from outermost to innermost using the same no-gitignore rule as directory walks.
+//
+// When isDir is true, rel's final segment is inspected as a directory too; when false, only its parent directories are checked.
+// It returns the deciding fallback reason and true for the first ancestor where fallbackAppliesAt holds, or an empty reason and false otherwise.
+func (w *discoveryWalker) fallbackIgnoredDirPath(rel string, isDir bool) (string, bool) {
+	parts := strings.Split(rel, "/")
+	limit := len(parts)
+	if !isDir {
+		limit--
+	}
+	for index := 0; index < limit; index++ {
+		reason, ignored := fallbackIgnoredDirSegment(parts[index])
+		if !ignored {
+			continue
+		}
+		ancestor := strings.Join(parts[:index+1], "/")
+		// Evaluate gitignore deferral at the matching directory itself, mirroring visitDir during top-down discovery.
+		if w.fallbackAppliesAt(ancestor) {
+			return reason, true
+		}
+	}
+	return "", false
 }
 
 // addFile adds a file that passed decideIgnore to Result.Files, unless its type is unsupported or it is a generated Go file.

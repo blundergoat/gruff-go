@@ -14,7 +14,47 @@ import (
 	"github.com/blundergoat/gruff-go/internal/analysis"
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/report"
+	"github.com/blundergoat/gruff-go/internal/rule"
 )
+
+// reportDisplayFlagPointers holds the canonical and superseded display-filter flag pointers for gruff-go report.
+type reportDisplayFlagPointers struct {
+	showRules      *string
+	hideRules      *string
+	showPillars    *string
+	hidePillars    *string
+	includeRules   *string
+	excludeRules   *string
+	includePillars *string
+	excludePillars *string
+}
+
+// registerReportDisplayFlags binds canonical --show-*/--hide-* and superseded plural display flags onto flags.
+// It returns the bound flag pointer bundle for post-parse resolution via parse.
+func registerReportDisplayFlags(flags *flag.FlagSet) reportDisplayFlagPointers {
+	return reportDisplayFlagPointers{
+		showRules:      flags.String("show-rule", "", "comma-separated rule IDs to display; never changes execution or the score"),
+		hideRules:      flags.String("hide-rule", "", "comma-separated rule IDs to hide from display"),
+		showPillars:    flags.String("show-pillar", "", "comma-separated pillars to display"),
+		hidePillars:    flags.String("hide-pillar", "", "comma-separated pillars to hide from display"),
+		includeRules:   flags.String("include-rules", "", "superseded by --show-rule; comma-separated rule IDs to display"),
+		excludeRules:   flags.String("exclude-rules", "", "superseded by --hide-rule; comma-separated rule IDs to hide from display"),
+		includePillars: flags.String("include-pillars", "", "superseded by --show-pillar; comma-separated pillars to display"),
+		excludePillars: flags.String("exclude-pillars", "", "superseded by --hide-pillar; comma-separated pillars to hide from display"),
+	}
+}
+
+// parse resolves the bound display-filter flags against definitions, preferring canonical spellings over superseded plurals.
+// It returns the validated DisplayFilter, or an error when any rule ID or pillar name is unrecognised.
+func (p reportDisplayFlagPointers) parse(definitions []rule.Definition) (analysis.DisplayFilter, error) {
+	return parseDisplayFilter(
+		firstNonEmpty(*p.showRules, *p.includeRules),
+		firstNonEmpty(*p.hideRules, *p.excludeRules),
+		firstNonEmpty(*p.showPillars, *p.includePillars),
+		firstNonEmpty(*p.hidePillars, *p.excludePillars),
+		definitions,
+	)
+}
 
 // runReport handles gruff-go report: it parses report flags, runs analysis once, and writes the selected report format.
 //
@@ -45,10 +85,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	noConfig := flags.Bool("no-config", false, "skip auto-loading default gruff config")
 	baselinePath := flags.String("baseline", "", "baseline file to apply")
 	diffBase := flags.String("diff-base", "", "git base ref for changed-line filtering")
-	includeRules := flags.String("include-rules", "", "comma-separated rule IDs to display")
-	excludeRules := flags.String("exclude-rules", "", "comma-separated rule IDs to hide from display")
-	includePillars := flags.String("include-pillars", "", "comma-separated pillars to display")
-	excludePillars := flags.String("exclude-pillars", "", "comma-separated pillars to hide from display")
+	displayFlags := registerReportDisplayFlags(flags)
 	includeIgnored := flags.Bool("include-ignored", false, "include gitignored and default-ignored files; paths.ignore still applies")
 	deepScanBudgetRaw := flags.String("deep-scan-budget", "", "override both deep-scan bounds as LINES:BYTES, or disable with off")
 	if err := parseCommandArguments(flags, args); err != nil {
@@ -58,6 +95,7 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 	if refuseMinSeverity(flags, stderr) {
 		return 2
 	}
+	warnSupersededSpellings(flags, stderr)
 	if !validateReportEnums(*format, *editorLink, stderr) {
 		return 2
 	}
@@ -81,8 +119,8 @@ func runReport(args []string, stdout, stderr io.Writer, interactive bool) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	displayFilter, err := parseDisplayFilter(*includeRules, *excludeRules, *includePillars, *excludePillars, registry.Definitions())
-	// A bad --include-rules, --exclude-rules, --include-pillars or --exclude-pillars value stops report here with exit 2, before any scan.
+	displayFilter, err := displayFlags.parse(registry.Definitions())
+	// A bad --show-rule, --hide-rule, --show-pillar or --hide-pillar (or superseded plural) value stops report here with exit 2, before any scan.
 	if err != nil {
 		fmt.Fprintf(stderr, "display filter: %v\n", err)
 		return 2
@@ -192,6 +230,7 @@ func reportFlagHasSeparateValue(flagArgument string) bool {
 	}
 	switch strings.TrimLeft(flagArgument, "-") {
 	case "format", "output", "report-editor-link", "fail-on", "min-severity", "config", "baseline", "diff-base",
+		"show-rule", "hide-rule", "show-pillar", "hide-pillar",
 		"include-rules", "exclude-rules", "include-pillars", "exclude-pillars", "deep-scan-budget":
 		return true
 	default:

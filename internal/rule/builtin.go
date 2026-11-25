@@ -258,7 +258,7 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 		return nil
 	}
 	codeLines := codeBearingLines(unit.Source)
-	funcDecls := funcDeclsBySymbol(unit.AST)
+	funcDecls := funcDeclsByKey(unit.FileSet, unit.AST)
 	findings := []finding.Finding{}
 	for _, fn := range unit.Functions {
 		rawLength := fn.EndLine - fn.Line + 1
@@ -274,7 +274,7 @@ func (r FunctionLengthRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.F
 			continue
 		}
 		metadata := map[string]any{"threshold": maxLines, "rawLines": rawLength}
-		decl := funcDecls[fn.Name]
+		decl := funcDecls[funcDeclKey{name: fn.Name, line: fn.Line}]
 		var tableRanges []lineRange
 		// In a _test.go file, table-driven fixture rows are data: they come off the count and the finding carries testFile metadata.
 		if isGoTestFile(unit.File.Path) {

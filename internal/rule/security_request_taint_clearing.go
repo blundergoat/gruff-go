@@ -65,14 +65,33 @@ func (s *requestTaintScope) bindingRewrittenBetween(binding *ast.Object, afterPo
 		if rewritten {
 			return false
 		}
-		assignment, isAssignment := node.(*ast.AssignStmt)
-		if !isAssignment || assignment.Pos() <= afterPos || assignment.Pos() >= beforePos {
-			return true
+		switch typed := node.(type) {
+		case *ast.AssignStmt:
+			// Only an assignment between the sanitizing call and the sink can put request data back into the value.
+			if typed.Pos() <= afterPos || typed.Pos() >= beforePos {
+				return true
+			}
+			rewritten = s.assignmentMayRestoreRequestData(typed, binding)
+		case *ast.RangeStmt:
+			if typed.Pos() <= afterPos || typed.Pos() >= beforePos {
+				return true
+			}
+			if rangeWritesBinding(typed, binding) && !s.exprCarriesNoRequestData(typed.X) {
+				rewritten = true
+			}
 		}
-		rewritten = s.assignmentMayRestoreRequestData(assignment, binding)
 		return true
 	})
 	return rewritten
+}
+
+// rangeWritesBinding reports whether rangeStmt assigns its key or value to binding as a bare identifier.
+// It returns false when rangeStmt is nil or neither its Key nor Value resolves to binding.
+func rangeWritesBinding(rangeStmt *ast.RangeStmt, binding *ast.Object) bool {
+	if rangeStmt == nil {
+		return false
+	}
+	return identifierBinds(rangeStmt.Key, binding) || identifierBinds(rangeStmt.Value, binding)
 }
 
 // assignmentMayRestoreRequestData reports whether assignment writes binding with a value that may carry request data.
@@ -118,7 +137,8 @@ func (s *requestTaintScope) enclosingLoopStartForBackEdgeTaint(binding *ast.Obje
 			if loop.Pos() >= sinkPos || sinkPos >= loop.End() {
 				return true
 			}
-			if s.bindingRewrittenBetween(binding, sinkPos, loop.End()) {
+			if (rangeWritesBinding(loop, binding) && !s.exprCarriesNoRequestData(loop.X)) ||
+				s.bindingRewrittenBetween(binding, sinkPos, loop.End()) {
 				if !innermost.IsValid() || loop.Pos() > innermost {
 					innermost = loop.Pos()
 				}
@@ -168,8 +188,11 @@ func blockWritesBinding(block *ast.BlockStmt, binding *ast.Object) bool {
 		if written {
 			return false
 		}
-		if assignment, isAssignment := node.(*ast.AssignStmt); isAssignment {
-			written = assignmentWritesBinding(assignment, binding)
+		switch typed := node.(type) {
+		case *ast.AssignStmt:
+			written = assignmentWritesBinding(typed, binding)
+		case *ast.RangeStmt:
+			written = rangeWritesBinding(typed, binding)
 		}
 		return !written
 	})

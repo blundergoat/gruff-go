@@ -323,8 +323,16 @@ func Validate(baselineFile File) error {
 	if baselineFile.Sensitive.Eligible {
 		return fmt.Errorf("sensitive.eligible must be false")
 	}
+	// A negative count can only come from a hand edit, and would let the file claim fewer secrets than it holds.
+	if baselineFile.Sensitive.Counts.Total < 0 {
+		return fmt.Errorf("sensitive.counts.total must not be negative")
+	}
 	summed := 0
-	for _, count := range baselineFile.Sensitive.Counts.ByRule {
+	// Each per-rule count is checked the same way before the totals are compared.
+	for ruleID, count := range baselineFile.Sensitive.Counts.ByRule {
+		if count < 0 {
+			return fmt.Errorf("sensitive.counts.byRule[%q] must not be negative", ruleID)
+		}
 		summed += count
 	}
 	if summed != baselineFile.Sensitive.Counts.Total {
@@ -582,8 +590,8 @@ const DefaultFilename = "gruff-baseline.json"
 // Returns an error if the existing file is unreadable, legacy, or from another port. A missing file or a valid Go v3 file can be written.
 // force lets the developer explicitly replace the file they selected.
 func RequireOverwritableDefaultPath(outputPath string, force bool) error {
-	// An explicit overwrite or a custom filename uses the writer's normal replacement behavior.
-	if force || filepath.Base(outputPath) != DefaultFilename {
+	// An explicit overwrite or an unrelated custom filename uses the writer's normal replacement behavior.
+	if force || !targetsDefaultBaselineFile(outputPath) {
 		return nil
 	}
 	// #nosec G304 -- the caller's own explicit output path, read only to classify what is already there.
@@ -601,8 +609,25 @@ func RequireOverwritableDefaultPath(outputPath string, force bool) error {
 	if err == nil && file.ToolLanguage == finding.BaselineToolLanguage {
 		return nil
 	}
-	return fmt.Errorf("refusing to overwrite %s because it is not a valid Go %s baseline; migrate a 0.5 baseline with `gruff-go baseline --migrate %s --out <new path>`, or pass --force to overwrite it",
+	return fmt.Errorf("refusing to overwrite %s because it is not a valid Go %s baseline; migrate a 0.5 baseline with `gruff-go baseline --migrate-baseline %s --out <new path>`, or pass --force to overwrite it",
 		outputPath, SchemaVersion, outputPath)
+}
+
+// targetsDefaultBaselineFile reports whether outputPath names DefaultFilename, in any letter case, or is the same file on disk (os.SameFile).
+func targetsDefaultBaselineFile(outputPath string) bool {
+	// A name such as GRUFF-BASELINE.JSON still means the default file on a case-insensitive disk, so it gets the same overwrite guard.
+	if strings.EqualFold(filepath.Base(outputPath), DefaultFilename) {
+		return true
+	}
+	outputInfo, err := os.Stat(outputPath)
+	if err != nil {
+		return false
+	}
+	defaultInfo, err := os.Stat(filepath.Join(filepath.Dir(outputPath), DefaultFilename))
+	if err != nil {
+		return false
+	}
+	return os.SameFile(outputInfo, defaultInfo)
 }
 
 // LegacyFile holds the reviews a developer accepted with the 0.5 CLI.
@@ -756,7 +781,7 @@ type MigrationResult struct {
 	File File
 }
 
-// Migrate carries identifiable 0.5 reviews from inputPath into a separate v3 file at outputPath for gruff-go baseline --migrate.
+// Migrate carries identifiable 0.5 reviews from inputPath into a separate v3 file at outputPath for gruff-go baseline --migrate-baseline.
 // It matches currentFindings to legacy rows, rebuilds v3 identities, and stamps the output with generatedAt.
 //
 // Returns the new file and accepted, occurrence, and sensitive counts. Unidentified findings never become v3 entries.

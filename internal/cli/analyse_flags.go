@@ -117,7 +117,7 @@ func analyseFlagHasSeparateValue(flagArgument string) bool {
 		"changed-scope", "include-rules", "exclude-rules", "include-pillars",
 		"exclude-pillars", "report-editor-link", "deep-scan-budget",
 		"show-rule", "hide-rule", "show-pillar", "hide-pillar",
-		"min-confidence", "scan-timeout":
+		"min-confidence", "scan-timeout", "history-file":
 		return true
 	default:
 		// Boolean and unknown flags do not reserve the next token during the help pre-scan.
@@ -155,7 +155,9 @@ func parseAnalyseFlags(commandArguments []string, stderr io.Writer) (*flag.FlagS
 	// The error then prints at once instead of blocking on stdin in an interactive shell or hook.
 	// generateBaselineState reads only flag values, not the patch, so validating before the read is safe.
 	if *registeredFlags.generateBaselinePath != "" {
-		if err := validateGenerateBaselineFlags(registeredFlags.values(nil, false).generateBaselineState()); err != nil {
+		baselineState := registeredFlags.values(nil, false).generateBaselineState()
+		baselineState.changedRangesSet = flagProvided(flagSet, "changed-ranges")
+		if err := validateGenerateBaselineFlags(baselineState); err != nil {
 			fmt.Fprintln(stderr, err)
 			return flagSet, analyseFlagValues{}, false
 		}
@@ -371,11 +373,12 @@ func resolveDeepScanBudget(raw string, cfg cfgpkg.Config) (analysis.DeepScanBudg
 // Its include and exclude fields carry the merged display filters, so a superseded plural spelling is checked too; run selection is not copied.
 func (values analyseFlagValues) generateBaselineState() generateBaselineFlagState {
 	return generateBaselineFlagState{
-		baselinePath:  values.baselinePath,
-		diffBase:      values.diffBase,
-		diffMode:      values.diffMode,
-		since:         values.since,
-		changedRanges: values.changedRanges,
+		baselinePath:     values.baselinePath,
+		diffBase:         values.diffBase,
+		diffMode:         values.diffMode,
+		since:            values.since,
+		changedRanges:    values.changedRanges,
+		changedRangesSet: values.changedRangesSet,
 		// The display fields, because values() merges the superseded plural spellings into them, so --include-rules is refused like --show-rule.
 		// values.includeRules and its siblings hold the run selection from --include-rule, which a generated baseline may follow, so they are not read.
 		includeRules:   values.showRules,
@@ -387,23 +390,24 @@ func (values analyseFlagValues) generateBaselineState() generateBaselineFlagStat
 
 // generateBaselineFlagState groups analyse flags that change finding scope.
 //
-// Any non-empty field makes validateGenerateBaselineFlags refuse a --generate-baseline run.
+// Any non-empty field (or changedRangesSet) makes validateGenerateBaselineFlags refuse a --generate-baseline run.
 // The include and exclude fields hold the display filters, not the run-selection flags of the same name.
 type generateBaselineFlagState struct {
-	baselinePath   string
-	diffBase       string
-	diffMode       string
-	since          string
-	changedRanges  string
-	includeRules   string
-	excludeRules   string
-	includePillars string
-	excludePillars string
+	baselinePath     string
+	diffBase         string
+	diffMode         string
+	since            string
+	changedRanges    string
+	changedRangesSet bool
+	includeRules     string
+	excludeRules     string
+	includePillars   string
+	excludePillars   string
 }
 
 // validateGenerateBaselineFlags refuses combinations that would make the generated baseline partial, not a fresh snapshot of current findings.
 //
-// state holds the flags that would narrow the snapshot; it returns nil only when every one of them is empty.
+// state holds the flags that would narrow the snapshot; it returns nil only when every one of them is empty and changedRangesSet is false.
 // Otherwise it returns an error naming the first conflict in order: --baseline, --diff-base, the changed-region flags, then the display filters.
 func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
 	// A conflict such as --generate-baseline with --diff-base main stops the run before any scan; with none set, generation goes ahead.
@@ -412,7 +416,7 @@ func validateGenerateBaselineFlags(state generateBaselineFlagState) error {
 		return fmt.Errorf("--generate-baseline cannot be combined with --baseline")
 	case state.diffBase != "":
 		return fmt.Errorf("--generate-baseline cannot be combined with --diff-base")
-	case state.diffMode != "" || state.since != "" || state.changedRanges != "":
+	case state.diffMode != "" || state.since != "" || state.changedRanges != "" || state.changedRangesSet:
 		return fmt.Errorf("--generate-baseline cannot be combined with changed-region flags")
 	case state.includeRules != "" || state.excludeRules != "" || state.includePillars != "" || state.excludePillars != "":
 		return fmt.Errorf("--generate-baseline cannot be combined with display filters")

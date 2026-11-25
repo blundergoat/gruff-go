@@ -94,6 +94,8 @@ type parsedComment struct {
 	Text string
 	// Line is the 1-based line the comment starts on.
 	Line int
+	// EndLine is the 1-based line the comment ends on; equals Line for single-line comments.
+	EndLine int
 	// Column is the 1-based column the comment starts at.
 	Column int
 	// InDocGroup marks a comment inside a package, declaration or field doc comment, which describes that code rather than a suppression.
@@ -108,7 +110,7 @@ type parsedComment struct {
 //
 // The unit must carry a parsed AST and FileSet.
 //
-// It returns one parsedComment per comment in file order, carrying its cleaned text, line, column, InDocGroup and FreeStanding flags.
+// It returns one parsedComment per comment in file order, carrying its cleaned text, line, end line, column, InDocGroup and FreeStanding flags.
 // The result is an empty slice when the file has no comments.
 func parsedComments(unit parser.Unit) []parsedComment {
 	docLines := declarationDocLines(unit)
@@ -117,9 +119,11 @@ func parsedComments(unit parser.Unit) []parsedComment {
 	for _, group := range unit.AST.Comments {
 		for _, comment := range group.List {
 			position := unit.FileSet.Position(comment.Pos())
+			endPosition := unit.FileSet.Position(comment.End())
 			comments = append(comments, parsedComment{
 				Text:         cleanCommentText(comment.Text),
 				Line:         position.Line,
+				EndLine:      max(position.Line, endPosition.Line),
 				Column:       position.Column,
 				InDocGroup:   docLines[position.Line],
 				FreeStanding: commentStartsItsLine(sourceLines, position.Line, position.Column),
@@ -234,35 +238,38 @@ func suppressionHasRationale(rest string) bool {
 // It reports true when the comment just before or after, within one line, starts with reason:, rationale: or because: plus a reason word.
 // Otherwise the result comes from contiguousCommentBlockExplains, so false means neither check found a rationale.
 func nearbyCommentHasRationale(comments []parsedComment, index int) bool {
-	line := comments[index].Line
+	startLine := comments[index].Line
+	endLine := comments[index].EndLine
 	for _, neighbor := range []int{index - 1, index + 1} {
 		if neighbor < 0 || neighbor >= len(comments) {
 			continue
 		}
+		adjacent := comments[neighbor].EndLine >= startLine-1 && comments[neighbor].Line <= endLine+1
 		// This explicit check ignores InDocGroup and FreeStanding, so a reason: line in a doc comment or after code still clears the directive.
-		if absInt(comments[neighbor].Line-line) <= 1 && explicitRationaleComment(comments[neighbor].Text) {
+		if adjacent && explicitRationaleComment(comments[neighbor].Text) {
 			return true
 		}
 	}
 	return contiguousCommentBlockExplains(comments, index)
 }
 
-// contiguousCommentBlockExplains reports whether free-standing comments with consecutive start lines above the directive contain prose.
+// contiguousCommentBlockExplains reports whether free-standing comments directly above the directive contain prose.
 //
-// Ordinary prose counts without a reason: marker, as in cobra's command.go.
+// Ordinary prose counts without a reason: marker, as in cobra's command.go, including multi-line /* ... */ blocks ending on the line above.
 // A line gap, a doc group, another suppression directive, or a comment trailing code stops the search.
 //
 // comments holds the file's parsed comments in order, and index is the directive's position in it, which must be in range.
 // Comments with no reason word are passed over; a line gap, a doc-group line, an intervening directive, or a trailing comment returns false.
 // It reports true at the first comment above holding a word hasReasonWord accepts, and false when it runs out of comments.
 func contiguousCommentBlockExplains(comments []parsedComment, index int) bool {
-	expectedLine := comments[index].Line - 1
+	expectedEndLine := comments[index].Line - 1
 	for cursor := index - 1; cursor >= 0; cursor-- {
 		candidate := comments[cursor]
-		if candidate.Line != expectedLine {
+		// A blank or code line between two comments ends the block, so a far-away comment cannot explain this suppression.
+		if candidate.EndLine != expectedEndLine {
 			return false
 		}
-		expectedLine = candidate.Line - 1
+		expectedEndLine = candidate.Line - 1
 		if candidate.InDocGroup || !candidate.FreeStanding {
 			return false
 		}
@@ -342,13 +349,31 @@ func trimSuppressionRuleList(rest string) string {
 func trimNoSecCodes(rest string) string {
 	fields := strings.Fields(rest)
 	leadingCodes := 0
-	for leadingCodes < len(fields) && looksLikeNoSecCode(fields[leadingCodes]) {
+	// Skip the rule codes after #nosec, such as G101,G204, so only the words that follow count as the rationale.
+	for leadingCodes < len(fields) && looksLikeNoSecCodeList(fields[leadingCodes]) {
 		leadingCodes++
 	}
 	if leadingCodes == 0 {
 		return rest
 	}
 	return strings.Join(fields[leadingCodes:], " ")
+}
+
+// looksLikeNoSecCodeList reports whether value is one or more comma-separated gosec code tokens such as G101 or G101,G204.
+// It returns false when value is empty or any non-empty comma-separated part is not a gosec code.
+func looksLikeNoSecCodeList(value string) bool {
+	trimmed := strings.Trim(value, ",")
+	// An empty code list names no rule.
+	if trimmed == "" {
+		return false
+	}
+	for _, part := range strings.Split(trimmed, ",") {
+		// One bad entry, such as G101,typo, makes the whole list invalid rather than half-suppressing.
+		if !looksLikeNoSecCode(part) {
+			return false
+		}
+	}
+	return true
 }
 
 // looksLikeNoSecCode reports whether value is a gosec code token such as G101.

@@ -69,8 +69,16 @@ class CalibrationInvocationTest(unittest.TestCase):
                     "moduleRoot": mod_root,
                 }
             ]
-            with mock.patch.object(CALIBRATION, "run", return_value=completed):
+            with mock.patch.object(CALIBRATION, "run", return_value=completed) as run_mock:
                 manifest, findings = CALIBRATION.scan_corpus(stage / "bin", stage, entries)
+
+            args = run_mock.call_args.args[0]
+            self.assertNotIn("--no-config", args)
+            self.assertIn("--config", args)
+            config_text = Path(args[args.index("--config") + 1]).read_text(encoding="utf-8")
+            self.assertIn("schemaVersion: gruff-go.config.v0.1", config_text)
+            for rule_id in CALIBRATION.TARGET_RULES:
+                self.assertIn(f"  {rule_id}:\n    enabled: true", config_text)
 
         self.assertEqual(len(manifest), 1)
         self.assertEqual(manifest[0]["files"], 4)
