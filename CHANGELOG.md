@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.0 - Unreleased
+## v0.6.0 - 2026-11-27
 
 Coordinated family release: `v3` analysis, summary, and baseline schemas, `gruff.hook.v2`, a normalized cross-port scoring curve, measured rule confidence, retired low-precision rules, and default-on callable documentation checks with natural Go prose matching.
 
