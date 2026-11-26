@@ -391,7 +391,7 @@ The rule reads the doc comment as plain prose: a parameter counts as named when 
 
 **Remediation.** Name each listed parameter in the doc comment and say what it carries; plain prose is enough and no tag format is required.
 
-**Known precision limit.** A doc comment can describe a parameter by its role instead of its name, or leave a self-explanatory parameter unmentioned, so the parameter name never appears as a word. Name the parameter in the doc comment, rename it to the word the prose already uses, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A doc comment can describe a parameter by its role instead of its name, or leave a self-explanatory parameter unmentioned, so the parameter name never appears as a word. Name the parameter in the doc comment, rename it to the word the prose already uses, or keep this opt-in rule disabled for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `docs.missing-return-doc`
 
@@ -407,7 +407,7 @@ The rule reads the doc comment as plain prose and requires no tag format. A non-
 
 **Remediation.** Say in the doc comment what the callable returns and, when it returns an error, when that happens; plain prose is enough and no tag format is required.
 
-**Known precision limit.** A doc comment can explain the result without a return word, such as a constructor summary or an interface-implementation note, so the prose is not recognised as describing it. Say what the callable returns in plain words, or disable the rule for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
+**Known precision limit.** A doc comment can explain the result without a return word, such as a constructor summary or an interface-implementation note, so the prose is not recognised as describing it. Say what the callable returns in plain words, or keep this opt-in rule disabled for the reviewed path. The same guidance is available as structured `falsePositiveShapes` metadata from `list-rules --format json`.
 
 ### `docs.package-comment`
 
