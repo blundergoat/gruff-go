@@ -51,7 +51,7 @@ func projectContextFiles(root string, opts Options, primary []source.File) ([]so
 			rel := filepath.ToSlash(filepath.Join(dir, entry.Name()))
 			// Respect .gitignore and config ignore rules for context-only siblings so single-file scans match whole-repo discovery.
 			if _, isPrimary := primarySet[rel]; !isPrimary && !opts.IncludeIgnored {
-				if source.CheckIgnore(root, rel, false, ignoreOpts).Ignored {
+				if source.ContextIgnore(root, rel, ignoreOpts).Ignored {
 					continue
 				}
 			}

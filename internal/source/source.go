@@ -92,13 +92,23 @@ func (d IgnoreDecision) skippedPath(rel string) SkippedPath {
 // CheckIgnore reports whether the repository-relative path rel would be excluded from analysis under options, for the check-ignore command.
 //
 // It uses the same decideIgnore engine as Discover; isDir selects directory-pattern semantics and rootAbs anchors the .gitignore matcher.
-// A file is judged as it would be during directory discovery.
+// A file is judged as an explicitly named input, as analyse judges it, so only config globs and VCS internals can exclude it.
 //
 // It may read repository .gitignore files but never the candidate file, so generated-file detection is never reported here.
 // The result carries Reason, Source and, for a config glob, Pattern; a zero IgnoreDecision means no ignore rule excludes the path.
 func CheckIgnore(rootAbs, rel string, isDir bool, options Options) IgnoreDecision {
 	walker := newDiscoveryWalker(context.Background(), rootAbs, options)
-	return walker.decideIgnore(rel, isDir, false)
+	return walker.decideIgnore(rel, isDir, !isDir)
+}
+
+// ContextIgnore reports whether rel, a repository-relative file the user did not name, would be skipped by directory discovery.
+//
+// Analysis uses it for package siblings loaded only as type context, so a single-file scan reads the same siblings as a whole-repo scan.
+// Unlike CheckIgnore, .gitignore, default and third-party exclusions all apply to the file.
+// rootAbs anchors the .gitignore matcher, and options supplies the config ignore patterns and IncludeIgnored.
+func ContextIgnore(rootAbs, rel string, options Options) IgnoreDecision {
+	walker := newDiscoveryWalker(context.Background(), rootAbs, options)
+	return walker.decideIgnore(rel, false, false)
 }
 
 // Result is the discovery output containing files, missing inputs, and skipped paths.

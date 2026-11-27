@@ -559,24 +559,33 @@ func TestDiscoverFirstPartyNamesThatResembleTheClassesStayInScope(t *testing.T) 
 	}
 }
 
-// TestCheckIgnoreAppliesFallbackAncestorsToFilePaths verifies file-level CheckIgnore matches directory-walk fallback skips.
-func TestCheckIgnoreAppliesFallbackAncestorsToFilePaths(t *testing.T) {
+// TestCheckIgnoreJudgesNamedFilesAsExplicitInputs verifies a named file gets the verdict analyse gives an explicit input.
+// The fallback and third-party directories that contain those files are still ignored themselves.
+// A .gitignore makes the fallback directory defer, while the third-party dist directory stays ignored.
+func TestCheckIgnoreJudgesNamedFilesAsExplicitInputs(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "node_modules/pkg/a.go", "package pkg\n")
 	writeFile(t, root, "build/out/b.go", "package out\n")
+	writeFile(t, root, "dist/scan_surface.go", "package dist\n")
 
-	decision := CheckIgnore(root, "node_modules/pkg/a.go", false, Options{Root: root})
-	if !decision.Ignored || decision.Reason != "dependency" || decision.Source != OriginDefault {
-		t.Fatalf("CheckIgnore(node_modules/pkg/a.go) = %+v, want ignored dependency/default", decision)
+	for _, file := range []string{"node_modules/pkg/a.go", "build/out/b.go", "dist/scan_surface.go"} {
+		if decision := CheckIgnore(root, file, false, Options{Root: root}); decision.Ignored {
+			t.Fatalf("CheckIgnore(%s) = %+v, want not ignored for a named file", file, decision)
+		}
 	}
-	buildDecision := CheckIgnore(root, "build/out/b.go", false, Options{Root: root})
-	if !buildDecision.Ignored || buildDecision.Reason != "build-output" {
-		t.Fatalf("CheckIgnore(build/out/b.go) = %+v, want ignored build-output", buildDecision)
+	for dir, reason := range map[string]string{"node_modules": "dependency", "build": "build-output", "dist": "build-output"} {
+		decision := CheckIgnore(root, dir, true, Options{Root: root})
+		if !decision.Ignored || decision.Reason != reason || decision.Source != OriginDefault {
+			t.Fatalf("CheckIgnore(%s) = %+v, want ignored %s/default", dir, decision, reason)
+		}
 	}
 
 	writeFile(t, root, ".gitignore", "*.log\n")
-	if after := CheckIgnore(root, "build/out/b.go", false, Options{Root: root}); after.Ignored {
-		t.Fatalf("CheckIgnore after .gitignore = %+v, want not ignored when fallback defers", after)
+	if after := CheckIgnore(root, "build", true, Options{Root: root}); after.Ignored {
+		t.Fatalf("CheckIgnore(build) after .gitignore = %+v, want not ignored when fallback defers", after)
+	}
+	if after := CheckIgnore(root, "dist", true, Options{Root: root}); !after.Ignored {
+		t.Fatalf("CheckIgnore(dist) after .gitignore = %+v, want third-party class still ignored", after)
 	}
 }
 
