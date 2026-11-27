@@ -13,7 +13,7 @@ Usage: scripts/dependency-install.sh
 Installs local dependencies needed for development and preflight:
   - npm dependencies from package-lock.json via npm ci
   - Go module cache via go mod download
-  - govulncheck via go install golang.org/x/vuln/cmd/govulncheck@latest
+  - govulncheck via go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 (v1.10.0 cannot scan the Go 1.27 standard library)
 
 Environment:
   RUN_NPM_SCRIPTS=1  Allow npm dependency lifecycle scripts. Defaults to off.
@@ -57,7 +57,8 @@ install_go_dependencies() {
 install_go_tools() {
     require_command go
     log "Installing govulncheck..."
-    go install golang.org/x/vuln/cmd/govulncheck@latest
+    # Matches the CI pin: v1.10.0 rejects the Go 1.27 standard library with type errors, so stay on v1.9.0 until a release scans it.
+    go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
     if ! command -v govulncheck >/dev/null 2>&1; then
         log "govulncheck installed under $(go env GOPATH)/bin; add that directory to PATH if needed."
     fi

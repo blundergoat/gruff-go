@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the comment-rubric rule and its supporting helpers.
+//
+// This file implements the docs.comment-rubric rule and its supporting helpers.
+// Every check is off until the config file turns on an option such as requirePackageSummary or requireFunctionComments.
 package rule
 
 import (
@@ -13,19 +15,21 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 	"github.com/blundergoat/gruff-go/internal/pathfilter"
+	"github.com/blundergoat/gruff-go/internal/source"
 )
 
 // commentRubricMinPackageCommentLines is the default minimum line count for package summaries.
-// A one-line `// Package foo …` summary passes when the rule's `requirePackageSummary` is enabled
-// and no threshold is configured. Projects that want the stricter floor opt in via `threshold: 2`.
+//
+// A one-line package summary passes when requirePackageSummary is on and no threshold is configured.
+// Projects that want the stricter floor opt in via threshold: 2.
 const (
 	commentRubricMinPackageCommentLines = 1
 )
 
-// commentRubricStopwords lists common English fillers that do not count toward
-// `minWordsBeyondSymbol`. The set is intentionally minimal: articles, low-content prepositions,
-// and basic copulas. Verbs like "returns", "describes", and "reports" are NOT stopwords because
-// they carry the intent of a doc comment.
+// commentRubricStopwords lists common English fillers that do not count toward minWordsBeyondSymbol.
+//
+// The set is intentionally minimal: articles, conjunctions, low-content prepositions, basic copulas, pronouns like it and this, and not or no.
+// Verbs like returns, describes and reports are not stopwords because they carry the intent of a doc comment.
 var commentRubricStopwords = map[string]bool{
 	"a": true, "an": true, "the": true,
 	"and": true, "or": true, "but": true,
@@ -37,11 +41,14 @@ var commentRubricStopwords = map[string]bool{
 }
 
 // CommentRubricRule enforces maintainer-oriented comments for selected declaration kinds.
+//
+// Its fields carry the docs.comment-rubric options listed in Definition, and with every Require flag off the rule reports nothing.
+// Each finding names a declaration with no useful attached comment, or a package whose best summary is too short.
 type CommentRubricRule struct {
-	// MinPackageCommentLines sets the minimum non-empty line count required on each package summary.
+	// MinPackageCommentLines sets the minimum non-empty line count required on each package summary; zero or less means 1.
 	MinPackageCommentLines int
-	// MinWordsBeyondSymbol rejects paraphrase boilerplate by requiring the comment to add this many
-	// substantive tokens beyond the symbol's own identifier set.
+	// MinWordsBeyondSymbol is how many substantive tokens a comment must add beyond the symbol's own identifier tokens.
+	// It rejects paraphrase boilerplate; zero or less turns the check off.
 	MinWordsBeyondSymbol int
 	// IncludePaths restricts enforcement to file paths matching at least one of the supplied globs.
 	IncludePaths []string
@@ -66,6 +73,7 @@ type CommentRubricRule struct {
 }
 
 // minPackageCommentLines returns the configured minimum package summary lines, falling back to the default.
+// A zero or negative MinPackageCommentLines gives commentRubricMinPackageCommentLines, which is 1.
 func (r CommentRubricRule) minPackageCommentLines() int {
 	if r.MinPackageCommentLines <= 0 {
 		return commentRubricMinPackageCommentLines
@@ -73,7 +81,10 @@ func (r CommentRubricRule) minPackageCommentLines() int {
 	return r.MinPackageCommentLines
 }
 
-// Definition declares the docs.comment-rubric path-scoped policy bundle covering package summaries, function comments, named types, and the minWordsBeyondSymbol substantive-token threshold.
+// Definition declares the docs.comment-rubric path-scoped policy bundle for package summaries, functions, named types and package-scope values.
+//
+// Its minWordsBeyondSymbol option sets the substantive-token threshold that rejects name-restatement comments.
+// It returns the metadata with every option off, empty or zero, and the minPackageCommentLines threshold from the receiver, 1 when not positive.
 func (r CommentRubricRule) Definition() Definition {
 	return Definition{
 		ID:             "docs.comment-rubric",
@@ -104,14 +115,17 @@ func (r CommentRubricRule) Definition() Definition {
 	}
 }
 
-// AnalyzeProject walks every parsed unit and emits rubric findings. The
-// package-summary check is aggregated per package directory so a multi-file
-// package whose summary lives in a single doc.go does not generate a missing
-// finding on every other file; the other sub-checks remain strictly per unit.
-func (r CommentRubricRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
+// AnalyzeProject walks every parsed unit and emits rubric findings for the whole scan.
+//
+// The package-summary check runs once per package, so a summary in an in-scope doc.go covers the package's other in-scope files.
+// The function, type, const and var checks stay strictly per unit.
+//
+// units is every parsed file in the project; ctx prefers a reportable file as the package-summary anchor when scanning explicit targets.
+// Package-summary findings come first, and only when RequirePackageSummary is set; it returns a non-nil slice, empty when every check passes.
+func (r CommentRubricRule) AnalyzeProject(units []parser.Unit, ctx Context) []finding.Finding {
 	findings := []finding.Finding{}
 	if r.RequirePackageSummary {
-		findings = append(findings, r.aggregatedPackageSummaryFindings(units)...)
+		findings = append(findings, r.aggregatedPackageSummaryFindings(units, ctx)...)
 	}
 	for _, unit := range units {
 		findings = append(findings, r.analyzeUnitDecls(unit)...)
@@ -119,9 +133,11 @@ func (r CommentRubricRule) AnalyzeProject(units []parser.Unit, _ Context) []find
 	return findings
 }
 
-// analyzeUnitDecls runs the per-declaration checks (function, type, const, var)
-// for a single unit. Path scope, IgnoreTests, and nil-AST guards are applied
-// here so the per-package aggregation can iterate units uniformly.
+// analyzeUnitDecls runs the function, type, const and var checks for a single unit.
+//
+// Path scope, IgnoreTests and nil-AST guards live here so AnalyzeProject can pass every unit through uniformly.
+// It returns nil when unit has no AST or file set, falls outside the configured path scope, or is a test file while IgnoreTests is set.
+// Otherwise it returns a non-nil slice of the enabled function, type, const and var findings, empty when every declaration passes.
 func (r CommentRubricRule) analyzeUnitDecls(unit parser.Unit) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !r.appliesToPath(unit.File.Path) {
 		return nil
@@ -143,7 +159,8 @@ func (r CommentRubricRule) analyzeUnitDecls(unit parser.Unit) []finding.Finding 
 	return findings
 }
 
-// appliesToPath reports whether the rule should analyse the given file path under its include/exclude config.
+// appliesToPath reports whether the rule should analyse path under its IncludePaths and ExcludePaths config.
+// It reports false when IncludePaths is set and path matches none of its globs, or when path matches any ExcludePaths glob.
 func (r CommentRubricRule) appliesToPath(path string) bool {
 	if len(r.IncludePaths) > 0 && !pathfilter.MatchesAny(r.IncludePaths, path) {
 		return false
@@ -154,34 +171,43 @@ func (r CommentRubricRule) appliesToPath(path string) bool {
 	return true
 }
 
-// aggregatedPackageSummaryFindings emits at most one package-summary finding
-// per package directory + package name. The best summary across the package's
-// files wins; only when no file meets the threshold does the rule emit, and
-// the finding is attached to the lexicographically first file so the location
-// is deterministic. Files outside the configured include/exclude scope are not
-// allowed to contribute summaries; ignoreTests still applies and the rule
-// never fires on a package whose only files are tests.
-func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit) []finding.Finding {
-	packages := r.collectPackageSummaryStates(units)
+// aggregatedPackageSummaryFindings emits at most one package-summary finding per package directory and package name.
+//
+// The best summary across the package's in-scope files wins, preferring a reportable file from ctx over the lexicographically first file.
+// Directories containing an unparsed Go sibling (such as under a deep-scan budget) are skipped rather than emitting false missing-summary findings.
+//
+// units is every parsed file in the project; ctx supplies reportable-file scoping.
+// It returns one finding per package whose best summary is too short, or an empty, non-nil slice when every package passes.
+func (r CommentRubricRule) aggregatedPackageSummaryFindings(units []parser.Unit, ctx Context) []finding.Finding {
+	packages := r.collectPackageSummaryStates(units, ctx)
 	return r.packageSummaryFindings(packages)
 }
 
-// packageSummaryState records the best package-summary evidence found for one
-// package directory + package name.
+// packageSummaryState records the best package-summary evidence found for one package directory and package name.
+//
+// primaryFile prefers the first reportable file in ctx before falling back to file; incomplete marks directories with unparsed Go siblings.
 type packageSummaryState struct {
-	name       string
-	file       string
-	bestLines  int
-	hasInScope bool
-	hasNonTest bool
+	name        string
+	dir         string
+	file        string
+	primaryFile string
+	bestLines   int
+	hasInScope  bool
+	hasNonTest  bool
+	incomplete  bool
 }
 
-// collectPackageSummaryStates scans in-scope units for package comments and
-// stores the best summary evidence per package.
-func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit) map[string]*packageSummaryState {
+// collectPackageSummaryStates scans in-scope units for package comments and stores the best summary evidence per package.
+// units supplies all project units and ctx identifies reportable files; it returns a map keyed by directory, a colon, and package name.
+func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit, ctx Context) map[string]*packageSummaryState {
 	packages := map[string]*packageSummaryState{}
+	incompleteDirs := map[string]bool{}
 	for _, unit := range units {
+		// An unparsed Go sibling (such as a budget-degraded doc.go) may hold the package summary, so mark its directory incomplete.
 		if unit.AST == nil || unit.FileSet == nil {
+			if unit.File.Type == source.FileTypeGo {
+				incompleteDirs[path.Dir(unit.File.Path)] = true
+			}
 			continue
 		}
 		if !r.appliesToPath(unit.File.Path) {
@@ -190,19 +216,27 @@ func (r CommentRubricRule) collectPackageSummaryStates(units []parser.Unit) map[
 		if r.IgnoreTests && isGoTestFile(unit.File.Path) {
 			continue
 		}
-		key := path.Dir(unit.File.Path) + ":" + unit.AST.Name.Name
+		dir := path.Dir(unit.File.Path)
+		// An external foo_test package in the same directory is tracked apart from foo, so its test files cannot supply foo's summary.
+		key := dir + ":" + unit.AST.Name.Name
 		state := packages[key]
 		if state == nil {
-			state = &packageSummaryState{name: unit.AST.Name.Name}
+			state = &packageSummaryState{name: unit.AST.Name.Name, dir: dir}
 			packages[key] = state
 		}
-		updatePackageSummaryState(state, unit)
+		updatePackageSummaryState(state, unit, ctx)
+	}
+	for _, state := range packages {
+		if incompleteDirs[state.dir] {
+			state.incomplete = true
+		}
 	}
 	return packages
 }
 
-// updatePackageSummaryState folds one unit's package-comment evidence into state.
-func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit) {
+// updatePackageSummaryState marks state as having an in-scope file and folds in the package comment of unit.
+// ctx lets explicit-file scans anchor findings to a reportable file rather than a context-only sibling.
+func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit, ctx Context) {
 	state.hasInScope = true
 	if !isGoTestFile(unit.File.Path) {
 		state.hasNonTest = true
@@ -214,19 +248,29 @@ func updatePackageSummaryState(state *packageSummaryState, unit parser.Unit) {
 	if state.file == "" || unit.File.Path < state.file {
 		state.file = unit.File.Path
 	}
+	if ctx.isReportable(unit.File.Path) && (state.primaryFile == "" || unit.File.Path < state.primaryFile) {
+		state.primaryFile = unit.File.Path
+	}
 }
 
-// packageSummaryFindings emits one finding for each package whose best in-scope
-// package summary falls below the configured line threshold.
+// packageSummaryFindings emits one finding for each package whose best in-scope summary falls below the configured line threshold.
+//
+// A _test-suffixed package with only test files and any directory with an unparsed Go sibling are skipped.
+// With no summary at all the message reads "package summary is missing"; a short one names its line count and the required count.
+// packages comes from collectPackageSummaryStates; it returns the findings in no fixed order, or an empty slice when none is needed.
 func (r CommentRubricRule) packageSummaryFindings(packages map[string]*packageSummaryState) []finding.Finding {
 	minLines := r.minPackageCommentLines()
 	findings := []finding.Finding{}
 	for _, state := range packages {
-		if !state.hasInScope || state.bestLines >= minLines {
+		if !state.hasInScope || state.incomplete || state.bestLines >= minLines {
 			continue
 		}
 		if !state.hasNonTest && strings.HasSuffix(state.name, "_test") {
 			continue
+		}
+		targetFile := state.primaryFile
+		if targetFile == "" {
+			targetFile = state.file
 		}
 		message := "package summary is missing"
 		if state.bestLines > 0 {
@@ -234,7 +278,7 @@ func (r CommentRubricRule) packageSummaryFindings(packages map[string]*packageSu
 		}
 		findings = append(findings, finding.Finding{
 			Message:  message,
-			File:     state.file,
+			File:     targetFile,
 			Location: &finding.Location{Line: 1},
 			Metadata: map[string]any{
 				"kind":      "package",
@@ -247,10 +291,13 @@ func (r CommentRubricRule) packageSummaryFindings(packages map[string]*packageSu
 }
 
 // funcCommentFindings emits a finding when a top-level function or method has no useful attached comment.
-// The symbol passed to hasUsefulDeclarationComment is the qualified function name (Receiver.Method for
-// methods, plain name otherwise) so that minWordsBeyondSymbol counts comment tokens against the full
-// identifier set, which is what catches paraphrase boilerplate like
-// "// Definition returns the rule metadata for FooRule." on receiver methods.
+//
+// The symbol checked is Receiver.Method for methods or the plain name, and MinWordsBeyondSymbol counts only tokens outside that name.
+// For FooRule.Definition, Definition returns the rule metadata for FooRule adds only returns and metadata, so it fails a minimum above two.
+//
+// fn is the declaration to check, and unit supplies its file path and the file set for the finding position.
+// It returns nil when the comment passes, otherwise one finding at the name of fn.
+// That finding says "has no attached comment" even when a comment exists but restates the name or adds too few words.
 func (r CommentRubricRule) funcCommentFindings(unit parser.Unit, fn *ast.FuncDecl) []finding.Finding {
 	symbol := functionName(fn)
 	if hasUsefulDeclarationComment(fn.Doc, symbol, r.MinWordsBeyondSymbol) {
@@ -266,10 +313,13 @@ func (r CommentRubricRule) funcCommentFindings(unit parser.Unit, fn *ast.FuncDec
 	}}
 }
 
-// genDeclCommentFindings dispatches to per-kind helpers for type, const, and var declarations.
-// Const and var enforcement is unconditionally suppressed on Go test files because fixture-scope
-// values rarely benefit from required comments even when the rest of the rubric stays strict.
-// IgnoreTests (whole-file exemption) is still honoured by AnalyzeUnit before this method runs.
+// genDeclCommentFindings dispatches type, const and var declarations to their per-kind helpers.
+//
+// Const and var checks are always off on Go test files, even with IgnoreTests false, since fixture values rarely need required comments.
+// IgnoreTests, the whole-file exemption, is still honoured by analyzeUnitDecls before this method runs.
+//
+// decl is the general declaration to check, and unit supplies its file path and positions.
+// It returns the per-kind findings, or nil for an import, or for a const or var decl when its check is off or the file is a test.
 func (r CommentRubricRule) genDeclCommentFindings(unit parser.Unit, decl *ast.GenDecl) []finding.Finding {
 	switch decl.Tok {
 	case token.TYPE:
@@ -287,6 +337,9 @@ func (r CommentRubricRule) genDeclCommentFindings(unit parser.Unit, decl *ast.Ge
 }
 
 // typeCommentFindings emits findings for type specs that need comments under the configured policy.
+//
+// decl is a type declaration whose specs are checked, and unit supplies the file path and positions for each finding.
+// It returns one finding per required spec lacking a useful comment, or an empty, non-nil slice when there is none.
 func (r CommentRubricRule) typeCommentFindings(unit parser.Unit, decl *ast.GenDecl) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, spec := range decl.Specs {
@@ -308,6 +361,7 @@ func (r CommentRubricRule) typeCommentFindings(unit parser.Unit, decl *ast.GenDe
 }
 
 // requiresTypeComment reports whether the rule's policy demands a comment for the given type spec.
+// RequireNamedTypeComments covers every type; otherwise only a struct or interface with its own flag on reports true.
 func (r CommentRubricRule) requiresTypeComment(spec *ast.TypeSpec) bool {
 	if r.RequireNamedTypeComments {
 		return true
@@ -323,6 +377,9 @@ func (r CommentRubricRule) requiresTypeComment(spec *ast.TypeSpec) bool {
 }
 
 // valueCommentFindings emits findings for package-scope const or var specs with no useful comment.
+//
+// decl is the const or var declaration, kind is const or var for the message and metadata, and unit supplies the file path and positions.
+// It returns one finding per declared name lacking a useful comment, blank names included, or an empty, non-nil slice when there is none.
 func (r CommentRubricRule) valueCommentFindings(unit parser.Unit, decl *ast.GenDecl, kind string) []finding.Finding {
 	findings := []finding.Finding{}
 	for _, spec := range decl.Specs {
@@ -354,6 +411,7 @@ type commentStatsResult struct {
 }
 
 // commentStats summarises a comment group as line and word counts after trimming trailing whitespace.
+// It returns the count of non-blank lines and of whitespace-separated words in the group's text, both zero for a nil group.
 func commentStats(group *ast.CommentGroup) commentStatsResult {
 	if group == nil {
 		return commentStatsResult{}
@@ -369,14 +427,16 @@ func commentStats(group *ast.CommentGroup) commentStatsResult {
 }
 
 // hasUsefulComment reports whether the comment group has at least one non-empty line and word.
+// It reports false for a nil group or one whose text is empty, such as a group of only directive lines like go:generate, which Text drops.
 func hasUsefulComment(group *ast.CommentGroup) bool {
 	stats := commentStats(group)
 	return stats.lines > 0 && stats.words > 0
 }
 
-// hasUsefulDeclarationComment reports whether the comment adds context beyond the symbol name itself.
-// When minWordsBeyondSymbol is positive, the comment must additionally contribute at least that many
-// unique tokens that are not part of the symbol's own tokenised identifier set.
+// hasUsefulDeclarationComment reports whether the comment differs from symbol after normalization and meets any enabled token floor.
+//
+// When minWordsBeyondSymbol is positive, the comment must also add that many unique non-stopword tokens outside the symbol's own identifier set.
+// group is the attached comment and symbol the documented name; a nil or blank group, or one matching symbol after normalizing, reports false.
 func hasUsefulDeclarationComment(group *ast.CommentGroup, symbol string, minWordsBeyondSymbol int) bool {
 	if !hasUsefulComment(group) {
 		return false
@@ -391,6 +451,10 @@ func hasUsefulDeclarationComment(group *ast.CommentGroup, symbol string, minWord
 }
 
 // hasUsefulTypeComment reports whether a type spec or its containing GenDecl supplies a useful comment.
+//
+// spec's own comment is tried first; only a decl with several specs accepts any non-blank decl comment, otherwise it must pass the same test.
+// A parenthesised decl holding a single spec gets no group exemption.
+// minWordsBeyondSymbol is the substantive-token floor applied through hasUsefulDeclarationComment; zero or less disables it.
 func hasUsefulTypeComment(decl *ast.GenDecl, spec *ast.TypeSpec, minWordsBeyondSymbol int) bool {
 	if hasUsefulDeclarationComment(spec.Doc, spec.Name.Name, minWordsBeyondSymbol) {
 		return true
@@ -402,6 +466,10 @@ func hasUsefulTypeComment(decl *ast.GenDecl, spec *ast.TypeSpec, minWordsBeyondS
 }
 
 // hasUsefulValueComment reports whether a const or var spec or its containing GenDecl supplies a useful comment.
+//
+// symbol is the declared name being checked, tried first against the comment on spec.
+// When decl groups several specs or spec has several names, any non-blank decl comment counts; else it must pass the same check.
+// minWordsBeyondSymbol is the substantive-token floor, applied only when positive.
 func hasUsefulValueComment(decl *ast.GenDecl, spec *ast.ValueSpec, symbol string, minWordsBeyondSymbol int) bool {
 	if hasUsefulDeclarationComment(spec.Doc, symbol, minWordsBeyondSymbol) {
 		return true
@@ -412,30 +480,30 @@ func hasUsefulValueComment(decl *ast.GenDecl, spec *ast.ValueSpec, symbol string
 	return hasUsefulDeclarationComment(decl.Doc, symbol, minWordsBeyondSymbol)
 }
 
-// commentTokensBeyondSymbol returns the count of unique substantive comment tokens that do not
-// appear in the symbol's tokenised identifier set. Common English stopwords (see
-// commentRubricStopwords) are excluded so that filler words like "the" and "for" cannot push a
-// paraphrase comment over the `minWordsBeyondSymbol` bar. Both inputs are first split on
-// non-alphanumeric runs (so a qualified method name like "Receiver.Method" contributes both sides
-// to the symbol set), then each word is routed through splitIdentifierTokens for camel-case-aware
-// sub-token matching.
+// commentTokensBeyondSymbol counts the unique substantive tokens of comment that do not appear among the identifier tokens of symbol.
+//
+// Stopwords in commentRubricStopwords are skipped, so fillers like the and for cannot push a paraphrase over minWordsBeyondSymbol.
+// Both inputs split on non-alphanumeric runs, so Receiver.Method adds both sides, then each word splits into lowercased camel-case sub-tokens.
+//
+// It returns that count, zero when every comment token is a stopword, part of symbol, or a repeat.
 func commentTokensBeyondSymbol(comment, symbol string) int {
 	symbolTokens := identifierTokenSet(symbol)
 	seen := map[string]bool{}
 	count := 0
-	for _, token := range identifierTokens(comment) {
-		if commentRubricStopwords[token] || symbolTokens[token] || seen[token] {
+	for _, commentToken := range identifierTokens(comment) {
+		if commentRubricStopwords[commentToken] || symbolTokens[commentToken] || seen[commentToken] {
 			continue
 		}
-		seen[token] = true
+		seen[commentToken] = true
 		count++
 	}
 	return count
 }
 
-// identifierTokenSet returns the lowercased camel-case-split token set for the supplied identifier
-// (or identifier-like string). Non-alphanumeric characters are treated as word boundaries so that
-// qualified names like "Receiver.Method" contribute both halves.
+// identifierTokenSet returns the lowercased camel-case-split token set for identifier, which may be any identifier-like string.
+//
+// Non-alphanumeric characters split words, so a qualified name like Receiver.Method contributes both halves.
+// An identifier with no letter or digit gives an empty map.
 func identifierTokenSet(identifier string) map[string]bool {
 	out := map[string]bool{}
 	for _, token := range identifierTokens(identifier) {
@@ -444,9 +512,10 @@ func identifierTokenSet(identifier string) map[string]bool {
 	return out
 }
 
-// identifierTokens returns the ordered list of lowercased sub-tokens from an identifier or free-form
-// text. The string is first split on non-alphanumeric runs, then each word is routed through
-// splitIdentifierTokens so camel-case sub-tokens contribute separately.
+// identifierTokens returns the ordered, lowercased sub-tokens of text, which may be an identifier or free-form comment text.
+//
+// text is split on non-alphanumeric runs, then splitIdentifierTokens breaks each word so camel-case sub-tokens count separately.
+// Repeats are kept, and text with no letter or digit gives an empty, non-nil slice.
 func identifierTokens(text string) []string {
 	mapped := strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -456,8 +525,8 @@ func identifierTokens(text string) []string {
 	}, text)
 	tokens := []string{}
 	for _, word := range strings.Fields(mapped) {
-		for _, token := range splitIdentifierTokens(word) {
-			lower := strings.ToLower(strings.TrimSpace(token))
+		for _, subToken := range splitIdentifierTokens(word) {
+			lower := strings.ToLower(strings.TrimSpace(subToken))
 			if lower == "" {
 				continue
 			}
@@ -468,6 +537,7 @@ func identifierTokens(text string) []string {
 }
 
 // normalizeCommentText lowercases a comment, replaces non-alphanumeric characters with spaces, and collapses whitespace.
+// It returns value in that form, words joined by single spaces, or an empty string when value holds no letter or digit.
 func normalizeCommentText(value string) string {
 	mapped := strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -479,6 +549,7 @@ func normalizeCommentText(value string) string {
 }
 
 // typeCommentKind names the high-level shape (struct, interface, or named type) of a type spec.
+// It returns struct type or interface type for those literals and named type for any other type expression, so it is never empty.
 func typeCommentKind(spec *ast.TypeSpec) string {
 	switch spec.Type.(type) {
 	case *ast.StructType:

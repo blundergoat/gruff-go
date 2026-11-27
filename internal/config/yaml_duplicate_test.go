@@ -1,5 +1,7 @@
-// Package config tests duplicate-key and sanitized-error behavior in the
-// supported YAML subset.
+// Package config tests duplicate-key and sanitized-error behavior in the supported YAML subset.
+//
+// Duplicate-key errors name the key and both 1-based line numbers, structural errors name the line, and neither quotes the value or raw line.
+// These checks keep a secret typed into the config file out of terminal output and CI logs for the error paths covered here.
 package config
 
 import (
@@ -7,8 +9,8 @@ import (
 	"testing"
 )
 
-// TestParseYAMLRejectsDuplicateKeysByMappingScope covers root, nested, and
-// deeply nested mappings with original 1-based source line evidence.
+// TestParseYAMLRejectsDuplicateKeysByMappingScope covers root, nested and deeply nested mappings with original 1-based source line evidence.
+// Line numbers count blank and comment lines, so the reported line matches what the user sees in an editor.
 func TestParseYAMLRejectsDuplicateKeysByMappingScope(t *testing.T) {
 	tests := []struct {
 		name string
@@ -22,13 +24,13 @@ func TestParseYAMLRejectsDuplicateKeysByMappingScope(t *testing.T) {
 		},
 		{
 			name: "nested rule mapping",
-			yaml: "rules:\n  size.file-length:\n    enabled: true\n    enabled: false\n",
-			want: `duplicate YAML key "enabled": first defined at line 3, duplicated at line 4`,
+			yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: true\n    enabled: false\n",
+			want: `duplicate YAML key "enabled": first defined at line 4, duplicated at line 5`,
 		},
 		{
 			name: "deep options mapping",
-			yaml: "rules:\n  docs.comment-rubric:\n    options:\n      includePaths:\n        - internal/config/yaml.go\n      includePaths:\n        - internal/config/config.go\n",
-			want: `duplicate YAML key "includePaths": first defined at line 4, duplicated at line 6`,
+			yaml: "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.comment-rubric:\n    options:\n      includePaths:\n        - internal/config/yaml.go\n      includePaths:\n        - internal/config/config.go\n",
+			want: `duplicate YAML key "includePaths": first defined at line 5, duplicated at line 7`,
 		},
 	}
 
@@ -45,21 +47,22 @@ func TestParseYAMLRejectsDuplicateKeysByMappingScope(t *testing.T) {
 	}
 }
 
-// TestParseYAMLAllowsSameKeyInSeparateScopes proves duplicate identity is local
-// to one mapping invocation rather than global across the document.
+// TestParseYAMLAllowsSameKeyInSeparateScopes proves duplicate identity is local to one mapping invocation rather than global across the document.
 func TestParseYAMLAllowsSameKeyInSeparateScopes(t *testing.T) {
-	_, err := Parse([]byte("rules:\n  size.file-length:\n    enabled: true\n  size.function-length:\n    enabled: false\n"), defaultDefinitions())
+	_, err := Parse([]byte("schemaVersion: gruff-go.config.v0.1\nrules:\n  size.file-length:\n    enabled: true\n  size.function-length:\n    enabled: false\n"), defaultDefinitions())
 	if err != nil {
 		t.Fatalf("same key in separate mappings should parse: %v", err)
 	}
 }
 
-// TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine uses a runtime-built,
-// secret-shaped value so the regression fixture cannot self-flag in dogfood.
+// TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine checks a duplicate-key error names the key and lines but not the value or raw line.
+//
+// The secret-shaped value is built at runtime so the fixture cannot self-flag when gruff-go scans its own repository.
 func TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine(t *testing.T) {
 	hiddenValue := yamlSensitiveFixtureValue()
 	duplicateLine := "    enabled: " + hiddenValue
 	body := strings.Join([]string{
+		"schemaVersion: gruff-go.config.v0.1",
 		"rules:",
 		"  size.file-length:",
 		"    enabled: true",
@@ -73,7 +76,7 @@ func TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine(t *testing.T) {
 		t.Fatal("expected duplicate-key error")
 	}
 	message := err.Error()
-	want := `duplicate YAML key "enabled": first defined at line 3, duplicated at line 6`
+	want := `duplicate YAML key "enabled": first defined at line 4, duplicated at line 7`
 	if !strings.Contains(message, want) {
 		t.Fatal("error did not contain expected key and original line numbers")
 	}
@@ -85,8 +88,8 @@ func TestParseYAMLDuplicateErrorDoesNotEchoValueOrLine(t *testing.T) {
 	}
 }
 
-// TestParseYAMLStructuralErrorsDoNotEchoSource covers every structural error
-// path that previously interpolated normalized config text.
+// TestParseYAMLStructuralErrorsDoNotEchoSource checks that structural parse errors report a line number without leaking config values.
+// Each case must report its line number without the secret-shaped value or the raw source line.
 func TestParseYAMLStructuralErrorsDoNotEchoSource(t *testing.T) {
 	hiddenValue := yamlSensitiveFixtureValue()
 	tests := []struct {
@@ -115,9 +118,9 @@ func TestParseYAMLStructuralErrorsDoNotEchoSource(t *testing.T) {
 		},
 		{
 			name:    "unexpected list item",
-			yaml:    "paths:\n  ignore:\n    - kept/**\n    enabled: " + hiddenValue + "\n",
+			yaml:    "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - kept/**\n    enabled: " + hiddenValue + "\n",
 			rawLine: "    enabled: " + hiddenValue,
-			want:    "unexpected YAML list item at line 4",
+			want:    "unexpected YAML list item at line 5",
 		},
 		{
 			name:    "empty key",
@@ -140,6 +143,7 @@ func TestParseYAMLStructuralErrorsDoNotEchoSource(t *testing.T) {
 			if strings.Contains(message, hiddenValue) {
 				t.Fatal("structural YAML error contains the secret-shaped value")
 			}
+			// Trimmed so a message quoting the line without its indentation still counts as a leak.
 			if strings.Contains(message, strings.TrimSpace(tt.rawLine)) {
 				t.Fatal("structural YAML error contains the raw source line")
 			}

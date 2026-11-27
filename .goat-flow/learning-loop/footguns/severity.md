@@ -1,6 +1,6 @@
 ---
 category: severity
-last_reviewed: 2026-08-08
+last_reviewed: 2026-11-23
 ---
 
 # Severity Footguns
@@ -13,8 +13,8 @@ hallucination-risk: high (an agent sweeping for "stale severity names" after ADR
 
 Evidence:
 - `internal/finding/types.go` (search: `Confidence`) — `Confidence` is a separate 3-bucket enum (`ConfidenceLow`, `ConfidenceMedium`, `ConfidenceHigh`). `ConfidenceInfo` no longer exists, and `Valid()` accepts exactly those three current values.
-- `internal/cli/testdata/golden/analyse-composite-sarif.golden` (search: `"confidence":`) — JSON entries throughout this file legitimately carry `"confidence": "high"`, `"confidence": "medium"`, `"confidence": "low"` under the new severity model. These are correct, not stale.
-- `internal/rule/calibration_test.go` (search: `ConfidenceHigh`, `ConfidenceMedium`) — calibration assertions deliberately combine the new severity vocabulary with the unchanged confidence vocabulary, e.g. `findings[0].Severity == finding.SeverityError && findings[0].Confidence == finding.ConfidenceHigh`.
+- `internal/cli/testdata/golden/analyse-sarif.golden` (search: `"confidence":`) — JSON entries throughout this file legitimately carry `"confidence": "high"`, `"confidence": "medium"`, `"confidence": "low"` under the new severity model. These are correct, not stale.
+- `internal/rule/calibration_test.go` (search: `ConfidenceHigh`, `ConfidenceMedium`) — calibration assertions deliberately combine the new severity vocabulary with the unchanged confidence vocabulary, e.g. `findings[0].Severity != finding.SeverityError || findings[0].Confidence != finding.ConfidenceHigh`.
 - `internal/finding/finding_test.go` — the type's own tests pin both vocabularies side by side.
 
 What this means in practice:
@@ -24,26 +24,27 @@ What this means in practice:
 
 How to avoid:
 - When sweeping for stale severity references, anchor the grep to severity context where possible: `rg '(Severity|severity|fail-on|min-severity).*"(low|medium|high|critical|info|notice|warn)"'`. False negatives are possible (e.g. SARIF level mapping uses bare strings), so a manual second pass is still needed, but the anchored grep drops the confidence-field noise.
-- In SARIF goldens, severities surface as the `level` field (`error` / `warning` / `note` after ADR-009's SARIF mapping simplification) and as `properties.severity` on rules. Confidence surfaces as `properties.confidence`. They are different keys; never edit one expecting to fix the other.
-- When a sibling-port migration (gruff-rs / gruff-ts / gruff-py / gruff-php) eventually does the same severity collapse, expect this same trap to recur in each port, because confidence has not been harmonised across ports as of 2026-05-25.
+- In SARIF goldens, severities surface as the `level` field (`error` / `warning` / `note` after ADR-009's SARIF mapping simplification), as `properties.defaultSeverity` on rules, and as `properties.severity` on results. Confidence surfaces as `properties.confidence` on both. They are different keys; never edit one expecting to fix the other.
+- Expect the same trap in the sibling ports (gruff-rs / gruff-ts / gruff-py / gruff-php). Since 2026-11-20 the family contract makes `confidence` a required finding field with this same low/medium/high vocabulary (FAMILY-CONTRACT.md, "Confidence-gated blocking — preset RATIFIED 2026-11-20"), so a severity sweep in any port meets the same overlap.
 
-## Footgun: Dashboard `fail-on` fallback must track the CLI default, not the previous one
+## Footgun: Dashboard `fail-on` fallback must come from the shared default map, not a copied constant
 
 **Status:** active | **Created:** 2026-05-25 | **Evidence:** OBSERVED
 
-hallucination-risk: medium (the migration touched the *parser* and the *CLI default* but not the dashboard fallback; the dashboard's fallback constant looks correct in isolation and only diverges when compared to `internal/cli/cli.go`'s default)
+hallucination-risk: medium (the migration touched the *parser* and the *CLI default* but not the dashboard fallback; the dashboard's fallback constant looks correct in isolation and only diverges when compared to the CLI default, now in `internal/cli/analyse_flags.go`)
 
 Evidence:
-- `internal/dashboard/handler.go` (search: `failOn = finding.DefaultFailThresholdFor`) — when `state.FailOn` is invalid and `opts.FailOn` doesn't parse, the dashboard falls back through the shared `DefaultFailThresholdFor("dashboard")` helper (ADR-010). Pre-ADR-009 that fallback was `SeverityMedium` (the old CLI default). After ADR-009 the CLI default became `SeverityAdvisory` — see `internal/cli/analyse_flags.go` (search: `ADR-009 + ADR-010: default is whatever DefaultFailThresholdFor`), since the flag defaults were extracted out of `cli.go`, which no longer mentions ADR-009. The dashboard fallback was first migrated to `SeverityWarning` (the *renamed* old default), not `SeverityAdvisory`. That made the dashboard quietly stricter than the CLI by one bucket.
+- `internal/dashboard/handler.go` (search: `failOn = finding.DefaultFailThresholdFor`) — when `state.FailOn` is invalid and `opts.FailOn` doesn't parse, the dashboard falls back through the shared `DefaultFailThresholdFor("dashboard")` helper (ADR-010). Pre-ADR-009 that fallback was `SeverityMedium` (the old CLI default). After ADR-009 the CLI default became `SeverityAdvisory` — see `internal/cli/analyse_flags.go` (search: `ADR-009 and ADR-010: the default exit threshold comes from DefaultFailThresholdFor for analyse`), since the flag defaults were extracted out of `cli.go`, which no longer mentions ADR-009. The dashboard fallback was first migrated to `SeverityWarning` (the *renamed* old default), not `SeverityAdvisory`. That made the dashboard quietly stricter than the CLI by one bucket.
 - The codex-connector bot reviewing PR #3 flagged this line as a "preserve legacy fail-on" concern; the actual bug it surfaces is a different one — the fallback target drifted from the CLI default during the rename.
+- 2026-11-23 review: per-command defaults now differ on purpose. `DefaultFailThresholdFor` gives `analyse` advisory and `summary`, `report` and `dashboard` none (`internal/finding/threshold.go`, search: `case "summary", "report", "dashboard":`), so the dashboard no longer tracks the `analyse` default; it tracks its own row in the map. The trap stands in its general form: a fallback copied from another command's constant, instead of read from the map, drifts when the map changes.
 
-What this means in practice: any time the CLI's default `--min-severity` (or any other per-command threshold default) changes, five places need to move in lockstep:
+What this means in practice: any time a per-command `--fail-on` default changes, five places need to move in lockstep:
 1. `internal/finding/threshold.go::DefaultFailThresholdFor` — the canonical default map (added in v0.1.2 per ADR-010 to consolidate the previous scattered defaults). Both the CLI flag defaults and the dashboard fallback consume this map; change the map and the rest follow.
-2. `internal/cli/cli.go`, `internal/cli/summary.go`, `internal/cli/report.go`, `internal/cli/dashboard.go` — the flag-default strings the help text displays, and the parser (must be `finding.ParseFailThreshold` to accept `none`; the pre-2026-05-26 dashboard CLI silently used the 3-value `finding.ParseSeverity` and rejected `--fail-on none` even though the dashboard's HTTP handler accepted it). The behavioural default is supplied by `DefaultFailThresholdFor`; the strings here just need to match for the help-text to read truthfully.
+2. `internal/cli/analyse_flags.go`, `internal/cli/summary.go`, `internal/cli/report.go`, `internal/cli/dashboard.go` — the flag-default strings the help text displays, and the parser (must be `finding.ParseFailThreshold` to accept `none`; the pre-2026-05-26 dashboard CLI silently used the 3-value `finding.ParseSeverity` and rejected `--fail-on none` even though the dashboard's HTTP handler accepted it). The behavioural default is supplied by `DefaultFailThresholdFor`; the strings here just need to match for the help-text to read truthfully.
 3. `internal/dashboard/state.go::defaultState` — already routes through `DefaultFailThresholdFor`; verify the call after any map edit.
-4. `minimumSeverity:` keys in `.gruff-go.yaml` (added v0.1.2 per ADR-010). The shipped binary defaults expressed in `internal/config/render.go::writeRenderMinimumSeverity` must match `DefaultFailThresholdFor` so a fresh `gruff-go init` reproduces the map.
+4. `failOn:` keys in `.gruff-go.yaml` (added v0.1.2 per ADR-010 as `minimumSeverity:`; 0.6.0 moved the exit gate to `failOn:` and kept `minimumSeverity:` as the display floor). The shipped binary defaults expressed in `internal/config/render.go::writeRenderMinimumSeverity`, which writes both keys, must match `DefaultFailThresholdFor` so a fresh `gruff-go init` reproduces the map.
 5. The user-facing docs (`docs/configuration.md`, `docs/dashboard.md`, `docs/ci-integration.md`, `docs/output-formats.md`) — see the matching workflow lesson.
 
 How to avoid:
-- The 2026-05-26 v0.1.2 refactor (ADR-010) collapsed the four scattered fallback constants into a single `finding.DefaultFailThresholdFor(cmd string) FailThreshold` helper. Lockstep enforcement is now structural: the helper is the single source of truth that the CLI defaults, the dashboard default, the runner fallback, and the render-side `minimumSeverity:` block all consume. Future per-command default changes should edit the helper, not the call sites.
+- The 2026-05-26 v0.1.2 refactor (ADR-010) collapsed the four scattered fallback constants into a single `finding.DefaultFailThresholdFor(cmd string) FailThreshold` helper. Lockstep enforcement is now structural: the helper is the single source of truth that the CLI defaults, the dashboard default, the runner fallback, and the render-side `failOn:` block all consume. Future per-command default changes should edit the helper, not the call sites.
 - Suspicion-trigger: a code review comment that says "preserve legacy X" near a default-flip is often pointing at a real bug, even when the suggested fix (mapping old → new at runtime) is the wrong shape. Look at the *constant* being used for the fallback before deciding the comment is purely about backwards compatibility.

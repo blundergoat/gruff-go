@@ -1,11 +1,15 @@
 // Package rule tests when a later write clears a binding's request taint.
+//
+// An overwrite with a clean value that must run before http.Get clears the taint, so no request-controlled URL finding is reported.
+// A write that may be skipped, keeps the old value, or is undone later, even through a closure or a pointer, leaves the finding in place.
 package rule
 
 import "testing"
 
-// TestRequestControlledURLTaintClearing pins both directions of the dominance
-// rule: a write that must run before the sink clears the taint, while a write
-// that may be skipped, keeps the old value, or is undone by a later write does not.
+// TestRequestControlledURLTaintClearing pins both directions of the dominance rule for clearing a request taint before the sink.
+//
+// A clean write that must run before the sink clears the taint; one that may be skipped, keeps the old value, or is later undone does not.
+// A failure means a cleared fetch was flagged or a still-tainted one was missed.
 func TestRequestControlledURLTaintClearing(t *testing.T) {
 	tests := []struct {
 		name string
@@ -160,9 +164,8 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TestRequestControlledURLClearWithAddressTaken confirms that handing the binding's
-// address to a callee defeats the clear: the callee can write request data back
-// through the pointer without any assignment this analysis can see.
+// TestRequestControlledURLClearWithAddressTaken confirms that handing the binding's address to a callee defeats the clear, so the finding stays.
+// The callee can write request data back through the pointer without any assignment this analysis can see.
 func TestRequestControlledURLClearWithAddressTaken(t *testing.T) {
 	unit := parseOne(t, "handler.go", `// Package handler is a test package.
 package handler
@@ -185,6 +188,7 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 }
 
 // taintClearingSource wraps one handler body that starts from a tainted local.
+// It returns the full Go source of package handler, with body inserted verbatim into fetch after target is set from the url form value.
 func taintClearingSource(body string) string {
 	return `// Package handler is a test package.
 package handler

@@ -1,5 +1,7 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file holds the core tests for the HTML report renderer.
+//
+// This file holds the core tests for the HTML report renderer: required sections, self-containment, escaping, editor links and the pillars table.
+// It also defines buildHTMLFixture, which the markdown and interactive tests reuse, so a fixture change moves their expected counts too.
 package report
 
 import (
@@ -13,6 +15,7 @@ import (
 )
 
 // defaultDefinitions returns the rule definitions registered by Defaults for test fixtures.
+// The result is the default registry's Definitions list, unfiltered, so fixture reports see the full built-in rule set.
 func defaultDefinitions() []rule.Definition {
 	defaults := rule.Defaults()
 	return defaults.Definitions()
@@ -51,6 +54,7 @@ func TestWriteHTMLRendersCoreSections(t *testing.T) {
 }
 
 // TestWriteHTMLSelfContained ensures the rendered HTML references no external links or scripts.
+// It rejects only the literal substrings <link , <script src=, http:// and https:// anywhere in the body, even in report text.
 func TestWriteHTMLSelfContained(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -169,6 +173,7 @@ func TestWriteHTMLEditorLinkPhpStorm(t *testing.T) {
 }
 
 // TestWriteHTMLCyclomaticSummaryAndBins checks the histogram caption and bin tier classes render correctly.
+// With CC 12, 24 and 45 findings in the fixture, it expects at least one bar with the warn class and one with the fail class.
 func TestWriteHTMLCyclomaticSummaryAndBins(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -188,6 +193,7 @@ func TestWriteHTMLCyclomaticSummaryAndBins(t *testing.T) {
 }
 
 // TestWriteHTMLEscapesMaliciousInput ensures user-supplied strings are HTML-escaped in the rendered report.
+// It checks that a script tag in a finding message and an img tag in an input path never appear raw, and that the script tag appears escaped.
 func TestWriteHTMLEscapesMaliciousInput(t *testing.T) {
 	malicious := finding.Finding{
 		RuleID:     "test.rule",
@@ -251,10 +257,9 @@ func TestWriteHTMLDiagnosticsRender(t *testing.T) {
 	}
 }
 
-// TestWriteHTMLPillarsTableMatchesCanonicalShape confirms the HTML pillars
-// section mirrors the canonical Pillars block: every applicable pillar appears
-// as a row with grade, 2-decimal score, findings, advisory, warning, and error
-// columns, sorted by findings DESC then pillar ASC.
+// TestWriteHTMLPillarsTableMatchesCanonicalShape checks the expected column headers and all ten canonical pillar name cells.
+//
+// It also checks for a 100.00 marker and the fixture's complexity-before-naming-before-size order.
 func TestWriteHTMLPillarsTableMatchesCanonicalShape(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -289,9 +294,10 @@ func TestWriteHTMLPillarsTableMatchesCanonicalShape(t *testing.T) {
 	if !strings.Contains(body, `>100.00<`) {
 		t.Errorf("pillar score should render with 2 decimals; body did not contain 100.00")
 	}
-	// Sort order: findings DESC, pillar ASC. The fixture has complexity (3),
-	// naming (1), size (1), and the remaining seven pillars with 0 findings.
-	// complexity comes first by count; naming precedes size by ASC tie-break.
+	// Sort order is findings DESC, then pillar ASC.
+	//
+	// The fixture has complexity (3), naming (1) and size (1); the other seven pillars have 0 findings.
+	// complexity leads on count, and naming precedes size on the ASC tie-break.
 	indexComplexity := strings.Index(body, `<td class="pillar-name">complexity</td>`)
 	indexSize := strings.Index(body, `<td class="pillar-name">size</td>`)
 	indexNaming := strings.Index(body, `<td class="pillar-name">naming</td>`)
@@ -303,8 +309,8 @@ func TestWriteHTMLPillarsTableMatchesCanonicalShape(t *testing.T) {
 	}
 }
 
-// TestWriteHTMLPillarsTableCleanScan asserts a zero-finding scan still emits
-// every canonical pillar row (10 entries) at grade A and score 100.00.
+// TestWriteHTMLPillarsTableCleanScan checks that a zero-finding scan renders all ten canonical pillar name cells.
+// It also requires at least ten grade A markers and at least ten 100.00 markers anywhere in the HTML.
 func TestWriteHTMLPillarsTableCleanScan(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -358,6 +364,10 @@ func TestWriteHTMLDiffScopeLabel(t *testing.T) {
 }
 
 // buildHTMLFixture returns a synthetic report covering each severity tier and histogram bin used by the HTML tests.
+//
+// The result is a report over hot.go, warm.go and medium.go holding five findings.
+// The markdown and interactive tests reuse it, so a fixture change moves their hardcoded counts.
+// hot.go has error findings at CC 24 and 45; medium.go has a warning at CC 12; warm.go has a size warning and a naming advisory.
 func buildHTMLFixture() analysis.Report {
 	findings := []finding.Finding{
 		{
@@ -399,7 +409,7 @@ func buildHTMLFixture() analysis.Report {
 			Pillar:     finding.PillarNaming,
 		},
 	}
-	// Need to also forge an 11-15 bin entry so we test warn tier on the histogram.
+	// The CC 12 finding puts data in the 11-15 bin for the warn bar that TestWriteHTMLCyclomaticSummaryAndBins checks.
 	findings = append(findings, finding.Finding{
 		RuleID:     "complexity.cyclomatic",
 		Message:    "function exceeds cyclomatic threshold",
@@ -419,4 +429,81 @@ func buildHTMLFixture() analysis.Report {
 		Findings:    findings,
 		Definitions: defaultDefinitions(),
 	})
+}
+
+// TestWriteHTMLRendersSuppressionsAuditSection ensures HTML reports surface suppression audit rows and escape their reasons.
+func TestWriteHTMLRendersSuppressionsAuditSection(t *testing.T) {
+	rep := analysis.NewReport(analysis.ReportInput{
+		Root:        "/repo",
+		Inputs:      []string{"."},
+		Format:      "html",
+		FailOn:      finding.FailThresholdNone,
+		Scanned:     []string{"a.go"},
+		Definitions: defaultDefinitions(),
+	})
+	rep.Suppressions = []analysis.SuppressionSummary{{
+		Index:      0,
+		Rule:       "sensitive-data.aws-access-key",
+		Paths:      []string{"fixtures/aws.go"},
+		Reason:     `Sample <script>fixture</script> key`,
+		Suppressed: 0,
+	}}
+	var out bytes.Buffer
+	if err := WriteHTML(&out, rep, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML: %v", err)
+	}
+	body := out.String()
+	if !strings.Contains(body, `class="diagnostics suppressions"`) {
+		t.Fatalf("expected suppressions audit section in HTML output")
+	}
+	if !strings.Contains(body, "sensitive-data.aws-access-key") || !strings.Contains(body, "fixtures/aws.go") {
+		t.Fatalf("expected suppression rule and path in HTML output")
+	}
+	if strings.Contains(body, `<script>fixture</script>`) || !strings.Contains(body, `&lt;script&gt;fixture&lt;/script&gt;`) {
+		t.Fatalf("suppression reason was not HTML-escaped")
+	}
+}
+
+// TestDisplayFilterPreservesFullScanHeadlineCounts verifies display filters preserve full-scan headline totals and use a clear empty state.
+func TestDisplayFilterPreservesFullScanHeadlineCounts(t *testing.T) {
+	rep := buildHTMLFixture()
+	analysis.ApplyDisplayFilter(&rep, analysis.DisplayFilter{MinimumSeverity: finding.SeverityError})
+	if len(rep.Findings) != 2 {
+		t.Fatalf("filtered findings = %d, want 2 errors shown", len(rep.Findings))
+	}
+
+	var textOut bytes.Buffer
+	if err := WriteText(&textOut, rep); err != nil {
+		t.Fatalf("WriteText: %v", err)
+	}
+	if !strings.Contains(textOut.String(), "Findings: 5 total · 2 error · 2 warning · 1 advisory") {
+		t.Fatalf("text headline contradicted full scan summary:\n%s", textOut.String())
+	}
+
+	var mdOut bytes.Buffer
+	if err := WriteMarkdown(&mdOut, rep); err != nil {
+		t.Fatalf("WriteMarkdown: %v", err)
+	}
+	if !strings.Contains(mdOut.String(), "Findings: 5 total · 2 error · 2 warning · 1 advisory") {
+		t.Fatalf("markdown headline contradicted full scan summary:\n%s", mdOut.String())
+	}
+
+	var htmlOut bytes.Buffer
+	if err := WriteHTML(&htmlOut, rep, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML: %v", err)
+	}
+	if !strings.Contains(htmlOut.String(), "4 findings at warning or higher severity across 2 pillars.") {
+		t.Fatalf("HTML verdict subtitle contradicted full scan summary:\n%s", htmlOut.String())
+	}
+
+	// Hiding every finding must show a filter-specific empty state instead of contradicting the verdict with "No findings.".
+	allHidden := buildHTMLFixture()
+	analysis.ApplyDisplayFilter(&allHidden, analysis.DisplayFilter{IncludeRules: []string{"nonexistent.rule"}})
+	var hiddenHTML bytes.Buffer
+	if err := WriteHTML(&hiddenHTML, allHidden, HTMLOptions{}); err != nil {
+		t.Fatalf("WriteHTML(allHidden): %v", err)
+	}
+	if !strings.Contains(hiddenHTML.String(), "All 5 findings hidden by display filter.") {
+		t.Fatalf("HTML empty filtered state missing:\n%s", hiddenHTML.String())
+	}
 }

@@ -27,7 +27,7 @@ This checkout is the target project. Installed GOAT Flow package templates under
 - Keep `AGENTS.md` concise; move domain and architecture detail to cold-path docs.
 - Use `rg`/`rg --files` for search. Open matching learning-loop entries before acting.
 - When a goat-* skill is active, its Step 0 satisfies READ and selects the mode; SCOPE still applies before writes, then resume at ACT.
-- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--min-severity` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
+- Rules under `internal/rule/` ship `DefaultEnabled: true` per [ADR-007](.goat-flow/learning-loop/decisions/ADR-007-comprehensive-default-rule-pack.md). Default `--fail-on` is `advisory` after ADR-009, so every default-enabled rule fires on default scans regardless of severity tier. A new rule that would dominate default scans (high finding count or unproven precision) should ship `DefaultEnabled: false`, not at a higher severity tier to dodge the gate.
 - Version literals live in four places (`internal/cli/cli.go`, `internal/analysis/report.go`, `internal/report/machine_test.go`, `package.json`). Use `scripts/bump-version.sh <new-version>` rather than editing them by hand.
 
 ## Commit Messages
@@ -45,13 +45,14 @@ Use conventional commits (`type(scope): subject` or `type: subject`); no ticket 
 - `go run ./cmd/gruff-go analyse .` — dogfood scan; must return grade A with zero findings on `main`.
 - `UPDATE_GOLDEN=1 go test ./internal/cli/...` — regenerate CLI golden snapshots after a rendered-format change. Always review the diff.
 - `scripts/bump-version.sh <new-version>` — update every in-tree version literal in one shot and regenerate goldens.
-- `bash .goat-flow/hooks/deny-dangerous.sh --self-test && bash .goat-flow/hooks/gruff-code-quality.sh --self-test=smoke` — verify installed safety and code-quality hooks.
+- `node .goat-flow/hooks/deny-dangerous.mjs --self-test && node .goat-flow/hooks/gruff-code-quality.mjs --self-test=smoke` — verify installed safety and code-quality hooks.
 - `node node_modules/@blundergoat/goat-flow/dist/cli/cli.js audit . --agent codex` — GOAT Flow setup audit.
 
 ## Execution Loop: READ → SCOPE → ACT → VERIFY
 
 ### READ
 MUST read relevant files before changes. For analyser, rule, scoring, or report work, read the matching `internal/<pkg>/*.go` plus its `*_test.go`; rule fixtures are inline Go sources, and golden snapshots live under `internal/cli/testdata/`. For policy decisions, derive 2-4 search terms, read matching rows in each learning-loop `INDEX.md`, then open candidate entries; grep an individual bucket only after an index miss, and reword once before recording no hit. Before declaring any tool or capability unavailable, read the matching playbook in `.goat-flow/skill-docs/playbooks/` (e.g. `browser-use.md`, `page-capture.md`) and run that doc's "Availability Check" section verbatim — project-local CLI tools at `~/.local/bin/` are valid; do not conflate "no harness/MCP tool" with "no tool".
+Before creating, changing, reviewing, consolidating, moving, or pruning tests, read `.goat-flow/skill-docs/playbooks/test-selection.md`.
 
 ### SCOPE
 Declare mode, files allowed to change, non-goals, and max blast radius before writes. Stop and re-scope before crossing into schema versions, the rule registry's default policy, CLI flag surface, or vendored dependencies.
@@ -95,6 +96,7 @@ Every line in this hot-path file must be a behavioral rule, scope boundary, comm
 | Orientation | `.goat-flow/code-map.md`, `.goat-flow/glossary.md` |
 | Learning loop | `.goat-flow/learning-loop/footguns/`, `.goat-flow/learning-loop/lessons/`, `.goat-flow/learning-loop/patterns/`, `.goat-flow/learning-loop/decisions/` |
 | Skill reference (meta) | `.goat-flow/skill-docs/` |
+| Security policy (optional; read by `goat-security`) | `.goat-flow/security-policy.md` |
 | Tool playbooks (README index for CLI/MCP availability checks; examples: browser-use, page-capture, skill-quality-testing) | `.goat-flow/skill-docs/playbooks/` — read BEFORE declaring a tool unavailable |
 | Codex skills/config | `.agents/skills/`, `.codex/config.toml`, `.codex/hooks.json`, `.goat-flow/hooks/` |
 | Application entrypoint | `cmd/gruff-go/main.go` |

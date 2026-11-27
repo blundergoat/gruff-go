@@ -40,6 +40,7 @@ archives:
       - README.md
       - LICENSE
       - CHANGELOG.md
+      - UPGRADING.md
 
 checksum:
   name_template: "checksums.txt"
@@ -71,9 +72,9 @@ release:
   github:
     owner: blundergoat
     name: gruff-go
-  draft: false
+  draft: true
   prerelease: auto
-  mode: replace
+  mode: keep-existing
   header: |
     ## gruff-go {{ .Tag }}
 
@@ -83,7 +84,7 @@ release:
     go install github.com/blundergoat/gruff-go/cmd/gruff-go@{{ .Tag }}
     ```
 
-    Or pin per project as a dev tool (Go 1.24+):
+    Or pin per project as a dev tool (Go 1.25+):
 
     ```bash
     go get -tool github.com/blundergoat/gruff-go/cmd/gruff-go@{{ .Tag }}

@@ -1,26 +1,40 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements the naming.package-stutter rule.
+//
+// This file implements the naming.package-stutter rule, which is disabled by default.
+// Once enabled, it reports exported package-level names that stutter, skipping methods and allowStutter names, at advisory severity by default.
 package rule
 
 import (
 	"fmt"
 	"go/ast"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/blundergoat/gruff-go/internal/finding"
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
 // defaultPackageStutterAllow lists exported identifiers permitted to repeat their package name.
+//
+// It applies whenever AllowStutter is empty, so names such as config.Config and finding.Finding are not reported by default.
+// A non-empty AllowStutter replaces this list, so Config and Finding must be listed there again to stay exempt.
+// Definition also reports it as the allowStutter option default.
 var defaultPackageStutterAllow = []string{"Config", "Finding"}
 
 // PackageStutterRule flags exported identifiers whose names redundantly include the package name.
+//
+// It backs naming.package-stutter, which is disabled by default, so these findings appear only once the rule is enabled.
+// A name stutters when its lower case starts with the lowercased package name.
+// The original name must then end, or hold an ASCII capital, at that prefix's byte length, as in rule.RuleSet.
 type PackageStutterRule struct {
-	// AllowStutter lists exported identifier names exempt from the stutter check (Config, Finding, ...).
+	// AllowStutter lists exact exported names exempt from the stutter check; when it is empty, Config and Finding are exempt instead.
 	AllowStutter []string
 }
 
 // Definition declares the naming.package-stutter rule, with default allowStutter exemptions for Config and Finding under the naming pillar.
+//
+// It returns a fully populated Definition: advisory severity, medium confidence, parser capability, disabled by default, with remediation text.
+// The allowStutter option always reports the package defaults, whatever the receiver's AllowStutter holds.
 func (r PackageStutterRule) Definition() Definition {
 	return Definition{
 		ID:             "naming.package-stutter",
@@ -39,7 +53,10 @@ func (r PackageStutterRule) Definition() Definition {
 	}
 }
 
-// AnalyzeProject scans every unit for exported declarations that stutter their package name.
+// AnalyzeProject scans every file in units for exported declarations that stutter their package name.
+//
+// Units lacking a parsed AST, package name or file set are skipped; names in AllowStutter, or Config and Finding when it is empty, are exempt.
+// It returns one finding per stuttering identifier, in the order of units and their declarations, or nil when none stutters.
 func (r PackageStutterRule) AnalyzeProject(units []parser.Unit, _ Context) []finding.Finding {
 	allow := r.allowSet()
 	var findings []finding.Finding
@@ -56,22 +73,26 @@ func (r PackageStutterRule) AnalyzeProject(units []parser.Unit, _ Context) []fin
 	return findings
 }
 
-// allowSet returns the configured allow list as a lookup set, defaulting if empty.
+// allowSet returns the configured allow list as a lookup set, defaulting to Config and Finding when AllowStutter is empty.
+// Entries are trimmed and blank ones dropped, so an AllowStutter holding only blank strings gives an empty set that exempts nothing.
 func (r PackageStutterRule) allowSet() map[string]bool {
 	source := r.AllowStutter
 	if len(source) == 0 {
 		source = defaultPackageStutterAllow
 	}
-	out := make(map[string]bool, len(source))
+	exemptNames := make(map[string]bool, len(source))
 	for _, name := range source {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
-			out[trimmed] = true
+			exemptNames[trimmed] = true
 		}
 	}
-	return out
+	return exemptNames
 }
 
 // scanUnitForStutter walks the declarations of a single unit looking for stuttered names.
+//
+// pkgLower is the package name of unit in lower case, and allow holds the exact identifier names exempt from the check.
+// It returns the findings for every top-level declaration in source order, or nil when none stutters.
 func scanUnitForStutter(unit parser.Unit, pkgLower string, allow map[string]bool) []finding.Finding {
 	var findings []finding.Finding
 	for _, decl := range unit.AST.Decls {
@@ -81,6 +102,10 @@ func scanUnitForStutter(unit parser.Unit, pkgLower string, allow map[string]bool
 }
 
 // stutterFindingsForDecl dispatches a declaration to the appropriate stutter inspector.
+//
+// A function or general decl is checked for exported names that stutter pkgLower, the lowercase package name, unless allow exempts the exact name.
+// unit supplies the file path and position each finding reports.
+// It returns that inspector's findings, or nil for any other decl kind or when no name stutters.
 func stutterFindingsForDecl(unit parser.Unit, decl ast.Decl, pkgLower string, allow map[string]bool) []finding.Finding {
 	switch d := decl.(type) {
 	case *ast.GenDecl:
@@ -92,6 +117,10 @@ func stutterFindingsForDecl(unit parser.Unit, decl ast.Decl, pkgLower string, al
 }
 
 // stutterFindingsForGenDecl examines type and exported value specs for package stutter.
+//
+// Type, const and var names in decl are checked for the lowercase package prefix pkgLower unless allow exempts the exact name.
+// Unexported names and import specs are skipped, and unit supplies the file path and position of each finding.
+// It returns one finding per stuttering name in spec order, or nil when none stutters.
 func stutterFindingsForGenDecl(unit parser.Unit, decl *ast.GenDecl, pkgLower string, allow map[string]bool) []finding.Finding {
 	var findings []finding.Finding
 	for _, spec := range decl.Specs {
@@ -115,6 +144,9 @@ func stutterFindingsForGenDecl(unit parser.Unit, decl *ast.GenDecl, pkgLower str
 }
 
 // stutterFindingsForFuncDecl checks top-level exported functions (skipping methods) for stutter.
+//
+// The function name in decl is checked for the lowercase package prefix pkgLower unless allow exempts it; unit supplies its finding location.
+// It returns a one-element slice when the name stutters, or nil for a method, a missing or unexported name, or one that does not stutter.
 func stutterFindingsForFuncDecl(unit parser.Unit, decl *ast.FuncDecl, pkgLower string, allow map[string]bool) []finding.Finding {
 	if decl.Recv != nil || decl.Name == nil || !ast.IsExported(decl.Name.Name) {
 		return nil
@@ -126,11 +158,18 @@ func stutterFindingsForFuncDecl(unit parser.Unit, decl *ast.FuncDecl, pkgLower s
 }
 
 // stutterCheck evaluates a single identifier and returns a Finding when it stutters its package.
+//
+// pkgLower is the lowercased package name and allow holds exempt names; unit supplies the file path and position of the finding.
+// The bool result is false, with a zero Finding, when ident is nil, unexported or allowed, or does not stutter.
+//
+// A name stutters when its lower case starts with pkgLower and the name is as long in bytes as pkgLower or has an ASCII capital at that offset.
+// Unicode case mappings that change byte length can shift that offset, and a matching name shorter in bytes than pkgLower panics.
 func stutterCheck(unit parser.Unit, ident *ast.Ident, pkgLower string, allow map[string]bool) (finding.Finding, bool) {
 	if ident == nil {
 		return finding.Finding{}, false
 	}
 	name := ident.Name
+	// An allowStutter entry must match the whole name, so allowing Config still leaves ConfigOptions reportable.
 	if !ast.IsExported(name) || allow[name] {
 		return finding.Finding{}, false
 	}
@@ -148,16 +187,28 @@ func stutterCheck(unit parser.Unit, ident *ast.Ident, pkgLower string, allow map
 }
 
 // isPackageStutter reports whether identName begins with pkgLower followed by a word boundary.
+//
+// The prefix match ignores the case of identName, walking runes so Unicode case mappings that change UTF-8 byte length stay in bounds.
+// The result is false when either name is empty; rule.Rules does not stutter, while rule.RuleSet and config.Config do.
 func isPackageStutter(identName, pkgLower string) bool {
 	if pkgLower == "" || identName == "" {
 		return false
 	}
-	if !strings.HasPrefix(strings.ToLower(identName), pkgLower) {
-		return false
+	lowerPrefix := ""
+	for index, r := range identName {
+		lowerPrefix += strings.ToLower(string(r))
+		if len(lowerPrefix) < len(pkgLower) {
+			continue
+		}
+		if lowerPrefix != pkgLower {
+			return false
+		}
+		rest := identName[index+utf8.RuneLen(r):]
+		if rest == "" {
+			return true
+		}
+		next, _ := utf8.DecodeRuneInString(rest)
+		return next >= 'A' && next <= 'Z'
 	}
-	if len(identName) == len(pkgLower) {
-		return true
-	}
-	next := identName[len(pkgLower)]
-	return next >= 'A' && next <= 'Z'
+	return false
 }

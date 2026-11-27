@@ -1,5 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
+//
 // ANSI helpers keep colour policy separate from command parsing and rendering.
+// They read the global --ansi and --no-ansi flags; without either, colour needs a real terminal, no NO_COLOR and a TERM other than dumb.
 package cli
 
 import (
@@ -7,12 +9,14 @@ import (
 	"os"
 )
 
-// ansiMode describes the colour-output decision after considering CLI flags,
-// the NO_COLOR environment variable, and whether the writer is attached to a
-// terminal.
+// ansiMode records whether CLI flags force colour on or off or leave the decision to automatic detection.
+//
+// extractAnsiFlags sets it from --ansi and --no-ansi before any command runs.
+// ansiEnabled then resolves ansiAuto against NO_COLOR, TERM and whether the writer is a terminal.
 type ansiMode int
 
-// ansiMode constants enumerate the colour decisions the CLI can make.
+// The ansiMode values record the colour flag the user gave; ansiAuto, the zero value, means none and leaves the choice to detection.
+// ansiOn comes from --ansi and forces colour; ansiOff comes from --no-ansi and keeps output plain even on a terminal.
 const (
 	ansiAuto ansiMode = iota
 	ansiOn
@@ -27,8 +31,11 @@ const (
 	ansiGreen  = "\x1b[32m"
 )
 
-// extractAnsiFlags removes global colour flags before command dispatch.
-// The last explicit preference wins; a bare dash or `--` protects every later positional token.
+// extractAnsiFlags removes the global --ansi and --no-ansi flags before command dispatch.
+//
+// The last explicit preference wins, and a bare dash or -- protects itself and every later token from removal.
+// It returns a copy of commandArguments with each such flag removed up to the first protecting token, keeping the rest in order.
+// The mode is the last such flag seen, or ansiAuto when none is; an empty commandArguments gives an empty slice and ansiAuto.
 func extractAnsiFlags(commandArguments []string) ([]string, ansiMode) {
 	remainingArguments := make([]string, 0, len(commandArguments))
 	requestedMode := ansiAuto
@@ -54,8 +61,10 @@ func extractAnsiFlags(commandArguments []string) ([]string, ansiMode) {
 	return remainingArguments, requestedMode
 }
 
-// ansiEnabled decides whether to emit ANSI escapes given the requested mode
-// and the writer's terminal status. Honours the NO_COLOR convention.
+// ansiEnabled decides whether output to writer gets ANSI escapes, given the colour mode the user's flags requested.
+//
+// It returns true for ansiOn and false for ansiOff regardless of writer, so either flag overrides NO_COLOR and TERM.
+// Otherwise it returns false when NO_COLOR is set, even empty, or TERM is dumb, and else reports whether isTerminalWriter accepts writer.
 func ansiEnabled(writer io.Writer, mode ansiMode) bool {
 	switch mode {
 	case ansiOn:
@@ -73,7 +82,9 @@ func ansiEnabled(writer io.Writer, mode ansiMode) bool {
 }
 
 // isTerminalWriter enables automatic colour only for an os.File backed by a real terminal.
+//
 // Buffers, wrapped pipes, and character devices such as /dev/null remain unstyled.
+// It reports true only when writer is an *os.File that isInteractiveTerminal accepts, and false for a writer of any other type.
 func isTerminalWriter(writer io.Writer) bool {
 	stream, isFile := writer.(*os.File)
 	// A non-file writer has no terminal descriptor, so automatic colour stays off.
@@ -84,13 +95,15 @@ func isTerminalWriter(writer io.Writer) bool {
 }
 
 // ansiStyler conditionally wraps text in ANSI escape sequences.
+// When enabled is false, every method returns its text unchanged.
 type ansiStyler struct {
 	enabled bool
 }
 
-// yellow wraps text in the yellow ANSI escape, or returns it unchanged when
-// styling is off. The no-op fallback lets callers wrap unconditionally instead
-// of branching on ansiEnabled at every styling site.
+// yellow wraps text in the yellow ANSI escape, or returns it unchanged when styling is off.
+//
+// The no-op fallback lets callers wrap unconditionally instead of branching on ansiEnabled at every styling site.
+// An empty text still comes back wrapped in the escape pair when styling is on.
 func (s ansiStyler) yellow(text string) string {
 	if !s.enabled {
 		return text
@@ -98,8 +111,7 @@ func (s ansiStyler) yellow(text string) string {
 	return ansiYellow + text + ansiReset
 }
 
-// green wraps text in the green ANSI escape, or returns it unchanged when
-// styling is off. See yellow for the rationale behind the no-op fallback.
+// green wraps text in the green ANSI escape, or returns it unchanged when styling is off. See yellow for the rationale behind the no-op fallback.
 func (s ansiStyler) green(text string) string {
 	if !s.enabled {
 		return text
@@ -107,8 +119,7 @@ func (s ansiStyler) green(text string) string {
 	return ansiGreen + text + ansiReset
 }
 
-// bold wraps text in the bold ANSI escape, or returns it unchanged when
-// styling is off. See yellow for the rationale behind the no-op fallback.
+// bold wraps text in the bold ANSI escape, or returns it unchanged when styling is off. See yellow for the rationale behind the no-op fallback.
 func (s ansiStyler) bold(text string) string {
 	if !s.enabled {
 		return text

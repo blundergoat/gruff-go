@@ -11,10 +11,12 @@ Run the local check suite before tagging:
 scripts/preflight-checks.sh
 ```
 
-Preflight is the release gate and runs nine checks: version metadata, `npm audit`,
-`govulncheck`, `bash -n`, shellcheck, `gofmt -l`, `go vet`, `go test ./...`, and a
-dogfood self-scan that must return grade A. `make check` covers only the three Go
-checks in that list and is the edit-time floor, so preflight supersedes it here.
+Preflight is the release gate and runs 12 checks: version metadata, `npm audit`,
+`govulncheck`, `bash -n`, `shellcheck`, post-turn limit hardening, `gofmt -l`,
+`go vet`, `go test ./...`, a dogfood self-scan (must return grade A with zero
+findings), documentation drift, and documentation drift fixtures. `make check`
+covers only the three Go checks in that list and is the edit-time floor, so
+preflight supersedes it here.
 
 Before changing a source version, exercise the read-only ownership guard:
 
@@ -39,8 +41,8 @@ go run ./cmd/gruff-go summary --help
 go run ./cmd/gruff-go list-rules --format json
 ```
 
-`--fail-on` and `--min-severity` must both remain accepted until a documented
-breaking release removes the old name.
+`--fail-on` is the exit-gate flag. `--min-severity` is refused in 0.6.0 and
+returns in 0.7.0 as a display filter.
 
 ## Docs
 
@@ -55,8 +57,11 @@ Update docs when command output or schemas change:
 
 `docs/rules.md` is machine-checked: `TestRulesDocsStructuredMetadataMatchesRegistry`
 compares its counts, opt-in IDs, catalogue rows, and per-rule sections against the
-no-config registry, so a registry change fails `go test ./internal/cli/...` until the
-page matches. The other pages have no such guard and need a manual pass.
+no-config registry, and `TestDocsRulesPrecisionGuidanceMatchesRegistry` verifies
+lockstep false-positive guidance, so registry drift fails `go test ./internal/cli/...`.
+`scripts/preflight-checks.sh` also checks `README.md` and `docs/*.md` for catalogue
+counts, pillar tables, unknown rule IDs, cited ADRs, and README links; prose accuracy
+and examples still need a human pass.
 
 ## Binary Wrapper
 

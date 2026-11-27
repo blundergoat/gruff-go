@@ -7,10 +7,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// diagnosticsFromAllSkippedInputs reports explicit input paths that produced no
-// scanned files because discovery skipped every target before parsing. Without
-// this diagnostic, a direct scan of metadata, generated output, or config-ignored
-// paths looks like a clean zero-file run.
+// diagnosticsFromAllSkippedInputs reports each discovery skip record as an error when explicit inputs yield no scanned file or missing path.
+//
+// Without this diagnostic, a direct scan of metadata, generated output, or config-ignored paths looks like a clean zero-file run.
+//
+// inputs holds the explicit input paths; only its length matters, and an empty list returns nil.
+// discovery is the source discovery result; the function also returns nil when it has any file or missing path, or no skipped path.
+// Otherwise the result holds one error-severity diagnostic per discovery.Skipped entry, naming its path, reason, and any source or pattern.
 func diagnosticsFromAllSkippedInputs(inputs []string, discovery source.Result) []Diagnostic {
 	if len(inputs) == 0 || len(discovery.Files) > 0 || len(discovery.Missing) > 0 || len(discovery.Skipped) == 0 {
 		return nil

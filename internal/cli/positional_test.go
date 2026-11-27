@@ -1,18 +1,25 @@
 // Package cli tests the command-line behavior exposed by gruff-go.
-// These tests pin what happens to positional arguments on commands that do not consume them, so a
-// named scan target can never be accepted and then silently dropped.
+//
+// These tests check that list-rules, dashboard, completion and migrate-config reject surplus positional arguments with exit 2.
+// A target the user names on those commands is never accepted and then silently ignored.
+//
+// They also check results, config discovery and project-relative paths when a scan is launched from the project, a sibling or a subdirectory.
 package cli
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestCommandsRejectUnusedPositionalArguments verifies commands that take no operands fail loudly.
+// TestCommandsRejectUnusedPositionalArguments verifies surplus operands cause exit 2 with an explanation on stderr and no stdout.
 // The fixture path is real: rejection must come from the argument contract, not from a missing file.
 func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 	projectRoot := t.TempDir()
 	writeFile(t, projectRoot, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, projectRoot, "old.yaml", "schemaVersion: gruff-go.config.v0.1\n")
 	t.Chdir(projectRoot)
 
 	testCases := []struct {
@@ -37,11 +44,21 @@ func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 			arguments:       []string{"completion", "bash", "zsh"},
 			expectedMessage: "completion takes at most one shell argument",
 		},
+		{
+			// The stray operand once ended flag parsing, so the trailing -dry-run was dropped and the
+			// command wrote new.yaml when the user had asked it to write nothing.
+			name:            "migrate-config",
+			arguments:       []string{"migrate-config", "-config", "old.yaml", "-output", "new.yaml", "main.go", "-dry-run"},
+			expectedMessage: "migrate-config takes no positional arguments",
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			exitCode, stdout, stderr := captureCLIResult(testCase.arguments)
+			if _, err := os.Stat(filepath.Join(projectRoot, "new.yaml")); err == nil {
+				t.Fatal("new.yaml exists, want a rejected command to write nothing")
+			}
 			if exitCode != 2 {
 				t.Fatalf("exit = %d, want 2; stdout=%s stderr=%s", exitCode, stdout, stderr)
 			}
@@ -56,9 +73,10 @@ func TestCommandsRejectUnusedPositionalArguments(t *testing.T) {
 }
 
 // TestCommandsStillAcceptTheirSupportedForms verifies the guards reject only surplus operands.
-// The dashboard is absent by necessity: its accepted form binds a listener and never returns.
+// The dashboard is absent: its accepted form binds a listener and keeps serving until a signal shuts it down.
 func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 	projectRoot := t.TempDir()
+	writeFile(t, projectRoot, "old.yaml", "schemaVersion: gruff-go.config.v0.1\n")
 	t.Chdir(projectRoot)
 
 	testCases := []struct {
@@ -68,6 +86,7 @@ func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 		{name: "list-rules text", arguments: []string{"list-rules", "--no-config", "--format", "text"}},
 		{name: "completion explicit shell", arguments: []string{"completion", "bash"}},
 		{name: "completion default shell", arguments: []string{"completion"}},
+		{name: "migrate-config dry run", arguments: []string{"migrate-config", "-dry-run", "-config", "old.yaml"}},
 	}
 
 	for _, testCase := range testCases {
@@ -84,7 +103,7 @@ func TestCommandsStillAcceptTheirSupportedForms(t *testing.T) {
 }
 
 // TestCompletionDefaultShellMatchesExplicitBash verifies the operand guard left the default intact.
-// A guard written as NArg() > 0 instead of > 1 would silently break the bare-completion form.
+// A guard written as NArg() > 0 instead of > 1 would reject explicit bash, and this comparison would then fail.
 func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -98,5 +117,255 @@ func TestCompletionDefaultShellMatchesExplicitBash(t *testing.T) {
 	if string(defaultStdout) != string(explicitStdout) {
 		t.Fatalf("bare completion and explicit bash differ: %d vs %d bytes",
 			len(defaultStdout), len(explicitStdout))
+	}
+}
+
+// TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject checks a refused run still publishes its JSON envelope.
+//
+// Launched from a sibling, an invalid baseline outside the project gives one baseline diagnostic with no non-null file value, and the run exits 2.
+// Section 5 of the decided contract requires a refusal after argument parsing to publish the envelope; the other four ports omit the key too.
+func TestJSONReportSurvivesADiagnosticAboutAFileOutsideTheProject(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launch := filepath.Join(root, "launch")
+	for _, directory := range []string{project, launch} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+	writeFile(t, root, "unreadable.json", "{\"schemaVersion\": \"gruff.baseline.v3\", \"toolLanguage\": \"go\", \"nope\": []}\n")
+
+	t.Chdir(launch)
+	exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-config", "--baseline", "../unreadable.json", "--fail-on", "none", "--format", "json", "../project"})
+	if exitCode != 2 {
+		t.Fatalf("outside diagnostic: exit %d, want 2; stderr=%q", exitCode, stderr)
+	}
+	if len(stdout) == 0 {
+		t.Fatalf("outside diagnostic: stdout is empty, so the envelope was suppressed; stderr=%q", stderr)
+	}
+	var report struct {
+		SchemaVersion string `json:"schemaVersion"`
+		Diagnostics   []struct {
+			Type string  `json:"type"`
+			File *string `json:"file"`
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(stdout, &report); err != nil {
+		t.Fatalf("outside diagnostic: stdout is not JSON: %v\n%s", err, stdout)
+	}
+	if report.SchemaVersion != "gruff.analysis.v3" {
+		t.Fatalf("schemaVersion = %q, want gruff.analysis.v3", report.SchemaVersion)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].Type != "baseline" {
+		t.Fatalf("diagnostics = %#v, want one baseline diagnostic", report.Diagnostics)
+	}
+	if report.Diagnostics[0].File != nil {
+		t.Fatalf("diagnostic file = %q, want it left out for a file outside the project", *report.Diagnostics[0].File)
+	}
+}
+
+// TestLaunchDirectoryDoesNotChangeTheResult compares stable report fields and baseline occurrences across three launch directories.
+//
+// The launches are the project, a sibling naming ../project and a subdirectory naming ..; analyse, summary and report must match on each.
+// The compared baseline occurrences must match and omit the temporary root path.
+func TestLaunchDirectoryDoesNotChangeTheResult(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launches := map[string]string{filepath.Join(root, "launch"): "../project", filepath.Join(project, "sub"): ".."}
+	for directory := range launches {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "package main\n\nfunc Exported(unused int) {}\n\nfunc main() {}\n")
+	writeFile(t, root, "stray.go", "package stray\n\nfunc Stray(unused int) {}\n")
+
+	run := func(directory string, commandArguments []string) (int, string) {
+		t.Chdir(directory)
+		exitCode, stdout, stderr := captureCLIResult(commandArguments)
+		if len(stdout) == 0 {
+			t.Fatalf("%v from %s: empty stdout, exit %d, stderr=%q", commandArguments, directory, exitCode, stderr)
+		}
+		return exitCode, string(stdout)
+	}
+	stable := func(label, stdout string) string {
+		var envelope struct {
+			Findings []map[string]any `json:"findings"`
+			Score    map[string]any   `json:"score"`
+			Summary  map[string]any   `json:"summary"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+			t.Fatalf("%s: stdout is not JSON: %v", label, err)
+		}
+		encoded, _ := json.Marshal(envelope)
+		return string(encoded)
+	}
+	for _, command := range []string{"analyse", "summary", "report"} {
+		insideExit, insideStdout := run(project, []string{command, "--no-config", "--fail-on", "none", "--format", "json", "."})
+		inside := stable(command+" inside", insideStdout)
+		for directory, target := range launches {
+			outsideExit, outsideStdout := run(directory, []string{command, "--no-config", "--fail-on", "none", "--format", "json", target})
+			outside := stable(command+" "+target, outsideStdout)
+			if insideExit != outsideExit || inside != outside {
+				t.Fatalf("%s %s differs by launch directory:\ninside  exit %d %s\noutside exit %d %s", command, target, insideExit, inside, outsideExit, outside)
+			}
+		}
+	}
+
+	baselineOf := func(directory, target, name string) string {
+		run(directory, []string{"analyse", "--no-config", "--generate-baseline", filepath.Join(root, name), target})
+		contents, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		var baseline struct {
+			Occurrences []map[string]any `json:"occurrences"`
+		}
+		if err := json.Unmarshal(contents, &baseline); err != nil {
+			t.Fatalf("%s is not JSON: %v", name, err)
+		}
+		encoded, _ := json.Marshal(baseline)
+		return string(encoded)
+	}
+	inside := baselineOf(project, ".", "inside.json")
+	for directory, target := range launches {
+		outside := baselineOf(directory, target, "outside.json")
+		// A baseline that names the temp root has leaked a host path, so it would not match when generated on another machine.
+		if outside != inside || strings.Contains(outside, root) {
+			t.Fatalf("baseline from %s differs by launch directory:\noutside %s\ninside  %s", target, outside, inside)
+		}
+	}
+}
+
+// TestProjectConfigIsReadFromTheProjectRoot verifies .gruff-go.yaml applies to scans launched from the project, a sibling or its subdirectory.
+//
+// A scan launched elsewhere must still honour the project's disabled docs.exported-symbol-comment rule.
+func TestProjectConfigIsReadFromTheProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launches := map[string]string{project: ".", filepath.Join(root, "launch"): "../project", filepath.Join(project, "sub"): ".."}
+	for directory := range launches {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "package main\n\nfunc Exported() {}\n\nfunc main() {}\n")
+	writeFile(t, project, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\nrules:\n  docs.exported-symbol-comment:\n    enabled: false\n")
+
+	for directory, target := range launches {
+		t.Chdir(directory)
+		exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-baseline", "--fail-on", "none", "--format", "json", target})
+		if exitCode != 0 {
+			t.Fatalf("%s from %s: exit %d, stderr=%q", target, directory, exitCode, stderr)
+		}
+		var envelope struct {
+			Findings []struct {
+				RuleID string `json:"ruleId"`
+			} `json:"findings"`
+		}
+		if err := json.Unmarshal(stdout, &envelope); err != nil {
+			t.Fatalf("%s from %s: stdout is not JSON: %v", target, directory, err)
+		}
+		for _, finding := range envelope.Findings {
+			if finding.RuleID == "docs.exported-symbol-comment" {
+				t.Fatalf("%s from %s: the project config disables docs.exported-symbol-comment, but it reported", target, directory)
+			}
+		}
+	}
+}
+
+// TestBaselinePathsAreReadFromTheLaunchDirectory verifies --generate-baseline and --baseline resolve paths from the launch directory.
+//
+// From two levels inside the project, the read must find the file the write put at the typed path, not join it to the project root and miss it.
+// The last check rejects the temporary root path anywhere in stdout from the missing-baseline run.
+func TestBaselinePathsAreReadFromTheLaunchDirectory(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	nested := filepath.Join(project, "a", "b")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", nested, err)
+	}
+	writeFile(t, project, "main.go", "package main\n\nfunc Exported() {}\n\nfunc main() {}\n")
+	t.Chdir(nested)
+
+	if exitCode, _, stderr := captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--generate-baseline", "../../base.json", "../.."}); exitCode != 0 {
+		t.Fatalf("generate: exit %d, stderr=%q", exitCode, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(project, "base.json")); err != nil {
+		t.Fatalf("the baseline was not written at the project root: %v", err)
+	}
+	exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--format", "json", "--baseline", "../../base.json", "../.."})
+	if exitCode != 0 {
+		t.Fatalf("apply: exit %d, stderr=%q", exitCode, stderr)
+	}
+	var envelope struct {
+		Baseline map[string]any `json:"baseline"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("apply: stdout is not JSON: %v", err)
+	}
+	if envelope.Baseline["applied"] != true || envelope.Baseline["path"] != "base.json" {
+		t.Fatalf("baseline = %v, want applied with path base.json", envelope.Baseline)
+	}
+
+	_, stdout, _ = captureCLIResult([]string{"analyse", "--no-config", "--fail-on", "none", "--format", "json", "--baseline", "../../missing.json", "../.."})
+	// A missing baseline still yields a diagnostic, and it must never name the host path under the temp root.
+	if strings.Contains(string(stdout), root) {
+		t.Fatalf("a missing baseline's diagnostic names the host path: %s", stdout)
+	}
+}
+
+// TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory verifies a scan launched from a sibling directory still publishes its report.
+//
+// The operand ../project names the project itself, so the report lists its one input as a single dot.
+// A baseline kept outside the project is applied and simply has no project-relative path to publish.
+func TestJSONReportSurvivesATargetAndABaselineOutsideTheLaunchDirectory(t *testing.T) {
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	launch := filepath.Join(root, "launch")
+	for _, directory := range []string{project, launch} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", directory, err)
+		}
+	}
+	writeFile(t, project, "main.go", "// Package main is a test fixture.\npackage main\n\nfunc main() {}\n")
+
+	t.Chdir(launch)
+	exitCode, stdout, stderr := captureCLIResult([]string{"analyse", "--no-config", "--no-baseline", "--fail-on", "none", "--format", "json", "../project"})
+	if exitCode != 0 {
+		t.Fatalf("relative target: exit %d, stderr=%q", exitCode, stderr)
+	}
+	var fromSibling struct {
+		Run struct {
+			Inputs []string `json:"inputs"`
+		} `json:"run"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &fromSibling); err != nil {
+		t.Fatalf("relative target: stdout is not JSON: %v", err)
+	}
+	if len(fromSibling.Run.Inputs) != 1 || fromSibling.Run.Inputs[0] != "." {
+		t.Fatalf("run.inputs = %v, want [.]", fromSibling.Run.Inputs)
+	}
+
+	t.Chdir(project)
+	if exitCode, _, stderr := captureCLIResult([]string{"baseline", "--no-config", "--out", "../reviewed.json"}); exitCode != 0 {
+		t.Fatalf("baseline generation: exit %d, stderr=%q", exitCode, stderr)
+	}
+	exitCode, stdout, stderr = captureCLIResult([]string{"analyse", "--no-config", "--baseline", "../reviewed.json", "--fail-on", "none", "--format", "json", "."})
+	if exitCode != 0 {
+		t.Fatalf("outside baseline: exit %d, stderr=%q", exitCode, stderr)
+	}
+	var withBaseline struct {
+		Baseline map[string]any `json:"baseline"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &withBaseline); err != nil {
+		t.Fatalf("outside baseline: stdout is not JSON: %v", err)
+	}
+	if withBaseline.Baseline["applied"] != true {
+		t.Fatalf("baseline.applied = %v, want true", withBaseline.Baseline["applied"])
+	}
+	if _, published := withBaseline.Baseline["path"]; published {
+		t.Fatalf("baseline.path = %v, want it left out for a baseline outside the project", withBaseline.Baseline["path"])
 	}
 }

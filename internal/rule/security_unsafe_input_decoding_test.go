@@ -1,10 +1,13 @@
 // Package rule tests the parser-only deserialization and XXE security rules.
+//
+// Each fixture pins its rule's own finding count from AnalyzeUnit; CLI rule selection and baseline filtering are not exercised here.
+// JSON decoding, trusted local files, the stdlib XML decoder without an entity map and unrelated Entity fields must stay quiet.
 package rule
 
 import "testing"
 
-// TestUnsafeDeserializationRule covers untrusted gob/yaml decoding and trusted
-// or typed decoding that should not fire.
+// TestUnsafeDeserializationRule covers gob and YAML decoding of request data.
+// A trusted local gob file and JSON decoding of the request body must stay quiet.
 func TestUnsafeDeserializationRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -115,8 +118,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TestXXECandidateRule covers entity-resolving XML decoders and the safe stdlib
-// default that must not fire.
+// TestXXECandidateRule covers entity-resolving XML decoders and the safe stdlib default that must not fire.
 func TestXXECandidateRule(t *testing.T) {
 	tests := []struct {
 		name string

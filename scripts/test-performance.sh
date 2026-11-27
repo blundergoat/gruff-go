@@ -5,7 +5,7 @@
 #   --smoke          one timed pass over the repo itself, prints elapsed + counts
 #   --matrix         hyperfine over self + synthetic-medium + synthetic-large
 #   --sweep          format x rule-set x pathological inputs; peak RSS captured
-#   --compare        compare against scripts/.perf-results/baseline.json
+#   --compare        compare against scripts/performance-baselines/<host>.json
 #   --baseline-update  overwrite baseline with current run
 #   --ci             stricter regression tolerances and compact output
 #   --all           run --smoke, --matrix, --sweep in that order
@@ -20,7 +20,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BIN="$REPO_ROOT/bin/gruff-go"
 RESULTS_DIR="$SCRIPT_DIR/.perf-results"
 CORPUS_DIR="$SCRIPT_DIR/.perf-corpus"
-BASELINE_FILE="$RESULTS_DIR/baseline.json"
+PLATFORM_SLUG="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+BASELINE_FILE="$SCRIPT_DIR/performance-baselines/${PLATFORM_SLUG}.json"
 HYPERFINE=""  # populated by preflight when needed
 
 # Regression tolerances (per-corpus wall %, per-rule wall %). --ci tightens them.
@@ -47,25 +48,33 @@ if [[ -t 1 ]]; then
 else
   C_RED=""; C_GRN=""; C_YEL=""; C_DIM=""; C_OFF=""
 fi
+# Send progress to stderr so it stays separate from timing data.
 log()  { printf '%s\n' "$*" >&2; }
+# Print a successful check in green when the harness runs in a terminal.
 ok()   { printf '%s%s%s\n' "$C_GRN" "$*" "$C_OFF" >&2; }
+# Show a limitation while allowing the rest of the benchmark to run.
 warn() { printf '%s%s%s\n' "$C_YEL" "$*" "$C_OFF" >&2; }
+# Explain why the requested benchmark stopped and return a failing exit status.
 fail() { printf '%s%s%s\n' "$C_RED" "$*" "$C_OFF" >&2; exit 1; }
 
+# Read the clock for the elapsed-time line printed by --smoke.
 now_ns() {
   python3 -c 'import time; print(time.time_ns())'
 }
 
 # ---------- hyperfine bootstrap ----------
-HF_VERSION="v1.20.0"
+# Stay on hyperfine 1.x: 2.0 runs commands without a shell and changes the --export-json schema this harness reads.
+HF_VERSION="v1.21.0"
 HF_TOOLS_DIR="$SCRIPT_DIR/.tools"
-HF_LOCAL="$HF_TOOLS_DIR/hyperfine"
+# The version is in the file name so bumping HF_VERSION fetches the new pin instead of reusing an older cached binary.
+HF_LOCAL="$HF_TOOLS_DIR/hyperfine-$HF_VERSION"
 # Pinned SHA-256 per platform tarball. Update these when bumping HF_VERSION.
-HF_SHA_linux_x86_64="63ad53934062118f5b0be11785e0bb1603d4b91667d1921f2fd8df9a8712040a"
-HF_SHA_linux_aarch64="90875cb1db7a1d797c311174d061728361e58fc70e3b62262a00635ac3b1997c"
-HF_SHA_darwin_x86_64="f58d0b90993fadfa122a351428c469ce24afef3865f027f0e6e86f0830d088f1"
-HF_SHA_darwin_aarch64="8ee7067016620447c9d2d6234ec9a4680f958b7ad983549b56334668f63075b5"
+HF_SHA_linux_x86_64="60b70eb01e1a4dce1bf56a38393e1e2c2e79ed95a4ba711feb5c993f382604ab"
+HF_SHA_linux_aarch64="7c3e7183e4178e5c1bb68ef714fbf2ac1cef04d4d7fc751d645d290ac0041d7a"
+HF_SHA_darwin_x86_64="60ad42427f09647ea2f301186282c083d75a2f1c5d82e7b9d89f7524f1b9fd57"
+HF_SHA_darwin_aarch64="4a6e8d9fad128557b31c471d81c60dd1576729c5ab2841998c457a3467ce4469"
 
+# Select the pinned hyperfine archive and checksum for this host.
 detect_platform_asset() {
   # echoes "<asset-stem> <sha256>"; fails if platform unsupported.
   local os arch sha asset
@@ -83,9 +92,11 @@ detect_platform_asset() {
   printf '%s %s\n' "$asset" "$sha"
 }
 
+# Find hyperfine for timed runs, or verify and install the pinned local copy.
 bootstrap_hyperfine() {
   # Echoes the path to a working hyperfine binary.
-  if command -v hyperfine >/dev/null 2>&1; then
+  # A hyperfine 2.x on PATH would break the JSON reader, so only a 1.x install is used; otherwise the pinned copy is.
+  if command -v hyperfine >/dev/null 2>&1 && [[ "$(hyperfine --version 2>/dev/null)" == "hyperfine 1."* ]]; then
     command -v hyperfine
     return 0
   fi
@@ -127,17 +138,20 @@ bootstrap_hyperfine() {
 }
 
 # ---------- preflight ----------
+# Build the current analyzer and prepare the tools the selected mode needs.
 preflight() {
   # $1: "needs_hyperfine" if any mode other than smoke is requested
   local need_hf="${1:-}"
-  if [[ ! -x "$BIN" ]]; then
-    log "${C_DIM}building $BIN ...${C_OFF}"
-    (cd "$REPO_ROOT" && go build -o "$BIN" ./cmd/gruff-go) || fail "go build failed"
-  fi
+  # A performance baseline must never bind a stale ignored binary. Build from
+  # the current runtime source on every invocation, matching the family runner.
+  mkdir -p "$(dirname "$BIN")"
+  log "${C_DIM}building $BIN ...${C_OFF}"
+  (cd "$REPO_ROOT" && go build -trimpath -o "$BIN" ./cmd/gruff-go) || fail "go build failed"
 
   if ! command -v python3 >/dev/null 2>&1; then
     fail "python3 is required for result parsing"
   fi
+  command -v git >/dev/null 2>&1 || fail "git is required for source provenance"
 
   if [[ "$need_hf" == "needs_hyperfine" ]]; then
     HYPERFINE=$(bootstrap_hyperfine)
@@ -146,10 +160,11 @@ preflight() {
     fi
   fi
 
-  mkdir -p "$RESULTS_DIR" "$CORPUS_DIR"
+  mkdir -p "$RESULTS_DIR" "$CORPUS_DIR" "$(dirname "$BASELINE_FILE")"
 }
 
 # ---------- smoke mode ----------
+# Time a self-scan using project config and print the file counts, findings, and grade.
 run_smoke() {
   log ""
   log "== smoke =="
@@ -158,7 +173,7 @@ run_smoke() {
   trap 'rm -f "$summary_file"' RETURN
   start_ns=$(now_ns)
   # gruff-go discovers .gruff-go.yaml from cwd, so cd into the repo for realism.
-  (cd "$REPO_ROOT" && "$BIN" analyse --format summary-json .) > "$summary_file"
+  (cd "$REPO_ROOT" && "$BIN" analyse --fail-on none --format summary-json .) > "$summary_file"
   end_ns=$(now_ns)
   elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
 
@@ -168,15 +183,16 @@ elapsed_ms = int(sys.argv[1])
 d = json.load(open(sys.argv[2]))
 s = d["summary"]
 print(f"elapsed_ms = {elapsed_ms}")
-print(f"files_scanned = {s['filesScanned']}")
-print(f"files_skipped = {s['filesSkipped']}")
-print(f"findings = {s['findingsCount']}")
-print(f"score = {d['score']['composite']} ({d['score']['grade']})")
+print(f"files_scanned = {s['analysedFiles']}")
+print(f"files_skipped = {s['skippedFiles']}")
+print(f"findings = {s['findings']['total']}")
+print(f"score = {d['score']['composite']['score']} ({d['score']['composite']['grade']})")
 PY
   ok "smoke OK"
 }
 
 # ---------- corpus generator (deterministic) ----------
+# Reuse the matching generated files so two runs time the same workload.
 ensure_corpus() {
   local target="$1" count="$2" stamp_file
   stamp_file="$target/.stamp-${CORPUS_SEED}-${count}"
@@ -222,24 +238,24 @@ PY
   : > "$stamp_file"
 }
 
+# Time one analyzer command from its corpus directory and return the raw samples path.
 hyperfine_run() {
-  # $1: label (becomes JSON path stem); $2: workdir; $3..: command (single string).
-  # Runs the command with cwd=$workdir so gruff-go finds the right .gitignore.
+  # $1: result label; $2: working directory; rest: analyse arguments.
   local label="$1" workdir="$2"; shift 2
-  local out_json="$RESULTS_DIR/raw-${label}.json"
-  # hyperfine doesn't have a --cwd flag; wrap the command in a cd subshell.
-  # We use bash -c so we can express the cd; --shell=none disabled here intentionally.
-  # -i: gruff-go returns 1 when findings exist (working as designed); we time the
-  # complete run regardless. The script's own correctness checks happen elsewhere.
-  "$HYPERFINE" -i \
+  local out_json="$RESULTS_DIR/raw-${label}.json" command_args command
+  printf -v command_args '%q ' "$BIN" analyse "$@" --fail-on none
+  printf -v command 'cd %q && %s' "$workdir" "$command_args"
+  # Findings are expected in these workloads. A failed analysis must never be timed.
+  "$HYPERFINE" --shell bash \
     --warmup "$HYPERFINE_WARMUP" \
     --min-runs "$HYPERFINE_MIN_RUNS" \
     --export-json "$out_json" \
     --command-name "$label" \
-    -- "cd '$workdir' && $*" >/dev/null
+    -- "$command" >/dev/null || return
   printf '%s\n' "$out_json"
 }
 
+# Return the scanned file count and approximate thousands of Go lines for the throughput table.
 corpus_metrics() {
   # Asks gruff itself how many files it actually scans (post-gitignore, post-built-in
   # filters). Echoes "<files> <kloc>". KLOC is approximated by line-counting just
@@ -247,8 +263,8 @@ corpus_metrics() {
   # .go files within the path. Close enough for throughput display.
   local target="$1" summary_file
   summary_file=$(mktemp)
-  (cd "$target" && "$BIN" analyse --no-config --format summary-json . 2>/dev/null > "$summary_file") || true
-  local files; files=$(python3 -c "import json; print(json.load(open('$summary_file'))['summary']['filesScanned'])")
+  (cd "$target" && "$BIN" analyse --fail-on none --no-config --format summary-json . > "$summary_file") || return
+  local files; files=$(python3 -c "import json; print(json.load(open('$summary_file'))['summary']['analysedFiles'])")
   rm -f "$summary_file"
   # Approximate KLOC from the scanned files. We re-walk and count just .go (most
   # accurate would be parsing the report, but it doesn't carry per-file linecounts).
@@ -257,6 +273,7 @@ corpus_metrics() {
   python3 -c "print(f'$files {$lines/1000:.2f}')"
 }
 
+# Compare scan throughput on the repository, medium corpus, and large corpus.
 run_matrix() {
   log ""
   log "== matrix =="
@@ -271,7 +288,7 @@ run_matrix() {
     local name="${entry%%:*}" path="${entry#*:}"
     log "${C_DIM}timing $name ($path) ...${C_OFF}"
     local raw
-    raw=$(hyperfine_run "matrix-$name" "$path" "$BIN analyse --no-config --format summary-json .")
+    raw=$(hyperfine_run "matrix-$name" "$path" --no-config --format summary-json .)
     local metrics; metrics=$(corpus_metrics "$path")
     rows+=("$name|$raw|$metrics")
   done
@@ -301,20 +318,34 @@ PY
 }
 
 # ---------- dimensional sweep ----------
+# Measure peak memory for a report format. A dash means the host cannot measure it.
 peak_rss_kb() {
   # Runs the given command and prints peak RSS in KB (or "-" if unavailable).
   if /usr/bin/time -v true >/dev/null 2>&1; then
-    /usr/bin/time -v -- "$@" 2>&1 >/dev/null \
-      | awk '/Maximum resident set size/ {print $NF; found=1} END{if(!found) print "-"}'
+    local time_file status rss
+    time_file=$(mktemp)
+    set +e
+    /usr/bin/time -v -o "$time_file" -- "$@" >/dev/null 2>&1
+    status=$?
+    set -e
+    if [[ "$status" != "0" && "$status" != "1" ]]; then
+      rm -f "$time_file"
+      fail "RSS probe failed with analyser exit $status"
+    fi
+    rss=$(awk '/Maximum resident set size/ {print $NF; found=1} END{if(!found) print "-"}' "$time_file")
+    rm -f "$time_file"
+    printf '%s\n' "$rss"
   else
     printf '%s\n' "-"
   fi
 }
 
+# Read rule IDs from the built binary so the sweep covers the available catalogue.
 list_rules() {
   "$BIN" list-rules 2>/dev/null | awk -F'\t' '{print $1}'
 }
 
+# Choose the host timeout tool for pathological cases. If neither is available, those cases are skipped.
 timeout_command() {
   if command -v timeout >/dev/null 2>&1; then
     command -v timeout
@@ -327,11 +358,13 @@ timeout_command() {
   return 1
 }
 
+# Write a temporary config that isolates one rule so a sweep can time it separately.
 write_single_rule_config() {
   # $1: output path; $2: rule id
-  printf 'selection:\n  rules:\n    - %s\n' "$2" > "$1"
+  printf 'schemaVersion: gruff-go.config.v0.1\nselection:\n  rules:\n    - %s\n' "$2" > "$1"
 }
 
+# Time report formats, individual rules, and pathological inputs to locate slow scans.
 run_sweep() {
   log ""
   log "== sweep =="
@@ -352,8 +385,11 @@ run_sweep() {
   printf '\n%-14s  %12s  %12s  %12s\n' "format" "median_ms" "stddev_ms" "rss_kb"
   printf '%s\n' "--------------  ------------  ------------  ------------"
   for fmt in summary-json text json sarif html; do
-    local raw; raw=$(hyperfine_run "sweep-fmt-$fmt" "$CORPUS_DIR/medium" "$BIN analyse --no-config --format $fmt .")
-    local rss; rss=$(peak_rss_kb "$BIN" analyse --no-config --format "$fmt" "$CORPUS_DIR/medium")
+    local raw; raw=$(hyperfine_run "sweep-fmt-$fmt" "$CORPUS_DIR/medium" --no-config --format "$fmt" .)
+    # Run from inside the corpus just like the hyperfine cell. Passing the
+    # hidden .perf-corpus path from the repository root is ignored by Gruff and
+    # measures an empty-analysis diagnostic instead of the intended workload.
+    local rss; rss=$(cd "$CORPUS_DIR/medium" && peak_rss_kb "$BIN" analyse --no-config --format "$fmt" .)
     python3 - "$fmt" "$raw" "$rss" "$sweep_out" "$sweep_stash" <<'PY'
 import json, sys, os
 fmt, raw, rss, out, stash = sys.argv[1:6]
@@ -376,7 +412,7 @@ PY
 
   # Project config applied to the medium corpus, so this is a same-input comparison
   # against --no-config below. We point --config at the repo's .gruff-go.yaml.
-  local raw; raw=$(hyperfine_run "sweep-ruleset-config" "$CORPUS_DIR/medium" "$BIN analyse --config $REPO_ROOT/.gruff-go.yaml --format summary-json .")
+  local raw; raw=$(hyperfine_run "sweep-ruleset-config" "$CORPUS_DIR/medium" --config "$REPO_ROOT/.gruff-go.yaml" --format summary-json .)
   python3 - "config-default" "$raw" "$sweep_stash" <<'PY'
 import json, sys
 name, raw, stash = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -390,7 +426,7 @@ with open(stash, "a") as fh:
 PY
 
   # All default-enabled rules (no config).
-  raw=$(hyperfine_run "sweep-ruleset-noconfig" "$CORPUS_DIR/medium" "$BIN analyse --no-config --format summary-json .")
+  raw=$(hyperfine_run "sweep-ruleset-noconfig" "$CORPUS_DIR/medium" --no-config --format summary-json .)
   python3 - "no-config" "$raw" "$sweep_stash" <<'PY'
 import json, sys
 name, raw, stash = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -410,7 +446,7 @@ PY
     local rule_config
     rule_config=$(mktemp "$RESULTS_DIR/rule-${rid}.XXXXXX.yaml")
     write_single_rule_config "$rule_config" "$rid"
-    raw=$(hyperfine_run "sweep-rule-$rid" "$CORPUS_DIR/medium" "$BIN analyse --config $rule_config --format summary-json .")
+    raw=$(hyperfine_run "sweep-rule-$rid" "$CORPUS_DIR/medium" --config "$rule_config" --format summary-json .)
     rm -f "$rule_config"
     python3 - "$rid" "$raw" "$sweep_stash" <<'PY'
 import json, sys
@@ -438,13 +474,17 @@ PY
       printf '%-20s  %12s  %12s\n' "$case_name" "SKIPPED" "no timeout"
       continue
     fi
-    if ! raw=$("$timeout_cmd" "$SWEEP_CELL_TIMEOUT" bash -c "
-      '$HYPERFINE' -i --warmup 1 --min-runs 3 \
-        --export-json '$RESULTS_DIR/raw-sweep-patho-$case_name.json' \
-        --command-name 'patho-$case_name' \
-        -- \"cd '$case_dir' && '$BIN' analyse --no-config --format summary-json .\" >/dev/null
-      echo '$RESULTS_DIR/raw-sweep-patho-$case_name.json'
-    "); then
+    local command status
+    raw="$RESULTS_DIR/raw-sweep-patho-$case_name.json"
+    printf -v command 'cd %q && %q analyse --no-config --fail-on none --format summary-json .' "$case_dir" "$BIN"
+    if "$timeout_cmd" "$SWEEP_CELL_TIMEOUT" "$HYPERFINE" --shell bash --warmup 1 --min-runs 3 \
+        --export-json "$raw" --command-name "patho-$case_name" -- "$command" >/dev/null; then
+      :
+    else
+      status=$?
+      if [[ $status -ne 124 ]]; then
+        fail "pathological benchmark $case_name failed with exit $status"
+      fi
       printf '%-20s  %12s  %12s\n' "$case_name" "TIMEOUT" "-"
       continue
     fi
@@ -502,6 +542,7 @@ PY
   ok "sweep OK -> $sweep_out"
 }
 
+# Prepare adverse input shapes so a sweep can expose slow paths ordinary corpora miss.
 ensure_pathological() {
   local root="$1"
   if [[ -d "$root" && -f "$root/.stamp-${CORPUS_SEED}" ]]; then
@@ -556,14 +597,123 @@ PY
 }
 
 # ---------- regression gate ----------
+# Save timings and host details when the developer requests --baseline-update.
 write_baseline_from_results() {
   # Reads the latest matrix raw json files + sweep stash and emits baseline.
-  python3 - "$RESULTS_DIR" "$BASELINE_FILE" <<'PY'
-import glob, json, os, sys, datetime
-results_dir, out = sys.argv[1:]
-data = {"schemaVersion": "gruff-perf.v1",
-        "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "corpora": {}, "rules": {}}
+  python3 - \
+    "$RESULTS_DIR" \
+    "$BASELINE_FILE" \
+    "$REPO_ROOT" \
+    "$BIN" \
+    "$SCRIPT_DIR/test-performance.sh" \
+    "$HYPERFINE" \
+    "$CORPUS_SEED" \
+    "$HYPERFINE_WARMUP" \
+    "$HYPERFINE_MIN_RUNS" \
+    "$PLATFORM_SLUG" <<'PY'
+import datetime
+import glob
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+(
+    results_dir,
+    out,
+    repo_root,
+    binary,
+    harness,
+    hyperfine,
+    corpus_seed,
+    warmup,
+    min_runs,
+    platform_slug,
+) = sys.argv[1:]
+
+
+def sha256_bytes(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def sha256_file(path):
+    return sha256_bytes(pathlib.Path(path).read_bytes())
+
+
+def command(*argv):
+    return subprocess.run(
+        argv,
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def runtime_source_identity():
+    included = ["cmd/gruff-go", "internal", "go.mod"]
+    files = set()
+
+    def visit(path):
+        path = pathlib.Path(path)
+        if path.is_symlink() or path.is_file():
+            files.add(path)
+            return
+        for child in path.iterdir():
+            visit(child)
+
+    for relative in included:
+        visit(pathlib.Path(repo_root, relative))
+
+    manifest = []
+    for path in sorted(files):
+        digest = sha256_bytes(os.readlink(path).encode()) if path.is_symlink() else sha256_file(path)
+        manifest.append({"path": path.relative_to(repo_root).as_posix(), "sha256": digest})
+    canonical = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    return {
+        "includedPaths": included,
+        "fileCount": len(manifest),
+        "digest": sha256_bytes(canonical.encode()),
+    }
+
+
+cpu = "unknown"
+try:
+    for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
+        if line.startswith("model name"):
+            cpu = line.split(":", 1)[1].strip()
+            break
+except OSError:
+    pass
+
+data = {
+    "schemaVersion": "gruff-perf.v1",
+    "createdAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "host": {
+        "platform": platform_slug,
+        "uname": command("uname", "-srm"),
+        "cpu": cpu,
+        "go": command("go", "version"),
+    },
+    "source": {
+        "gitCommit": command("git", "rev-parse", "HEAD"),
+        "gitDirty": bool(command("git", "status", "--porcelain=v1")),
+        "runtimeSource": runtime_source_identity(),
+        "artifact": {"kind": "fresh-binary", "sha256": sha256_file(binary)},
+        "harnessSha256": sha256_file(harness),
+        "toolVersion": command(binary, "--version"),
+    },
+    "runner": {
+        "hyperfineVersion": command(hyperfine, "--version"),
+        "corpusSeed": int(corpus_seed),
+        "warmup": int(warmup),
+        "minRuns": int(min_runs),
+    },
+    "corpora": {},
+    "rules": {},
+}
 
 for path in sorted(glob.glob(os.path.join(results_dir, "raw-matrix-*.json"))):
     name = os.path.basename(path).replace("raw-matrix-", "").replace(".json", "")
@@ -585,6 +735,7 @@ print(f"wrote baseline -> {out}", file=sys.stderr)
 PY
 }
 
+# Fail when a timed corpus or rule exceeds the selected regression tolerance.
 compare_to_baseline() {
   if [[ ! -f "$BASELINE_FILE" ]]; then
     fail "no baseline at $BASELINE_FILE; run --baseline-update first"
@@ -595,26 +746,17 @@ results_dir, baseline_path, corpus_tol, rule_tol = sys.argv[1:]
 corpus_tol = float(corpus_tol); rule_tol = float(rule_tol)
 base = json.load(open(baseline_path))
 
-def latest_median(pattern):
-    paths = sorted(glob.glob(pattern))
-    if not paths: return {}
+def medians(prefix):
     out = {}
-    for p in paths:
-        name = os.path.basename(p)
-        try:
-            d = json.load(open(p))
-            times = sorted(d["results"][0]["times"])
-            out[name] = times[len(times)//2] * 1000
-        except Exception:
-            continue
+    for path in sorted(glob.glob(os.path.join(results_dir, f"{prefix}*.json"))):
+        name = os.path.basename(path)[len(prefix):-len(".json")]
+        with open(path) as raw:
+            times = sorted(json.load(raw)["results"][0]["times"])
+        out[name] = times[len(times) // 2] * 1000
     return out
 
-cur_corpora = {os.path.basename(p).replace("raw-matrix-","").replace(".json",""):
-               sorted(json.load(open(p))["results"][0]["times"])[len(json.load(open(p))["results"][0]["times"])//2]*1000
-               for p in sorted(glob.glob(os.path.join(results_dir, "raw-matrix-*.json")))}
-cur_rules = {os.path.basename(p).replace("raw-sweep-rule-","").replace(".json",""):
-             sorted(json.load(open(p))["results"][0]["times"])[len(json.load(open(p))["results"][0]["times"])//2]*1000
-             for p in sorted(glob.glob(os.path.join(results_dir, "raw-sweep-rule-*.json")))}
+cur_corpora = medians("raw-matrix-")
+cur_rules = medians("raw-sweep-rule-")
 
 print(f"\n{'corpus':<14} {'baseline_ms':>12} {'current_ms':>12} {'delta_%':>10}")
 print("-"*52)
@@ -623,6 +765,7 @@ for name, b in sorted(base.get("corpora", {}).items()):
     cur = cur_corpora.get(name)
     if cur is None:
         print(f"{name:<14} {b['median_ms']:>12.1f} {'-':>12} {'missing':>10}")
+        status = 1
         continue
     delta = (cur - b['median_ms']) / b['median_ms'] * 100
     flag = " ***" if delta > corpus_tol else ""
@@ -633,7 +776,10 @@ print(f"\n{'rule':<32} {'baseline_ms':>12} {'current_ms':>12} {'delta_%':>10}")
 print("-"*68)
 for name, b in sorted(base.get("rules", {}).items()):
     cur = cur_rules.get(name)
-    if cur is None: continue
+    if cur is None:
+        print(f"{name:<32} {b['median_ms']:>12.1f} {'-':>12} {'missing':>10}")
+        status = 1
+        continue
     delta = (cur - b['median_ms']) / b['median_ms'] * 100
     flag = " ***" if delta > rule_tol else ""
     if delta > rule_tol: status = 1
@@ -641,6 +787,50 @@ for name, b in sorted(base.get("rules", {}).items()):
         print(f"{name:<32} {b['median_ms']:>12.1f} {cur:>12.1f} {delta:>+9.1f}%{flag}")
 
 sys.exit(status)
+PY
+}
+
+# Compare revisions on the same host and with the same runner settings.
+# The source digests can differ because the comparison is a regression check.
+check_baseline_provenance() {
+  python3 - "$BASELINE_FILE" "$PLATFORM_SLUG" "$HYPERFINE" "$CORPUS_SEED" "$HYPERFINE_WARMUP" "$HYPERFINE_MIN_RUNS" "$REPO_ROOT" <<'PY'
+import json
+import pathlib
+import subprocess
+import sys
+
+path, platform, hyperfine, seed, warmup, runs, repo_root = sys.argv[1:]
+try:
+    baseline = json.loads(pathlib.Path(path).read_text())
+    cpu = "unknown"
+    cpuinfo = pathlib.Path("/proc/cpuinfo")
+    if cpuinfo.is_file():
+        for line in cpuinfo.read_text().splitlines():
+            if line.startswith("model name"):
+                cpu = line.split(":", 1)[1].strip()
+                break
+    host = {
+        "platform": platform,
+        "uname": subprocess.check_output(["uname", "-srm"], text=True).strip(),
+        "cpu": cpu,
+        "go": subprocess.check_output(["go", "version"], cwd=repo_root, text=True).strip(),
+    }
+    runner = {
+        "hyperfineVersion": subprocess.check_output([hyperfine, "--version"], text=True).strip(),
+        "corpusSeed": int(seed),
+        "warmup": int(warmup),
+        "minRuns": int(runs),
+    }
+    if baseline["schemaVersion"] != "gruff-perf.v1":
+        raise ValueError("unsupported baseline schema")
+    if baseline["source"]["gitDirty"] is not False:
+        raise ValueError("baseline was recorded from a dirty source tree")
+    if baseline["host"] != host or baseline["runner"] != runner:
+        raise ValueError("baseline host or runner settings differ")
+    if not baseline["corpora"] or not baseline["rules"]:
+        raise ValueError("baseline has no complete timing data")
+except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:
+    sys.exit(f"{path}: {error}. Run --baseline-update from a clean checkout on this host.")
 PY
 }
 
@@ -673,6 +863,12 @@ if [[ $mode_matrix -eq 1 || $mode_sweep -eq 1 || $mode_compare -eq 1 ]]; then
   need_hf="needs_hyperfine"
 fi
 preflight "$need_hf"
+if [[ $mode_baseline_update -eq 1 && -n "$(git -C "$REPO_ROOT" status --porcelain=v1)" ]]; then
+  fail "baseline update requires a clean checkout so its source can be reproduced"
+fi
+if [[ $mode_compare -eq 1 && $mode_baseline_update -eq 0 ]]; then
+  check_baseline_provenance
+fi
 [[ $mode_smoke -eq 1 ]]   && run_smoke
 [[ $mode_matrix -eq 1 ]]  && run_matrix
 [[ $mode_sweep -eq 1 ]]   && run_sweep

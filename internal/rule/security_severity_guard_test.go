@@ -1,4 +1,5 @@
 // Package rule guards the security severity distribution that published CI guidance depends on.
+//
 // docs/ci-integration.md tells readers an error-only gate ignores every built-in security.* finding.
 // That is a claim about this registry, so it is asserted here rather than left to go stale silently.
 package rule
@@ -11,17 +12,15 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// securityRuleIDPrefix scopes the guard to the application-security family.
-// sensitive-data.* is deliberately excluded: it ships error-tier rules by design and is not the
-// subject of the published gate claim.
+// securityRuleIDPrefix scopes the guard to the application-security family of rule IDs.
+//
+// sensitive-data.* is deliberately outside this prefix: it is not the subject of the published gate claim.
 const securityRuleIDPrefix = "security."
 
-// TestDefaultSecurityRulesStayBelowError pins the registry claim published in docs/ci-integration.md.
-// It asserts the invariant rather than a rule count, so adding an advisory security rule stays green.
+// TestDefaultSecurityRulesStayBelowError pins the docs/ci-integration.md claim that no default-enabled security.* rule is at error severity.
 //
-// Read the built-in definitions via Defaults(). An effective registry built from .gruff-go.yaml
-// reports this project's own override of security.shell-command to error, which would make the test
-// contradict the documentation it exists to protect.
+// It asserts the invariant rather than a rule count, so adding an advisory security rule stays green.
+// It reads Defaults(), not the effective registry, because this project's .gruff-go.yaml raises security.shell-command to error.
 func TestDefaultSecurityRulesStayBelowError(t *testing.T) {
 	severityCounts := map[finding.Severity]int{}
 	errorTierRuleIDs := []string{}
@@ -29,6 +28,7 @@ func TestDefaultSecurityRulesStayBelowError(t *testing.T) {
 	// Definitions is a pointer method, so the registry needs a name before it can be queried.
 	defaultRegistry := Defaults()
 	for _, definition := range defaultRegistry.Definitions() {
+		// Default-off rules never run on a default scan, so they cannot break the published gate claim.
 		if !definition.DefaultEnabled || !strings.HasPrefix(definition.ID, securityRuleIDPrefix) {
 			continue
 		}
@@ -38,6 +38,7 @@ func TestDefaultSecurityRulesStayBelowError(t *testing.T) {
 		}
 	}
 
+	// Reached when no default-enabled rule carries the security. prefix, so the guard fails instead of passing without checking any rule.
 	if len(severityCounts) == 0 {
 		t.Fatalf("no default-enabled %s* rules found; the guard is not measuring anything", securityRuleIDPrefix)
 	}

@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
+//
 // This file implements parser-only unsafe-deserialization and XXE checks.
+// Both rules are on by default, skip files outside production code, and report advisory findings worded as possible issues.
 package rule
 
 import (
@@ -10,12 +12,14 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// UnsafeDeserializationRule flags decoding of request-controlled input through
-// formats that execute or over-trust their payload (encoding/gob, gopkg.in/yaml).
+// UnsafeDeserializationRule flags request-controlled input fed to encoding/gob or gopkg.in/yaml, formats that over-trust their payload.
+//
+// It backs security.unsafe-deserialization and fires on the decoder constructor or yaml.Unmarshal call, so no later Decode call is needed.
+// Only files importing net/http are checked, and only in the function bodies forEachRequestFunc visits.
 type UnsafeDeserializationRule struct{}
 
-// Definition declares the security.unsafe-deserialization rule for bounded
-// same-function evidence of untrusted decoding.
+// Definition declares the security.unsafe-deserialization rule for bounded same-function evidence of untrusted decoding.
+// It returns a Definition enabled by default at advisory severity and medium confidence, tagged deserialization and security.
 func (UnsafeDeserializationRule) Definition() Definition {
 	return Definition{
 		ID:             "security.unsafe-deserialization",
@@ -31,11 +35,18 @@ func (UnsafeDeserializationRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for decoders that consume request-controlled input.
+//
+// It returns nil when unit lacks an AST or file set, is outside production code, or does not import both net/http and gob or yaml.
+// Otherwise the result holds one finding per gob.NewDecoder, yaml.NewDecoder or yaml.Unmarshal call whose first argument has request evidence.
+// No later Decode call is needed, and the result is empty when nothing matches.
+//
+// Calls are searched in each body forEachRequestFunc visits, skipping nested function literals.
 func (UnsafeDeserializationRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
 	}
 	httpPackages := packageImportNames(unit.AST, "net/http", "http")
+	// Without a net/http import in this file the rule cannot recognise request parameters, so it skips the file even if a request reaches it.
 	if len(httpPackages) == 0 {
 		return nil
 	}
@@ -62,6 +73,7 @@ func (UnsafeDeserializationRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 				return true
 			}
 			source, ok := scope.exprHasRequest(call.Args[sourceIndex], call.Pos())
+			// Decoding input with no request evidence, such as a file the handler opens itself, lands here and is not flagged.
 			if !ok {
 				return true
 			}
@@ -78,8 +90,9 @@ func (UnsafeDeserializationRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 	return findings
 }
 
-// unsafeDecodeSource reports the decoded format and the argument index of the
-// untrusted source for gob/yaml decoder constructors and yaml.Unmarshal.
+// unsafeDecodeSource reports the format and untrusted-argument index for a gob or yaml decoder constructor or yaml.Unmarshal call.
+//
+// call matches NewDecoder from gobPackages or NewDecoder and Unmarshal from yamlPackages; the index is always 0, and other calls give false.
 func unsafeDecodeSource(call *ast.CallExpr, gobPackages, yamlPackages map[string]bool) (string, int, bool) {
 	if selectorCallMatches(call, gobPackages, "NewDecoder") {
 		return "gob", 0, true
@@ -93,13 +106,14 @@ func unsafeDecodeSource(call *ast.CallExpr, gobPackages, yamlPackages map[string
 	return "", 0, false
 }
 
-// XXECandidateRule flags XML decoders configured to resolve custom entities.
-// The Go standard library encoding/xml does not expand external entities, so the
-// rule fires only on the explicit entity-resolving configuration.
+// XXECandidateRule flags an explicit Entity field in an xml.Decoder literal, or an Entity assignment on a variable set from xml.NewDecoder.
+//
+// The Go standard library encoding/xml does not expand external entities, so a plain decoder is never flagged.
+// The assigned map is never inspected, so Entity: nil or an empty map is reported too, and no decoding call is required.
 type XXECandidateRule struct{}
 
-// Definition declares the security.xxe-candidate rule for explicit entity-resolving
-// XML decoder configuration.
+// Definition declares security.xxe-candidate for an explicit Entity field or assignment on an XML decoder, including nil and empty maps.
+// It returns a Definition enabled by default at advisory severity and medium confidence, tagged security, xml and xxe.
 func (XXECandidateRule) Definition() Definition {
 	return Definition{
 		ID:             "security.xxe-candidate",
@@ -115,6 +129,13 @@ func (XXECandidateRule) Definition() Definition {
 }
 
 // AnalyzeUnit emits findings for xml.Decoder entity-map configuration.
+//
+// It returns nil when unit lacks an AST or file set, is outside production code, or does not import encoding/xml.
+// Otherwise the result holds a finding per xml.Decoder composite literal setting Entity anywhere in the file and per matching Entity assignment.
+//
+// An assignment matches when its receiver name was given an xml.NewDecoder result in its own or an enclosing body under a function declaration.
+// Shadowing is not resolved and the assigned value is never inspected, so dec.Entity = nil on such a name is reported too.
+// The result is empty when neither kind of evidence is found.
 func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
@@ -141,13 +162,10 @@ func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 		}
 		return true
 	})
-	// `dec.Entity = ...` evidence is scoped lexically. Collecting decoder vars
-	// file-wide would let an unrelated `dec` of a different type in another function
-	// produce a cross-scope false XXE finding, and descending into nested closures
-	// during collection would let a closure's decoder taint a same-named outer
-	// variable. Each function body is therefore its own scope, while enclosing
-	// decoder bindings stay visible to nested closures so a closure that configures
-	// an outer decoder is still flagged.
+	// Entity assignments are matched per function body, so a dec of another type in another function never counts as a decoder.
+	//
+	// A closure's own decoders never mark same-named outer variables, while outer decoder names stay visible inside nested closures
+	// so a closure that configures an outer decoder is still flagged, and so is a closure-local variable that reuses a decoder's name.
 	var walk func(body *ast.BlockStmt, enclosing map[string]bool)
 	walk = func(body *ast.BlockStmt, enclosing map[string]bool) {
 		visible := map[string]bool{}
@@ -176,6 +194,7 @@ func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 			walk(lit.Body, visible)
 		}
 	}
+	// Only func declarations are walked, so an Entity assignment inside a package-level var func literal is not reported.
 	for _, decl := range unit.AST.Decls {
 		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil {
 			walk(fn.Body, nil)
@@ -184,9 +203,10 @@ func (XXECandidateRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
-// directFuncLits returns the function literals nested directly in body, stopping
-// at each one rather than descending: walk recurses into each returned literal in
-// turn, so a deeper closure is reached as the direct child of its own parent.
+// directFuncLits returns the function literals nested directly in body, in source order, and nil when body holds none.
+//
+// It stops at each literal rather than descending: walk recurses into each returned literal in turn,
+// so a deeper closure is reached as the direct child of its own parent.
 func directFuncLits(body *ast.BlockStmt) []*ast.FuncLit {
 	var lits []*ast.FuncLit
 	ast.Inspect(body, func(node ast.Node) bool {
@@ -199,11 +219,12 @@ func directFuncLits(body *ast.BlockStmt) []*ast.FuncLit {
 	return lits
 }
 
-// collectXMLDecoderVars records locals bound to xml.NewDecoder results within the
-// given scope (one function body), without descending into nested closures whose
-// decoders belong to their own scope. Scoping this way keeps a same-named variable
-// in another function - or in a nested closure - from being treated as the same
-// decoder.
+// collectXMLDecoderVars records names assigned or declared from xml.NewDecoder results within scope, one function body.
+//
+// A same-named variable in another function is never collected, and nested closures are skipped as their own scope.
+// Skipping closures keeps their decoder names from marking same-named outer variables; it does not resolve shadowing.
+//
+// xmlPackages holds the names encoding/xml is imported under, and the result maps each matched variable name to true, empty when none is found.
 func collectXMLDecoderVars(scope ast.Node, xmlPackages map[string]bool) map[string]bool {
 	vars := map[string]bool{}
 	ast.Inspect(scope, func(node ast.Node) bool {
@@ -214,6 +235,7 @@ func collectXMLDecoderVars(scope ast.Node, xmlPackages map[string]bool) map[stri
 		case *ast.AssignStmt:
 			for i, lhs := range stmt.Lhs {
 				name, ok := lhs.(*ast.Ident)
+				// A struct field target such as s.dec = xml.NewDecoder(r) is not tracked, so a later s.dec.Entity assignment is not reported.
 				if !ok || name.Name == "_" || i >= len(stmt.Rhs) {
 					continue
 				}
@@ -236,8 +258,10 @@ func collectXMLDecoderVars(scope ast.Node, xmlPackages map[string]bool) map[stri
 	return vars
 }
 
-// isDecoderEntityTarget reports whether lhs assigns the Entity field of a known
-// xml.Decoder variable.
+// isDecoderEntityTarget reports whether lhs assigns the Entity field of a known xml.Decoder variable.
+//
+// decoderVars holds the visible decoder variable names, and only a selector of the form name.Entity with name in decoderVars gives true.
+// The match is by name alone, so a local that shadows a decoder's name also gives true.
 func isDecoderEntityTarget(lhs ast.Expr, decoderVars map[string]bool) bool {
 	selector, ok := lhs.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Entity" {
@@ -247,8 +271,10 @@ func isDecoderEntityTarget(lhs ast.Expr, decoderVars map[string]bool) bool {
 	return ok && decoderVars[receiver.Name]
 }
 
-// isXMLDecoderLiteralWithEntity reports whether literal constructs an xml.Decoder
-// with an Entity field set in the composite literal.
+// isXMLDecoderLiteralWithEntity reports whether literal constructs an xml.Decoder with an Entity field set in the composite literal.
+//
+// xmlPackages holds the names encoding/xml is imported under, and the literal type must select Decoder from one of them.
+// The Entity value is never inspected, so Entity: nil or an empty map also gives true.
 func isXMLDecoderLiteralWithEntity(literal *ast.CompositeLit, xmlPackages map[string]bool) bool {
 	selector, ok := literal.Type.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Decoder" {

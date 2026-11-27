@@ -1,4 +1,7 @@
-// Package rule tests the generic secret-pattern rule on non-Go config files.
+// Package rule defines gruff-go's rule registry and analysers.
+//
+// This file tests how the secret-pattern check in SensitiveDataRule treats non-Go config files such as config.example.toml.
+// A failure means users scanning example configs would see credential findings for comments or placeholders, or lose a real one.
 package rule
 
 import (
@@ -8,12 +11,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders covers the config-file
-// false positives surfaced by corpus calibration: commented-out example
-// assignments and your-/CHANGEME-style placeholder values must not flag, while a
-// real uncommented credential in the same file still does. Real-token cases use
-// secretPatternFixtureValue() so the dogfood scan never reads this file as
-// carrying a credential.
+// TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders protects example configs from false credential findings.
+//
+// Commented-out assignments, even a ; comment with a real-looking token, and your-, changeme- or replace-me- placeholders must not flag.
+// A real uncommented credential still gives one finding; secretPatternFixtureValue() keeps the dogfood scan from flagging this file.
 func TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders(t *testing.T) {
 	skip := []struct{ name, line string }{
 		{"toml comment placeholder", `# api_key = "your-minimax-api-key"`},
@@ -45,10 +46,10 @@ func TestSensitiveDataRuleSkipsConfigCommentsAndPlaceholders(t *testing.T) {
 	}
 }
 
-// TestSensitiveDataRuleFlagsSecretContainingPlaceholderSubstring ensures the
-// placeholder skip is prefix-anchored: a real secret that merely contains a
-// placeholder word mid-value (not as a prefix) still flags. The value is built
-// across literals so the dogfood scan never reads this file as a credential.
+// TestSensitiveDataRuleFlagsSecretContainingPlaceholderSubstring ensures the placeholder skip is prefix-anchored.
+//
+// A real secret that merely contains a placeholder word such as dummy mid-value still gives one finding.
+// The value is built across literals so the dogfood scan never reads this file as a credential.
 func TestSensitiveDataRuleFlagsSecretContainingPlaceholderSubstring(t *testing.T) {
 	value := "aB3xK9" + "dummy" + "Qz7Mn4Pl2Vr8Wt6Yh"
 	unit := parser.Unit{

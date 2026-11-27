@@ -1,6 +1,6 @@
 ---
 category: rules
-last_reviewed: 2026-08-05
+last_reviewed: 2026-11-25
 ---
 
 # Rule-Authoring Patterns
@@ -11,7 +11,7 @@ last_reviewed: 2026-08-05
 
 **Evidence:** OBSERVED
 
-**Context:** While adding `docs.suppression-without-rationale`, the first line-scan implementation treated `//nolint` and `#nosec` text inside raw string fixtures and explanatory doc comments as live suppressions. Dogfood fell from grade A to B with false positives in `internal/rule/docs_suppression_test.go` (search: `//nolint:gosec`), `internal/rule/function_length_tables.go` (search: `function-length suppression entry`), and `internal/rule/sensitive.go` (search: `hasSecretSuppressionAnnotation`).
+**Context:** While adding `docs.suppression-without-rationale`, the first line-scan implementation treated `//nolint` and `#nosec` text inside raw string fixtures and explanatory doc comments as live suppressions. Dogfood fell from grade A to B with false positives in `internal/rule/docs_suppression_test.go` (search: `//nolint:gosec`), `internal/rule/function_length_tables.go`, and `internal/rule/sensitive.go` (search: `suppression comment such as`).
 
 **Approach:** For Go files, inspect `unit.AST.Comments` and require the trimmed comment text to start with the suppression directive. Use source line scanning only for non-Go text units. This keeps real same-line code suppressions visible while ignoring raw string fixtures and prose that merely documents suppression syntax. The fixed implementation lives in `internal/rule/docs_suppression.go` (search: `suppressionFindingsFromGoComments`).
 
@@ -61,7 +61,7 @@ last_reviewed: 2026-08-05
 
 **Evidence:** OBSERVED
 
-**Context:** `test-quality.skipped-test` used case-insensitive substring search over literal `t.Skip` arguments. Conditional integration skips that merely explained `TODO` handling were reported as debt, including quoted, backticked, plural, and hyphenated-name prose. The regression matrix in `internal/rule/skipped_test_marker_test.go` reproduced six quiet shapes while keeping conventional leading markers actionable.
+**Context:** `test-quality.skipped-test` (later retired under ADR-021 M02) used case-insensitive substring search over literal `t.Skip` arguments. Conditional integration skips that merely explained `TODO` handling were reported as debt, including quoted, backticked, plural, and hyphenated-name prose. Its dedicated skipped-test marker regression matrix reproduced six quiet shapes while keeping conventional leading markers actionable.
 
 **Approach:** Unquote AST string literals, split their displayed value into physical lines, and require the marker to introduce a line after optional whitespace or a list bullet. Accept only conventional delimiters: end of line, `:`, `(`, whitespace, or a hyphen followed by whitespace/end. Pair every quiet prose shape with real colon, owner, dash, space, bare, lowercase, bullet, multiline, and Go-style `TODO(username):` cases. Run the existing calibration fixture afterward; if it goes quiet, replace its evidence with a genuinely leading marker rather than weakening the check.
 
@@ -74,3 +74,15 @@ last_reviewed: 2026-08-05
 **Context:** A gruff-ts false-positive pass named process execution, loop-in-test labelling, and nested signature parsing as family defect classes. In gruff-go, `security.shell-command` owns only explicit interpreter execution, `test-quality.parallel-range-capture` owns a separate Go-version capture hazard, and documentation rules inspect `go/ast` declarations rather than `@param` text. Runtime probes in `/tmp/gruff-go-cross-port-repros-f253192aeec9/` plus the registry showed that literal rule-name matching would have invented new Go policy for two non-applicable classes.
 
 **Approach:** Before adapting a sibling fix, map the language primitive, live registry ID, detector input, and user-facing remediation. Run the translated positive and quiet shapes at HEAD, then classify the class as reproduces, already-fixed, or not-applicable. Pin already-correct behavior at the nearest native AST boundary; for not-applicable classes, record complete registry/source-search evidence instead of adding a lookalike rule.
+
+## Pattern: Normalize pluralized Go acronyms before camelCase tokenization
+
+**Created:** 2026-11-25
+
+**Evidence:** ACTUAL_MEASURED
+
+**Context:** `internal/rule/naming_acronym.go` (search: `func splitIdentifierTokens`) splits uppercase runs before the last capital followed by a lowercase letter so `HTTPServer` yields `["HTTP", "Server"]`. That rule mis-splits pluralized acronyms such as `articleIDs` (`["article", "i", "ds"]`) and `articleIDsList` (`["article", "i", "ds", "list"]`), causing false positives in `docs.missing-param-doc` when prose says `"article IDs"`. Trimming a trailing `'s'` only at the end of the identifier fixes `articleIDs` but still breaks `articleIDsList` and `IDs_map`.
+
+**Approach:** Normalize pluralized acronyms before calling `identifierTokens`: drop a lowercase `'s'` immediately following two or more uppercase letters only when it ends the identifier or precedes a non-lowercase rune (`internal/rule/callable_docs.go`, search: `func normalizePluralAcronyms`). That keeps acronyms intact before suffixes or underscores (`articleIDsList` → `articleIDList` → `["article", "id"]` after suffix stripping) while preserving mixed-case words such as `DNSsec` and `XMLschema`, and lets simple singular/plural lookup match both `"id"` and `"ids"`.
+
+**Verification:** `internal/rule/callable_docs_test.go` (search: `TestMissingParamDocRuleMatchesMeaningfulTokensAndSuffixes`) pins both `articleIDs` and `articleIDsList` alongside negative controls (`clientID`, `val`, `queries`).

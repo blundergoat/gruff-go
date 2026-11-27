@@ -1,5 +1,6 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file holds tests for the markdown reporter.
+//
+// This file holds tests for the markdown reporter: the summary lines, the canonical Pillars table, the optional Top rules table and pipe escaping.
 package report
 
 import (
@@ -11,9 +12,9 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestWriteMarkdownRendersCoreSections checks the markdown renderer emits the
-// expected sections: title, severity counts, Pillars table, and top rules when
-// findings exist.
+// TestWriteMarkdownRendersCoreSections checks the markdown renderer emits its core sections when findings exist.
+//
+// It expects the title, composite and schema lines, severity counts, and the Pillars and Top rules tables for the five fixture findings.
 func TestWriteMarkdownRendersCoreSections(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -25,7 +26,7 @@ func TestWriteMarkdownRendersCoreSections(t *testing.T) {
 	required := []string{
 		"# gruff-go report",
 		"Composite: **",
-		"**Schema:** `gruff.analysis.v2`",
+		"**Schema:** `gruff.analysis.v3`",
 		"**Files:** 3 scanned, 0 skipped",
 		"Findings: 5 total · 2 error · 2 warning · 1 advisory",
 		"\n## Pillars\n",
@@ -43,9 +44,8 @@ func TestWriteMarkdownRendersCoreSections(t *testing.T) {
 	}
 }
 
-// TestWriteMarkdownPillarsTableShape locks down the canonical 7-column Pillars
-// table: header row, separator row, all ten canonical pillars rendered with
-// two-decimal scores and the canonical sort (findings DESC, then pillar ASC).
+// TestWriteMarkdownPillarsTableShape checks the canonical pillar row names, a two-decimal score marker and the fixture's row order.
+// Every canonical pillar needs a row and 100.00 must appear; only the relative order of complexity, naming and size is asserted.
 func TestWriteMarkdownPillarsTableShape(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -68,9 +68,10 @@ func TestWriteMarkdownPillarsTableShape(t *testing.T) {
 	if !strings.Contains(body, "100.00") {
 		t.Errorf("pillar score should render with 2 decimals; body missing 100.00:\n%s", body)
 	}
-	// Sort order: findings DESC, pillar ASC. The fixture has complexity (3),
-	// naming (1), size (1); the remaining seven canonical pillars are clean.
-	// complexity comes first; naming precedes size by ASC tie-break.
+	// Sort order is findings DESC, then pillar ASC.
+	//
+	// The fixture has complexity (3), naming (1) and size (1); the remaining seven canonical pillars are clean.
+	// complexity comes first, and naming precedes size on the ASC tie-break.
 	indexComplexity := strings.Index(body, "| complexity |")
 	indexNaming := strings.Index(body, "| naming |")
 	indexSize := strings.Index(body, "| size |")
@@ -82,9 +83,9 @@ func TestWriteMarkdownPillarsTableShape(t *testing.T) {
 	}
 }
 
-// TestWriteMarkdownCleanScan asserts a zero-finding scan still emits every
-// canonical pillar row at grade A and score 100.00, and skips the optional
-// top-rules section entirely.
+// TestWriteMarkdownCleanScan asserts a zero-finding scan still emits every canonical pillar row at grade A and score 100.00.
+//
+// It also expects all-zero severity totals and no Top rules section.
 func TestWriteMarkdownCleanScan(t *testing.T) {
 	report := analysis.NewReport(analysis.ReportInput{
 		Root:        "/repo",
@@ -117,8 +118,7 @@ func TestWriteMarkdownCleanScan(t *testing.T) {
 	}
 }
 
-// TestWriteMarkdownEscapesPipeInCells confirms a finding whose rule ID
-// contains a pipe character (the table column separator) survives rendering.
+// TestWriteMarkdownEscapesPipeInCells checks that a pipe in a table cell, here a pillar name, is escaped as \| so it cannot split the row.
 func TestWriteMarkdownEscapesPipeInCells(t *testing.T) {
 	row := PillarSummaryRow{Pillar: "a|b", Grade: "F", Score: 0, Findings: 1}
 	var out bytes.Buffer
@@ -131,9 +131,9 @@ func TestWriteMarkdownEscapesPipeInCells(t *testing.T) {
 	}
 }
 
-// TestWriteMarkdownEmptyPillarsBlock keeps the section discoverable even when
-// no rows feed into it (defensive: BuildPillarSummaryRows always returns ten
-// rows in production, but the renderer must still degrade gracefully).
+// TestWriteMarkdownEmptyPillarsBlock checks the Pillars section still prints its header and a _(none)_ placeholder when given no rows.
+//
+// BuildPillarSummaryRows always returns ten rows in production, so this guards only the renderer's fallback.
 func TestWriteMarkdownEmptyPillarsBlock(t *testing.T) {
 	var out bytes.Buffer
 	if err := writeMarkdownPillarsTable(&out, nil); err != nil {

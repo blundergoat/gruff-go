@@ -1,10 +1,12 @@
 // Package rule tests the parser-only template-injection/XSS security rule.
+//
+// Each handler fixture pins the rule's own finding count from AnalyzeUnit; CLI rule selection and baseline filtering are not exercised here.
+// A safe shape that starts firing would put a false XSS finding in users' scans.
 package rule
 
 import "testing"
 
-// TestTemplateInjectionXSSRule covers unescaped HTML response shapes and the
-// auto-escaped or escaped cases that must not fire.
+// TestTemplateInjectionXSSRule covers unescaped HTML response shapes and the auto-escaped or escaped cases that must not fire.
 func TestTemplateInjectionXSSRule(t *testing.T) {
 	tests := []struct {
 		name string

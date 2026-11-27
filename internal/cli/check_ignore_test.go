@@ -1,6 +1,9 @@
-// Package cli check-ignore command tests: verdict + pattern correctness, the
-// JSON agent contract, git-style exit codes, and that the command shares the
-// analyse ignore engine rather than reimplementing matching.
+// Package cli tests check-ignore's path decisions, the config pattern it reports, and its agreement with analyse on these fixtures.
+//
+//   - The verdict and the matched pattern are correct.
+//   - The JSON output keeps the agent contract.
+//   - Exit 0 and 1 follow git check-ignore; gruff-go uses 2 for usage errors.
+//   - The command shares the analyse ignore engine rather than reimplementing matching.
 package cli
 
 import (
@@ -9,16 +12,18 @@ import (
 	"testing"
 )
 
-// writeIgnoreConfig writes a .gruff-go.yaml that ignores the ignored/ subtree,
-// the shared fixture for the check-ignore tests.
+// writeIgnoreConfig writes the shared check-ignore fixture, a .gruff-go.yaml whose paths.ignore skips the ignored/ subtree.
+//
+// The file is written into root, so callers pass the project directory they later change into.
 func writeIgnoreConfig(t *testing.T, root string) {
 	t.Helper()
 	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - \"ignored/**\"\n")
 }
 
-// TestCheckIgnoreJSONReportsVerdictAndPattern checks the JSON contract: an
-// ignored path reports source+pattern, a non-ignored path reports ignored=false
-// with no source, and exit code 0 signals "at least one ignored" like git.
+// TestCheckIgnoreJSONReportsVerdictAndPattern checks the check-ignore JSON contract that agents read.
+//
+// An ignored path reports source config and the pattern that matched; a non-ignored path reports ignored false with no source.
+// Exit 0 signals that at least one path was ignored, as with git check-ignore.
 func TestCheckIgnoreJSONReportsVerdictAndPattern(t *testing.T) {
 	root := t.TempDir()
 	writeIgnoreConfig(t, root)
@@ -46,8 +51,7 @@ func TestCheckIgnoreJSONReportsVerdictAndPattern(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreExitCodesMirrorGit checks the git check-ignore exit-code
-// contract: 1 when no path is ignored, 2 on a usage error (no paths).
+// TestCheckIgnoreExitCodesMirrorGit checks that check-ignore exits 1 when no path is ignored, as git does, and 2 when no paths are supplied.
 func TestCheckIgnoreExitCodesMirrorGit(t *testing.T) {
 	root := t.TempDir()
 	writeIgnoreConfig(t, root)
@@ -68,8 +72,7 @@ func TestCheckIgnoreExitCodesMirrorGit(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreTextListsOnlyIgnored checks the text format mirrors git
-// check-ignore: only ignored paths print, one per line.
+// TestCheckIgnoreTextListsOnlyIgnored checks the text format mirrors git check-ignore: only ignored paths print, one per line.
 func TestCheckIgnoreTextListsOnlyIgnored(t *testing.T) {
 	root := t.TempDir()
 	writeIgnoreConfig(t, root)
@@ -86,10 +89,10 @@ func TestCheckIgnoreTextListsOnlyIgnored(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreSharesEngineWithAnalyse proves check-ignore and analyse agree:
-// for the same config, every path check-ignore calls ignored is absent from the
-// analyse scanned set, and the matched pattern is identical. This guards the
-// single-source-of-truth requirement at the command boundary.
+// TestCheckIgnoreSharesEngineWithAnalyse proves check-ignore and analyse agree for the same config.
+//
+// Every path check-ignore calls ignored must be missing from the analyse scanned set, with the same config pattern in the path details.
+// Every path it calls not ignored must be scanned; a failure means the two commands match paths differently.
 func TestCheckIgnoreSharesEngineWithAnalyse(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".gruff-go.yaml", "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - \"*_stub.go\"\n")
@@ -97,38 +100,44 @@ func TestCheckIgnoreSharesEngineWithAnalyse(t *testing.T) {
 	writeFile(t, root, "main.go", "package main\n")
 	t.Chdir(root)
 
-	var ciOut bytes.Buffer
-	if code := Main([]string{"check-ignore", "--format", "json", "bad_stub.go", "main.go"}, &ciOut, &bytes.Buffer{}); code != 0 {
+	var checkIgnoreOut bytes.Buffer
+	if code := Main([]string{"check-ignore", "--format", "json", "bad_stub.go", "main.go"}, &checkIgnoreOut, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("check-ignore exit = %d", code)
 	}
 	var results []checkIgnoreResult
-	if err := json.Unmarshal(ciOut.Bytes(), &results); err != nil {
+	if err := json.Unmarshal(checkIgnoreOut.Bytes(), &results); err != nil {
 		t.Fatal(err)
 	}
 
-	var anOut bytes.Buffer
-	if code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "."}, &anOut, &bytes.Buffer{}); code != 0 {
+	var analyseOut bytes.Buffer
+	if code := Main([]string{"analyse", "--format", "json", "--fail-on", "none", "."}, &analyseOut, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("analyse exit = %d", code)
 	}
 	var report struct {
 		Paths struct {
-			Scanned []string `json:"scanned"`
-			Skipped []struct {
+			Details []struct {
 				Path    string `json:"path"`
 				Source  string `json:"source"`
 				Pattern string `json:"pattern"`
-			} `json:"skipped"`
+			} `json:"details"`
+			Extensions struct {
+				Go struct {
+					Paths struct {
+						Scanned []string `json:"scanned"`
+					} `json:"paths"`
+				} `json:"go"`
+			} `json:"extensions"`
 		} `json:"paths"`
 	}
-	if err := json.Unmarshal(anOut.Bytes(), &report); err != nil {
+	if err := json.Unmarshal(analyseOut.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
 	scanned := map[string]bool{}
-	for _, p := range report.Paths.Scanned {
+	for _, p := range report.Paths.Extensions.Go.Paths.Scanned {
 		scanned[p] = true
 	}
 	skipPattern := map[string]string{}
-	for _, s := range report.Paths.Skipped {
+	for _, s := range report.Paths.Details {
 		if s.Source == "config" {
 			skipPattern[s.Path] = s.Pattern
 		}
@@ -147,13 +156,15 @@ func TestCheckIgnoreSharesEngineWithAnalyse(t *testing.T) {
 	}
 }
 
-// TestCheckIgnoreDirectoryPatternFormsAgreeWithAnalyse proves the documented
-// trailing-slash shorthand and trailing recursive suffix agree at the CLI
-// boundary for both directory walks and explicit-file analysis.
+// TestCheckIgnoreDirectoryPatternFormsAgreeWithAnalyse proves the documented ignored/ and ignored/** pattern forms skip the same file.
+//
+// The trailing-slash shorthand and the trailing recursive suffix must agree at the CLI boundary.
+// Each form is checked through check-ignore, an explicit-file analyse run and a directory walk from the project root.
 func TestCheckIgnoreDirectoryPatternFormsAgreeWithAnalyse(t *testing.T) {
 	for _, pattern := range []string{"ignored/", "ignored/**"} {
 		t.Run(pattern, func(t *testing.T) {
 			root := t.TempDir()
+			// The decoy patterns before and after the one under test prove the reported pattern is the one that matched, not the first or last listed.
 			config := "schemaVersion: gruff-go.config.v0.1\npaths:\n  ignore:\n    - 'other/**'\n    - '" + pattern + "'\n    - 'later/*.go'\n"
 			writeFile(t, root, ".gruff-go.yaml", config)
 			writeFile(t, root, "ignored/nested/bad.go", "package ignored\n")
@@ -173,14 +184,18 @@ func TestCheckIgnoreDirectoryPatternFormsAgreeWithAnalyse(t *testing.T) {
 				t.Fatalf("check-ignore pattern %q results = %#v, want one config match naming %q", pattern, results, pattern)
 			}
 
+			// Naming only the ignored file must exit 2 and still record the skip under the file's own path.
+			// Walking the project root must exit 0 and record the skip on the ignored directory.
 			assertAnalyseConfigSkip(t, []string{"ignored/nested/bad.go"}, "ignored/nested/bad.go", pattern, 2)
 			assertAnalyseConfigSkip(t, []string{"."}, "ignored", pattern, 0)
 		})
 	}
 }
 
-// assertAnalyseConfigSkip runs an analysis shape and verifies the named path
-// is excluded by the expected verbatim config pattern.
+// assertAnalyseConfigSkip runs analyse over one input shape and checks that skippedPath was skipped by exactly the given config pattern.
+//
+// It runs analyse in JSON with --fail-on none over inputs and fails the test unless the exit code equals wantExit.
+// skippedPath must be absent from the scanned paths and must appear in the path details with source config and exactly pattern.
 func assertAnalyseConfigSkip(t *testing.T, inputs []string, skippedPath, pattern string, wantExit int) {
 	t.Helper()
 	args := append([]string{"analyse", "--format", "json", "--fail-on", "none"}, inputs...)
@@ -190,23 +205,29 @@ func assertAnalyseConfigSkip(t *testing.T, inputs []string, skippedPath, pattern
 	}
 	var report struct {
 		Paths struct {
-			Scanned []string `json:"scanned"`
-			Skipped []struct {
+			Details []struct {
 				Path    string `json:"path"`
 				Source  string `json:"source"`
 				Pattern string `json:"pattern"`
-			} `json:"skipped"`
+			} `json:"details"`
+			Extensions struct {
+				Go struct {
+					Paths struct {
+						Scanned []string `json:"scanned"`
+					} `json:"paths"`
+				} `json:"go"`
+			} `json:"extensions"`
 		} `json:"paths"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 		t.Fatalf("invalid analyse JSON: %v\n%s", err, out.String())
 	}
-	for _, scanned := range report.Paths.Scanned {
+	for _, scanned := range report.Paths.Extensions.Go.Paths.Scanned {
 		if scanned == skippedPath {
 			t.Fatalf("analyse %v scanned %q despite pattern %q", inputs, skippedPath, pattern)
 		}
 	}
-	for _, skipped := range report.Paths.Skipped {
+	for _, skipped := range report.Paths.Details {
 		if skipped.Path == skippedPath {
 			if skipped.Source != "config" || skipped.Pattern != pattern {
 				t.Fatalf("analyse %v skip = %#v, want source=config pattern=%q", inputs, skipped, pattern)
@@ -214,5 +235,6 @@ func assertAnalyseConfigSkip(t *testing.T, inputs []string, skippedPath, pattern
 			return
 		}
 	}
-	t.Fatalf("analyse %v skips = %#v, want %q from pattern %q", inputs, report.Paths.Skipped, skippedPath, pattern)
+	// Reaching here means analyse did not scan skippedPath but listed no skip for it either, or listed the skip under another path.
+	t.Fatalf("analyse %v skips = %#v, want %q from pattern %q", inputs, report.Paths.Details, skippedPath, pattern)
 }

@@ -52,6 +52,38 @@ class CalibrationInvocationTest(unittest.TestCase):
         self.assertEqual(binary, explicit)
         self.assertFalse(owned)
 
+    def test_scan_corpus_reads_v3_analysed_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory)
+            mod_root = stage / "repo"
+            mod_root.mkdir()
+            v3_payload = b'{"summary":{"analysedFiles":4},"findings":[]}'
+            completed = mock.Mock(stdout=v3_payload)
+            entries = [
+                {
+                    "name": "sample",
+                    "module": "example.com/sample",
+                    "url": "https://example.com/sample",
+                    "revision": "abc123",
+                    "reason": "regression check",
+                    "moduleRoot": mod_root,
+                }
+            ]
+            with mock.patch.object(CALIBRATION, "run", return_value=completed) as run_mock:
+                manifest, findings = CALIBRATION.scan_corpus(stage / "bin", stage, entries)
+
+            args = run_mock.call_args.args[0]
+            self.assertNotIn("--no-config", args)
+            self.assertIn("--config", args)
+            config_text = Path(args[args.index("--config") + 1]).read_text(encoding="utf-8")
+            self.assertIn("schemaVersion: gruff-go.config.v0.1", config_text)
+            for rule_id in CALIBRATION.TARGET_RULES:
+                self.assertIn(f"  {rule_id}:\n    enabled: true", config_text)
+
+        self.assertEqual(len(manifest), 1)
+        self.assertEqual(manifest[0]["files"], 4)
+        self.assertEqual(findings, [])
+
 
 if __name__ == "__main__":
     unittest.main()

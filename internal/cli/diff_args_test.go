@@ -1,5 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file exercises the bare-`--diff` argument normaliser.
+//
+// This file exercises normalizeAnalyseDiffArgs, which rewrites a bare --diff on the analyse command line.
+// A failure means a user typing analyse --diff followed by a path or ref gets a different base ref or scan path than expected.
 package cli
 
 import (
@@ -8,10 +10,11 @@ import (
 	"testing"
 )
 
-// TestNormalizeAnalyseDiffArgs covers the bare-`--diff` optional-value rewrite and
-// the filesystem fallback: a prefix-less token that names an existing file is kept
-// as a positional scan path, while an unknown token is consumed as the base ref.
+// TestNormalizeAnalyseDiffArgs covers the bare --diff optional-value rewrite and the filesystem fallback.
+//
+// A prefix-less token that names an existing file stays a positional scan path, while an unknown token is consumed as the base ref.
 func TestNormalizeAnalyseDiffArgs(t *testing.T) {
+	// scanme.go must exist in the working directory so the existing-path row is kept as a scan path instead of read as a ref.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "scanme.go"), []byte("package x\n"), 0o600); err != nil {
 		t.Fatal(err)

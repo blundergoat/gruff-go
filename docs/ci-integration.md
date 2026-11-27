@@ -24,11 +24,16 @@ Adopting any new static analysis tool on a real codebase tends to trigger a base
    gruff-go analyse --baseline gruff-baseline.json .
    ```
 
-   Gruff pairs exact fingerprints first, then remaining line-insensitive contract
-   identities, consuming one current and one prior occurrence per match. Harmless
-   line or measured-value shifts therefore stay reviewed, while a single baseline
-   row cannot hide several duplicate findings. Older rows without
-   `stableIdentity` continue to match exact fingerprints only.
+   A `gruff-baseline.json` at the project root also applies without `--baseline`,
+   and the text report names it, as `baseline: default gruff-baseline.json;
+   suppressed N findings`. Pass `--no-baseline` to see every finding.
+
+   `gruff.baseline.v3` matches findings by a line-insensitive 16-hex SHA-256
+   `identity` (tool language, rule ID, project-relative path, and symbol plus
+   declaration ordinal or normalized message) with a count budget. Harmless line
+   or measured-value shifts therefore stay reviewed, while duplicate occurrences
+   past the recorded count report as new. Non-v3 baselines fail closed until
+   migrated with `gruff-go baseline --migrate-baseline`.
 
 3. **Drift-down** - periodically regenerate the baseline as the team fixes findings.
 
@@ -43,9 +48,12 @@ Inside a PR, prefer `--since origin/main` to scope findings to the changed regio
 gruff-go analyse --since origin/main .
 ```
 
-`--diff-base <ref>` is the older name for the same base-ref scoping and still works, so existing pipelines need no change. New recipes should use `--since`, which sits alongside `--diff`, `--changed-ranges`, and `--changed-scope symbol|hunk`.
+`--diff-base <ref>` is the family-canonical spelling for base-ref scoping and gruff-go accepts it, so a pipeline written against another port needs no change here. `--since` is gruff-go's own spelling and is what the recipe above uses. Both sit alongside `--diff`, `--changed-ranges`, and `--changed-scope symbol|hunk`.
 
 Diff mode records a `"diff mode is changed-line scoped"` caveat in the report so consumers know the scan wasn't full-project.
+
+Use `git diff --unified=0 origin/main | gruff-go analyse --diff=- .` when the pipeline supplies the patch on standard input.
+An empty Git diff is valid. Unrecognized input, such as a piped error message, produces a changed-region diagnostic and exit code `2`.
 
 ## GitHub Actions
 
@@ -64,16 +72,16 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # required for --since
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.27'  # the Go that builds gruff-go decides which syntax it can parse
 
       - name: Install gruff-go
-        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+        run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
 
       - name: Scan (diff-mode for PRs, full for push)
         run: |
@@ -94,7 +102,7 @@ The `--format github` output is one workflow command per finding, so each one sh
         continue-on-error: true   # let the upload step run even if findings fail the build
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gruff-go.sarif
           category: gruff-go
@@ -111,7 +119,7 @@ Code Scanning will track findings over time, surface them in the Security tab, a
 
       - name: Upload HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gruff-report
           path: gruff-report.html
@@ -127,7 +135,7 @@ gruff-go:
   image: golang:1.25
   stage: test
   script:
-    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+    - go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
     - gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif
   artifacts:
     when: always
@@ -156,7 +164,7 @@ jobs:
       - checkout
       - run:
           name: Install gruff-go
-          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0
+          command: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
       - run:
           name: Scan
           command: gruff-go analyse --baseline gruff-baseline.json .
@@ -180,7 +188,7 @@ pipeline {
     stages {
         stage('gruff-go') {
             steps {
-                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.4.0'
+                sh 'go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0'
                 sh 'gruff-go analyse --baseline gruff-baseline.json --format sarif . > gruff-report.sarif'
             }
             post {
@@ -204,41 +212,40 @@ repos:
     hooks:
       - id: gruff-go
         name: gruff-go
-        entry: gruff-go analyse --since HEAD --min-severity advisory .
+        entry: gruff-go analyse --since HEAD --fail-on advisory .
         language: system
         pass_filenames: false
         types: [go]
 ```
 
-`--since HEAD` scopes the hook to changed regions. `--min-severity advisory` keeps the gate at gruff-go’s comprehensive default, so every reported finding can block.
+`--since HEAD` scopes the hook to changed regions. `--fail-on advisory` keeps the gate at gruff-go’s comprehensive default, so every reported finding can block.
 
 ## Threshold knobs
 
-The two flags that most CI configurations end up tuning:
+The one flag most CI configurations end up tuning:
 
-- `--min-severity` - the binary default is **per command**, not a single value: `advisory` for the gating commands (`analyse`, `summary`) and `none` for the artifact generators (`report`, `dashboard`). [`configuration.md`](configuration.md#minimumseverity) carries the authoritative table. `advisory` is the broadest gate: every finding can fail the run. `warning` narrows the gate to warning and error findings; `error` narrows it to error findings only; `none` disables finding-driven exit `1`. The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` and the per-command defaults were added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
-- `--fail-on` is an alias for `--min-severity`.
+- `--fail-on` - the binary default is **per command**, not a single value: `advisory` for the gating command (`analyse`) and `none` for `summary` and the artifact generators (`report`, `dashboard`). A CI job that gates on `summary` passes `--fail-on` or sets `failOn.summary`. [`configuration.md`](configuration.md#failon) carries the authoritative table. `advisory` is the broadest gate: every finding can fail the run. `warning` narrows the gate to warning and error findings; `error` narrows it to error findings only; `none` disables finding-driven exit `1`. The four values (`advisory | warning | error | none`) live on `finding.FailThreshold`; the three severity-equivalent values reuse the vocabulary from [ADR-009](../.goat-flow/learning-loop/decisions/ADR-009-three-severity-model.md). `none` and the per-command defaults were added in v0.2.0 per [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md).
+
+Migrating from 0.5: `--min-severity` is refused in 0.6.0 and returns in 0.7.0 as a display filter. The config key [`minimumSeverity`](configuration.md#minimumseverity) already carries that display floor, and never changes an exit code.
 
 ### `--fail-on=error` is not a security gate
 
-With the built-in v0.5.0 registry, all 22 default-enabled `security.*` rules are below error: 20 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.sql-string-query` and `security.shell-command`. Some `sensitive-data.*` rules use error severity, but that separate rule family does not cover the application-security classes under `security.*`.
+With the built-in v0.6.0 registry, all 17 default-enabled `security.*` rules are below error: 15 advisory and 2 warning. An error-only gate therefore ignores every built-in `security.*` finding, including `security.shell-command` (`security.sql-string-query`, which this sentence named, was removed in 0.6.0). No default-enabled `sensitive-data.*` rule reaches error either: since 0.6.0 every one defaults to warning, so an error-only gate ignores every built-in secret finding too.
 
-The below-error invariant is enforced, not just documented: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches error, naming this section in its failure message. Verify the live numbers yourself with `gruff-go list-rules --no-config --format json` - without `--no-config` you get the effective severities after your own `.gruff-go.yaml` overrides, which is a different question.
+The below-error invariant is enforced in tests: `TestDefaultSecurityRulesStayBelowError` in `internal/rule/` reads the built-in registry and fails the build if any default-enabled `security.*` rule reaches `error`, citing this section in its failure message. Verify the live counts yourself with `gruff-go list-rules --no-config --format json` (`list-rules` always prints the built-in defaults; `--no-config` skips validating your local `.gruff-go.yaml`).
 
-Use the advisory floor when CI is intended to gate on all detected security issues. `analyse` and `summary` default to it, so the recipes above already gate. `report` and `dashboard` default to `none` and have **no** finding gate, so a pipeline whose failing step is one of those needs an explicit `--min-severity advisory` or a `minimumSeverity` entry - an artifact generator reports security findings and still exits `0`. For an existing codebase, reduce initial scope with a baseline or `--since` rather than raising the severity floor and silently excluding detected classes.
+Use `--fail-on advisory` to gate CI on every reported security finding — `analyse` already uses this by default. `summary`, `report`, and `dashboard` need an explicit `--fail-on` flag or a `failOn` entry such as `failOn.summary: advisory`. On an existing codebase, use a baseline or `--since` to limit initial scope while keeping all severities eligible for the gate.
 
 ### Open family decision: security findings and grade A
 
-A run can report security findings and still receive grade A because the composite is a weighted aggregate. A fixture containing a dynamic SQL query and explicit shell execution scores A (99 / 100) while `--fail-on=error` exits `0`; the default advisory gate exits `1` for the same report. Grade A means the aggregate score is at least 90, not that the scan found no security issues.
+Because the composite score averages pillars, a run can report security findings and still earn grade `A`. In [ADR-020](../.goat-flow/learning-loop/decisions/ADR-020-security-tier-evidence-routed-to-family.md), a fixture carrying explicit shell execution and a dynamic SQL finding scored `A (99 / 100)`: `--fail-on=error` exited `0`, while the default `advisory` gate exited `1`. Grade `A` means the weighted aggregate is at least 90, not that the scan found zero security issues.
 
-The evidence behind this question - the registry distribution, the fixture above, the mitigating gate defaults, and this project's own `.gruff-go.yaml` override of `security.shell-command` to error - is recorded in [ADR-020](../.goat-flow/learning-loop/decisions/ADR-020-security-tier-evidence-routed-to-family.md), which routes the decision to the family rather than taking it.
+[ADR-020](../.goat-flow/learning-loop/decisions/ADR-020-security-tier-evidence-routed-to-family.md) records the evidence — registry distribution, fixture behaviour, gate defaults, and this repo's own `.gruff-go.yaml` override raising `security.shell-command` to `error` — and routes the grade-cap question to the cross-port family contract (§12). Capping grade `A` on `security.*` findings would change serialized scores and cross-port semantics, so no cap is applied here. Until ratified across ports, gate CI on findings at `advisory` rather than treating grade `A` as security proof.
 
-Gruff family contract §12 must decide whether any `security.*` finding should cap the composite below A or whether grades and finding gates remain independent. A cap would change serialized scores, grades, and cross-port semantics. No cap, severity, or scoring change is made here. Until that decision is ratified, CI should gate on findings at the advisory floor - on a command that has one, per the note above - and must not treat grade A as security proof.
-
-For projects that want per-command defaults without passing the flag on every invocation, set [`minimumSeverity`](configuration.md#minimumseverity) in `.gruff-go.yaml`:
+For projects that want per-command defaults without passing the flag on every invocation, set [`failOn`](configuration.md#failon) in `.gruff-go.yaml`:
 
 ```yaml
-minimumSeverity:
+failOn:
   analyse: warning   # CI gate: fail on warning+
   summary: warning
   report: none       # artifact generation: never fail
@@ -249,7 +256,7 @@ The CLI flag still wins when set; the config block supplies the per-command defa
 
 If CI needs to **scan and report** without **failing**, two equally valid options:
 - Run the scan in a step with `continue-on-error: true` (GitHub Actions) or `allow_failure: true` (GitLab) and upload the report artefact separately.
-- Pass `--min-severity none` (or set `minimumSeverity.analyse: none` in the project config). Findings cannot produce exit `1`, but diagnostics and invalid input still produce exit `2`.
+- Pass `--fail-on none` (or set `failOn.analyse: none` in the project config). Findings cannot produce exit `1`, but diagnostics and invalid input still produce exit `2`.
 
 Thresholds never downgrade operational failures. Missing paths, parse errors,
 baseline or diff failures, and invalid configuration/CLI input exit `2` at every
@@ -259,4 +266,4 @@ threshold, including `none`.
 
 - **Shallow clones** break base-ref scoping (`--since`, `--diff-base`). Use `fetch-depth: 0` (Actions), `GIT_DEPTH: 0` (GitLab), or whichever full-history flag your runner takes.
 - **First run on a busy codebase** with thousands of findings is a waste of CI cycles. Generate a baseline locally first, commit it, and let CI scan against it.
-- **Display filters ≠ score filters.** `--include-rules`, `--exclude-rules`, `--include-pillars`, `--exclude-pillars` only hide findings from the rendered output. The composite score, exit code, and SARIF results still see the full set. If you need a *real* exclusion, turn the rule off in `.gruff-go.yaml`.
+- **Display filters ≠ score filters.** `--show-rule`, `--hide-rule`, `--show-pillar`, `--hide-pillar`, and `minimumSeverity` filter the rendered output (including text, JSON `findings`, and SARIF `results`), while the composite score and exit code still reflect the full scan. To exclude a rule from execution and scoring, disable it in `.gruff-go.yaml` or pass `--exclude-rule` / `--exclude-pillar`.

@@ -1,4 +1,7 @@
-// Package cli tests that a `-` flag value does not strand the global flags after it.
+// Package cli tests that a dash patch value on --diff or --since does not strand the global flags after it.
+//
+// Reached when a user pipes a patch, as in git diff | gruff-go analyse --diff - --quiet . with a global flag after the dash.
+// A failure here means a flag such as --quiet is rejected as undefined, the run exits 2, or the flag is silently ignored.
 package cli
 
 import (
@@ -71,9 +74,10 @@ func TestNormalizeGlobalStdinFlagValues(t *testing.T) {
 	}
 }
 
-// TestGlobalFlagsSurviveStdinPatchValue runs the real entrypoint: a global flag
-// placed after `--diff -` or `--since -` must still take effect instead of
-// reaching the analyse FlagSet, which would reject it as an undefined flag.
+// TestGlobalFlagsSurviveStdinPatchValue runs the real entrypoint with each listed global flag placed after --diff - or --since -.
+//
+// Global parsing must consume each flag instead of passing it to the analyse FlagSet, which would reject it as an undefined flag.
+// The test checks acceptance only: the run must not exit 2 or write anything to stderr.
 func TestGlobalFlagsSurviveStdinPatchValue(t *testing.T) {
 	globalFlags := []string{"--quiet", "-q", "--silent", "-v", "--verbose", "--no-ansi", "--no-interaction"}
 	for _, patchFlag := range []string{"--diff", "--since"} {
@@ -81,6 +85,7 @@ func TestGlobalFlagsSurviveStdinPatchValue(t *testing.T) {
 			t.Run(patchFlag+" "+globalFlag, func(t *testing.T) {
 				withEmptyStdin(t)
 				exitCode, _, stderr := captureCLIResult([]string{"analyse", patchFlag, "-", globalFlag, "."})
+				// Exit 2 means the piped-patch run was refused; the stderr shown with it says whether a global flag reached analyse as undefined.
 				if exitCode == 2 {
 					t.Fatalf("exit = 2 for %s after %s -, stderr = %q", globalFlag, patchFlag, stderr)
 				}
@@ -92,8 +97,7 @@ func TestGlobalFlagsSurviveStdinPatchValue(t *testing.T) {
 	}
 }
 
-// TestQuietSuppressesOutputAfterStdinPatchValue confirms the recovered flag is
-// applied rather than merely accepted: quiet still discards the command's stdout.
+// TestQuietSuppressesOutputAfterStdinPatchValue checks that stdout is empty when --quiet follows --diff -.
 func TestQuietSuppressesOutputAfterStdinPatchValue(t *testing.T) {
 	withEmptyStdin(t)
 	_, stdout, _ := captureCLIResult([]string{"analyse", "--diff", "-", "--quiet", "."})
@@ -102,8 +106,8 @@ func TestQuietSuppressesOutputAfterStdinPatchValue(t *testing.T) {
 	}
 }
 
-// withEmptyStdin points os.Stdin at an already-closed pipe for one test. Reading a
-// `-` patch drains stdin, so an inherited terminal would otherwise block the suite.
+// withEmptyStdin points os.Stdin at a pipe whose write end is closed for one test.
+// Reading a `-` patch drains stdin, so an inherited terminal would otherwise block the suite.
 func withEmptyStdin(t *testing.T) {
 	t.Helper()
 	readEnd, writeEnd, err := os.Pipe()

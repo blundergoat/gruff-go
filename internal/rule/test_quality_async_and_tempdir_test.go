@@ -1,9 +1,12 @@
 // Package rule tests additional parser-only test-quality rules.
+//
+// This file covers FatalInGoroutineRule, which flags t.Fatal or t.FailNow called from a goroutine a test starts, and TempDirMisuseRule.
+// TempDirMisuseRule flags an empty-parent temp directory made in a test or in a helper that takes a testing handle.
 package rule
 
 import "testing"
 
-// TestFatalInGoroutineRule covers unsafe fatal calls and accepted error reporting.
+// TestFatalInGoroutineRule checks for two findings in a fixture with t.Fatal, t.Error and a subtest's t.FailNow called in goroutines.
 func TestFatalInGoroutineRule(t *testing.T) {
 	unit := parseOne(t, "async_test.go", `package sample
 
@@ -32,7 +35,7 @@ func TestSubtest(t *testing.T) {
 	}
 }
 
-// TestFatalInGoroutineRuleIgnoresNonTestingReceivers verifies parser-only receiver scoping.
+// TestFatalInGoroutineRuleIgnoresNonTestingReceivers verifies Fatal on a fakeT that shadows t in a goroutine is not reported.
 func TestFatalInGoroutineRuleIgnoresNonTestingReceivers(t *testing.T) {
 	unit := parseOne(t, "async_test.go", `package sample
 
@@ -54,7 +57,8 @@ func TestAsync(t *testing.T) {
 	}
 }
 
-// TestTempDirMisuseRule covers empty-parent temp directories in test scopes.
+// TestTempDirMisuseRule checks for two findings in a fixture containing os.MkdirTemp and ioutil.TempDir calls.
+// The fixture includes empty-parent calls, t.TempDir usage, a testing.TB helper and a function without a testing handle.
 func TestTempDirMisuseRule(t *testing.T) {
 	unit := parseOne(t, "tempdir_test.go", `package sample
 

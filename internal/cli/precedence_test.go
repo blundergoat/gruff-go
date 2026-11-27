@@ -1,7 +1,8 @@
-// Package cli precedence tests lock the ADR-010 minimumSeverity resolution
-// ladder: explicit CLI flag > config minimumSeverity.<cmd> > binary default.
-// resolveFailOn is the single helper every CLI consumer routes through; this
-// file exercises it directly so the precedence semantics live in one place.
+// Package cli precedence tests lock the --fail-on precedence ladder that resolveFailOn applies.
+//
+// The ladder is an explicit --fail-on flag, then the config failOn entry for that command, then the built-in default for that command.
+// The dashboard command resolves its own gate separately, so the dashboard case here covers only the helper's default fallback.
+// This file calls resolveFailOn directly so the helper's precedence rules are tested in one place.
 package cli
 
 import (
@@ -12,13 +13,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/finding"
 )
 
-// TestResolveFailOnPrecedence covers the three precedence levels for all four
-// command names. Cases combine: (a) explicit flag overrides config, (b) config
-// overrides default when no flag, (c) default applies when neither flag nor
-// config supply a value.
+// TestResolveFailOnPrecedence checks the three precedence levels for the analyse, summary, report and dashboard command names.
+//
+// An explicit flag beats config, config beats the default when no flag is given, and the default applies when neither supplies a value.
+// A failing case means resolveFailOn rejected a valid value or chose a different threshold than the expected flag, config entry or default.
 func TestResolveFailOnPrecedence(t *testing.T) {
 	cfg := cfgpkg.Config{
-		MinimumSeverity: map[string]string{
+		FailOn: cfgpkg.CommandThresholds{
 			"analyse": "error",
 			"summary": "error",
 			"report":  "warning",
@@ -45,6 +46,7 @@ func TestResolveFailOnPrecedence(t *testing.T) {
 			name: "explicit flag beats config (report)", rawValue: "none", explicit: true, cmd: "report",
 			want: finding.FailThresholdNone,
 		},
+		// Without an explicit flag, rawValue is the command's default, standing in for a --fail-on the user never typed.
 		{
 			name: "config overrides default (analyse error)", rawValue: string(finding.DefaultFailThresholdFor("analyse")), explicit: false, cmd: "analyse",
 			want: finding.FailThresholdError,
@@ -76,14 +78,13 @@ func TestResolveFailOnPrecedence(t *testing.T) {
 	}
 }
 
-// TestResolveFailOnRejectsBadConfigValue confirms that a config entry with an
-// invalid threshold value (which slipped past Parse validation, e.g. via a
-// programmatic Config{} literal) surfaces an error rather than silently
-// applying a default. Parse validation is the primary gate; this is the
-// defence-in-depth gate.
+// TestResolveFailOnRejectsBadConfigValue confirms a config failOn entry with an unknown threshold fails instead of falling back to a default.
+//
+// Parse validation is the primary gate and this is the defence in depth: the Config literal slips the legacy medium value past Parse.
+// A failure means resolveFailOn accepted the value or its stderr message stopped naming the unknown threshold.
 func TestResolveFailOnRejectsBadConfigValue(t *testing.T) {
 	cfg := cfgpkg.Config{
-		MinimumSeverity: map[string]string{
+		FailOn: cfgpkg.CommandThresholds{
 			"analyse": "medium", // legacy 5-bucket name; post-ADR-009 invalid
 		},
 	}
@@ -98,11 +99,13 @@ func TestResolveFailOnRejectsBadConfigValue(t *testing.T) {
 }
 
 // contains is a tiny local helper avoiding a strings import for one call.
+// It reports whether needle occurs anywhere in haystack; an empty needle gives true and a needle longer than haystack gives false.
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
 }
 
 // indexOf is the linear substring search used by contains.
+// It returns the byte offset of the first occurrence of needle in haystack, or -1 when needle does not occur; an empty needle gives 0.
 func indexOf(haystack, needle string) int {
 	for i := 0; i+len(needle) <= len(haystack); i++ {
 		if haystack[i:i+len(needle)] == needle {

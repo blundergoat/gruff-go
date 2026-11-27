@@ -1,5 +1,7 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file implements parser-only maintainability checks for error handling and production placeholders.
+//
+// This file holds parser-only maintainability checks for ignored errors and context.TODO in production code.
+// They read syntax only, so a finding marks a likely shape rather than a type-checked fact.
 package rule
 
 import (
@@ -10,10 +12,13 @@ import (
 	"github.com/blundergoat/gruff-go/internal/parser"
 )
 
-// IgnoredErrorRule flags direct assignments of error-looking values to the blank identifier.
+// IgnoredErrorRule flags direct assignments of error-looking values to the blank identifier, as rule maintainability.ignored-error.
+//
+// A value counts by its name, such as err or parseError, or as an errors.New or fmt.Errorf call; types are never resolved.
 type IgnoredErrorRule struct{}
 
 // Definition declares the maintainability.ignored-error rule for explicit ignored error values.
+// It returns the same populated Definition on every call: maintainability pillar, advisory severity, medium confidence, enabled by default.
 func (IgnoredErrorRule) Definition() Definition {
 	return Definition{
 		ID:             "maintainability.ignored-error",
@@ -28,9 +33,12 @@ func (IgnoredErrorRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for direct `_ = err`-style assignments. It stays
-// conservative because parser-only analysis cannot prove arbitrary call return
-// types without type information.
+// AnalyzeUnit emits findings for direct _ = err style assignments in one parsed file.
+//
+// It stays conservative because parser-only analysis cannot prove arbitrary call return types without type information.
+// unit is that file; assignments with unequal left and right counts are skipped, so a blank from a multi-value call is never reported.
+//
+// It returns one finding per error-looking blank, recording the expression and evidence kind, and nil when unit has no AST or FileSet.
 func (IgnoredErrorRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil {
 		return nil
@@ -67,10 +75,13 @@ func (IgnoredErrorRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Findi
 	return findings
 }
 
-// ContextTODOProductionRule flags context.TODO calls in production code.
+// ContextTODOProductionRule flags context.TODO calls in production code, as rule maintainability.context-todo-production.
+//
+// Test files and testdata or example paths are exempt; elsewhere cancellation ownership should be explicit.
 type ContextTODOProductionRule struct{}
 
 // Definition declares the maintainability.context-todo-production rule for TODO contexts outside tests and examples.
+// It returns the same populated Definition on every call: maintainability pillar, advisory severity, high confidence, enabled by default.
 func (ContextTODOProductionRule) Definition() Definition {
 	return Definition{
 		ID:             "maintainability.context-todo-production",
@@ -85,7 +96,10 @@ func (ContextTODOProductionRule) Definition() Definition {
 	}
 }
 
-// AnalyzeUnit emits findings for context.TODO() calls outside test/example paths.
+// AnalyzeUnit emits findings for context.TODO() calls outside test and example paths.
+//
+// unit is one parsed file; only calls through its own context import names count, and each finding records the rendered callee.
+// It returns one finding per such call, nil for a non-production path, a missing AST or FileSet, or no usable context import.
 func (ContextTODOProductionRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
 	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) {
 		return nil
@@ -112,61 +126,10 @@ func (ContextTODOProductionRule) AnalyzeUnit(unit parser.Unit, _ Context) []find
 	return findings
 }
 
-// ProductionPanicRule flags direct literal panics outside tests and bootstrap code.
-type ProductionPanicRule struct{}
-
-// Definition declares the maintainability.production-panic rule for concrete production panic sites.
-func (ProductionPanicRule) Definition() Definition {
-	return Definition{
-		ID:             "maintainability.production-panic",
-		Title:          "Production panic",
-		Description:    "Flags direct literal panic calls in non-test, non-main production code.",
-		Pillar:         finding.PillarMaintain,
-		Severity:       finding.SeverityAdvisory,
-		Confidence:     finding.ConfidenceMedium,
-		DefaultEnabled: true,
-		Tags:           []string{"errors"},
-		Remediation:    "Return an error or fail during command/bootstrap setup instead of panicking from reusable production code.",
-	}
-}
-
-// AnalyzeUnit emits findings for panic calls with literal messages in reusable production code.
-func (ProductionPanicRule) AnalyzeUnit(unit parser.Unit, _ Context) []finding.Finding {
-	if unit.AST == nil || unit.FileSet == nil || !isProductionCodePath(unit.File.Path) || unit.AST.Name.Name == "main" {
-		return nil
-	}
-	if isBootstrapPath(unit.File.Path) {
-		return nil
-	}
-	findings := []finding.Finding{}
-	for _, decl := range unit.AST.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Body == nil || productionPanicFunctionExempt(fn.Name.Name) {
-			continue
-		}
-		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			if _, nested := node.(*ast.FuncLit); nested {
-				return false
-			}
-			call, ok := node.(*ast.CallExpr)
-			if !ok || !isDirectPanicCall(call) || !panicHasLiteralEvidence(call) {
-				return true
-			}
-			position := unit.FileSet.Position(call.Pos())
-			findings = append(findings, finding.Finding{
-				Message:  "production code calls panic with a literal message",
-				File:     unit.File.Path,
-				Location: &finding.Location{Line: position.Line, Column: position.Column},
-				Symbol:   functionName(fn),
-			})
-			return true
-		})
-	}
-	return findings
-}
-
-// ignoredErrorEvidence classifies the small set of expression shapes where an
-// ignored value is clearly an error without resolving types.
+// ignoredErrorEvidence classifies an ignored value as error-like by its name or constructor call, without resolving types.
+//
+// expr is the value assigned to a blank; errorsPackages and fmtPackages hold the import names under which errors.New and fmt.Errorf count.
+// It returns expr, an evidence kind of identifier, selector or error-constructor, and true; any other shape gives nil, an empty string and false.
 func ignoredErrorEvidence(expr ast.Expr, errorsPackages, fmtPackages map[string]bool) (ast.Expr, string, bool) {
 	switch value := expr.(type) {
 	case *ast.Ident:
@@ -192,13 +155,16 @@ func isBlankIdent(expr ast.Expr) bool {
 }
 
 // isErrorLikeName recognises conventional error variable and field names.
+// It reports true when the lower-cased name is err or error or ends in err or error, such as myErr or parseError, and false otherwise.
 func isErrorLikeName(name string) bool {
 	lower := strings.ToLower(name)
 	return lower == "err" || lower == "error" || strings.HasSuffix(lower, "err") || strings.HasSuffix(lower, "error")
 }
 
-// isErrorConstructorCall recognises standard error construction calls whose
-// returned value is immediately thrown away.
+// isErrorConstructorCall recognises an errors.New or fmt.Errorf call by the import names the file uses for errors and fmt.
+//
+// call must be pkg.New with pkg in errorsPackages or pkg.Errorf with pkg in fmtPackages; any other callee, dot imports included, gives false.
+// It reports true only for that call shape; the discard comes from the caller, which reads the right side of a blank assignment.
 func isErrorConstructorCall(call *ast.CallExpr, errorsPackages, fmtPackages map[string]bool) bool {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -211,7 +177,8 @@ func isErrorConstructorCall(call *ast.CallExpr, errorsPackages, fmtPackages map[
 	return selector.Sel.Name == "New" && errorsPackages[receiver.Name] || selector.Sel.Name == "Errorf" && fmtPackages[receiver.Name]
 }
 
-// isProductionCodePath reports whether a file is neither a test nor obvious example fixture path.
+// isProductionCodePath reports whether path is neither a Go test file nor under a testdata, examples or example directory.
+// A false result keeps rules such as context-todo-production silent on that file.
 func isProductionCodePath(path string) bool {
 	if isGoTestFile(path) {
 		return false
@@ -225,37 +192,18 @@ func isProductionCodePath(path string) bool {
 	return !strings.HasPrefix(clean, "testdata/") && !strings.HasPrefix(clean, "examples/") && !strings.HasPrefix(clean, "example/")
 }
 
-// isBootstrapPath exempts command/bootstrap entry surfaces where panic is often
-// used for impossible setup invariants rather than request-time production flow.
+// isBootstrapPath exempts command entry files under cmd from the runtime-pitfall rules.
+//
+// Code there often uses panic for impossible setup invariants rather than request-time production flow.
+// It reports true when path, after backslashes become slashes, starts with cmd/ or contains /cmd/, and false otherwise.
 func isBootstrapPath(path string) bool {
 	clean := strings.ReplaceAll(path, "\\", "/")
 	return strings.HasPrefix(clean, "cmd/") || strings.Contains(clean, "/cmd/")
 }
 
-// productionPanicFunctionExempt recognises functions whose names conventionally document panic-on-impossible-invariant behavior.
-func productionPanicFunctionExempt(name string) bool {
-	return name == "init" || name == "main" || name == "Defaults" || strings.HasPrefix(name, "Must")
-}
-
-// isDirectPanicCall reports whether call is the predeclared panic function.
+// isDirectPanicCall reports whether call invokes the unqualified builtin panic, skipping calls shadowed by a local or file-level binding.
+// An identifier with a non-nil Obj resolved to a local, parameter, or file-level declaration rather than the universe builtin panic.
 func isDirectPanicCall(call *ast.CallExpr) bool {
 	ident, ok := call.Fun.(*ast.Ident)
-	return ok && ident.Name == "panic"
-}
-
-// panicHasLiteralEvidence limits the rule to panics that clearly embed a
-// production crash message instead of internal impossible-error panics.
-func panicHasLiteralEvidence(call *ast.CallExpr) bool {
-	if len(call.Args) == 0 {
-		return false
-	}
-	if _, ok := stringLiteral(call.Args[0]); ok {
-		return true
-	}
-	nested, ok := call.Args[0].(*ast.CallExpr)
-	if !ok {
-		return false
-	}
-	name := callFunctionName(nested)
-	return name == "Sprintf" || name == "Errorf" || name == "New"
+	return ok && ident.Name == "panic" && ident.Obj == nil
 }

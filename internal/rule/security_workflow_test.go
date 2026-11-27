@@ -1,4 +1,7 @@
 // Package rule tests the parser-only GitHub Actions workflow security rules.
+//
+// Most tests feed workflow YAML through workflowUnit and check how many findings one rule reports for each snippet.
+// A failing case means a gruff-go scan of .github/workflows files would gain or lose a finding the user relies on.
 package rule
 
 import (
@@ -8,7 +11,64 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// workflowUnit builds a text unit located under .github/workflows for rule tests.
+// TestWorkflowEventGuards checks which if: guards may hide the secrets-in-PR finding in a pull_request_target workflow.
+//
+// Only a guard that provably rules out pull_request_target, on the job or step that holds the secret, drops the finding to zero.
+// Ambiguous expressions, guards placed elsewhere, duplicate keys, anchors and flow-style YAML keep it, so the user still sees the exposure.
+func TestWorkflowEventGuards(t *testing.T) {
+	cases := []struct {
+		name, body string
+		want       int
+	}{
+		{"expression github.event_name == 'issues'", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression github.event_name != 'pull_request_target'", "jobs:\n  build:\n    if: github.event_name != 'pull_request_target'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression ${{ !(github.event_name == 'pull_request_target') }}", "jobs:\n  build:\n    if: ${{ !(github.event_name == 'pull_request_target') }}\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression (github.event_name == 'push' || github.event_name == 'issues')", "jobs:\n  build:\n    if: (github.event_name == 'push' || github.event_name == 'issues')\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression github.event_name == 'issues' && inputs.enabled", "jobs:\n  build:\n    if: github.event_name == 'issues' && inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression inputs.enabled && github.event_name == 'issues'", "jobs:\n  build:\n    if: inputs.enabled && github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"expression github.event_name == 'PULL_REQUEST_TARGET'", "jobs:\n  build:\n    if: github.event_name == 'PULL_REQUEST_TARGET'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'pull_request_target'", "jobs:\n  build:\n    if: github.event_name == 'pull_request_target'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name != 'issues'", "jobs:\n  build:\n    if: github.event_name != 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression inputs.enabled", "jobs:\n  build:\n    if: inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' || inputs.enabled", "jobs:\n  build:\n    if: github.event_name == 'issues' || inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression ${{ github.event_name == 'issues' }} trailing", "jobs:\n  build:\n    if: ${{ github.event_name == 'issues' }} trailing\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' trailing", "jobs:\n  build:\n    if: github.event_name == 'issues' trailing\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' &&", "jobs:\n  build:\n    if: github.event_name == 'issues' &&\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 'issues' && contains(inputs.x, 'x')", "jobs:\n  build:\n    if: github.event_name == 'issues' && contains(inputs.x, 'x')\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression github.event_name == 0", "jobs:\n  build:\n    if: github.event_name == 0\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"expression !github.event_name == 'issues'", "jobs:\n  build:\n    if: !github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 1", "jobs:\n  build:\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n    if: github.event_name == 'issues'\n", 0},
+		{"ownership 2", "'jobs':\n  'build':\n    'steps':\n      - 'run': echo ${{ secrets.DEPLOY_TOKEN }}\n        'if': github.event_name == 'issues'\n", 0},
+		{"ownership 3", "jobs:\n  build:\n    steps:\n      - if: github.event_name == 'issues'\n        run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 0},
+		{"ownership 4", "jobs:\n  build:\n    steps:\n      - run: |\n          if: github.event_name == 'issues'\n          echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 5", "jobs:\n  build:\n    steps:\n      - run: |\n          echo ${{ secrets.DEPLOY_TOKEN }}\n        if: github.event_name == 'issues'\n", 0},
+		{"ownership 6", "env:\n  TOKEN: ${{ secrets.DEPLOY_TOKEN }}\njobs:\n  build:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ready\n", 1},
+		{"ownership 7", "jobs:\n  build:\n    env:\n      TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - if: github.event_name == 'issues'\n        run: echo ready\n", 1},
+		{"ownership 8", "jobs:\n  safe:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ready\n  build:\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 9", "jobs:\n  build:\n    steps:\n      - if: github.event_name == 'issues'\n        run: echo ready\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 10", "jobs:\n  build:\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n        with:\n          if: github.event_name == 'issues'\n", 1},
+		{"ownership 11", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    if: inputs.enabled\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 12", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n  build:\n    steps:\n      - run: echo ready\n", 1},
+		{"ownership 13", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    env: &shared\n      TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - run: echo ready\n", 1},
+		{"ownership 14", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    <<: *shared\n    steps:\n      - run: echo ${{ secrets.DEPLOY_TOKEN }}\n", 1},
+		{"ownership 15", "jobs: {build: {if: \"github.event_name == 'issues'\", env: {TOKEN: ${{ secrets.DEPLOY_TOKEN }}}}}\n", 1},
+		{"scalar list alias", "jobs:\n  build:\n    if: github.event_name == 'issues'\n    env:\n      TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n    steps:\n      - *shared\n", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Every body runs under an on: pull_request_target trigger, so only a proven guard can stop the finding.
+			got := GitHubActionsSecretsInPRRule{}.AnalyzeUnit(workflowUnit("guard.yml", "on:\n  pull_request_target:\n"+tc.body), Context{})
+			if len(got) != tc.want {
+				t.Fatalf("findings = %#v, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// workflowUnit builds a text unit under .github/workflows/ for the workflow rule tests, which all pass a .yml file name.
+//
+// The name is the file name appended to .github/workflows/ to form File.Path, and src becomes the unit's Source text unchanged.
+// It returns a text-classified parser.Unit with only File and Source set; an empty name gives the bare .github/workflows/ path.
 func workflowUnit(name, src string) parser.Unit {
 	return parser.Unit{
 		File:   source.File{Path: ".github/workflows/" + name, Type: source.FileTypeText},
@@ -16,8 +76,8 @@ func workflowUnit(name, src string) parser.Unit {
 	}
 }
 
-// TestGitHubActionsUnpinnedActionRule covers mutable third-party refs and the
-// first-party, tag, SHA, and local cases that must not fire.
+// TestGitHubActionsUnpinnedActionRule checks that a third-party uses: ref on a branch name or partial SHA is reported.
+// Numeric version tags like v2.1.3, full 40-character SHAs, actions/ refs even on a branch, local paths and docker:// images must stay quiet.
 func TestGitHubActionsUnpinnedActionRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -48,8 +108,8 @@ func TestGitHubActionsUnpinnedActionRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsRemoteShellRule covers download-pipe-to-shell steps and safe
-// install commands.
+// TestGitHubActionsRemoteShellRule checks that a run: step piping curl or wget into a shell, or bash <(curl ...), is reported.
+// go install and apt-get install steps, and the same pipe on a comment line, stay quiet; a trailing comment does not hide a real pipe.
 func TestGitHubActionsRemoteShellRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -76,8 +136,8 @@ func TestGitHubActionsRemoteShellRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsBroadPermissionsRule covers blanket write grants and scoped
-// permission blocks.
+// TestGitHubActionsBroadPermissionsRule checks that permissions: write-all or a bare write, quoted or not, is reported.
+// A scoped permissions block and read-all stay quiet, so per-scope write grants such as contents: write get no finding.
 func TestGitHubActionsBroadPermissionsRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -101,8 +161,8 @@ func TestGitHubActionsBroadPermissionsRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsPullRequestTargetRule covers risky pull_request_target use and
-// the plain pull_request / no-execution cases.
+// TestGitHubActionsPullRequestTargetRule checks that a pull_request_target workflow which checks out or runs code is reported.
+// Plain pull_request triggers, and a target workflow with no steps or only a commented-out checkout, stay quiet.
 func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 	tests := []struct {
 		name string
@@ -125,17 +185,17 @@ func TestGitHubActionsPullRequestTargetRule(t *testing.T) {
 	}
 }
 
-// TestGitHubActionsSecretsInPRRule covers named secrets in pull-request workflows
-// and the GITHUB_TOKEN / non-PR exemptions.
+// TestGitHubActionsSecretsInPRRule checks that a named secret in a pull_request_target workflow is reported.
+// GITHUB_TOKEN, plain pull_request and push workflows stay quiet, including push examples with pull_request in comments, if: or with:.
 func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
 		want int
 	}{
-		{name: "named secret in pull_request", src: "on: pull_request\njobs:\n  x:\n    steps:\n      - run: deploy\n        env:\n          KEY: ${{ secrets.NPM_TOKEN }}\n", want: 1},
+		{name: "named secret in plain pull_request is not exposed to forks", src: "on: pull_request\njobs:\n  x:\n    steps:\n      - run: deploy\n        env:\n          KEY: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 		{name: "named secret in pull_request_target", src: "on: pull_request_target\nenv:\n  K: ${{ secrets.DEPLOY_KEY }}\n", want: 1},
-		{name: "github token exempt", src: "on: pull_request\nenv:\n  K: ${{ secrets.GITHUB_TOKEN }}\n", want: 0},
+		{name: "github token exempt", src: "on: pull_request_target\nenv:\n  K: ${{ secrets.GITHUB_TOKEN }}\n", want: 0},
 		{name: "secret reference inside a comment is inert", src: "on: pull_request\n# do not use ${{ secrets.DEPLOY_KEY }} on PRs\njobs:\n  x:\n    steps:\n      - run: build\n", want: 0},
 		{name: "named secret on push", src: "on: push\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
 		{name: "pull_request in comment is not a trigger", src: "on: push\n# also relevant for pull_request builds\nenv:\n  K: ${{ secrets.NPM_TOKEN }}\n", want: 0},
@@ -152,8 +212,8 @@ func TestGitHubActionsSecretsInPRRule(t *testing.T) {
 	}
 }
 
-// TestWorkflowRulesIgnoreNonWorkflowFiles confirms the rules only run on
-// .github/workflows YAML, not arbitrary config files.
+// TestWorkflowRulesIgnoreNonWorkflowFiles checks that broad-permissions and unpinned-action rules ignore config/ci.yml.
+// A failure means users would see broad-permission or unpinned-action findings on ordinary YAML config files.
 func TestWorkflowRulesIgnoreNonWorkflowFiles(t *testing.T) {
 	unit := parser.Unit{
 		File:   source.File{Path: "config/ci.yml", Type: source.FileTypeText},

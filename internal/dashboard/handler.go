@@ -1,5 +1,9 @@
-// Package dashboard HTTP handlers wire dashboard form state to scans.
-// They translate query parameters into analysis options and render results.
+// Package dashboard holds the HTTP handlers behind the gruff-go dashboard page.
+//
+// They translate the form's query parameters into analysis options, run the scan, and render the HTML report.
+//
+// An expired scan timeout shows an error page with exit code 124, and a returned scan error or render failure shows one with exit code 2.
+// Findings that fail the exit gate still render the normal report.
 package dashboard
 
 import (
@@ -7,9 +11,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +26,11 @@ import (
 	"github.com/blundergoat/gruff-go/internal/rule"
 )
 
-// NewHandler returns the dashboard HTTP handler that owns / and /scan routes.
+// NewHandler returns the dashboard HTTP handler that owns the / and /scan routes.
+//
+// opts supplies the dashboard defaults: / renders the form state built from opts and the query, and /scan hands opts to handleScan.
+// Unless opts.AllowPublic is set, requests carrying a non-loopback Host header are rejected with 403 to block DNS rebinding.
+// Responses set same-origin framing headers so external origins cannot embed or trigger scans.
 func NewHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
@@ -43,10 +53,43 @@ func NewHandler(opts Options) http.Handler {
 		}
 		handleScan(writer, request, opts)
 	})
-	return mux
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		writer.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+		// Reject non-loopback Host headers on local-only dashboard binds so DNS-rebinding pages cannot invoke /scan.
+		if !opts.AllowPublic && !isLoopbackRequestHost(request.Host) {
+			http.Error(writer, "forbidden host", http.StatusForbidden)
+			return
+		}
+		mux.ServeHTTP(writer, request)
+	})
 }
 
-// handleScan runs an analysis from /scan query parameters and writes HTML output.
+// isLoopbackRequestHost reports whether rawHost from an HTTP Host header names a loopback host (localhost, 127.0.0.1, or ::1), with or without port.
+//
+// The dashboard handler calls it on local-only binds so a malicious web page opened by the user cannot trigger /scan through DNS rebinding.
+// Returns false when rawHost is empty or whitespace-only so requests missing a loopback Host header are refused with 403.
+func isLoopbackRequestHost(rawHost string) bool {
+	trimmed := strings.TrimSpace(rawHost)
+	if trimmed == "" {
+		return false
+	}
+	host := trimmed
+	// Strip an explicit port (such as 127.0.0.1:8765 or [::1]:8765); fall back to trimming brackets for portless IPv6 hosts like [::1].
+	if parsedHost, _, err := net.SplitHostPort(trimmed); err == nil {
+		host = parsedHost
+	} else if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		host = trimmed[1 : len(trimmed)-1]
+	}
+	return isLoopbackHost(host)
+}
+
+// handleScan reads the /scan query parameters from request, runs the analysis, and writes the HTML report or an error page to writer.
+//
+// opts supplies the form defaults, the ScanTimeout that bounds the scan when positive, and the EditorLink for the rendered report.
+//
+// A timeout writes an error page with exit code 124, and a returned scan error or render failure writes one with exit code 2.
+// Findings that fail the exit gate still get the normal report, with their exit code in its metadata.
 func handleScan(writer http.ResponseWriter, request *http.Request, opts Options) {
 	query := request.URL.Query()
 	state := stateFromQuery(opts, query)
@@ -62,28 +105,45 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 	duration := time.Since(started)
 	durationMs := int(duration.Milliseconds())
 
+	commandText := displayCommand(state, opts)
+	// A scan that outlasts the scan timeout lands here, even one that returned just past the deadline, and the page shows exit code 124.
 	if errors.Is(runErr, context.DeadlineExceeded) || scanCtx.Err() == context.DeadlineExceeded {
-		_ = report.WriteDashboardError(
+		writeDashboardErrorWithMetadata(
 			writer,
 			fmt.Sprintf("Scan exceeded %ds timeout.", int(opts.ScanTimeout.Seconds())),
 			"The dashboard cancelled the scan before it completed. Increase --scan-timeout to allow longer runs.",
-			124,
-			durationMs,
+			report.ScanMetadata{ExitCode: 124, DurationMs: durationMs, ProjectRoot: scanOpts.projectRoot, Command: commandText},
 		)
 		return
 	}
+	// A config file that fails to load, a malformed deep-scan budget, or an analysis error lands here, and the page shows exit code 2.
 	if runErr != nil {
-		_ = report.WriteDashboardError(writer, "Scan failed.", runErr.Error(), 2, durationMs)
+		writeDashboardErrorWithMetadata(
+			writer,
+			"Scan failed.",
+			runErr.Error(),
+			report.ScanMetadata{ExitCode: 2, DurationMs: durationMs, ProjectRoot: scanOpts.projectRoot, Command: commandText},
+		)
 		return
 	}
 
+	resolvedRoot := reportData.Run.WorkingDirectory
+	// Use the absolute working directory so relative --project values such as "." still produce valid vscode:// and phpstorm:// editor links.
+	if resolvedRoot == "" {
+		resolvedRoot = scanOpts.projectRoot
+	}
 	var buffer bytes.Buffer
 	if err := report.WriteHTML(&buffer, reportData, report.HTMLOptions{
 		EditorLink:  opts.EditorLink,
-		ProjectRoot: scanOpts.projectRoot,
+		ProjectRoot: resolvedRoot,
 		Interactive: scanOpts.reportInteractive,
 	}); err != nil {
-		_ = report.WriteDashboardError(writer, "Render failed.", err.Error(), 2, durationMs)
+		writeDashboardErrorWithMetadata(
+			writer,
+			"Render failed.",
+			err.Error(),
+			report.ScanMetadata{ExitCode: 2, DurationMs: durationMs, ProjectRoot: scanOpts.projectRoot, Command: commandText},
+		)
 		return
 	}
 
@@ -91,12 +151,24 @@ func handleScan(writer http.ResponseWriter, request *http.Request, opts Options)
 		ExitCode:    reportData.Summary.ExitCode,
 		DurationMs:  durationMs,
 		ProjectRoot: scanOpts.projectRoot,
-		Command:     displayCommand(state, opts),
+		Command:     commandText,
 	}
 	_, _ = writer.Write([]byte(report.InjectScanMetadata(buffer.String(), metadata)))
 }
 
-// scanContext returns a derived context that applies the per-scan timeout when set.
+// writeDashboardErrorWithMetadata renders a dashboard error page with injected scan metadata so the parent frame updates status and exit code.
+//
+// writer receives the HTML error document built from headline, detail, and metadata (exit code, duration, project root, and command).
+func writeDashboardErrorWithMetadata(writer http.ResponseWriter, headline, detail string, metadata report.ScanMetadata) {
+	var errBuf bytes.Buffer
+	_ = report.WriteDashboardError(&errBuf, headline, detail, metadata.ExitCode, metadata.DurationMs)
+	_, _ = writer.Write([]byte(report.InjectScanMetadata(errBuf.String(), metadata)))
+}
+
+// scanContext derives the context one dashboard scan runs under, adding the per-scan timeout when one is set.
+//
+// parent is the request context, which ends when the browser disconnects; timeout is the per-scan limit, and zero or less means none.
+// It returns the derived context and its cancel function, which the caller must call once the scan ends.
 func scanContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if timeout > 0 {
 		return context.WithTimeout(parent, timeout)
@@ -105,6 +177,9 @@ func scanContext(parent context.Context, timeout time.Duration) (context.Context
 }
 
 // scanRunOptions captures the resolved inputs for a single dashboard scan.
+//
+// buildScanOptions fills it from the submitted form and the dashboard defaults, and runScan turns it into analysis options.
+// deepScanBudget holds the dashboard's raw deep-scan override text, which dashboardRegistry parses as empty, off or LINES:BYTES.
 type scanRunOptions struct {
 	projectRoot       string
 	paths             []string
@@ -116,9 +191,16 @@ type scanRunOptions struct {
 	includeIgnored    bool
 	diffBase          string
 	reportInteractive bool
+	deepScanBudget    string
 }
 
 // buildScanOptions merges dashboard defaults with form state into runScan inputs.
+//
+// state holds the submitted form values, and opts fills a blank project, paths, config or baseline value.
+// A skip, include-ignored or interactive flag set in either state or opts is on, and deepScanBudget always comes from opts.
+//
+// It returns the resolved scanRunOptions; baselinePath is empty when the baseline is skipped, and diffBase is HEAD only for the diff scan scope.
+// A state.FailOn that does not parse to a valid threshold, such as a typo, is not reported; opts.FailOn is tried, then the dashboard default.
 func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions {
 	projectRoot := strings.TrimSpace(state.Project)
 	if projectRoot == "" {
@@ -155,6 +237,7 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 	}
 
 	diffBase := ""
+	// The diff scope always diffs against HEAD; the form has no field for another base.
 	if state.ScanScope == "diff" {
 		diffBase = "HEAD"
 	}
@@ -172,34 +255,52 @@ func buildScanOptions(opts Options, state report.DashboardState) scanRunOptions 
 		includeIgnored:    includeIgnored,
 		diffBase:          diffBase,
 		reportInteractive: state.ReportInteractive == "1" || opts.ReportInteractive,
+		deepScanBudget:    opts.DeepScanBudget,
 	}
 }
 
 // runScan loads the registry and runs analysis.Analyze for the given scan options.
+//
+// scanOpts carries the resolved root, paths, threshold, config, budget, baseline and diff settings, and ctx bounds the HTML-format analysis.
+// It returns the report from analysis.Analyze together with any error that call gives.
+//
+// It fails with a zero report when the root cannot be made absolute, or with an error prefixed with config: when dashboardRegistry fails.
 func runScan(ctx context.Context, scanOpts scanRunOptions) (analysis.Report, error) {
 	root, err := dashboardRoot(scanOpts.projectRoot)
 	if err != nil {
 		return analysis.Report{}, err
 	}
-	registry, ignorePaths, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig)
+	registry, cfg, deepScanBudget, err := dashboardRegistry(root, scanOpts.configPath, scanOpts.noConfig, scanOpts.deepScanBudget)
 	if err != nil {
 		return analysis.Report{}, fmt.Errorf("config: %w", err)
 	}
-	return analysis.Analyze(analysis.Options{
-		Context:        ctx,
-		Root:           root,
-		Paths:          scanOpts.paths,
-		Format:         "html",
-		FailOn:         scanOpts.failOn,
-		Registry:       registry,
-		IgnorePaths:    ignorePaths,
-		BaselinePath:   scanOpts.baselinePath,
-		DiffBase:       scanOpts.diffBase,
-		IncludeIgnored: scanOpts.includeIgnored,
+	result, err := analysis.Analyze(analysis.Options{
+		Context:             ctx,
+		Root:                root,
+		Paths:               scanOpts.paths,
+		Format:              "html",
+		FailOn:              scanOpts.failOn,
+		Registry:            registry,
+		IgnorePaths:         cfg.IgnorePaths,
+		SensitiveExclusions: dashboardSensitiveExclusions(cfg),
+		DeepScanBudget:      deepScanBudget,
+		BaselinePath:        scanOpts.baselinePath,
+		DiffBase:            scanOpts.diffBase,
+		IncludeIgnored:      scanOpts.includeIgnored,
 	})
+	// A failed scan goes back to the request handler so the browser can show its diagnostic.
+	if err != nil {
+		return analysis.Report{}, err
+	}
+	floor, _ := cfg.MinimumSeverity.Severity()
+	analysis.ApplyDisplayFilter(&result, analysis.DisplayFilter{MinimumSeverity: floor})
+	return result, nil
 }
 
 // dashboardRoot resolves the requested project root to an absolute path or empty string.
+//
+// It returns an empty string and a nil error when root is blank or whitespace; any other root goes to filepath.Abs untrimmed.
+// A relative root resolves against the dashboard server's working directory, and the error is non-nil only when filepath.Abs fails.
 func dashboardRoot(root string) (string, error) {
 	if strings.TrimSpace(root) == "" {
 		return "", nil
@@ -207,55 +308,131 @@ func dashboardRoot(root string) (string, error) {
 	return filepath.Abs(root)
 }
 
-// dashboardRegistry loads project config and returns the configured rule registry.
-func dashboardRegistry(root, configPath string, noConfig bool) (rule.Registry, []string, error) {
+// dashboardRegistry loads the rules and scan budget when a user runs a scan from the dashboard.
+//
+// root and configPath locate the config unless noConfig is set. An empty override uses the project's budget.
+// Returns the registry, config, and budget. Missing config uses defaults, and invalid config or budget returns the error with zero values.
+func dashboardRegistry(root, configPath string, noConfig bool, override string) (rule.Registry, cfgpkg.Config, analysis.DeepScanBudget, error) {
 	defaults := rule.Defaults()
 	loaded, err := cfgpkg.LoadAuto(root, configPath, noConfig, defaults.Definitions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, cfgpkg.Config{}, analysis.DeepScanBudget{}, err
 	}
+	deepScanBudget, err := dashboardDeepScanBudget(loaded.Config, override)
+	if err != nil {
+		return rule.Registry{}, cfgpkg.Config{}, analysis.DeepScanBudget{}, err
+	}
+	// With no config file in use, the scan runs the default rule set and no config ignore patterns or sensitive exclusions apply.
 	if loaded.Path == "" {
-		return defaults, nil, nil
+		return defaults, cfgpkg.Config{}, deepScanBudget, nil
 	}
 	registry, err := rule.DefaultsConfigured(loaded.Config.RuleOptions())
 	if err != nil {
-		return rule.Registry{}, nil, err
+		return rule.Registry{}, cfgpkg.Config{}, analysis.DeepScanBudget{}, err
 	}
-	return registry, loaded.Config.IgnorePaths, nil
+	return registry, loaded.Config, deepScanBudget, nil
+}
+
+// dashboardDeepScanBudget mirrors CLI-over-config precedence for dashboard requests.
+//
+// cfg supplies any configured enabled flag, line cap and byte cap over the built-in defaults, and a non-empty override takes precedence.
+// It returns the budget with Override set to default, config or cli; override off disables it, and LINES:BYTES sets both caps.
+//
+// It fails with a zero budget when a non-empty override is neither off nor two positive integers joined by a single colon.
+func dashboardDeepScanBudget(cfg cfgpkg.Config, override string) (analysis.DeepScanBudget, error) {
+	budget := analysis.DeepScanBudget{Enabled: true, MaxLines: cfgpkg.DefaultDeepScanMaxLines, MaxBytes: cfgpkg.DefaultDeepScanMaxBytes, Override: "default"}
+	if cfg.DeepScanBudget.Enabled != nil || cfg.DeepScanBudget.MaxLines != nil || cfg.DeepScanBudget.MaxBytes != nil {
+		budget.Override = "config"
+		if cfg.DeepScanBudget.Enabled != nil {
+			budget.Enabled = *cfg.DeepScanBudget.Enabled
+		}
+		if cfg.DeepScanBudget.MaxLines != nil {
+			budget.MaxLines = *cfg.DeepScanBudget.MaxLines
+		}
+		if cfg.DeepScanBudget.MaxBytes != nil {
+			budget.MaxBytes = *cfg.DeepScanBudget.MaxBytes
+		}
+	}
+	if override == "" {
+		return budget, nil
+	}
+	if override == "off" {
+		budget.Enabled = false
+		budget.Override = "cli"
+		return budget, nil
+	}
+	linesRaw, bytesRaw, ok := strings.Cut(override, ":")
+	maxLines, linesErr := strconv.Atoi(linesRaw)
+	maxBytes, bytesErr := strconv.Atoi(bytesRaw)
+	// An override such as 5000, 0:100 or 1:2:3 lands here, and every dashboard scan then fails with exit code 2.
+	if !ok || strings.Contains(bytesRaw, ":") || linesErr != nil || bytesErr != nil || maxLines <= 0 || maxBytes <= 0 {
+		return analysis.DeepScanBudget{}, fmt.Errorf("--deep-scan-budget must be two positive integers as LINES:BYTES, or off")
+	}
+	// A LINES:BYTES override replaces the config's budget outright, so it turns the budget back on even when the config disabled it.
+	return analysis.DeepScanBudget{Enabled: true, MaxLines: maxLines, MaxBytes: maxBytes, Override: "cli"}, nil
+}
+
+// dashboardSensitiveExclusions converts the loaded config's validated section 13a entries into analysis-side scopes for the dashboard's own scan.
+//
+// cfg is the loaded config; it returns one exclusion per entry with Rule, Path, Symbol and Reason copied, or an empty slice when there are none.
+func dashboardSensitiveExclusions(cfg cfgpkg.Config) []analysis.SensitiveExclusion {
+	exclusions := make([]analysis.SensitiveExclusion, 0, len(cfg.SensitiveExclusions))
+	for _, entry := range cfg.SensitiveExclusions {
+		exclusions = append(exclusions, analysis.SensitiveExclusion{
+			Rule:   entry.Rule,
+			Path:   entry.Path,
+			Symbol: entry.Symbol,
+			Reason: entry.Reason,
+		})
+	}
+	return exclusions
 }
 
 // splitPaths breaks a comma-separated path query value into trimmed entries.
+// raw is the paths form value; it returns the non-empty entries in order, nil when raw is empty, and an empty slice when every entry is blank.
 func splitPaths(raw string) []string {
 	if raw == "" {
 		return nil
 	}
 	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
+	paths := make([]string, 0, len(parts))
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
 		if trimmed != "" {
-			out = append(out, trimmed)
+			paths = append(paths, trimmed)
 		}
 	}
-	return out
+	return paths
 }
 
-// displayCommand reconstructs the equivalent `gruff-go analyse` shell command for state.
+// displayCommand formats selected scan settings from state as a gruff-go analyse command for display.
+//
+// opts contributes --deep-scan-budget (when non-empty) and --report-editor-link (unless empty or none); state supplies the other flags and paths.
+// It returns the space-joined command, which always starts with gruff-go analyse --format html and is not shell-quoted.
+//
+// The project root is not included, so the command assumes the caller runs it from that directory; a rejected fail-on value is shown as typed.
 func displayCommand(state report.DashboardState, opts Options) string {
 	args := []string{"gruff-go", "analyse", "--format", "html"}
 	if state.ReportInteractive == "1" {
 		args = append(args, "--report-interactive")
 	}
+	// Include a requested budget in the dashboard's displayed command so a user can repeat the scan from the CLI.
+	if opts.DeepScanBudget != "" {
+		args = append(args, "--deep-scan-budget", opts.DeepScanBudget)
+	}
 	if opts.EditorLink != "" && opts.EditorLink != "none" {
 		args = append(args, "--report-editor-link", opts.EditorLink)
 	}
-	if state.Config != "" {
+	// Skipping config, from the form or the launch flags, wins over any config path the form still shows.
+	if state.SkipConfig == "1" || opts.SkipConfig {
+		args = append(args, "--no-config")
+	} else if state.Config != "" {
 		args = append(args, "--config", state.Config)
 	}
-	if state.SkipConfig == "1" {
-		args = append(args, "--no-config")
-	}
-	if state.Baseline != "" && state.SkipBaseline != "1" {
+	// Skipping the baseline wins over a baseline path in the same way.
+	if state.SkipBaseline == "1" || opts.SkipBaseline {
+		args = append(args, "--no-baseline")
+	} else if state.Baseline != "" {
 		args = append(args, "--baseline", state.Baseline)
 	}
 	if state.ScanScope == "diff" {
@@ -265,18 +442,32 @@ func displayCommand(state report.DashboardState, opts Options) string {
 		args = append(args, "--include-ignored")
 	}
 	if state.FailOn != "" {
-		args = append(args, "--min-severity", state.FailOn)
+		args = append(args, "--fail-on", state.FailOn)
 	}
 	paths := splitPaths(state.Paths)
 	args = append(args, paths...)
 	return strings.Join(args, " ")
 }
 
-// stateFromQuery decodes the form state from a /scan query string.
-// Falls back to the dashboard's initial defaults for missing keys.
+// stateFromQuery decodes the dashboard form state from the / or /scan query string, falling back to the dashboard's initial defaults.
+//
+// values is the parsed query and opts seeds the defaults; it returns the state with each empty or missing key replaced by its default.
+// A field the user clears in the form therefore comes back as its default rather than blank.
 func stateFromQuery(opts Options, values url.Values) report.DashboardState {
-	defaults := defaultState(opts)
-	get := func(key, fallback string) string {
+	effectiveOpts := opts
+	// A cleared form field falls back to the value the dashboard was launched with.
+	if project := values.Get("project"); project != "" {
+		effectiveOpts.ProjectRoot = project
+	}
+	if configPath := values.Get("config"); configPath != "" {
+		effectiveOpts.ConfigPath = configPath
+	}
+	if noConfig := values.Get("noConfig"); noConfig != "" {
+		// Preserve startup --no-config so a query param (?noConfig=0) cannot make failOn lookup diverge from buildScanOptions.
+		effectiveOpts.SkipConfig = opts.SkipConfig || noConfig == "1"
+	}
+	defaults := defaultState(effectiveOpts)
+	valueOrDefault := func(key, fallback string) string {
 		value := values.Get(key)
 		if value == "" {
 			return fallback
@@ -284,15 +475,15 @@ func stateFromQuery(opts Options, values url.Values) report.DashboardState {
 		return value
 	}
 	return report.DashboardState{
-		Project:           get("project", defaults.Project),
-		Paths:             get("paths", defaults.Paths),
-		ScanScope:         get("scanScope", defaults.ScanScope),
-		FailOn:            get("failOn", defaults.FailOn),
-		Config:            get("config", defaults.Config),
-		Baseline:          get("baseline", defaults.Baseline),
-		SkipBaseline:      get("noBaseline", defaults.SkipBaseline),
-		SkipConfig:        get("noConfig", defaults.SkipConfig),
-		IncludeIgnored:    get("includeIgnored", defaults.IncludeIgnored),
-		ReportInteractive: get("reportInteractive", defaults.ReportInteractive),
+		Project:           valueOrDefault("project", defaults.Project),
+		Paths:             valueOrDefault("paths", defaults.Paths),
+		ScanScope:         valueOrDefault("scanScope", defaults.ScanScope),
+		FailOn:            valueOrDefault("failOn", defaults.FailOn),
+		Config:            valueOrDefault("config", defaults.Config),
+		Baseline:          valueOrDefault("baseline", defaults.Baseline),
+		SkipBaseline:      valueOrDefault("noBaseline", defaults.SkipBaseline),
+		SkipConfig:        valueOrDefault("noConfig", defaults.SkipConfig),
+		IncludeIgnored:    valueOrDefault("includeIgnored", defaults.IncludeIgnored),
+		ReportInteractive: valueOrDefault("reportInteractive", defaults.ReportInteractive),
 	}
 }

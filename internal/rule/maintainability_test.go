@@ -1,9 +1,13 @@
 // Package rule tests parser-only maintainability rules.
+//
+// Each test parses inline Go fixtures with parseOne and counts one rule's findings; a count failure prints those findings.
 package rule
 
 import "testing"
 
-// TestIgnoredErrorRule covers direct ignored error values and conservative call handling.
+// TestIgnoredErrorRule checks IgnoredErrorRule on a fixture that discards three errors with _ = and also discards a plain int value.
+//
+// It expects exactly two findings for direct ignored errors, with calls handled conservatively; any other count fails and prints the findings.
 func TestIgnoredErrorRule(t *testing.T) {
 	unit := parseOne(t, "maintain.go", `// Package sample is a test package.
 package sample
@@ -28,7 +32,8 @@ func sample(file interface{ Close() error }) {
 	}
 }
 
-// TestContextTODOProductionRule verifies production context.TODO calls are visible while tests and Background are ignored.
+// TestContextTODOProductionRule expects one finding from a production fixture with TODO and Background, and none from a test fixture.
+// A count failure prints the production or test-file findings that were reported.
 func TestContextTODOProductionRule(t *testing.T) {
 	production := parseOne(t, "service.go", `// Package sample is a test package.
 package sample
@@ -54,33 +59,5 @@ func sample() {
 `)
 	if findings := (ContextTODOProductionRule{}).AnalyzeUnit(testFile, Context{}); len(findings) != 0 {
 		t.Fatalf("test findings = %#v, want none", findings)
-	}
-}
-
-// TestProductionPanicRule verifies literal production panics and the conservative exemptions.
-func TestProductionPanicRule(t *testing.T) {
-	production := parseOne(t, "service.go", `// Package sample is a test package.
-package sample
-
-func Crash() {
-	panic("boom")
-}
-
-func Internal(err error) {
-	panic(err)
-}
-`)
-	if findings := (ProductionPanicRule{}).AnalyzeUnit(production, Context{}); len(findings) != 1 {
-		t.Fatalf("production findings = %#v, want one literal panic finding", findings)
-	}
-
-	mainFile := parseOne(t, "cmd/tool/main.go", `package main
-
-func main() {
-	panic("bootstrap")
-}
-`)
-	if findings := (ProductionPanicRule{}).AnalyzeUnit(mainFile, Context{}); len(findings) != 0 {
-		t.Fatalf("main findings = %#v, want none", findings)
 	}
 }

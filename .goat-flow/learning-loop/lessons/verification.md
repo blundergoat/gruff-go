@@ -1,6 +1,6 @@
 ---
 category: verification
-last_reviewed: 2026-08-16
+last_reviewed: 2026-11-25
 ---
 
 # Verification Lessons
@@ -26,7 +26,7 @@ The same turn also patched a repeated `type getter` anchor inside an embedded Go
 
 PR #6's 2026-08-13 wave extended the lesson from the reviewer's claim to the agent's own test. Of six findings, five reproduced against a built binary and one did not: Cursor's High-severity "hook bootstrap reads wrong argv" assumed `node -e` puts `[eval]` in `process.argv[1]`, but `node -e 'script' a b c` yields `[node, a, b, c]`, so the launcher's `process.argv[1]`-`[5]` binding was already correct - and the equivalent `.claude/settings.json` launcher blocked two commands during the same session, which is the behaviour the finding claimed was impossible. Severity labels do not survive a one-line probe.
 
-More usefully, a *passing* new regression test proved nothing until the fix was removed. `TestRequestControlledURLPackageShadowing` gained a case where a local shadows `fmt`; it passed before the fix too, because the fixture imported only `net/http`, so `packageImportNames(file, "fmt", "fmt")` (`internal/rule/security_request_source.go`, search: `func packageImportNames`) returned an empty map and the alias lookup was false either way. The fixture had to import and use `fmt` for the case to exercise the shadow at all. Alias-keyed rules only reach their lookup when the fixture genuinely imports the package.
+More usefully, a *passing* new regression test proved nothing until the fix was removed. `TestRequestControlledURLPackageShadowing` gained a case where a local shadows `fmt`; it passed before the fix too, because the fixture imported only `net/http`, so `packageImportNames(file, "fmt", "fmt")` (defined at `internal/rule/expansion.go` (search: `func packageImportNames`)) returned an empty map and the alias lookup was false either way. The fixture had to import and use `fmt` for the case to exercise the shadow at all. Alias-keyed rules only reach their lookup when the fixture genuinely imports the package.
 
 How to avoid: after a new rule test passes, neutralise the fix - revert the file, or stub the single discriminator it added - and confirm the test fails for the reason claimed. Findings-expected cases that pass in both states are negative controls, not evidence.
 
@@ -67,7 +67,7 @@ flags-after-paths defect with `flag.NewFlagSet` and published the hit list as th
 `cli.go`'s `list-rules`. Three of those never take positional paths — `dashboard` reads scan targets
 from `--paths`, `completion` uses `Arg(0)` as a shell name, `list-rules` consumes no operands at all —
 so the stated mechanism ("every subcommand takes those remaining args as paths") did not apply to
-them. More seriously, the grep **missed** `internal/cli/hook.go` (search: `paths:          flagSet.Args()`)
+them. More seriously, the grep **missed** `internal/cli/hook.go` (search: `flagSet.Args()`)
 and `internal/cli/check_ignore.go` (search: `paths := flags.Args()`), which do. `hook` is this port's
 primary surface. An implementer following the list literally would have shipped
 `gruff-go hook <path> --format json` still dropping `--format`. The grep answered "who constructs a
@@ -118,3 +118,33 @@ findings produced, a non-empty artefact — before comparing the two sides. The 
 "same?", never "same, and meaningful?". Scratch fixtures under `/tmp` are a standing trap for any
 scanner with a default ignore list; either place fixtures elsewhere or pass the port's
 `--include-ignored` equivalent, and check the scanned-file count either way.
+
+The same root cause recurred in the shipped Go performance harness on 2026-08-22. The hyperfine
+matrix entered `scripts/.perf-corpus/medium` and analysed `.`, but `peak_rss_kb` passed the hidden
+corpus path from the repository root. Gruff pruned that explicit path, produced an empty-analysis
+diagnostic with zero scanned files, and `/usr/bin/time` still returned a believable RSS value.
+The `--baseline-update` mode in `scripts/test-performance.sh` exposed the mismatch only because `pipefail`
+propagated analyser exit 2. The repair runs the RSS command from inside the same corpus, accepts only
+the expected success/findings exits, and rejects setup/empty-analysis exits. Performance cells need
+matching working directories and operands as well as matching labels.
+
+## Lesson: a hook guards only the tools its registration matcher names
+
+**Created:** 2026-10-03
+**Decision changed:** Before claiming a hook protects a tool, read that tool's matcher in the agent registration; running the hook script directly with a crafted payload shows only what the script would decide if it were ever called.
+**Trigger phase:** VERIFY
+
+**Prevention:** Derive what is protected from the registration first, then probe the script for its decision table and label the result as such. In this checkout `.claude/settings.json` (search: `"matcher": "Bash|PowerShell|Monitor"`) registers `deny-dangerous.mjs` and `deny-git-mutations.mjs` for Claude's shell and `Monitor` tools only, so its `Read` and `Edit` calls never reach either script and are bounded by `permissions.deny` alone.
+
+**What happened:** The goat-flow 1.17.0 install retired the static `Read`/`Edit` deny rules for credentials-prefixed file names. To check the loss was covered, the agent fed Claude `Read`-tool payloads directly to `deny-dangerous.sh`, saw exit 2 for a credentials file, and reported that such reads stayed blocked. The quality assessment in the same session read the registration, found the shell-only matcher, and showed the claim was false: nothing blocked Claude's file tools from reading that file. The agent corrected the report to the user.
+
+## Lesson: check section-boundary guards and dogfood prose when adding doc-contract test helpers
+
+**Created:** 2026-11-25
+**Decision changed:** When a Markdown contract test slices sections by heading prefix, verify it terminates at parent heading levels (`## `) as well as sibling headings (`### `), and always run `go run ./cmd/gruff-go analyse .` after adding test helpers so callable-doc rules check the new helper comment.
+**Trigger phase:** ACT
+**Caught at:** VERIFY
+
+**Prevention:** Bound Markdown section slices to the earliest following sibling or parent heading, never assume EOF means "still inside the last section", and write Go doc comments on test helpers using explicit return wording (`returns ...`) before running the dogfood gate.
+
+**What happened:** On 2026-11-24, `docs/rules.md` carried a stray `Known precision limit` paragraph for `test-quality.tempdir-misuse` at EOF below `## Confidence evidence` and `## Configuring rules`. `internal/cli/rules_docs_test.go` (search: `TestDocsRulesPrecisionGuidanceMatchesRegistry`) still passed because it only searched for the next `\n### \`` heading, so the last rule section swallowed the rest of the file. Extracting `internal/cli/rules_docs_test.go` (search: `func nextDocSectionEnd`) to stop at both `\n### \`` and `\n## ` closed the blind spot. On the next preflight run, dogfood tripped `docs.missing-return-doc` on `nextDocSectionEnd` itself because its comment opened with `"finds"` rather than `"returns"`; rewording the comment restored grade A (`100.00/100`, 0 findings).

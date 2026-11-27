@@ -10,8 +10,10 @@ import (
 	"github.com/blundergoat/gruff-go/internal/source"
 )
 
-// connectionCredentialCase defines one named row in the reserved-delimiter,
-// placeholder, or authority-boundary regression matrix.
+// connectionCredentialCase defines one named row in the reserved-delimiter, placeholder, or authority-boundary regression matrix.
+//
+// Each row runs as a subtest named by name; with wantFinding set, ConnectionStringRule must report one finding for url, otherwise none.
+// A reported finding must never carry url, nor password when it is non-empty; an empty password skips that check.
 type connectionCredentialCase struct {
 	name        string
 	url         string
@@ -19,14 +21,14 @@ type connectionCredentialCase struct {
 	wantFinding bool
 }
 
-// connectionURL builds a fixture URL at runtime so the dogfood scanner never
-// reads a complete credential-bearing URI from this test file.
+// connectionURL builds a fixture URL at runtime so the dogfood scanner never reads a complete credential-bearing URI from this test file.
+//
+// It returns a postgres URI with user, password and host joined unescaped, followed verbatim by suffix, the path or query; empty parts stay empty.
 func connectionURL(user, password, host, suffix string) string {
 	return "postgres" + "://" + user + ":" + password + "@" + host + suffix
 }
 
-// connectionCredentialCases returns every required M01 positive and negative
-// boundary as a distinct, grep-friendly subtest.
+// connectionCredentialCases returns every required M01 positive and negative boundary as a distinct, grep-friendly subtest.
 func connectionCredentialCases() []connectionCredentialCase {
 	return []connectionCredentialCase{
 		{name: "raw slash password", url: connectionURL("app", "alpha/slash-42", "localhost:5432", "/orders"), password: "alpha/slash-42", wantFinding: true},
@@ -64,25 +66,22 @@ func connectionCredentialCases() []connectionCredentialCase {
 		{name: "angle bracket password is a substitution", url: connectionURL("app", "<password>", "db.prod.example.com", "/orders"), wantFinding: false},
 		{name: "password merely containing braces is a real credential", url: connectionURL("app", "s3cret{9}", "db.prod.example.com", "/orders"), password: "s3cret{9}", wantFinding: true},
 		{name: "bare password word on localhost is a fixture", url: connectionURL("user", "password", "localhost:5432", "/dbname"), wantFinding: false},
-		// Uses `secret` rather than `password` because the redaction assertion
-		// substring-matches the whole payload, and the finding message itself
-		// contains the word "password".
+		// Uses "secret", not "password": the redaction check substring-matches the whole payload, and the finding message contains "password".
 		{name: "bare placeholder word on a production host is reported", url: connectionURL("user", "secret", "db.prod.example.com:5432", "/dbname"), password: "secret", wantFinding: true},
 		{name: "query at sign is not the credential boundary", url: connectionURL("app", "placeholder", "localhost", "/orders?owner=a@b.example"), wantFinding: false},
 		{name: "replica set placeholder is not exempt", url: connectionURL("app", "placeholder", "localhost:27017,localhost:27018", "/orders"), password: "placeholder", wantFinding: true},
-		// A replica-set member without its own port leaves text after the last
-		// colon that is not a valid port, so the authority does not parse at all
-		// and the credential is not extracted. This is a known gap, not a
-		// decision: widening which URIs are reported is deferred out of M22.
+		// This row pins a known detection gap: a literal password in an unparseable replica-set URI is not reported.
+		//
+		// A replica-set member without its own port leaves text after the last colon that is not a valid port,
+		// so the authority does not parse at all and the credential is not extracted.
 		{name: "multi host with unparseable member stays unreported", url: connectionURL("app", "realSecretValue42", "db1:5432,db2", "/orders"), wantFinding: false},
 	}
 }
 
-// TestSplitConnectionURLDeclinesMultiHostAuthority pins that a replica-set
-// authority yields no canonical host. net/url folds `h1:27017,h2:27017` into
-// the hostname `h1:27017,h2`, which names no real host, so treating it as one
-// would let the local-development exemption reason about a value that is not
-// a host at all.
+// TestSplitConnectionURLDeclinesMultiHostAuthority pins that a replica-set authority yields no canonical host.
+//
+// net/url folds h1:27017,h2:27017 into the hostname h1:27017,h2, which names no real host.
+// Treating it as one would let the local-development exemption reason about a value that is not a host at all.
 func TestSplitConnectionURLDeclinesMultiHostAuthority(t *testing.T) {
 	multiHost := splitConnectionURL(connectionURL("app", "placeholder", "localhost:27017,localhost:27018", "/orders"))
 	if multiHost.host != "" {
@@ -97,8 +96,10 @@ func TestSplitConnectionURLDeclinesMultiHostAuthority(t *testing.T) {
 	}
 }
 
-// TestConnectionStringCredentialMatrix pins extraction, exact-placeholder, and
-// local-host behavior before the matcher implementation changes.
+// TestConnectionStringCredentialMatrix pins extraction, exact-placeholder, and local-host behavior for every case row.
+//
+// Each row's url is scanned as a Go const in fixture.go and must yield one finding when wantFinding is set, none otherwise.
+// A reported finding must not carry the complete url or the row's raw password.
 func TestConnectionStringCredentialMatrix(t *testing.T) {
 	for _, tt := range connectionCredentialCases() {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,8 +122,8 @@ func TestConnectionStringCredentialMatrix(t *testing.T) {
 	}
 }
 
-// TestConnectionStringRuleChecksEveryCandidateOnLine ensures a username-only
-// URI cannot hide a later password-bearing connection string on the same line.
+// TestConnectionStringRuleChecksEveryCandidateOnLine checks for one finding when a username-only URI precedes a password URI on a line.
+// The finding's JSON must omit the password URI and its raw password.
 func TestConnectionStringRuleChecksEveryCandidateOnLine(t *testing.T) {
 	usernameOnly := "postgres" + "://" + "app@localhost"
 	passwordBearing := connectionURL("svc", "prodsecret", "db.internal", "/orders")
@@ -137,8 +138,9 @@ func TestConnectionStringRuleChecksEveryCandidateOnLine(t *testing.T) {
 	assertConnectionFindingRedacted(t, findings[0], passwordBearing, "prodsecret")
 }
 
-// assertConnectionFindingRedacted proves neither the complete URI nor its raw
-// password is carried by the current finding payload.
+// assertConnectionFindingRedacted proves neither the complete URI nor its raw password is carried by the current finding payload.
+//
+// It fails if finding cannot be marshalled to JSON or its JSON contains rawURL or a non-empty rawPassword; empty rawPassword skips its check.
 func assertConnectionFindingRedacted(t *testing.T, finding any, rawURL, rawPassword string) {
 	t.Helper()
 	encoded, err := json.Marshal(finding)

@@ -1,5 +1,7 @@
 // Package report renders gruff-go analysis results into output formats.
-// This file holds tests for the interactive HTML report's filter UI.
+//
+// This file tests the HTML report's interactive filter form (HTMLOptions.Interactive) and the row data attributes it filters on.
+// Failures point to missing or unexpected markup, wrong option order or a wrong initial count in the rendered fixture.
 package report
 
 import (
@@ -9,6 +11,7 @@ import (
 )
 
 // TestWriteHTMLFindingRowsCarryDataAttributes asserts the static report still emits filter data attributes.
+// A failure means a finding row lost one of the data attributes the interactive layer reads for filtering or grouping.
 func TestWriteHTMLFindingRowsCarryDataAttributes(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -61,6 +64,7 @@ func TestWriteHTMLInteractiveEmitsFilterForm(t *testing.T) {
 }
 
 // TestWriteHTMLNonInteractiveOmitsScript verifies the static report omits the interactive script and filter markers.
+// A failure means static reports would ship script or filter markup they never use.
 func TestWriteHTMLNonInteractiveOmitsScript(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -105,7 +109,8 @@ func TestWriteHTMLInteractiveSeverityOptionOrder(t *testing.T) {
 	}
 }
 
-// TestWriteHTMLInteractivePillarOptionsSortedAndDeduped asserts pillar options are alphabetical and de-duplicated.
+// TestWriteHTMLInteractivePillarOptionsSortedAndDeduped asserts the complexity, naming and size pillar options are present and alphabetical.
+// It does not count duplicates despite its name, so a repeated option would still pass.
 func TestWriteHTMLInteractivePillarOptionsSortedAndDeduped(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -133,6 +138,7 @@ func TestWriteHTMLInteractivePillarOptionsSortedAndDeduped(t *testing.T) {
 }
 
 // TestWriteHTMLInteractiveCountReflectsAllFindings asserts the filter count starts at the full finding total.
+// It checks the generated HTML, not the browser script, for the fixture's initial text, 5 of 5 findings shown.
 func TestWriteHTMLInteractiveCountReflectsAllFindings(t *testing.T) {
 	report := buildHTMLFixture()
 	var out bytes.Buffer
@@ -141,6 +147,7 @@ func TestWriteHTMLInteractiveCountReflectsAllFindings(t *testing.T) {
 	}
 	body := out.String()
 	totalFindings := len(report.Findings)
+	// The expected total is hardcoded to the fixture's five findings; totalFindings only feeds the failure message.
 	expected := strings.Replace("{n} of {n} findings shown.", "{n}", "5", -1)
 	_ = totalFindings
 	if !strings.Contains(body, expected) {

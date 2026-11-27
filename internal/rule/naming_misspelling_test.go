@@ -1,10 +1,13 @@
 // Package rule defines gruff-go's rule registry and analysers.
-// This file exercises the naming.misspelling rule against fixture sources.
+//
+// This file exercises the naming.misspelling rule against inline fixture sources parsed with parseOne.
+// Failures point at a changed typo finding, Ignore or Extra option handling, default enablement or the declared parser capability.
 package rule
 
 import "testing"
 
-// TestMisspellingFlagsIdentifiers verifies that common misspellings in identifiers fire findings.
+// TestMisspellingFlagsIdentifiers verifies that misspellings in field, func, var and const names each fire a finding.
+// A failure names an expected typo message that is missing or whose wording changed.
 func TestMisspellingFlagsIdentifiers(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -32,7 +35,8 @@ const Wierd = 1
 	}
 }
 
-// TestMisspellingFlagsCamelCaseTokens checks that camelCase sub-tokens are detected.
+// TestMisspellingFlagsCamelCaseTokens checks that misspellings inside multi-word PascalCase func and type names produce findings.
+// A failure means an expected PascalCase typo finding is missing or its message changed.
 func TestMisspellingFlagsCamelCaseTokens(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -51,6 +55,7 @@ type EnviromentConfig struct{}
 }
 
 // TestMisspellingFlagsDocComments confirms misspellings inside doc comments are reported.
+// A failure means the expected doc comment typo finding is missing or its message changed.
 func TestMisspellingFlagsDocComments(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -65,6 +70,7 @@ func Process() {}
 }
 
 // TestMisspellingFlagsStructTags ensures struct tag literals are scanned for misspellings.
+// A failure means the expected json tag typo finding is missing or its message changed.
 func TestMisspellingFlagsStructTags(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -79,7 +85,8 @@ type Sample struct {
 	}
 }
 
-// TestMisspellingHonoursIgnoreList checks that tokens listed in Ignore are suppressed.
+// TestMisspellingHonoursIgnoreList checks that tokens listed in the rule's Ignore list are suppressed.
+// A failure means a word the user chose to accept still fires a finding.
 func TestMisspellingHonoursIgnoreList(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -93,7 +100,8 @@ type Sample struct {
 	}
 }
 
-// TestMisspellingAcceptsExtraDictionary verifies user-provided Extra entries augment the dictionary.
+// TestMisspellingAcceptsExtraDictionary verifies that the configured Extra entry reports foo as a misspelling of bar.
+// A failure means the expected foo to bar finding is missing or its message changed.
 func TestMisspellingAcceptsExtraDictionary(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -111,6 +119,9 @@ type Sample struct {
 }
 
 // TestMisspellingIsDefaultEnabled asserts the rule ships enabled with parser capability.
+//
+// A DefaultEnabled failure means a plain gruff-go analyse run skips naming.misspelling.
+// A capability failure alone flags a changed Capability declaration and leaves enablement untouched.
 func TestMisspellingIsDefaultEnabled(t *testing.T) {
 	if !(MisspellingRule{}).Definition().DefaultEnabled {
 		t.Error("naming.misspelling must be default-enabled")
@@ -121,6 +132,7 @@ func TestMisspellingIsDefaultEnabled(t *testing.T) {
 }
 
 // TestMisspellingClampsToWordBoundaries ensures clean identifiers and comments produce no findings.
+// A failure means correctly spelt words such as Length or returns surface to users as false positives.
 func TestMisspellingClampsToWordBoundaries(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 

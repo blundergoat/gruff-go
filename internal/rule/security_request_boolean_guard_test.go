@@ -1,11 +1,13 @@
 // Package rule tests explicit-boolean validator guards on request-driven URLs.
+//
+// A handler that guards http.Get by comparing a validator result with true or false gets no request-controlled URL finding.
+// A comparison against a variable, or a guard through a local named true, proves nothing and still gets one.
 package rule
 
 import "testing"
 
-// TestRequestControlledURLBooleanComparisonGuards pins that comparing a validator
-// result against a boolean literal guards the sink exactly as negation does, and
-// that a comparison proving nothing still reports.
+// TestRequestControlledURLBooleanComparisonGuards pins that comparing a validator result with a boolean literal guards the sink as negation does.
+// A comparison that proves nothing still reports; a failure means a guarded fetch was flagged or an unproven one went unreported.
 func TestRequestControlledURLBooleanComparisonGuards(t *testing.T) {
 	tests := []struct {
 		name string
@@ -88,8 +90,8 @@ func TestRequestControlledURLBooleanComparisonGuards(t *testing.T) {
 	}
 }
 
-// booleanGuardSource wraps one handler body in a package that validates a
-// request-controlled URL before fetching it.
+// booleanGuardSource wraps a handler body with a request-derived target and a stub boolean validator; the body supplies the guard and the fetch.
+// It returns the full Go source of package handler, with body inserted verbatim into fetch after target is read from the url form value.
 func booleanGuardSource(body string) string {
 	return `// Package handler is a test package.
 package handler

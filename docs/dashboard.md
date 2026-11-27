@@ -25,16 +25,17 @@ The terminal prints the launch URL and a one-liner controls hint. The dashboard 
 | `--paths` | *empty* | Comma-separated initial paths to scan. |
 | `--config` | *auto-discover* | Initial `.gruff-go.yaml` path. |
 | `--no-config` | *off* | Skip auto-loading any config file. |
+| `--deep-scan-budget` | *config/default* | Override both deep-scan bounds as `LINES:BYTES`, or disable with `off`. |
 | `--baseline` | *empty* | Initial baseline JSON path. |
 | `--no-baseline` | *off* | Refuse to apply any baseline. |
 | `--diff` | *off* | Start in diff-only scan mode (against `HEAD`). |
 | `--include-ignored` | *off* | Include gitignored and default-ignored files; `paths.ignore` still applies. |
-| `--fail-on` | `none` | Threshold that fails the scan. `none` (the default for `dashboard`) means the scan reports findings but always exits 0. Accepts `advisory \| warning \| error \| none`. Honors `.gruff-go.yaml`'s `minimumSeverity.dashboard` when the flag is unset (see [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md)). |
+| `--fail-on` | `none` | Threshold that fails the scan. `none` (the default for `dashboard`) means the scan reports findings but always exits 0. Accepts `advisory \| warning \| error \| none`. Honors `.gruff-go.yaml`'s `failOn.dashboard` when the flag is unset (see [ADR-010](../.goat-flow/learning-loop/decisions/ADR-010-per-command-minimum-severity.md)). |
 | `--report-interactive` | *off* | Enable the inline finding filter UI inside the iframe. |
 | `--report-editor-link` | `none` | File:line link mode: `none`, `vscode`, `phpstorm`. |
 | `--allow-public` | *off* | Permit non-loopback `--host`. Required for `0.0.0.0` etc. |
 
-The scan-shaping flags from `--project` through `--report-interactive` map to controls-panel fields, so you can adjust those knobs from the browser without restarting the server. Listener and startup-only settings (`--host`, `--port`, `--scan-timeout`, `--report-editor-link`, and `--allow-public`) stay fixed for the running dashboard process.
+The scan-shaping flags from `--project` through `--report-interactive` (except `--deep-scan-budget`) map to controls-panel fields, so you can adjust those knobs from the browser without restarting the server. Listener and startup-only settings (`--host`, `--port`, `--scan-timeout`, `--deep-scan-budget`, `--report-editor-link`, and `--allow-public`) stay fixed for the running dashboard process.
 
 ## Security model
 
@@ -42,6 +43,7 @@ The dashboard is **local-only** by design:
 
 - The listener binds to `127.0.0.1` unless `--host` says otherwise.
 - If `--host` resolves to a non-loopback address, the server **refuses to start** without `--allow-public`. The refusal includes the host name in the error so it's obvious in scripts.
+- Unless `--allow-public` is set, the HTTP handler rejects requests with a non-loopback `Host` header (`403 Forbidden`) to block DNS-rebinding attacks, and sets `X-Frame-Options: SAMEORIGIN` plus `Content-Security-Policy: frame-ancestors 'self'`.
 - When `--allow-public` is set with a non-loopback host, the server prints a `WARNING: binding dashboard to non-loopback host …` line at start-up.
 - The dashboard accepts only `GET` requests. `POST` returns `405 Method Not Allowed`; unknown paths return `404 Not Found`.
 - Every query-string value (project root, paths, config path, baseline path, fail-on, scope, include-ignored, and interactive-report state) is HTML-escaped before it reaches the rendered shell or report. The same escaping path the static HTML reporter uses is reused here.
@@ -109,14 +111,14 @@ After every scan, the report HTML carries:
 
 ```html
 <script id="gruff-dashboard-meta" type="application/json">
-  {"type":"gruff-scan-complete","exitCode":0,"durationMs":245,"projectRoot":"/repo","command":"gruff-go analyse --format html --min-severity advisory ."}
+  {"type":"gruff-scan-complete","exitCode":0,"durationMs":245,"projectRoot":"/repo","command":"gruff-go analyse --format html --fail-on advisory ."}
 </script>
 <script>(()=>{const el=document.getElementById("gruff-dashboard-meta");if(window.parent&&el){window.parent.postMessage(JSON.parse(el.textContent),window.location.origin);}})();</script>
 ```
 
 The dashboard shell ignores any message whose `origin` does not match `window.location.origin` and any payload whose `type` is not `gruff-scan-complete`. If you embed the dashboard inside your own page, listen for the same event shape on the matching origin.
 
-When the scan includes ignored files or enables the interactive report UI, the metadata command includes `--include-ignored` and `--report-interactive` so the scan can be reproduced from `gruff-go analyse --format html`.
+When the scan includes ignored files, overrides the deep-scan budget, or enables the interactive report UI, the metadata command includes `--include-ignored`, `--deep-scan-budget`, and `--report-interactive` so the scan can be reproduced from `gruff-go analyse --format html`.
 
 ## Scan-timeout behaviour
 

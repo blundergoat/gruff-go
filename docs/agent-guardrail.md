@@ -34,7 +34,7 @@ Run after the agent edits, and gate on every finding so the agent clears it all
 before a human looks:
 
 ```bash
-gruff-go analyse --min-severity advisory .
+gruff-go analyse --fail-on advisory .
 ```
 
 To judge the agent on its own work rather than the whole repo, scan only the
@@ -44,7 +44,7 @@ changed region with the diff-aware flags - `--diff`, `--since`,
 recipes. Feed the findings back to the agent and re-run until clean.
 
 Agent harnesses that consume `gruff-go hook --format json --diff ...` receive the
-stable `gruff.hook.v1` payload. In a new git repository with no commits yet,
+stable `gruff.hook.v2` payload. In a new git repository with no commits yet,
 `--diff HEAD` cannot resolve a base; hook mode writes an actionable stderr
 diagnostic and falls back to scanning the requested paths without diff/new-only
 filtering rather than dropping the JSON contract.
@@ -58,7 +58,7 @@ a directory scan, an explicit file argument, or any diff/changed-region mode, an
 `--include-ignored` (which opts into git/default-ignored paths) never overrides
 it. So the agent is never asked to "fix" a file the project deliberately
 excludes - generated code, vendored trees, fixtures. Excluded files still appear
-in the report's `paths.skipped[]` with `source` and the matching `pattern`, so
+in the report's `paths.details` with `reason`, `source`, and the matching `pattern`, so
 the hook can explain the exclusion rather than silently dropping the file.
 
 To decide whether to invoke gruff on a file at all - before any analysis - use
@@ -70,7 +70,7 @@ does no scanning:
 if [ "$(gruff-go check-ignore --format json "$file" | jq -r '.[0].ignored')" = "true" ]; then
   exit 0   # out of scope; nothing for the agent to fix
 fi
-gruff-go analyse --min-severity advisory "$file"
+gruff-go analyse --fail-on advisory "$file"
 ```
 
 `check-ignore` mirrors `git check-ignore` exit codes (0 = at least one path
@@ -80,7 +80,7 @@ ignored, 1 = none, 2 = error), so it also composes in plain shell without `jq`.
 
 ```bash
 # .git/hooks/pre-commit
-gruff-go analyse --min-severity warning . || {
+gruff-go analyse --fail-on warning . || {
   echo "gruff: fix findings (or scope with --baseline) before committing" >&2
   exit 1
 }
@@ -93,7 +93,7 @@ Run gruff in CI and upload SARIF for code scanning; see
 semantics.
 
 ```bash
-gruff-go analyse --format sarif --min-severity error . > gruff.sarif
+gruff-go analyse --format sarif --fail-on error . > gruff.sarif
 ```
 
 ### Existing codebases
@@ -103,22 +103,18 @@ only on new ones.
 
 ```bash
 gruff-go analyse --generate-baseline gruff-baseline.json .
-gruff-go analyse --baseline gruff-baseline.json --min-severity advisory .
+gruff-go analyse --baseline gruff-baseline.json --fail-on advisory .
 ```
 
-Baseline and hook new-only filtering share one matcher: exact fingerprints pair
-first, then remaining contract-stable identities pair one-to-one. A reviewed
-finding can move without resurfacing, but one prior occurrence cannot hide
-multiple duplicate issues. Legacy baseline rows without `stableIdentity` remain
-exact-only.
+Baseline and hook new-only filtering share one `gruff.baseline.v3` matcher: each entry stores a line-insensitive 16-hex SHA-256 `identity` and an occurrence `count`. A reviewed finding can move lines without resurfacing, and extra duplicates past the recorded count report as new. Non-v3 baselines fail closed until migrated with `gruff-go baseline --migrate-baseline`.
 
 ## How the rules serve the mission
 
 | Axis | What enforces it |
 | --- | --- |
-| Legible enough to verify | `size.*`, `complexity.*`, and `docs.*` - especially `docs.comment-rubric` with `minWordsBeyondSymbol` set, which rejects name-restatement comments so a doc actually states intent a reviewer can check against the code. |
+| Legible enough to verify | `size.*`, `complexity.*`, and `docs.*` — including `docs.comment-rubric` with `minWordsBeyondSymbol` set (rejecting name-restatement comments) and `docs.missing-param-doc` / `docs.missing-return-doc` so comments state intent a reviewer can verify against the code. |
 | Secure where the eye fails | the `security.*` and `sensitive-data.*` pillars. |
-| Tested for real, not padded | `test-quality.*` - `no-failure-path`, `empty-test`, the skip and sleep checks - which reject assertion-free and ceremony tests. |
+| Tested for real, not padded | `test-quality.*` — `empty-test`, `duplicate-test-body`, `sleep-in-test`, `helper-missing-t-helper`, `tempdir-misuse`, and `fatal-in-goroutine` — which catch empty, duplicated, flaky, and misstructured tests. |
 
 Tune these in [Configuration](configuration.md); the full catalogue is in
 [Rules](rules.md).
@@ -136,13 +132,9 @@ Treat every finding as requiring one explicit action before handoff:
 | `LARGER-REFACTOR` | The finding points at a real design issue that is too broad for the current change. | Leave an explicit follow-up with the underlying findings grouped; do not hide the signal. |
 | `SKIP-CODEBASE` | The path is generated, vendored, fixture-only, or otherwise outside the review boundary. | Use `check-ignore` / `paths.ignore` so gruff reports the skip instead of asking for a code edit. |
 
-`design.hotspot-file` is a composite triage pointer. Use it to group related
-underlying findings in one file; do not treat it as an extra standalone edit after
-the underlying findings are handled.
-
 ## Recommended settings for agent-generated code
 
-- **`--min-severity advisory` inside the agent loop.** The agent should clear
+- **`--fail-on advisory` inside the agent loop.** The agent should clear
   everything; do not let it defer findings to the human reviewer.
 - **Keep `docs.comment-rubric`'s signal floor.** `minWordsBeyondSymbol` is what
   stops the agent from satisfying the doc requirement with a comment that just

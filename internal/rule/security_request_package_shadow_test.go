@@ -1,10 +1,12 @@
 // Package rule tests that shadowed import names are not read as their packages.
+//
+// A local named http or fmt hides the import inside its scope, so request-controlled URL findings must follow the local, not the package.
+// Fixtures where a local http has a custom Get or a local fmt has a custom Sprintf stay quiet; genuine and aliased package calls still report.
 package rule
 
 import "testing"
 
-// TestRequestControlledURLPackageShadowing pins that a local shadowing an import
-// stops naming that package, while every genuine net/http sink still reports.
+// TestRequestControlledURLPackageShadowing checks local http and fmt shadows while genuine, aliased and DefaultClient Get calls still report.
 func TestRequestControlledURLPackageShadowing(t *testing.T) {
 	tests := []struct {
 		name string
@@ -114,6 +116,7 @@ func fetch(w http.ResponseWriter, r *http.Request) {
 		t.Run(tt.name, func(t *testing.T) {
 			unit := parseOne(t, "handler.go", tt.code)
 			findings := RequestControlledURLRule{}.AnalyzeUnit(unit, Context{})
+			// A mismatch points at sink matching on the http name or taint flow through the fmt call; the failure prints every finding it produced.
 			if len(findings) != tt.want {
 				t.Fatalf("findings = %#v, want %d", findings, tt.want)
 			}

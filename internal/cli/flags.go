@@ -1,6 +1,7 @@
 // Package cli implements the gruff-go command-line interface.
-// This file accepts flags on either side of positional arguments while preserving standard
-// end-of-flags behavior. Every command uses this path so a trailing flag cannot become a scan path.
+//
+// This file accepts flags on either side of positional arguments while preserving standard end-of-flags behavior.
+// Commands that accept command-specific flags use this path so a trailing flag cannot become a scan path.
 package cli
 
 import (
@@ -9,7 +10,12 @@ import (
 )
 
 // parseCommandArguments accepts flags before, between, or after positional arguments.
+//
 // Use it instead of FlagSet.Parse so trailing flags are validated rather than treated as paths.
+// Tokens after a -- terminator, or from a bare dash onward, stay positional and keep their order.
+//
+// flagSet receives the parsed flag values and the operands later returned by its Args; commandArguments holds the raw tokens in user order.
+// It returns any error flagSet.Parse reports, such as an unknown flag or an invalid flag value.
 func parseCommandArguments(flagSet *flag.FlagSet, commandArguments []string) error {
 	flagArguments := make([]string, 0, len(commandArguments))
 	positionalArguments := make([]string, 0, len(commandArguments))
@@ -50,13 +56,21 @@ scanArguments:
 }
 
 // hasFlagSyntax identifies tokens that FlagSet must validate.
+//
 // Callers handle a bare dash first because it ends parsing instead of naming a flag.
+//
+// argument is one command-line token.
+// It reports true when argument is longer than one character and begins with a dash, so -- also matches; it reports false otherwise.
 func hasFlagSyntax(argument string) bool {
 	return len(argument) > 1 && argument[0] == '-'
 }
 
 // flagHasSeparateValue reports whether a registered flag takes its value from the next token.
-// Unknown flags stay separate so FlagSet can emit its canonical parsing error.
+//
+// It is false for a token with an inline =value, a positional token, an unknown flag, or a Boolean flag.
+// An unknown flag never takes the next token, so a typo such as --fromat json reaches FlagSet alone and gets its canonical parsing error.
+//
+// flagSet supplies the registered flags looked up by name, and argument is the token being classified.
 func flagHasSeparateValue(flagSet *flag.FlagSet, argument string) bool {
 	flagName, hasInlineValue := parseFlagArgument(argument)
 	// An inline assignment is complete, and a token without a flag name cannot own the next argument.
@@ -75,8 +89,10 @@ func flagHasSeparateValue(flagSet *flag.FlagSet, argument string) bool {
 	return true
 }
 
-// parseFlagArgument returns the canonical FlagSet name and whether the token includes `=value`.
+// parseFlagArgument returns the canonical FlagSet name and whether the token carries an inline =value.
+//
 // Positional tokens return an empty name so callers cannot consume a following path by mistake.
+// argument is one command-line token; one or two leading dashes are stripped and the name ends at the first equals sign.
 func parseFlagArgument(argument string) (string, bool) {
 	// Positional input has no name in the command's FlagSet.
 	if !hasFlagSyntax(argument) {
@@ -94,8 +110,12 @@ func parseFlagArgument(argument string) (string, bool) {
 	return flagName, false
 }
 
-// helpRequested reports whether a help flag appears before an explicit parsing terminator.
-// The value predicate keeps a token such as `--config --help` attached to the preceding flag.
+// helpRequested reports whether -h or --help appears before an explicit parsing terminator.
+//
+// commandArguments holds the raw tokens, and hasSeparateValue reports whether a flag-shaped token owns the next token, which is then skipped.
+// That predicate keeps --help in --config --help attached to --config as its value, so it does not request help.
+//
+// It reports false when no -h or --help is found before a - or -- that no flag consumed; a -- taken as a flag value does not end the search.
 func helpRequested(commandArguments []string, hasSeparateValue func(string) bool) bool {
 	// Only tokens before the first terminator can request command help.
 	for argumentIndex := 0; argumentIndex < len(commandArguments); argumentIndex++ {

@@ -1,3 +1,7 @@
+// Package pathfilter tests verify repository-relative ignore-pattern validation and glob matching.
+//
+// Each table test pins the contract developers rely on in paths.ignore and rule includePaths/excludePaths config entries,
+// including recursive /** suffixes, directory prefixes, and rejection of unsafe or non-relative patterns.
 package pathfilter
 
 import (
@@ -5,8 +9,8 @@ import (
 	"testing"
 )
 
-// TestValidateContract pins every accepted edge and rejected path form in the
-// repository-relative path-pattern grammar.
+// TestValidateContract checks representative accepted patterns and rejected forms in the repository-relative path-pattern grammar.
+// A failure means a valid pattern was rejected, an invalid one was accepted, or an error lost the phrase that tells the user what to fix.
 func TestValidateContract(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -21,6 +25,7 @@ func TestValidateContract(t *testing.T) {
 		{name: "malformed class", pattern: "pkg/[abc.go", wantErr: "invalid path pattern"},
 		{name: "mid-pattern recursive glob", pattern: "pkg/**/generated.go", wantErr: "one ** as a trailing recursive suffix"},
 		{name: "multiple recursive globs", pattern: "pkg/**/**", wantErr: "one ** as a trailing recursive suffix"},
+		{name: "root-wide dot recursive glob", pattern: "./**", wantErr: "one ** as a trailing recursive suffix"},
 		{name: "segment glob", pattern: "pkg/*.go"},
 		{name: "exact path", pattern: "cmd/gruff-go/main.go"},
 		{name: "leading dot slash", pattern: "./cmd/*.go"},
@@ -44,8 +49,8 @@ func TestValidateContract(t *testing.T) {
 	}
 }
 
-// TestMatchesContract pins segment boundaries, normalisation, exact matching,
-// and the two equivalent recursive-directory spellings.
+// TestMatchesContract pins segment boundaries, normalisation, exact matching, and the two equivalent recursive-directory spellings.
+// A failure means a file would be matched or missed against what its pattern says.
 func TestMatchesContract(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -67,6 +72,10 @@ func TestMatchesContract(t *testing.T) {
 		{name: "trailing slash prefix boundary", pattern: "ignored/", rel: "ignoredness/main.go", want: false},
 		{name: "recursive suffix directory self", pattern: "ignored/**", rel: "ignored", want: true},
 		{name: "recursive suffix descendant", pattern: "ignored/**", rel: "ignored/nested/main.go", want: true},
+		{name: "glob prefix recursive suffix", pattern: "services/*/generated/**", rel: "services/api/generated/types.go", want: true},
+		{name: "glob prefix trailing slash", pattern: "services/*/generated/", rel: "services/api/generated/sub/types.go", want: true},
+		{name: "glob prefix non-match", pattern: "services/*/generated/**", rel: "services/api/other/types.go", want: false},
+		{name: "uncleaned dot segment recursive", pattern: "a/./b/**", rel: "a/b/c.go", want: true},
 	}
 
 	for _, tt := range tests {
@@ -78,8 +87,7 @@ func TestMatchesContract(t *testing.T) {
 	}
 }
 
-// TestFirstMatchContract verifies ordering, verbatim return values, duplicate
-// handling, empty inputs, and agreement with MatchesAny.
+// TestFirstMatchContract verifies ordering, verbatim return values, duplicate handling, empty inputs, and agreement with MatchesAny.
 func TestFirstMatchContract(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -119,8 +127,8 @@ func TestFirstMatchContract(t *testing.T) {
 	}
 }
 
-// FuzzPathfilterNoPanic sends arbitrary patterns and paths through every public
-// entry point; callers validate first, but invalid input must remain safe.
+// FuzzPathfilterNoPanic sends arbitrary patterns and paths through every public entry point.
+// Callers are not guaranteed to validate first, so malformed patterns must stay safe.
 func FuzzPathfilterNoPanic(f *testing.F) {
 	f.Add("ignored/", "ignored/main.go")
 	f.Add("[", "./nested/file.go")
@@ -136,14 +144,14 @@ func FuzzPathfilterNoPanic(f *testing.F) {
 	})
 }
 
-// FuzzFirstMatchAgreement proves that valid candidate lists return the earliest
-// matching pattern and that MatchesAny reports the same boolean.
+// FuzzFirstMatchAgreement proves that valid candidate lists return the earliest matching pattern and that MatchesAny reports the same boolean.
 func FuzzFirstMatchAgreement(f *testing.F) {
 	f.Add("*.go", "docs/**", "main.go")
 	f.Add("ignored/", "ignored/**", "ignored/nested/main.go")
 	f.Add("pkg/*.go", "./pkg/main.go", "pkg/main.go")
 	f.Fuzz(func(t *testing.T, first, second, rel string) {
 		patterns := []string{first, second, first}
+		// If any candidate is invalid, the whole case is skipped; FuzzPathfilterNoPanic checks malformed input for panics.
 		for _, pattern := range patterns {
 			if Validate(pattern) != nil {
 				return

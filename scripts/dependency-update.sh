@@ -13,7 +13,7 @@ Usage: scripts/dependency-update.sh
 Updates dependency manifests and local audit tooling:
   - npm dependencies via npm update
   - Go module requirements via go get -u ./... and go mod tidy
-  - govulncheck via go install golang.org/x/vuln/cmd/govulncheck@latest
+  - govulncheck via go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 (v1.10.0 cannot scan the Go 1.27 standard library)
 
 Environment:
   RUN_NPM_SCRIPTS=1  Allow npm dependency lifecycle scripts. Defaults to off.
@@ -58,7 +58,8 @@ update_go_dependencies() {
 update_go_tools() {
     require_command go
     log "Updating govulncheck..."
-    go install golang.org/x/vuln/cmd/govulncheck@latest
+    # Matches the CI pin: v1.10.0 rejects the Go 1.27 standard library with type errors, so stay on v1.9.0 until a release scans it.
+    go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
     if ! command -v govulncheck >/dev/null 2>&1; then
         log "govulncheck installed under $(go env GOPATH)/bin; add that directory to PATH if needed."
     fi
