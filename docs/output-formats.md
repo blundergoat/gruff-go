@@ -237,7 +237,7 @@ Upload via GitHub Actions:
 
 ```yaml
 - name: Upload gruff-go SARIF
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: gruff-go.sarif
 ```

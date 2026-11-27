@@ -113,9 +113,11 @@ func substantiveLineNumbers(unit parser.Unit) []int {
 	if unit.AST != nil && unit.FileSet != nil {
 		maskParsedComments(sourceWithoutComments, unit)
 	} else if unit.File.Type == source.FileTypeGo {
+		preambleStart, preambleEnd := cgoPreambleSpan(unit.Source)
 		parser.ScanGoTokens(unit.Source, func(kind token.Token, start int, literal string) {
 			// Mark real Go comments so documentation cannot inflate the reported executable file size.
-			if kind == token.COMMENT {
+			// A cgo preamble is compiled C source, so it stays countable here exactly as it does for a parsed file.
+			if kind == token.COMMENT && (start < preambleStart || start >= preambleEnd) {
 				maskSourceRange(sourceWithoutComments, start, start+len(literal))
 			}
 		})
@@ -178,6 +180,25 @@ func cgoPreambleComment(file *ast.File) *ast.CommentGroup {
 		}
 	}
 	return nil
+}
+
+// cgoPreambleSpan locates the cgo preamble in Go source that carries no AST, such as a file held as raw text by the deep-scan budget.
+//
+// Without it the lexer-only line count would mask the preamble with every other comment, and the largest mixed Go/C files would go unreported.
+//
+// text is the whole file; only its header is parsed, and a file that never spells "C" skips even that.
+// It returns the byte offsets of the preamble's start and end, or two zeros when text has no import "C" carrying a preamble.
+func cgoPreambleSpan(text string) (int, int) {
+	// Only a file importing "C" can carry a preamble, so every other over-budget file keeps its lexer-only cost.
+	if !strings.Contains(text, `"C"`) {
+		return 0, 0
+	}
+	file, fileSet := parser.ParseGoImports(text)
+	preamble := cgoPreambleComment(file)
+	if preamble == nil {
+		return 0, 0
+	}
+	return fileSet.Position(preamble.Pos()).Offset, fileSet.Position(preamble.End()).Offset
 }
 
 // maskSourceRange clears one comment span but retains newline boundaries.

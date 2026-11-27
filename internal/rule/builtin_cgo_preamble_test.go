@@ -13,6 +13,7 @@ import (
 // TestFileLengthCountsCgoPreamble pins that C source in a cgo preamble reaches the substantive line count while ordinary prose stays masked.
 //
 // go/parser reports both as comments, so masking indiscriminately let large mixed Go/C files go unreported.
+// Each case runs twice: parsed, and as the AST-less unit the deep-scan budget leaves behind, because the largest files take that second path.
 // A failure means a large mixed Go/C file goes unreported again, or a prose-heavy file gets a length finding it should not.
 func TestFileLengthCountsCgoPreamble(t *testing.T) {
 	tests := []struct {
@@ -62,6 +63,12 @@ func TestFileLengthCountsCgoPreamble(t *testing.T) {
 			findings := FileLengthRule{MaxLines: 10}.AnalyzeUnit(unit, Context{})
 			if len(findings) != tt.want {
 				t.Fatalf("findings = %#v, want %d", findings, tt.want)
+			}
+			// A file over the deep-scan budget keeps its source but loses its AST, and must still count the same lines.
+			unit.AST, unit.FileSet = nil, nil
+			findings = FileLengthRule{MaxLines: 10}.AnalyzeUnit(unit, Context{})
+			if len(findings) != tt.want {
+				t.Fatalf("budget-limited findings = %#v, want %d", findings, tt.want)
 			}
 		})
 	}

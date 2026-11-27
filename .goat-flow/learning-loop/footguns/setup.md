@@ -1,6 +1,6 @@
 ---
 category: setup
-last_reviewed: 2026-11-25
+last_reviewed: 2026-11-28
 ---
 
 # Setup Footguns
@@ -191,6 +191,20 @@ the semantics.
 **Evidence:**
 - `docs/rules.md` (search: `## Confidence evidence`) explicitly scopes the table to default-on rules that have no measurement setting their confidence (36 of 56 default-on rules measured on 2026-11-25; the other 20 measured default-on rules are intentionally omitted).
 - `docs/rules.md` (search: `has no re-review route yet`) lists `docs.missing-param-doc` right above the alphabetized gap where `docs.missing-return-doc` would sit. During `0.6.0` doc hardening, that juxtaposition made `docs.missing-return-doc` look accidentally omitted and led to adding a false `unmeasured` row. Re-checking `UPGRADING.md` (search: `docs.missing-return-doc`) and commit `2317576` confirmed `docs.missing-return-doc` was measured on the 12-repo precision corpus (`6,809` findings) and calibrated to `medium`, so it belongs outside the inherited-confidence table.
+
+## Footgun: govulncheck v1.10.0 cannot scan the Go 1.27 standard library, so CI pins v1.9.0
+
+**Status:** active | **Created:** 2026-11-28 | **Evidence:** ACTUAL_MEASURED
+**Decision changed:** Before moving `govulncheck` past `v1.9.0` or back to `@latest`, run the new release against a minimal `net/http` module on the pinned Go 1.27 toolchain, and move only when it prints `No vulnerabilities found.` instead of type errors.
+**Trigger phase:** VERIFY
+
+**Symptoms:** On the `go1.27.4` toolchain, `govulncheck ./...` v1.10.0 exits 1 with `loading packages` type errors in standard-library files, such as `new("ConnectionStateContextKey") requires go1.26 or later` and `generic method requires go1.27 or later`. The preflight `Go vulnerability audit` row fails, and so does CI.
+
+**Why it happens:** v1.10.0 type-checks the standard library at a language version older than Go 1.26. The module's `go` directive is not the cause: the same errors appear with `go 1.25.0`, `go 1.26.0` and `go 1.27.0`, and a v1.10.0 binary built with go1.27.4 still fails. v1.9.0 scans the same tree cleanly and still downloads the live vulnerability database.
+
+**Prevention:** Keep all five pin sites on the same version and move them together: `.github/workflows/gruff-go.yml` (search: `govulncheck@v1.9.0`), `.github/workflows/release.yml` (search: `govulncheck@v1.9.0`), `scripts/dependency-update.sh` (search: `govulncheck@v1.9.0`), `scripts/dependency-install.sh` (search: `govulncheck@v1.9.0`), and the install hint in `scripts/preflight-checks.sh` (search: `govulncheck@v1.9.0`). Resolve this entry once a release passes the minimal-module check.
+
+**Evidence:** Measured 2026-11-28 on `go1.27.4`: v1.10.0 failed on this module and on a two-file `net/http` module; v1.9.0 printed `No vulnerabilities found.` on both; v1.10.0 on the `go1.26.11` standard library passed.
 
 ## Resolved Entries
 

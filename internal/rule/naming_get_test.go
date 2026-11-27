@@ -7,7 +7,7 @@ package rule
 import "testing"
 
 // TestGetPrefixFlagsAccessorMethods verifies the rule flags accessor-shaped Get methods on receivers.
-// GetUserByID with a parameter, a bare Get and the free GetGlobalUser stay quiet; only GetUser and GetCacheStats appear as symbols.
+// GetUserByID with a parameter, a bare Get and the free GetGlobalUser stay quiet; only Store.GetUser and Store.GetCacheStats appear as symbols.
 func TestGetPrefixFlagsAccessorMethods(t *testing.T) {
 	unit := parseOne(t, "pkg/file.go", `package pkg
 
@@ -23,8 +23,8 @@ func GetGlobalUser() User { return User{} }
 `)
 	findings := GetPrefixRule{}.AnalyzeUnit(unit, Context{})
 	got := findingSymbols(findings)
-	if len(got) != 2 || !got["GetUser"] || !got["GetCacheStats"] {
-		t.Fatalf("findings = %#v, want GetUser and GetCacheStats", findings)
+	if len(got) != 2 || !got["Store.GetUser"] || !got["Store.GetCacheStats"] {
+		t.Fatalf("findings = %#v, want Store.GetUser and Store.GetCacheStats", findings)
 	}
 }
 

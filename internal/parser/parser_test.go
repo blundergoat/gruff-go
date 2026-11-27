@@ -105,6 +105,26 @@ func (s pkg.Foreign) OnSelector() {}
 	}
 }
 
+// TestParseAcceptsGo127GenericMethods confirms a method with its own type parameters parses into a clean unit named Type.Method.
+//
+// Go 1.27 made that declaration legal, and go/parser accepts it only when gruff-go is built with that toolchain or later.
+// A failure means the go.mod toolchain or CI Go version fell below 1.27, so a scan of valid Go 1.27 code exits 2 with a parse error.
+func TestParseAcceptsGo127GenericMethods(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "box.go")
+	src := "package sample\n\ntype Box struct{ n int }\n\nfunc (b Box) Map[T any](f func(int) T) T { return f(b.n) }\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	units, diagnostics := Parse([]source.File{{Path: "box.go", AbsPath: path, Type: source.FileTypeGo}})
+	if len(diagnostics) != 0 || len(units) != 1 {
+		t.Fatalf("units = %#v, diagnostics = %#v, want one clean unit", units, diagnostics)
+	}
+	if len(units[0].Functions) != 1 || units[0].Functions[0].Name != "Box.Map" {
+		t.Fatalf("functions = %#v, want Box.Map", units[0].Functions)
+	}
+}
+
 // TestParseReportsParseDiagnostics confirms broken source produces diagnostics not units.
 // A syntax error must yield no unit and a diagnostic with the file path and a nonzero line, so the user can find what failed to parse.
 func TestParseReportsParseDiagnostics(t *testing.T) {

@@ -384,7 +384,7 @@ check_go_vuln() {
         return "$SKIP_EXIT"
     fi
     if ! command -v govulncheck >/dev/null 2>&1; then
-        printf 'govulncheck not installed (go install golang.org/x/vuln/cmd/govulncheck@latest)'
+        printf 'govulncheck not installed (go install golang.org/x/vuln/cmd/govulncheck@v1.9.0)'
         return "$SKIP_EXIT"
     fi
 

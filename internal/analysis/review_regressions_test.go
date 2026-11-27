@@ -1,7 +1,7 @@
 // Package analysis tests cover core pipeline regression scenarios verified during the 0.6.0 review.
 //
 // They protect Windows machinePath handling, strict inline-suppression parsing, gitignored sibling context isolation,
-// and non-function declaration ordinal ranking in baseline matching.
+// non-function declaration ordinal ranking in baseline matching, and receiver-qualified method identities.
 package analysis
 
 import (
@@ -176,6 +176,42 @@ func TestNonFunctionSymbolOrdinalsPreserveBaselinedSibling(t *testing.T) {
 	}
 	if secondReport.Findings[0].Location == nil || secondReport.Findings[0].Location.Line > 10 {
 		t.Fatalf("surviving finding at line %#v, want new finding in A near top of file", secondReport.Findings[0].Location)
+	}
+}
+
+// TestMethodNamesakeCannotTakeAnotherReceiversReview ensures a reviewed method's baseline entry never covers a same-named method on another type.
+//
+// The shape is one change that renames the reviewed A.GetName away and turns B's method into a GetName accessor. A bare method symbol gave both
+// the identity GetName#1, so the new debt passed as reviewed and the scan exited 0.
+func TestMethodNamesakeCannotTakeAnotherReceiversReview(t *testing.T) {
+	root := t.TempDir()
+	types := "// Package p tests method baseline identities.\npackage p\n\n// A is a type.\ntype A struct{ name string }\n\n// B is a type.\ntype B struct{ name string }\n\n"
+	writeFile(t, root, "p.go", types+"// GetName returns the name.\nfunc (a A) GetName() string { return a.name }\n\n// Name returns the name.\nfunc (b B) Name() string { return b.name }\n")
+
+	reg, err := rule.DefaultsConfigured(rule.Config{Enabled: map[string]bool{"naming.get-prefix": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstReport, err := Analyze(Options{Root: root, Paths: []string{"."}, Registry: reg, FailOn: finding.FailThresholdNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseFile, err := baseline.FromFindings(firstReport.Findings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	basePath := filepath.Join(root, "gruff-baseline.json")
+	if err := baseline.Write(basePath, baseFile); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, root, "p.go", types+"// Name returns the name.\nfunc (a A) Name() string { return a.name }\n\n// GetName returns the name.\nfunc (b B) GetName() string { return b.name }\n")
+	secondReport, err := Analyze(Options{Root: root, Paths: []string{"."}, Registry: reg, BaselinePath: basePath, FailOn: finding.FailThresholdNone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secondReport.Findings) != 1 || secondReport.Findings[0].Symbol != "B.GetName" || secondReport.Baseline.NewFindings != 1 {
+		t.Fatalf("findings = %#v, new = %d; want B.GetName reported as new debt", secondReport.Findings, secondReport.Baseline.NewFindings)
 	}
 }
 

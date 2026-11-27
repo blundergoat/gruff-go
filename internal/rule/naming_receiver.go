@@ -275,7 +275,8 @@ func makeReceiverFinding(method receiverMethod, dominantName string, dominantFor
 		Message:  message,
 		File:     method.unit.File.Path,
 		Location: &finding.Location{Line: position.Line, Column: position.Column},
-		Symbol:   method.function.Name.Name,
+		// Type.Method, as every function rule names it, so same-named methods on two types keep separate baseline identities.
+		Symbol:   functionName(method.function),
 		Metadata: metadata,
 	}
 }

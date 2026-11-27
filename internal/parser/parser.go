@@ -35,6 +35,19 @@ func ScanGoTokens(text string, visit func(token.Token, int, string)) {
 	}
 }
 
+// ParseGoImports parses text only as far as its import declarations, keeping their comments.
+//
+// A Go file held as raw text by the deep-scan budget has no AST, yet a rule may still need what precedes its first declaration, such as a cgo preamble.
+// Parsing stops after the imports, so the cost follows the file header rather than the file body.
+//
+// It returns the partial file with the FileSet its positions resolve against; syntax errors are ignored and whatever parsed before them is kept.
+func ParseGoImports(text string) (*ast.File, *token.FileSet) {
+	fileSet := token.NewFileSet()
+	// The error is dropped on purpose: a partial header still names its imports, and the caller treats a missing one as "no preamble".
+	file, _ := stdparser.ParseFile(fileSet, "", text, stdparser.ImportsOnly|stdparser.ParseComments)
+	return file, fileSet
+}
+
 // Unit is a parsed source file with the data rules need for analysis.
 //
 // Every file that was read gets one, Go or not; only a Go file parsed within the deep-scan budget carries AST, FileSet and Functions.

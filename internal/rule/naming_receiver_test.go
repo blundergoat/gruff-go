@@ -38,7 +38,7 @@ func (client *Client) Stop() {}
 func (c *Client) Close() {}
 `)
 	findings := ReceiverConsistencyRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
-	if len(findings) != 1 || findings[0].Symbol != "Stop" {
+	if len(findings) != 1 || findings[0].Symbol != "Client.Stop" {
 		t.Fatalf("expected receiver name finding for Stop, got %#v", findings)
 	}
 	if findings[0].Metadata["dominantName"] != "c" || findings[0].Metadata["receiverName"] != "client" {
@@ -58,7 +58,7 @@ func (c Client) Stop() {}
 func (c *Client) Close() {}
 `)
 	findings := ReceiverConsistencyRule{}.AnalyzeProject([]parser.Unit{unit}, Context{})
-	if len(findings) != 1 || findings[0].Symbol != "Stop" {
+	if len(findings) != 1 || findings[0].Symbol != "Client.Stop" {
 		t.Fatalf("expected receiver form finding for Stop, got %#v", findings)
 	}
 	if findings[0].Metadata["dominantForm"] != "pointer" || findings[0].Metadata["receiverForm"] != "value" {

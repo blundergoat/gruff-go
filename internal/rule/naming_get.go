@@ -65,7 +65,8 @@ func (r GetPrefixRule) AnalyzeUnit(unit parser.Unit, ctx Context) []finding.Find
 			Message:  fmt.Sprintf("function %q uses Get prefix for an accessor-style receiver method", fn.Name.Name),
 			File:     unit.File.Path,
 			Location: &finding.Location{Line: position.Line, Column: position.Column},
-			Symbol:   fn.Name.Name,
+			// Type.Method, as every function rule names it, so same-named methods on two types keep separate baseline identities.
+			Symbol:   functionName(fn),
 			Metadata: map[string]any{"method": fn.Name.Name, "kind": "receiver method"},
 		})
 	}

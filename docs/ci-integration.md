@@ -72,13 +72,13 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # required for --since
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.27'  # the Go that builds gruff-go decides which syntax it can parse
 
       - name: Install gruff-go
         run: go install github.com/blundergoat/gruff-go/cmd/gruff-go@v0.6.0
@@ -102,7 +102,7 @@ The `--format github` output is one workflow command per finding, so each one sh
         continue-on-error: true   # let the upload step run even if findings fail the build
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gruff-go.sarif
           category: gruff-go
@@ -119,7 +119,7 @@ Code Scanning will track findings over time, surface them in the Security tab, a
 
       - name: Upload HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gruff-report
           path: gruff-report.html
